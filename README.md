@@ -16,4 +16,6 @@ PATH_BASE = '/Users/stefanh/Documents/UMich/Research/Music with NLP/Symbolic-Mus
 ```
 
 Also, a `datasets` folder should be kept at the same level as 
-this repository, with dataset folder names specified as in `config.py`.
+this repository, with dataset folder names specified as 
+in [`config.py`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/config.py).
+
