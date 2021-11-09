@@ -1,22 +1,14 @@
-import os
-import pickle
 from icecream import ic
-
-
-def read_pickle(fnm):
-    objects = []
-    with (open(fnm, 'rb')) as f:
-        while True:
-            try:
-                objects.append(pickle.load(f))
-            except EOFError:
-                break
-    return objects
+from util import *
 
 
 if __name__ == '__main__':
-    os.chdir('../..')
+    import os
 
-    p = read_pickle('datasets/full_song_objects.pickle')[0]
+    os.chdir('../../datasets')
+    fnm = config('datasets.Allie_Chords')
+    ic(fnm)
+
+    p = read_pickle('full_song_objects.pickle')[0]
     ic(len(p))
 

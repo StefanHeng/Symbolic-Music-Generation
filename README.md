@@ -8,7 +8,7 @@ at [LIT](https://lit.eecs.umich.edu/people.html).
 
 ## To use 
 
-Create a file `data_path.py`. 
+Create a file `data_path.py` in root level. 
 
 In the file specify your system data path for the repository as below 
 ```python
@@ -17,5 +17,5 @@ PATH_BASE = '/Users/stefanh/Documents/UMich/Research/Music with NLP/Symbolic-Mus
 
 Also, a `datasets` folder should be kept at the same level as 
 this repository, with dataset folder names specified as 
-in [`config.py`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/config.py).
+in [`config.json`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/config.json).
 

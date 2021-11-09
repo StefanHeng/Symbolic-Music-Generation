@@ -1,0 +1,17 @@
+{
+    "datasets": {
+        "Allie_Chords": {
+            "dir_nm": "Allie-Chord-Embedding",
+            "nm": "Allie-Chord-Embedding",
+            "nm_data": "full_song_objects.pickle"
+        },
+        "LMD_matched": {
+            "dir_nm": "Lakh-MIDI-Dataset/LMD-Matched",
+            "nm": "LMD-Matched"
+        },
+        "LMD_Aligned": {
+            "dir_nm": "Lakh-MIDI-Dataset/LMD-Aligned",
+            "nm": "LMD-Aligned"
+        }
+    }
+}
