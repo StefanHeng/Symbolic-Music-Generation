@@ -2,6 +2,8 @@
 assets/
 .idea/
 .vscode/
+data_path
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
