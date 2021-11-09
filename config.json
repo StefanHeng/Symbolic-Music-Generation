@@ -3,7 +3,8 @@
         "Allie_Chords": {
             "dir_nm": "Allie-Chord-Embedding",
             "nm": "Allie-Chord-Embedding",
-            "nm_data": "full_song_objects.pickle"
+            "nm_data": "full_song_objects.pickle",
+            "n_entry": 87481
         },
         "LMD_matched": {
             "dir_nm": "Lakh-MIDI-Dataset/LMD-Matched",
