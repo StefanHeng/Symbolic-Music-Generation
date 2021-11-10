@@ -1,5 +1,6 @@
 import json
 import pickle
+import glob
 from functools import reduce
 
 from data_path import *
@@ -60,3 +61,9 @@ def config(attr):
     #     node = node[part]
     # return node
     return get(config.config, attr)
+
+
+def get_midi_paths(dnm):
+    dset_dir = config(f'datasets.{dnm}.dir_nm')
+    paths = sorted(glob.iglob(f'{PATH_BASE}/{DIR_DSET}/{dset_dir}/**/*.mid', recursive=True))
+    return paths
