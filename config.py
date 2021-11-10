@@ -25,12 +25,22 @@ config = dict(
     )
 )
 
+if OS == 'Windows':
+    for k in keys(config):
+        val = get(config, k)
+        if type(val) is str:
+            # print(val.replace('/', '\\'))
+            set_(config, k, val.replace('/', '\\'))
+
+
 if __name__ == '__main__':
     import json
     from data_path import *
 
     fl_nm = 'config.json'
     ic(config)
+    print(config)
+    # print('\\')
     open(fl_nm, 'a').close()  # Create file in OS
     with open(f'{PATH_BASE}/{fl_nm}', 'w') as f:
         json.dump(config, f, indent=4)
