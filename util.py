@@ -3,10 +3,22 @@ import pickle
 import glob
 from functools import reduce
 
+import numpy as np
 import pandas as pd
 from mido import MidiFile
+import pretty_midi
+from pretty_midi import PrettyMIDI
+import librosa
+from librosa import display
+import matplotlib.pyplot as plt
+from matplotlib import rcParams
+import seaborn as sns
 
 from data_path import *
+
+
+rcParams['figure.constrained_layout.use'] = True
+sns.set_style('darkgrid')
 
 
 def flatten(lsts):
@@ -100,10 +112,11 @@ class MidoUtil:
 
 
 class PrettyMidiUtil:
-    INSTR_ATTRS = ('start', 'end', 'pitch', 'velocity')
+    # def __init__(self):
+    #     pass
 
     @staticmethod
-    def plot_single_instrument(instr_, cols=INSTR_ATTRS, n=None):
+    def plot_single_instrument(instr_, cols=('start', 'end', 'pitch', 'velocity'), n=None):
         """
         Plots a single `pretty_midi.Instrument` channel
 
@@ -113,5 +126,82 @@ class PrettyMidiUtil:
             return [getattr(note, attr) for attr in cols]
         # df = pd.DataFrame([[n.start, n.end, n.pitch, n.velocity] for n in instr_.notes], columns=cols)
         df = pd.DataFrame([_get_get(n) for n in instr_.notes], columns=cols)[:n]
-        df.plot(figsize=(16, 9), lw=0.25, ms=0.3, title=f'Instrument notes plot - [{",".join(cols)}]')
+        df.plot(
+            figsize=(16, 9),
+            lw=0.25, ms=0.3,
+            title=f'Instrument notes plot - [{",".join(cols)}]'
+        )
         return df
+
+    @staticmethod
+    def get_pitch_range(pm_):
+        """
+        :return: Inclusive lower and upper bound of pitch in PrettyMIDI
+        """
+        def _get(instr_):
+            arr = np.array([n.pitch for n in instr_.notes])
+            return np.array([arr.min(), arr.max()])
+
+        if type(pm_) is PrettyMIDI:
+            ranges = np.vstack([_get(i) for i in pm_.instruments])
+            return ranges[:, 0].min(), ranges[:, 1].max()
+        else:
+            return list(_get(pm_))
+
+    @staticmethod
+    def plot_piano_roll(pm_: pretty_midi.PrettyMIDI, strt=None, end=None, fqs=100):
+        if strt is None and end is None:
+            strt, end = PrettyMidiUtil.get_pitch_range(pm_)
+            end += 1  # inclusive np array slicing
+        pr_ = pm_.get_piano_roll(fqs)[strt:end]
+        strt_ = pretty_midi.note_number_to_name(strt)
+        end_ = pretty_midi.note_number_to_name(end)
+
+        fig = plt.figure(figsize=(16, (9 * (end-strt+1) / 128) + 1))
+        ax = fig.add_subplot(111)
+        kwargs = dict(
+            fmin=pretty_midi.note_number_to_hz(strt) if strt else None
+        )
+        with sns.axes_style('ticks'):
+            librosa.display.specshow(
+                pr_,
+                hop_length=1, sr=fqs, x_axis='time', y_axis='cqt_note',
+                cmap='mako',
+                **kwargs
+            )
+        # nms = np.arange(strt, end, 5)
+        # plt.yticks(nms, list(map(pretty_midi.note_number_to_name, nms)))
+        plt.title(f'Piano roll plot - [{strt_}, {end_}]')
+        plt.show()
+
+
+if __name__ == '__main__':
+    from icecream import ic
+
+    def _get_pm():
+        dnm = 'MIDI_EG'
+        d_dset = config(f'{DIR_DSET}.{dnm}')
+        dir_nm = d_dset['dir_nm']
+        path = f'{PATH_BASE}/{DIR_DSET}/{dir_nm}'
+        mids = sorted(glob.iglob(f'{path}/{d_dset["fmt_midi"]}', recursive=True))
+        mid_eg = mids[2]
+
+        return pretty_midi.PrettyMIDI(mid_eg)
+
+    def check_piano_roll():
+        pm = _get_pm()
+
+        pr = pm.get_piano_roll(100)
+        ic(pr.shape, pr.dtype, pr[75:80, 920:960])
+        # ic(np.where(pr > 100))
+
+        instr0 = pm.instruments[0]
+        instr1 = pm.instruments[1]
+        ic(instr0.get_piano_roll()[76, 920:960])
+        ic(instr1.get_piano_roll()[76, 920:960])
+
+        pmu = PrettyMidiUtil()
+        pmu.plot_piano_roll(pm, fqs=100)
+        # pmu.plot_piano_roll(instr0)
+
+    check_piano_roll()

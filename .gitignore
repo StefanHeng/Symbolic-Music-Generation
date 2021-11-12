@@ -3,6 +3,7 @@ assets/
 .idea/
 .vscode/
 data_path.py
+test_lang.py
 
 
 # Byte-compiled / optimized / DLL files
