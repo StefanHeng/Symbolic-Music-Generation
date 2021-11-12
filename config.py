@@ -11,19 +11,25 @@ fnm = f'../datasets/{d_allie["dir_nm"]}/{d_allie["nm_data"]}'
 d_allie['n_entry'] = len(read_pickle(fnm)[0])
 
 
-config = dict(
-    datasets=dict(
+config = {
+    DIR_DSET: dict(
         Allie_Chords=d_allie,
         LMD_matched=dict(
+            nm='The Lakh MIDI Dataset, Matched',
             dir_nm='Lakh-MIDI-Dataset/LMD-Matched',
-            nm='LMD-Matched'
         ),
         LMD_Aligned=dict(
+            nm='The Lakh MIDI Dataset, Aligned',
             dir_nm='Lakh-MIDI-Dataset/LMD-Aligned',
-            nm='LMD-Aligned'
+        ),
+        MIDI_EG=dict(
+            nm='Some hand-selected MIDI samples',
+            dir_nm='MIDI-eg',
+            fmt_midi='*.mid'
         )
     )
-)
+}
+
 
 if OS == 'Windows':
     for k in keys(config):

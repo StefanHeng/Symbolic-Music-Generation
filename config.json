@@ -7,12 +7,17 @@
             "n_entry": 87481
         },
         "LMD_matched": {
-            "dir_nm": "Lakh-MIDI-Dataset/LMD-Matched",
-            "nm": "LMD-Matched"
+            "nm": "The Lakh MIDI Dataset, Matched",
+            "dir_nm": "Lakh-MIDI-Dataset/LMD-Matched"
         },
         "LMD_Aligned": {
-            "dir_nm": "Lakh-MIDI-Dataset/LMD-Aligned",
-            "nm": "LMD-Aligned"
+            "nm": "The Lakh MIDI Dataset, Aligned",
+            "dir_nm": "Lakh-MIDI-Dataset/LMD-Aligned"
+        },
+        "MIDI_EG": {
+            "nm": "Some hand-selected MIDI samples",
+            "dir_nm": "MIDI-eg",
+            "fmt_midi": "*.mid"
         }
     }
 }

@@ -3,6 +3,8 @@ import pickle
 import glob
 from functools import reduce
 
+import pandas as pd
+
 from data_path import *
 
 
@@ -55,11 +57,6 @@ def config(attr):
     if not hasattr(config, 'config'):
         with open(f'{PATH_BASE}/{DIR_PROJ}/config.json') as f:
             config.config = json.load(f)
-
-    # node = config.config
-    # for part in attr.split('.'):
-    #     node = node[part]
-    # return node
     return get(config.config, attr)
 
 
@@ -67,3 +64,15 @@ def get_midi_paths(dnm):
     dset_dir = config(f'datasets.{dnm}.dir_nm')
     paths = sorted(glob.iglob(f'{PATH_BASE}/{DIR_DSET}/{dset_dir}/**/*.mid', recursive=True))
     return paths
+
+
+def plot_single_instrument(instr_, cols=['start', 'end', 'pitch', 'velocity'], n=None):
+    """
+    Plots a single `pretty_midi.Instrument` channel
+    """
+    def _get_get(note):
+        return [getattr(note, attr) for attr in cols]
+    # df = pd.DataFrame([[n.start, n.end, n.pitch, n.velocity] for n in instr_.notes], columns=cols)
+    df = pd.DataFrame([_get_get(n) for n in instr_.notes], columns=cols)[:n]
+    df.plot(figsize=(16, 9), lw=0.25, ms=0.3, title=f'Instrument notes plot - [{",".join(cols)}]')
+    return df

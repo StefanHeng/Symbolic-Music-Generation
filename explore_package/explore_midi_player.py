@@ -6,10 +6,8 @@ Rerun this script for a new midi
 """
 
 import pygame
-from pathlib import Path
 from random import randint
 
-from icecream import ic
 
 from util import *
 from data_path import *
