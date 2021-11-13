@@ -6,6 +6,7 @@ from functools import reduce
 
 import numpy as np
 import pandas as pd
+import mido
 from mido import MidiFile
 import pretty_midi
 from pretty_midi import PrettyMIDI
@@ -14,6 +15,7 @@ from librosa import display
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
 import seaborn as sns
+from icecream import ic
 
 from data_path import *
 
@@ -99,21 +101,27 @@ def tempo2bpm(tempo):
 
 class MidoUtil:
     @staticmethod
-    def get_msgs_by_type(mf: MidiFile, t_):
+    def get_msgs_by_type(fl, t_, as_dict=False):
         def _get(track):
             return list(filter(lambda tr: tr.type == t_, track))
-        if type(mf) is MidiFile:
-            return {i: _get(trk) for i, trk in enumerate(mf.tracks)}
-        else:  # midi.MidiTrack
-            return _get(mf)
+        if type(fl) is MidiFile or type(fl) is str:
+            if type(fl) is str:
+                fl = MidiFile(fl)
+            d_msgs = {i: _get(trk) for i, trk in enumerate(fl.tracks)}
+            return d_msgs if as_dict else flatten(d_msgs.values())
+        elif type(fl) is mido.MidiTrack:
+            return _get(fl)
 
     @staticmethod
-    def get_tempo_changes(mf):
+    def get_tempo_changes(mf, dedupe=False):
         lst_msgs = MidoUtil.get_msgs_by_type(mf, 'set_tempo')
         if lst_msgs:
-            lst_msgs = list(filter(bool, lst_msgs.values()))
-            lst_tempo = list(map(lambda lst: list(map(lambda msg: msg.tempo, lst)), lst_msgs))
-            return list(set(flatten(lst_tempo)))
+            # print(flatten(lst_msgs.values()))
+            # lst_msgs = list(filter(bool, lst_msgs.values()))
+            # lst_tempo = list(map(lambda lst: list(map(lambda msg: msg.tempo, lst)), lst_msgs))
+            # return list(set(flatten(lst_tempo)))
+            tempos = [msg.tempo for msg in lst_msgs]
+            return list(set(tempos)) if dedupe else tempos
         else:
             return [DEF_TPO]
 
@@ -162,16 +170,25 @@ class PrettyMidiUtil:
         return strt, end
 
     @staticmethod
-    def plot_piano_roll(pm_: pretty_midi.PrettyMIDI, strt=None, end=None, fqs=100):
+    def plot_piano_roll(fl, strt=None, end=None, fqs=100, with_beats=True):
+        """
+        :param fl: A PrettyMIDI, Instrument, or file path string
+        :param strt: Lowest pitch to plot inclusive, inferred if not given
+        :param end: Highest pitch to plot inclusive, inferred if not given
+        :param fqs: Sample frequency
+        :param with_beats: If true, beat times are shown as vertical lines
+            If fl is Instrument, expect the times needs to be provided
+        """
+        if type(fl) is str:
+            fl = PrettyMIDI(fl)
         if strt is None and end is None:
-            strt, end = PrettyMidiUtil.get_pitch_range(pm_, clip=True)
+            strt, end = PrettyMidiUtil.get_pitch_range(fl, clip=True)
             end += 1  # inclusive np array slicing
-        pr_ = pm_.get_piano_roll(fqs)[strt:end]
+        pr_ = fl.get_piano_roll(fqs)[strt:end]
         strt_ = pretty_midi.note_number_to_name(strt)
         end_ = pretty_midi.note_number_to_name(end)
 
-        fig = plt.figure(figsize=(16, (9 * (end-strt+1) / 128) + 1))
-        # ax = fig.add_subplot(111)
+        plt.figure(figsize=(16, (9 * (end-strt+1) / 128) + 1))
         kwargs = dict(
             fmin=pretty_midi.note_number_to_hz(strt) if strt else None
         )
@@ -182,14 +199,23 @@ class PrettyMidiUtil:
                 cmap='mako',
                 **kwargs
             )
-        # ic(plt.xticks())
-        # nms = np.arange(strt, end, 5)
+        # ic(plt.xticks(), plt.yticks())
+        nms = np.arange(strt, end, 6)
         # plt.yticks(nms, list(map(pretty_midi.note_number_to_name, nms)))
+        plt.yticks(
+            list(map(pretty_midi.note_number_to_hz, nms)),
+            list(map(pretty_midi.note_number_to_name, nms))
+        )
+        if (type(with_beats) is bool and with_beats) or with_beats is not None:
+            ticks = plt.yticks()[0]
+            x = fl.get_beats() if type(fl) is PrettyMIDI else with_beats
+            ax = plt.gca()
+            ax.vlines(x=x, ymin=ticks.min(), ymax=ticks.max(), lw=0.25, alpha=0.5)
         plt.title(f'Piano roll plot - [{strt_}, {end_}]')
         plt.show()
 
 
-def eg_midis(k=None):
+def eg_midis(k=None, pretty=False):
     """
     :return: A list of or single MIDI file path
     """
@@ -198,37 +224,38 @@ def eg_midis(k=None):
     dir_nm = d_dset['dir_nm']
     path = f'{PATH_BASE}/{DIR_DSET}/{dir_nm}'
     mids = sorted(glob.iglob(f'{path}/{d_dset["fmt_midi"]}', recursive=True))
-    return mids[k] if k else mids
+    if k:
+        if type(k) is int:
+            return mids[k]
+        else:  # Expect str
+            return next(filter(lambda p: p.find(k) != -1, mids))
+    else:
+        return [p[p.find(dir_nm):] for p in mids] if pretty else mids
 
 
 if __name__ == '__main__':
     from icecream import ic
     ic(tempo2bpm(DEF_TPO))
 
-    def _get_pm():
-        # dnm = 'MIDI_EG'
-        # d_dset = config(f'{DIR_DSET}.{dnm}')
-        # dir_nm = d_dset['dir_nm']
-        # path = f'{PATH_BASE}/{DIR_DSET}/{dir_nm}'
-        # mids = sorted(glob.iglob(f'{path}/{d_dset["fmt_midi"]}', recursive=True))
-        # mid_eg = mids[2]
-
-        return pretty_midi.PrettyMIDI(eg_midis(2))
+    def check_note2hz():
+        for n in np.arange(0, 12*10, 12):
+            ic(n, pretty_midi.note_number_to_hz(n))
+    check_note2hz()
 
     def check_piano_roll():
-        pm = _get_pm()
+        # pm = pretty_midi.PrettyMIDI(eg_midis('Shape of You'))
+        pm = pretty_midi.PrettyMIDI(eg_midis('Merry Go Round of Life'))
 
         pr = pm.get_piano_roll(100)
-        ic(pr.shape, pr.dtype, pr[75:80, 920:960])
-        # ic(np.where(pr > 100))
-
-        instr0 = pm.instruments[0]
-        instr1 = pm.instruments[1]
-        ic(instr0.get_piano_roll()[76, 920:960])
-        ic(instr1.get_piano_roll()[76, 920:960])
+        # ic(pr.shape, pr.dtype, pr[75:80, 920:960])
+        # # ic(np.where(pr > 100))
+        #
+        # instr0 = pm.instruments[0]
+        # instr1 = pm.instruments[1]
+        # ic(instr0.get_piano_roll()[76, 920:960])
+        # ic(instr1.get_piano_roll()[76, 920:960])
 
         pmu = PrettyMidiUtil()
         pmu.plot_piano_roll(pm, fqs=100)
-        pmu.plot_piano_roll(instr0)
-
+        # pmu.plot_piano_roll(instr0)
     check_piano_roll()
