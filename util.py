@@ -116,10 +116,6 @@ class MidoUtil:
     def get_tempo_changes(mf, dedupe=False):
         lst_msgs = MidoUtil.get_msgs_by_type(mf, 'set_tempo')
         if lst_msgs:
-            # print(flatten(lst_msgs.values()))
-            # lst_msgs = list(filter(bool, lst_msgs.values()))
-            # lst_tempo = list(map(lambda lst: list(map(lambda msg: msg.tempo, lst)), lst_msgs))
-            # return list(set(flatten(lst_tempo)))
             tempos = [msg.tempo for msg in lst_msgs]
             return list(set(tempos)) if dedupe else tempos
         else:
@@ -139,7 +135,6 @@ class PrettyMidiUtil:
         """
         def _get_get(note):
             return [getattr(note, attr) for attr in cols]
-        # df = pd.DataFrame([[n.start, n.end, n.pitch, n.velocity] for n in instr_.notes], columns=cols)
         df = pd.DataFrame([_get_get(n) for n in instr_.notes], columns=cols)[:n]
         df.plot(
             figsize=(16, 9),
@@ -188,7 +183,7 @@ class PrettyMidiUtil:
         strt_ = pretty_midi.note_number_to_name(strt)
         end_ = pretty_midi.note_number_to_name(end)
 
-        plt.figure(figsize=(16, (9 * (end-strt+1) / 128) + 1))
+        plt.figure(figsize=(16, (9 * (end-strt+1) / 128) + 1), constrained_layout=True)
         kwargs = dict(
             fmin=pretty_midi.note_number_to_hz(strt) if strt else None
         )
@@ -199,9 +194,8 @@ class PrettyMidiUtil:
                 cmap='mako',
                 **kwargs
             )
-        # ic(plt.xticks(), plt.yticks())
         nms = np.arange(strt, end, 6)
-        # plt.yticks(nms, list(map(pretty_midi.note_number_to_name, nms)))
+        plt.colorbar(pad=2**(-5))
         plt.yticks(
             list(map(pretty_midi.note_number_to_hz, nms)),
             list(map(pretty_midi.note_number_to_name, nms))
@@ -210,7 +204,11 @@ class PrettyMidiUtil:
             ticks = plt.yticks()[0]
             x = fl.get_beats() if type(fl) is PrettyMIDI else with_beats
             ax = plt.gca()
-            ax.vlines(x=x, ymin=ticks.min(), ymax=ticks.max(), lw=0.25, alpha=0.5)
+            ax.vlines(x=x, ymin=ticks.min(), ymax=ticks.max(), lw=0.25, alpha=0.5, label='Beats')
+
+            # handles, labels = plt.gca().get_legend_handles_labels()  # Distinct labels
+            # by_label = dict(zip(labels, handles))
+            # plt.legend(by_label.values(), by_label.keys())
         plt.title(f'Piano roll plot - [{strt_}, {end_}]')
         plt.show()
 
@@ -235,12 +233,12 @@ def eg_midis(k=None, pretty=False):
 
 if __name__ == '__main__':
     from icecream import ic
-    ic(tempo2bpm(DEF_TPO))
+    # ic(tempo2bpm(DEF_TPO))
 
     def check_note2hz():
         for n in np.arange(0, 12*10, 12):
             ic(n, pretty_midi.note_number_to_hz(n))
-    check_note2hz()
+    # check_note2hz()
 
     def check_piano_roll():
         # pm = pretty_midi.PrettyMIDI(eg_midis('Shape of You'))
