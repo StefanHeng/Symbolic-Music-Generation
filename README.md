@@ -11,15 +11,13 @@ at [LIT](https://lit.eecs.umich.edu/people.html).
 Create a file `data_path.py` in root level. 
 
 In the file specify the following variables with 
-your system data path, and relative repository & dataset folder names, and 
-an `OS` variable 
-as shown below, `/` will be replaced by `\` for 'Windows'.  
+your system data path, and relative repository & dataset folder names:
 ```python
 PATH_BASE = '/Users/stefanh/Documents/UMich/Research/Music with NLP'  # System data path
 DIR_PROJ = 'Symbolic_Music_Generation'  # Repo root folder name 
 DIR_DSET = 'datasets'  # Dataset root folder name 
-OS = 'Mac'  # 'Windows' for Windows
 ``` 
+Note to follow the convention of your OS. 
 
 
 Also, a `datasets` folder should be kept at the same level as 

@@ -1,4 +1,7 @@
+import os
+
 from icecream import ic
+
 from util import *
 
 
@@ -31,11 +34,16 @@ config = {
 }
 
 
-if OS == 'Windows':
-    for k in keys(config):
-        val = get(config, k)
-        if type(val) is str:
-            set_(config, k, val.replace('/', '\\'))
+# if OS == 'Windows':
+#     for k in keys(config):
+#         val = get(config, k)
+#         if type(val) is str:
+#             set_(config, k, val.replace('/', '\\'))
+for k in keys(config):
+    val = get(config, k)
+    if k[k.rfind('.')+1:] == 'dir_nm':
+        set_(config, k, os.path.join(*val.split('/')))
+    # ic(k, k[k.rfind('.')+1:])
 
 
 if __name__ == '__main__':
