@@ -28,7 +28,12 @@ config = {
         MIDI_EG=dict(
             nm='Some hand-selected MIDI samples',
             dir_nm='MIDI-eg',
-            fmt_midi='*.mid'
+            fmt_song='*.mid'
+        ),
+        MXL_EG=dict(
+            nm='Some hand-selected MXL samples',
+            dir_nm='MXL-eg',
+            fmt_song='*.mxl'
         )
     )
 }

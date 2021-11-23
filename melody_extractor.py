@@ -90,7 +90,7 @@ if __name__ == '__main__':
 
     # fnm = eg_midis('Shape of You')
     # fnm = eg_midis('My Favorite Things')
-    fnm = eg_midis('Merry Go Round of Life')
+    fnm = eg_songs('Merry Go Round of Life')
     ic(fnm)
     me = MelodyExtractor(fnm)
     ic(me.bpm)

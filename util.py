@@ -12,6 +12,7 @@ import pretty_midi
 from pretty_midi import PrettyMIDI
 import librosa
 from librosa import display
+import music21
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
 import seaborn as sns
@@ -20,7 +21,7 @@ from icecream import ic
 from data_path import *
 
 
-rcParams['figure.constrained_layout.use'] = True
+# rcParams['figure.constrained_layout.use'] = True
 sns.set_style('darkgrid')
 
 
@@ -210,15 +211,15 @@ class PrettyMidiUtil:
         plt.show()
 
 
-def eg_midis(k=None, pretty=False):
+def eg_songs(k=None, pretty=False, fmt='MIDI'):
     """
     :return: A list of or single MIDI file path
     """
-    dnm = 'MIDI_EG'
+    dnm = f'{fmt}_EG'
     d_dset = config(f'{DIR_DSET}.{dnm}')
     dir_nm = d_dset['dir_nm']
     path = f'{PATH_BASE}/{DIR_DSET}/{dir_nm}'
-    mids = sorted(glob.iglob(f'{path}/{d_dset["fmt_midi"]}', recursive=True))
+    mids = sorted(glob.iglob(f'{path}/{d_dset["fmt_song"]}', recursive=True))
     if k:
         if type(k) is int:
             return mids[k]
@@ -239,7 +240,7 @@ if __name__ == '__main__':
 
     def check_piano_roll():
         # pm = pretty_midi.PrettyMIDI(eg_midis('Shape of You'))
-        pm = pretty_midi.PrettyMIDI(eg_midis('Merry Go Round of Life'))
+        pm = pretty_midi.PrettyMIDI(eg_songs('Merry Go Round of Life'))
 
         pr = pm.get_piano_roll(100)
         # ic(pr.shape, pr.dtype, pr[75:80, 920:960])
@@ -253,4 +254,105 @@ if __name__ == '__main__':
         pmu = PrettyMidiUtil()
         pmu.plot_piano_roll(pm, fqs=100)
         # pmu.plot_piano_roll(instr0)
-    check_piano_roll()
+    # check_piano_roll()
+
+    fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+    ic(fnm)
+    scr = music21.converter.parse(fnm)
+    # scr.plot('pianoroll', figureSize=(10, 3), constrained_layout=False)
+    part: music21.stream.Part = scr.parts[0]
+    ic(part)
+    # r = part.plot('pianoroll')
+    # ic(type(r), r)
+    # r.run()
+    # plt.show()
+    # part.measures(numberStart=0, numberEnd=20).plot('pianoroll')
+    # voice = scr.parts[0]
+    # voice.measures(1, 10).show()
+
+    from music21 import graph
+
+    # colors = ['red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'violet']
+    # data = []
+    #
+    # for numSharps in range(0, 7):
+    #     keySig = key.KeySignature(numSharps)
+    #     majScale = keySig.getScale('major')
+    #     tonicPitch = majScale.tonic
+    #     scaleDict = {'color': colors[numSharps]}
+    #     for deg in range(1, 8):
+    #         thisPitch = majScale.pitchFromDegree(deg)
+    #         thisPitch.transposeAboveTarget(tonicPitch, inPlace=True)
+    #         data.append((tonicPitch.pitchClass, thisPitch.pitchClass, thisPitch.frequency, scaleDict))
+    #
+    # ic(data[0:10])
+    #
+    # a = graph.primitives.Graph3DBars(title='Seven Major Scales',
+    #                                  alpha=0.5,
+    #                                  barWidth=0.2,
+    #                                  useKeyValues=True,
+    #                                  figureSize=(10, 10, 4),
+    #                                  )
+    # a.data = data
+    # a.axis['x']['ticks'] = (range(12), ('c c# d d# e f f# g g# a a# b').split())
+    # a.axis['y']['ticks'] = (range(12), ('c c# d d# e f f# g g# a a# b').split())
+    # a.axis['z']['range'] = (0, 1000)
+    #
+    # a.setAxisLabel('x', 'Root Notes')
+    # a.setAxisLabel('y', 'Scale Degrees')
+    # a.setAxisLabel('z', 'Frequency in Hz')
+    # a.process()
+
+
+    def test_show_in_plot():
+        data = [('Chopin', [(1810, 1849 - 1810)]),
+                ('Schumanns', [(1810, 1856 - 1810), (1819, 1896 - 1819)]),
+                ('Brahms', [(1833, 1897 - 1833)])]
+        xTicks = [(1810, '1810'),
+                  (1848, '1848'),
+                  (1897, '1897')]
+        ghb = graph.primitives.GraphHorizontalBar()
+        ghb.title = 'Romantics live long and not so long'
+        ghb.data = data
+        ghb.setTicks('x', xTicks)
+
+        ghb.doneAction = None  # The `show` action calls figure.show() which doesn't seem to work in Pycharm
+        ghb.process()
+        # ghb.callDoneAction()
+        plt.show()
+    # ghb.figure.show()
+
+    # import matplotlib.pyplot as plt
+    # import numpy as np
+    #
+    # fig = plt.figure()
+    # x = np.arange(20) / 50
+    # y = (x + 0.1) * 2
+    #
+    # val1 = [True, False] * 10
+    # val2 = [False, True] * 10
+    #
+    # plt.errorbar(x, y,
+    #              xerr=0.1,
+    #              xlolims=True,
+    #              label='Line 1')
+    # y = (x + 0.3) * 3
+    #
+    # plt.errorbar(x + 0.6, y,
+    #              xerr=0.1,
+    #              xuplims=val1,
+    #              xlolims=val2,
+    #              label='Line 2')
+    #
+    # y = (x + 0.6) * 4
+    # plt.errorbar(x + 1.2, y,
+    #              xerr=0.1,
+    #              xuplims=True,
+    #              label='Line 3')
+    #
+    # plt.legend()
+    #
+    # fig.suptitle("""matplotlib.figure.Figure.show()
+    # function Example\n\n""", fontweight="bold")
+    #
+    # fig.show()
