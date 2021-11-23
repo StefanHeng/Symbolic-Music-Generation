@@ -15,7 +15,7 @@ class MelodyExtractor:
 
     Velocity of all notes assumed the same
 
-    Enforce that at each time step, there will be only one note played
+    For now, enforce that at each time step, there will be only one note played
 
     The pitch of each note follows the MIDI standard, as integer in [0, 127]
 
@@ -80,6 +80,9 @@ class MelodyExtractor:
         pr = self.pm.get_piano_roll(fs=self.fqs_ts)
         # ic(pr, pr.shape)
         self.pmu.plot_piano_roll(self.pm, fqs=self.fqs_ts)
+
+    def slot_with_max_pitch(self):
+        pass
 
 
 if __name__ == '__main__':

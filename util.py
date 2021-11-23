@@ -206,9 +206,6 @@ class PrettyMidiUtil:
             ax = plt.gca()
             ax.vlines(x=x, ymin=ticks.min(), ymax=ticks.max(), lw=0.25, alpha=0.5, label='Beats')
 
-            # handles, labels = plt.gca().get_legend_handles_labels()  # Distinct labels
-            # by_label = dict(zip(labels, handles))
-            # plt.legend(by_label.values(), by_label.keys())
         plt.title(f'Piano roll plot - [{strt_}, {end_}]')
         plt.show()
 
