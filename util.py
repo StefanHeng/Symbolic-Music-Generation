@@ -12,7 +12,7 @@ import pretty_midi
 from pretty_midi import PrettyMIDI
 import librosa
 from librosa import display
-import music21
+import music21 as m21
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
 import seaborn as sns
@@ -246,13 +246,14 @@ class Music21Util:
         # rcParams['figure.constrained_layout.use'] = False
         # r = stream.plot('pianoroll', figureSize=(16, 9), doneAction=None)  # Doesn't seem to work w/o the assignment
         mess = stream.measures(s, e)
-        plt_ = music21.graph.plot.HorizontalBarPitchSpaceOffset(
+        plt_ = m21.graph.plot.HorizontalBarPitchSpaceOffset(
             mess, figsize=(16, 9), constrained_layout=False, doneAction=None
         )
         # rcParams['figure.constrained_layout.use'] = True
         plt_.colors = sns.color_palette(palette='husl', n_colors=2**4)
+        # ic(plt_.fontFamily)
+        plt_.fontFamily = 'sans-serif'
         plt_.run()
-        # r.fontFamily = 'sans-serif'  # `serif` needed for music characters
 
         plt.tight_layout()
         x_ticks = plt.xticks()[0]
@@ -267,19 +268,38 @@ class Music21Util:
 
         fig = plt.gcf()
         fig.set_size_inches(16, clip(9 * (y_e-y_s) / (x_e-x_s), 16/2**3, 16/2))
-        # ic(plt.xticks(), plt.yticks())
         strt = s
         end = len(stream.measures(0, e)) if e is None else e
-        t = f'Piano roll, bars {strt}-{end}'
         # mess = filter(lambda elm: isinstance(elm, music21.stream.Measure), mess)
         # nums = list(map(lambda m: m.number, mess))
         # t = f'Piano roll, bars {nums[0]}-{nums[-1]}'
-        t = f'{t}, {title if title else stream.id}'
-        txt_prop = dict(family='sans-serif')
-        plt.title(t, **txt_prop)
-        plt.xlabel('Measure #', **txt_prop)
-        plt.ylabel('Pitch', **txt_prop)
-        plt.xticks(*plt.xticks(), **txt_prop)
+        title = (
+            title or
+            (stream.metadata and stream.metadata.title) or
+            (stream.activeSite and stream.activeSite.metadata and stream.activeSite.metadata.title) or
+            stream.id
+        )
+        if isinstance(stream, m21.stream.Part) and stream.partName:
+            title = f'{title}, {stream.partName}'
+        # if not title:
+        #     metadata = stream
+        #     ic(stream.activeSite)
+        #     if stream.activeSite and stream.activeSite.metadata and stream.activeSite.metadata.title:
+        #         title = stream.activeSite.metadata.title
+        #     else:
+        #         title = stream.id
+        #         title =  if title else
+        plt.title(f'Piano roll, {title}, bars {strt}-{end}')
+        # txt_prop = dict(family='sans-serif')
+        # txt_prop = dict(fontname='Lato')
+        txt_prop = dict(fontname='DejaVu Sans')
+        # plt.title(t, **txt_prop)
+        # plt.xlabel('Measure #', **txt_prop)
+        # plt.ylabel('Pitch', **txt_prop)
+        # plt.xticks(*plt.xticks(), **txt_prop)  # `serif` needed for music characters in yticks
+        # plt.yticks(*plt.yticks(), family='sans-serif')
+        plt.yticks(*plt.yticks(), **txt_prop)
+        # ic(plt.yticks())
         plt.show()
         return plt_
 
@@ -353,7 +373,7 @@ if __name__ == '__main__':
         fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         ic(fnm)
 
-        scr = music21.converter.parse(fnm)
+        scr = m21.converter.parse(fnm)
         ic(scr.id)
         # Looks like this doesn't work **sometimes**?
         # r = scr.plot('pianoroll', figureSize=(16, 9), doneAction=None)
@@ -372,26 +392,28 @@ if __name__ == '__main__':
         m2u = Music21Util()
         # ms = part.measures(20, 100)
         # m2u.plot_piano_roll(ms, s=10, e=30)
+        # m2u.plot_piano_roll(scr, s=10, e=15)
         m2u.plot_piano_roll(part, s=20, e=40)
         # ic(type(ms), vars(ms), dir(ms))
         # ic(ms.measures(26, 30))
         # ic(mes, nums)
         # for mes in ms.measures(0, None):
         #     ic(mes)
-    # test_piano_roll()
+    test_piano_roll()
 
-    fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
-    ic(fnm)
-    scr = music21.converter.parse(fnm)
-    ic(scr)
-    # ic(len(dir(scr)))
-    # ic(vars_(scr, include_private=False))
-    meta = scr.metadata
-    # ic(meta, vars(meta), vars_(meta))
-    ic(meta.title, meta.composer)
-    part_ch2 = scr.parts[1]
-    ic(part_ch2, part_ch2.metadata)
-    # ic(vars(part_ch2), vars_(part_ch2))
-    ic(part_ch2.activeSite.metadata.title)
-
+    def check_show_title():
+        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        ic(fnm)
+        scr = m21.converter.parse(fnm)
+        ic(scr)
+        # ic(len(dir(scr)))
+        # ic(vars_(scr, include_private=False))
+        meta = scr.metadata
+        # ic(meta, vars(meta), vars_(meta))
+        ic(meta.title, meta.composer)
+        part_ch2 = scr.parts[1]
+        ic(part_ch2, part_ch2.partName, part_ch2.metadata)
+        # ic(vars(part_ch2), vars_(part_ch2))
+        ic(part_ch2.activeSite.metadata.title)
+    check_show_title()
 

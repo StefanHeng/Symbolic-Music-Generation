@@ -100,14 +100,27 @@ class MxlMelodyExtractor:
     """
     def __init__(self, fl_nm, precision=5):
         self.fnm = fl_nm
-        self.scr = m21.converter.parse(self.fnm)
         self.prec = precision
+
+        self.scr = m21.converter.parse(self.fnm)
+        # lens = [len(p.measures(numberStart=0, numberEnd=None, collect=[])) for p in self.scr.parts]
+        # ic(lens)
+        # assert all(l == lens[0] for l in lens)
+        # for p in self.scr.parts:
+        #     bars = p.measures(numberStart=0, numberEnd=None, collect=[])
+        #     for bar in bars:
+        #         ic(bar)
 
     def bar_with_max_pitch(self):
         """
         For each bar, pick the track with highest average pitch
         """
-        pass
+        s = m21.stream.Score()
+        # Per `music21`, duration is represented in terms of quarter notes, definitely an integer
+        slot_dur = int(2**-2 / 2**-self.prec)  # Duration of a time slot
+
+        ic(slot_dur)
+
 
     def slot_with_max_pitch(self):
         """
@@ -119,11 +132,18 @@ class MxlMelodyExtractor:
 if __name__ == '__main__':
     from icecream import ic
 
-    # fnm = eg_midis('Shape of You')
-    # fnm = eg_midis('My Favorite Things')
-    fnm = eg_songs('Merry Go Round of Life')
-    ic(fnm)
-    # me = MidiMelodyExtractor(fnm)
-    # ic(me.bpm)
-    # me.bar_with_max_pitch()
+    def check_midi():
+        fnm = eg_songs('Shape of You')
+        # fnm = eg_songs('My Favorite Things')
+        me = MidiMelodyExtractor(fnm)
+        ic(me.bpm)
+        me.bar_with_max_pitch()
+    # check_midi()
+
+    def check_mxl():
+        fnm = eg_songs('Merry Go Round of Life')
+        ic(fnm)
+        me = MxlMelodyExtractor(fnm)
+        me.bar_with_max_pitch()
+    check_mxl()
 
