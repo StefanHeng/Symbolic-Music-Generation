@@ -1,4 +1,6 @@
-from math import log2
+import math
+from warnings import warn
+from typing import Union
 
 from mido import MidiFile
 import pretty_midi
@@ -10,6 +12,28 @@ from util import *
 
 def assert_list_same_elms(lst):
     assert all(l == lst[0] for l in lst)
+
+
+def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord]]):
+    """
+    Asserts that the notes don't overlap, given the start time and duration
+    """
+    if len(notes) >= 2:
+        # ic(dir(notes[0].duration))
+        # ic(notes[0].duration)
+        # ic(notes[0].duration.quarterLength)
+        end = notes[0].offset + notes[0].duration.quarterLength
+        for note in notes[1:]:
+            # Current note should begin, not before the previous one ends
+            # if end > note.offset:
+            #     ic('large', end, note.offset, end > note.offset, math.isclose(end, note.offset, abs_tol=1e-6))
+            #     for n in notes:
+            #         res = n.offset + n.duration.quarterLength
+            #         ic(n, n.duration, type(n.duration), n.duration.quarterLength)
+            #         ic(n.offset, end)
+            #     exit(1)
+            assert end <= note.offset or math.isclose(end, note.offset, abs_tol=1e-6)  # Takes care of tuplets
+            end = note.offset + note.duration.quarterLength
 
 
 class MidiMelodyExtractor:
@@ -52,7 +76,7 @@ class MidiMelodyExtractor:
         msg = msgs[0]
         self.beat_per_bar = msg.numerator
         self.frac_per_beat = msg.denominator
-        assert log2(self.frac_per_beat).is_integer()
+        assert math.log2(self.frac_per_beat).is_integer()
         # ic(self.beat_per_bar, self.frac_pow_per_beat)
 
         tempos = self.mu.get_tempo_changes(self.mf)
@@ -92,7 +116,7 @@ class MxlMelodyExtractor:
     Given MXL file, export single-track melody representations,
     as pitch encodings with bar separations or as MXL files
 
-    Each bar is divided into equidistant slots of music note length, given by a `precision` attribute
+    Each bar is divided into equidistant slots of music note length, given by a `prec` attribute for precision
         e.g. precision <- 5 means
     The number of slots for a bar hence depends on the time signature
 
@@ -107,15 +131,10 @@ class MxlMelodyExtractor:
         self.prec = precision
 
         self.scr = m21.converter.parse(self.fnm)
-        # lens = [len(p.measures(numberStart=0, numberEnd=None, collect=[])) for p in self.scr.parts]
         lens = [len(p[m21.stream.Measure]) for p in self.scr.parts]
-        # ic(lens)
         assert_list_same_elms(lens)
-        # assert all(l == lens[0] for l in lens)  # Same number of bar for each part
-        # for p in self.scr.parts:
-        #     bars = p.measures(numberStart=0, numberEnd=None, collect=[])
-        #     for bar in bars:
-        #         ic(bar)
+
+        self._vertical_bars: list[MxlMelodyExtractor.VerticalBar] = []
 
     class VerticalBar:
         """
@@ -123,23 +142,15 @@ class MxlMelodyExtractor:
         """
         def __init__(self, bars: dict[str, m21.stream.Measure]):
             self.bars = bars
-            # ic(bars)
+            nums = [bar.number == 0 for bar in bars.values()]
+            assert_list_same_elms(nums)
+            self.n = nums[0]
+
             tss = [b.timeSignature for b in self.bars.values()]
-            # .displaySequence
-            # tss = [(ds.numerator, ds.denominator) for ds in dss]
-            # ic(tss)
-            # # time_sig =
-            # ts = tss[0]
-            # ic(vars(ts))
-            # ms: m21.meter.core.MeterSequence = ts.displaySequence
-            # ic()
-            # ic(vars(ts.displaySequence))
-            # assert_list_same_elms(tss)
             self._time_sig = None
             if tss[0] is not None:
                 dss = [(ds.numerator, ds.denominator) for ds in tss]
                 assert_list_same_elms(dss)
-                # ic(dss)
                 self._time_sig = dss[0]
 
         @property
@@ -150,57 +161,66 @@ class MxlMelodyExtractor:
         def time_sig(self, val):
             self._time_sig = val
 
+        def n_slot(self, prec):
+            """
+            Per the symbolic representation
+
+            :param prec: Precision
+            :return: Number of slots in a bar
+            """
+            numer, denom = self.time_sig
+            n_slot = 2**prec * numer / denom
+            if not n_slot.is_integer():
+                warn(f'Number of slot per bar not an integer for '
+                     f'precision [{prec}] and time signature [{self.time_sig}]')
+            return int(n_slot)
+
+        def single(self):
+            """
+            For each time step in each bar, filter notes such that only the note with highest pitch remains
+            """
+            ic(self.bars[list(self.bars.keys())[0]].number)
+            for pnm, bar in self.bars.items():
+                notes = sorted(bar.notes, key=lambda n: n.offset)
+                if notes:
+                    # ic(list(notes[0].pitches))
+                    assert_notes_no_overlap(notes)
+
+                # ic(len(bar.notes))
+                # for note in bar.notes:
+                #     ic(note, note.offset, note.duration)
+
     @property
     def vertical_bars(self):
         """
-        :return: A list of scores
+        :return: List of `VerticalBar`s
         """
-        # d_bars =
-        # ic(len(self.scr))
-        pnms = [p.partName for p in self.scr.parts]
-        assert len(pnms) == len(set(pnms))  # Unique part names
-        d_bars = {p.partName: list(sorted(p[m21.stream.Measure], key=lambda b: b.number)) for p in self.scr.parts}
-        assert all(bars[0].number == 0 for bars in d_bars.values())  # All parts starts bar number with 0
+        if not self._vertical_bars:
+            pnms = [p.partName for p in self.scr.parts]
+            assert len(pnms) == len(set(pnms))  # Unique part names
+            d_bars = {p.partName: list(sorted(p[m21.stream.Measure], key=lambda b: b.number)) for p in self.scr.parts}
+            assert all(bars[0].number == 0 for bars in d_bars.values())  # All parts starts bar number with 0
 
-        # for k, v in d_bars.items():
-        #     bar = v[0]
-        #     # ic(vars(bar))
-        #     ic(bar.activeSite.partName)
-        #     exit(1)
-        # ic(d_bars)
-        # for part in self.scr.parts:
-        #     ic(part)
-        #     ic(part.partName)
-        #     bars = part[m21.stream.Measure]
-        #     ic(len(bars))
-        #     for bar in bars:
-        #         ic(bar.number)
-        # for i in zip(d_bars.keys(), zip(*d_bars.values())):
-        #     ic(i)
-        # for bars in zip(*d_bars.values()):
-        #     for b in bars:
-        #         ic(b, b.activeSite)
-        #     # ic({b.actieSite.partName: b for b in bars})
-        #     ic([b.activeSite.partName for b in bars])
-        #     exit(1)
-        vbs = [self.VerticalBar({b.activeSite.partName: b for b in bars}) for bars in zip(*d_bars.values())]
-        # bar = bars_by_time[0]['Piano, CH #2']
-        # ic(bar, bar.timeSignature)
-        ts = vbs[0].time_sig
-        assert ts is not None
-        for vb in vbs:  # Unroll time signature for each VerticalBar
-            if vb.time_sig is None:
-                vb.time_sig = ts
-            else:
-                ts = vb.time_sig
-        ic([vb.time_sig for vb in vbs])
-        return 'blah'
+            vbs = [self.VerticalBar({b.activeSite.partName: b for b in bars}) for bars in zip(*d_bars.values())]
+            ts = vbs[0].time_sig
+            assert ts is not None
+            for vb in vbs:  # Unroll time signature to each VerticalBar
+                if vb.time_sig is None:
+                    vb.time_sig = ts
+                else:
+                    ts = vb.time_sig
+            # ic([vb.time_sig for vb in vbs])
+            self._vertical_bars = vbs
+        return self._vertical_bars
 
     def bar_with_max_pitch(self):
         """
         For each bar, pick the track with highest average pitch
         """
-        bars = self.vertical_bars
+        for vb in self.vertical_bars:
+            # if vb.n == 83:
+            #     list(vb.bars.values())[0].show()
+            vb.single()
 
         s = m21.stream.Score()
         # Per `music21`, duration is represented in terms of quarter notes, definitely an integer
