@@ -8,6 +8,10 @@ import music21 as m21
 from util import *
 
 
+def assert_list_same_elms(lst):
+    assert all(l == lst[0] for l in lst)
+
+
 class MidiMelodyExtractor:
     """
     Given MIDI file, export single-track melody representations, as matrix or MIDI file
@@ -104,23 +108,105 @@ class MxlMelodyExtractor:
 
         self.scr = m21.converter.parse(self.fnm)
         # lens = [len(p.measures(numberStart=0, numberEnd=None, collect=[])) for p in self.scr.parts]
+        lens = [len(p[m21.stream.Measure]) for p in self.scr.parts]
         # ic(lens)
-        # assert all(l == lens[0] for l in lens)
+        assert_list_same_elms(lens)
+        # assert all(l == lens[0] for l in lens)  # Same number of bar for each part
         # for p in self.scr.parts:
         #     bars = p.measures(numberStart=0, numberEnd=None, collect=[])
         #     for bar in bars:
         #         ic(bar)
 
+    class VerticalBar:
+        """
+        Contains all the bars for each channel in the score, at the same time
+        """
+        def __init__(self, bars: dict[str, m21.stream.Measure]):
+            self.bars = bars
+            # ic(bars)
+            tss = [b.timeSignature for b in self.bars.values()]
+            # .displaySequence
+            # tss = [(ds.numerator, ds.denominator) for ds in dss]
+            # ic(tss)
+            # # time_sig =
+            # ts = tss[0]
+            # ic(vars(ts))
+            # ms: m21.meter.core.MeterSequence = ts.displaySequence
+            # ic()
+            # ic(vars(ts.displaySequence))
+            # assert_list_same_elms(tss)
+            self._time_sig = None
+            if tss[0] is not None:
+                dss = [(ds.numerator, ds.denominator) for ds in tss]
+                assert_list_same_elms(dss)
+                # ic(dss)
+                self._time_sig = dss[0]
+
+        @property
+        def time_sig(self):
+            return self._time_sig
+
+        @time_sig.setter
+        def time_sig(self, val):
+            self._time_sig = val
+
+    @property
+    def vertical_bars(self):
+        """
+        :return: A list of scores
+        """
+        # d_bars =
+        # ic(len(self.scr))
+        pnms = [p.partName for p in self.scr.parts]
+        assert len(pnms) == len(set(pnms))  # Unique part names
+        d_bars = {p.partName: list(sorted(p[m21.stream.Measure], key=lambda b: b.number)) for p in self.scr.parts}
+        assert all(bars[0].number == 0 for bars in d_bars.values())  # All parts starts bar number with 0
+
+        # for k, v in d_bars.items():
+        #     bar = v[0]
+        #     # ic(vars(bar))
+        #     ic(bar.activeSite.partName)
+        #     exit(1)
+        # ic(d_bars)
+        # for part in self.scr.parts:
+        #     ic(part)
+        #     ic(part.partName)
+        #     bars = part[m21.stream.Measure]
+        #     ic(len(bars))
+        #     for bar in bars:
+        #         ic(bar.number)
+        # for i in zip(d_bars.keys(), zip(*d_bars.values())):
+        #     ic(i)
+        # for bars in zip(*d_bars.values()):
+        #     for b in bars:
+        #         ic(b, b.activeSite)
+        #     # ic({b.actieSite.partName: b for b in bars})
+        #     ic([b.activeSite.partName for b in bars])
+        #     exit(1)
+        vbs = [self.VerticalBar({b.activeSite.partName: b for b in bars}) for bars in zip(*d_bars.values())]
+        # bar = bars_by_time[0]['Piano, CH #2']
+        # ic(bar, bar.timeSignature)
+        ts = vbs[0].time_sig
+        assert ts is not None
+        for vb in vbs:  # Unroll time signature for each VerticalBar
+            if vb.time_sig is None:
+                vb.time_sig = ts
+            else:
+                ts = vb.time_sig
+        ic([vb.time_sig for vb in vbs])
+        return 'blah'
+
     def bar_with_max_pitch(self):
         """
         For each bar, pick the track with highest average pitch
         """
+        bars = self.vertical_bars
+
         s = m21.stream.Score()
         # Per `music21`, duration is represented in terms of quarter notes, definitely an integer
         slot_dur = int(2**-2 / 2**-self.prec)  # Duration of a time slot
 
         ic(slot_dur)
-
 
     def slot_with_max_pitch(self):
         """
@@ -141,7 +227,7 @@ if __name__ == '__main__':
     # check_midi()
 
     def check_mxl():
-        fnm = eg_songs('Merry Go Round of Life')
+        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm)
         me.bar_with_max_pitch()

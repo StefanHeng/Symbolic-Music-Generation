@@ -243,22 +243,17 @@ class Music21Util:
         """
         :return: music21 graph object for plotting
         """
-        # rcParams['figure.constrained_layout.use'] = False
-        # r = stream.plot('pianoroll', figureSize=(16, 9), doneAction=None)  # Doesn't seem to work w/o the assignment
         mess = stream.measures(s, e)
         plt_ = m21.graph.plot.HorizontalBarPitchSpaceOffset(
             mess, figsize=(16, 9), constrained_layout=False, doneAction=None
         )
-        # rcParams['figure.constrained_layout.use'] = True
         plt_.colors = sns.color_palette(palette='husl', n_colors=2**4)
-        # ic(plt_.fontFamily)
         plt_.fontFamily = 'sans-serif'
         plt_.run()
 
         plt.tight_layout()
         x_ticks = plt.xticks()[0]
         y_ticks = plt.yticks()[0]
-        # ic(plt.xlim())
         x_d, y_d = np.diff(x_ticks).max(), np.diff(y_ticks).max()
         offset_x, offset_y = x_d / 2**3, y_d / 2**1
         x_s, x_e = x_ticks[0], x_ticks[-1] + x_d
@@ -281,25 +276,9 @@ class Music21Util:
         )
         if isinstance(stream, m21.stream.Part) and stream.partName:
             title = f'{title}, {stream.partName}'
-        # if not title:
-        #     metadata = stream
-        #     ic(stream.activeSite)
-        #     if stream.activeSite and stream.activeSite.metadata and stream.activeSite.metadata.title:
-        #         title = stream.activeSite.metadata.title
-        #     else:
-        #         title = stream.id
-        #         title =  if title else
         plt.title(f'Piano roll, {title}, bars {strt}-{end}')
-        # txt_prop = dict(family='sans-serif')
-        # txt_prop = dict(fontname='Lato')
         txt_prop = dict(fontname='DejaVu Sans')
-        # plt.title(t, **txt_prop)
-        # plt.xlabel('Measure #', **txt_prop)
-        # plt.ylabel('Pitch', **txt_prop)
-        # plt.xticks(*plt.xticks(), **txt_prop)  # `serif` needed for music characters in yticks
-        # plt.yticks(*plt.yticks(), family='sans-serif')
         plt.yticks(*plt.yticks(), **txt_prop)
-        # ic(plt.yticks())
         plt.show()
         return plt_
 
