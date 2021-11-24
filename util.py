@@ -34,6 +34,22 @@ def clip(val, vmin, vmax):
     return max(min(val, vmax), vmin)
 
 
+def vars_(obj, include_private=False):
+    """
+    :return: A variant of `vars` that returns all properties and corresponding values in `dir`, except the
+    generic ones that begins with `_`
+    """
+    def is_relevant():
+        if include_private:
+            return lambda a: not a.startswith('__')
+        else:
+            return lambda a: not a.startswith('__') and not a.startswith('_')
+    attrs = filter(is_relevant(), dir(obj))
+    # ic(len(list(attrs)))
+    # ic(dir(obj))
+    return {a: getattr(obj, a) for a in attrs}
+
+
 def read_pickle(fnm):
     objects = []
     with (open(fnm, 'rb')) as f:
@@ -362,5 +378,20 @@ if __name__ == '__main__':
         # ic(mes, nums)
         # for mes in ms.measures(0, None):
         #     ic(mes)
-    test_piano_roll()
+    # test_piano_roll()
+
+    fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+    ic(fnm)
+    scr = music21.converter.parse(fnm)
+    ic(scr)
+    # ic(len(dir(scr)))
+    # ic(vars_(scr, include_private=False))
+    meta = scr.metadata
+    # ic(meta, vars(meta), vars_(meta))
+    ic(meta.title, meta.composer)
+    part_ch2 = scr.parts[1]
+    ic(part_ch2, part_ch2.metadata)
+    # ic(vars(part_ch2), vars_(part_ch2))
+    ic(part_ch2.activeSite.metadata.title)
+
 

@@ -3,6 +3,7 @@ from math import log2
 from mido import MidiFile
 import pretty_midi
 from pretty_midi import PrettyMIDI
+import music21 as m21
 
 from util import *
 
@@ -91,16 +92,27 @@ class MxlMelodyExtractor:
         e.g. precision <- 5 means
     The number of slots for a bar hence depends on the time signature
 
+    For now, enforce that at each time step, there will be only one note played
+    In case of multiple notes at a time step,
+    the concurrent notes are filtered such that only the note with highest pitch remains
+
     The pitch will be encoded as integer in [0-127] per MIDI convention
     """
     def __init__(self, fl_nm, precision=5):
         self.fnm = fl_nm
+        self.scr = m21.converter.parse(self.fnm)
         self.prec = precision
 
     def bar_with_max_pitch(self):
+        """
+        For each bar, pick the track with highest average pitch
+        """
         pass
 
     def slot_with_max_pitch(self):
+        """
+        For each time slot, pick track with highest pitch
+        """
         pass
 
 
