@@ -7,7 +7,7 @@ from pretty_midi import PrettyMIDI
 from util import *
 
 
-class MelodyExtractor:
+class MidiMelodyExtractor:
     """
     Given MIDI file, export single-track melody representations, as matrix or MIDI file
 
@@ -31,7 +31,7 @@ class MelodyExtractor:
     def __init__(self, fl_nm, precision=5):
         """
         :param fl_nm: Path & MIDI file name
-        :param precision: The smallest note duration is 1/`2^precision`-th
+        :param precision: The smallest music note duration is 1/`2^precision`-th
         """
         self.fnm = fl_nm
         self.precision = precision
@@ -81,6 +81,25 @@ class MelodyExtractor:
         # ic(pr, pr.shape)
         self.pmu.plot_piano_roll(self.pm, fqs=self.fqs_ts)
 
+
+class MxlMelodyExtractor:
+    """
+    Given MXL file, export single-track melody representations,
+    as pitch encodings with bar separations or as MXL files
+
+    Each bar is divided into equidistant slots of music note length, given by a `precision` attribute
+        e.g. precision <- 5 means
+    The number of slots for a bar hence depends on the time signature
+
+    The pitch will be encoded as integer in [0-127] per MIDI convention
+    """
+    def __init__(self, fl_nm, precision=5):
+        self.fnm = fl_nm
+        self.prec = precision
+
+    def bar_with_max_pitch(self):
+        pass
+
     def slot_with_max_pitch(self):
         pass
 
@@ -92,7 +111,7 @@ if __name__ == '__main__':
     # fnm = eg_midis('My Favorite Things')
     fnm = eg_songs('Merry Go Round of Life')
     ic(fnm)
-    me = MelodyExtractor(fnm)
-    ic(me.bpm)
-    me.bar_with_max_pitch()
+    # me = MidiMelodyExtractor(fnm)
+    # ic(me.bpm)
+    # me.bar_with_max_pitch()
 
