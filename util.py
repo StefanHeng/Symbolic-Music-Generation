@@ -231,6 +231,8 @@ def eg_songs(k=None, pretty=False, fmt='MIDI'):
 
 if __name__ == '__main__':
     from icecream import ic
+    from music21 import graph
+
     # ic(tempo2bpm(DEF_TPO))
 
     def check_note2hz():
@@ -259,50 +261,63 @@ if __name__ == '__main__':
     fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
     ic(fnm)
     scr = music21.converter.parse(fnm)
+    ic(scr)
     # scr.plot('pianoroll', figureSize=(10, 3), constrained_layout=False)
     part: music21.stream.Part = scr.parts[0]
     ic(part)
-    # r = part.plot('pianoroll')
-    # ic(type(r), r)
+    ic(isinstance(part, music21.stream.Stream))
+    ic(isinstance(part.measures(1, 10), music21.stream.Stream))
+    # part.measures(1, 10).plot()
+    plt_ = graph.plot.HorizontalBarPitchSpaceOffset(streamObj=part, doneAction=None)
+    # plt_ = graph.plot.HorizontalBarPitchSpaceOffset(streamObj=part.measures(0, 100), doneAction=None)
+    # ic(plt_.axisY._pitchTickHelper('nameWithOctave', 'ps'))
+    plt_.run()  # Turend out the problem was, there's not any node in the data to begin wit
+
+    # def extract_debug(self):
+    #     if None in self.allAxes:
+    #         raise PlotStreamException('Set all axes before calling extractData() via run()')
+    #
+    #     if self.recurse:
+    #         sIter = self.streamObj.recurse()
+    #     else:
+    #         sIter = self.streamObj.iter()
+    #
+    #     if self.classFilterList:
+    #         sIter = sIter.getElementsByClass(self.classFilterList)
+    #
+    #     self.data = []
+    #
+    #     for el in sIter:
+    #         dataList = self.processOneElement(el)
+    #         if dataList is not None:
+    #             self.data.extend(dataList)
+    # extract_debug(plt_)
+
+    # plt_.setAxisKeywords()
+    ic(plt_.allAxes)
+    ic(plt_.data)
+    ic(vars(plt_.axisY), type(plt_.axisY))
+    ic(plt_.axisY.minValue)
+    # plt_.extractData()
+    # if hasattr(self, 'axisY') and self.axisY:
+    #     self.setTicks('y', self.axisY.ticks())
+    #     self.setAxisLabel('y', self.axisY.label)
+    # if hasattr(self, 'axisX') and self.axisX:
+    #     self.setTicks('x', self.axisX.ticks())
+    #     self.setAxisLabel('x', self.axisX.label)
+
+    # plt_.process()
+    # plt_.process()
+    plt.show()
+    # ic(part.minValue)
+    # part.measures(1, 10).plot('scatterweighted', 'pitch', 'quarterLength', doneAction=None, minValue=0, maxValue=11)
+    # r = part.plot('pianoroll', doneAction=None)
+    # ic(type(r), r, isinstance(r, graph.primitives.Graph))
     # r.run()
     # plt.show()
     # part.measures(numberStart=0, numberEnd=20).plot('pianoroll')
     # voice = scr.parts[0]
     # voice.measures(1, 10).show()
-
-    from music21 import graph
-
-    # colors = ['red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'violet']
-    # data = []
-    #
-    # for numSharps in range(0, 7):
-    #     keySig = key.KeySignature(numSharps)
-    #     majScale = keySig.getScale('major')
-    #     tonicPitch = majScale.tonic
-    #     scaleDict = {'color': colors[numSharps]}
-    #     for deg in range(1, 8):
-    #         thisPitch = majScale.pitchFromDegree(deg)
-    #         thisPitch.transposeAboveTarget(tonicPitch, inPlace=True)
-    #         data.append((tonicPitch.pitchClass, thisPitch.pitchClass, thisPitch.frequency, scaleDict))
-    #
-    # ic(data[0:10])
-    #
-    # a = graph.primitives.Graph3DBars(title='Seven Major Scales',
-    #                                  alpha=0.5,
-    #                                  barWidth=0.2,
-    #                                  useKeyValues=True,
-    #                                  figureSize=(10, 10, 4),
-    #                                  )
-    # a.data = data
-    # a.axis['x']['ticks'] = (range(12), ('c c# d d# e f f# g g# a a# b').split())
-    # a.axis['y']['ticks'] = (range(12), ('c c# d d# e f f# g g# a a# b').split())
-    # a.axis['z']['range'] = (0, 1000)
-    #
-    # a.setAxisLabel('x', 'Root Notes')
-    # a.setAxisLabel('y', 'Scale Degrees')
-    # a.setAxisLabel('z', 'Frequency in Hz')
-    # a.process()
-
 
     def test_show_in_plot():
         data = [('Chopin', [(1810, 1849 - 1810)]),
@@ -320,39 +335,13 @@ if __name__ == '__main__':
         ghb.process()
         # ghb.callDoneAction()
         plt.show()
-    # ghb.figure.show()
+    # test_show_in_plot()
 
-    # import matplotlib.pyplot as plt
-    # import numpy as np
-    #
-    # fig = plt.figure()
-    # x = np.arange(20) / 50
-    # y = (x + 0.1) * 2
-    #
-    # val1 = [True, False] * 10
-    # val2 = [False, True] * 10
-    #
-    # plt.errorbar(x, y,
-    #              xerr=0.1,
-    #              xlolims=True,
-    #              label='Line 1')
-    # y = (x + 0.3) * 3
-    #
-    # plt.errorbar(x + 0.6, y,
-    #              xerr=0.1,
-    #              xuplims=val1,
-    #              xlolims=val2,
-    #              label='Line 2')
-    #
-    # y = (x + 0.6) * 4
-    # plt.errorbar(x + 1.2, y,
-    #              xerr=0.1,
-    #              xuplims=True,
-    #              label='Line 3')
-    #
-    # plt.legend()
-    #
-    # fig.suptitle("""matplotlib.figure.Figure.show()
-    # function Example\n\n""", fontweight="bold")
-    #
-    # fig.show()
+    # from music21 import corpus
+    # verdi = corpus.parse('verdi/laDonnaEMobile')
+    # ic(verdi)
+    # verdi.id = 'verdi'
+    # # verdi.measures(1, 10).show()
+    # voice = verdi.parts[0]
+    # voice.measures(1, 10).plot()
+    # ic(voice.minValue)
