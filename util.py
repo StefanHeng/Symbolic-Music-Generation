@@ -21,13 +21,17 @@ from icecream import ic
 from data_path import *
 
 
-# rcParams['figure.constrained_layout.use'] = True
+rcParams['figure.constrained_layout.use'] = True
 sns.set_style('darkgrid')
 
 
 def flatten(lsts):
     """ Flatten list of list of elements to list of elements """
     return [e for lst in lsts for e in lst]
+
+
+def clip(val, vmin, vmax):
+    return max(min(val, vmax), vmin)
 
 
 def read_pickle(fnm):
@@ -101,6 +105,9 @@ def tempo2bpm(tempo):
 
 
 class MidoUtil:
+    def __init__(self):
+        pass
+
     @staticmethod
     def get_msgs_by_type(fl, t_, as_dict=False):
         def _get(track):
@@ -124,8 +131,8 @@ class MidoUtil:
 
 
 class PrettyMidiUtil:
-    # def __init__(self):
-    #     pass
+    def __init__(self):
+        pass
 
     @staticmethod
     def plot_single_instrument(instr_, cols=('start', 'end', 'pitch', 'velocity'), n=None):
@@ -212,15 +219,22 @@ class PrettyMidiUtil:
 
 
 class Music21Util:
+    def __init__(self):
+        pass
+
     @staticmethod
-    def plot_piano_roll(stream, title=None):
-        ic(stream.id)
+    def plot_piano_roll(stream, title=None, s=0, e=None):
+        """
+        :return: music21 graph object for plotting
+        """
+        # rcParams['figure.constrained_layout.use'] = False
         # r = stream.plot('pianoroll', figureSize=(16, 9), doneAction=None)  # Doesn't seem to work w/o the assignment
-        plt_ = graph.plot.HorizontalBarPitchSpaceOffset(stream, doneAction=None, figsize=(16, 9))
-        # plt_.colors = ['red', 'green', 'blue']
-        ic(plt_.data)
+        mess = stream.measures(s, e)
+        plt_ = music21.graph.plot.HorizontalBarPitchSpaceOffset(
+            mess, figsize=(16, 9), constrained_layout=False, doneAction=None
+        )
+        # rcParams['figure.constrained_layout.use'] = True
         plt_.colors = sns.color_palette(palette='husl', n_colors=2**4)
-        ic(sns.color_palette(palette='husl', n_colors=5))
         plt_.run()
         # r.fontFamily = 'sans-serif'  # `serif` needed for music characters
 
@@ -236,17 +250,22 @@ class Music21Util:
         plt.ylim([y_s-offset_y, y_e+offset_y])
 
         fig = plt.gcf()
-        fig.set_size_inches(16, 9 * (y_e-y_s) / (x_e-x_s))
-        t = 'Piano roll'
+        fig.set_size_inches(16, clip(9 * (y_e-y_s) / (x_e-x_s), 16/2**3, 16/2))
+        # ic(plt.xticks(), plt.yticks())
+        strt = s
+        end = len(stream.measures(0, e)) if e is None else e
+        t = f'Piano roll, bars {strt}-{end}'
+        # mess = filter(lambda elm: isinstance(elm, music21.stream.Measure), mess)
+        # nums = list(map(lambda m: m.number, mess))
+        # t = f'Piano roll, bars {nums[0]}-{nums[-1]}'
         t = f'{t}, {title if title else stream.id}'
         txt_prop = dict(family='sans-serif')
         plt.title(t, **txt_prop)
         plt.xlabel('Measure #', **txt_prop)
         plt.ylabel('Pitch', **txt_prop)
         plt.xticks(*plt.xticks(), **txt_prop)
-        ic(plt.xticks())
-        # plt.legend()
         plt.show()
+        return plt_
 
 
 def eg_songs(k=None, pretty=False, fmt='MIDI'):
@@ -335,7 +354,13 @@ if __name__ == '__main__':
         # plt.show()
 
         m2u = Music21Util()
-        m2u.plot_piano_roll(part.measures(25, 90))
-    ic(plt.rcParams["font.family"])
+        # ms = part.measures(20, 100)
+        # m2u.plot_piano_roll(ms, s=10, e=30)
+        m2u.plot_piano_roll(part, s=20, e=40)
+        # ic(type(ms), vars(ms), dir(ms))
+        # ic(ms.measures(26, 30))
+        # ic(mes, nums)
+        # for mes in ms.measures(0, None):
+        #     ic(mes)
     test_piano_roll()
 
