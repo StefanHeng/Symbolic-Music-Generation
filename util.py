@@ -211,6 +211,44 @@ class PrettyMidiUtil:
         plt.show()
 
 
+class Music21Util:
+    @staticmethod
+    def plot_piano_roll(stream, title=None):
+        ic(stream.id)
+        # r = stream.plot('pianoroll', figureSize=(16, 9), doneAction=None)  # Doesn't seem to work w/o the assignment
+        plt_ = graph.plot.HorizontalBarPitchSpaceOffset(stream, doneAction=None, figsize=(16, 9))
+        # plt_.colors = ['red', 'green', 'blue']
+        ic(plt_.data)
+        plt_.colors = sns.color_palette(palette='husl', n_colors=2**4)
+        ic(sns.color_palette(palette='husl', n_colors=5))
+        plt_.run()
+        # r.fontFamily = 'sans-serif'  # `serif` needed for music characters
+
+        plt.tight_layout()
+        x_ticks = plt.xticks()[0]
+        y_ticks = plt.yticks()[0]
+        # ic(plt.xlim())
+        x_d, y_d = np.diff(x_ticks).max(), np.diff(y_ticks).max()
+        offset_x, offset_y = x_d / 2**3, y_d / 2**1
+        x_s, x_e = x_ticks[0], x_ticks[-1] + x_d
+        y_s, y_e = y_ticks[0], y_ticks[-1]
+        plt.xlim([x_s-offset_x, x_e+offset_x])
+        plt.ylim([y_s-offset_y, y_e+offset_y])
+
+        fig = plt.gcf()
+        fig.set_size_inches(16, 9 * (y_e-y_s) / (x_e-x_s))
+        t = 'Piano roll'
+        t = f'{t}, {title if title else stream.id}'
+        txt_prop = dict(family='sans-serif')
+        plt.title(t, **txt_prop)
+        plt.xlabel('Measure #', **txt_prop)
+        plt.ylabel('Pitch', **txt_prop)
+        plt.xticks(*plt.xticks(), **txt_prop)
+        ic(plt.xticks())
+        # plt.legend()
+        plt.show()
+
+
 def eg_songs(k=None, pretty=False, fmt='MIDI'):
     """
     :return: A list of or single MIDI file path
@@ -244,7 +282,7 @@ if __name__ == '__main__':
         # pm = pretty_midi.PrettyMIDI(eg_midis('Shape of You'))
         pm = pretty_midi.PrettyMIDI(eg_songs('Merry Go Round of Life'))
 
-        pr = pm.get_piano_roll(100)
+        # pr = pm.get_piano_roll(100)
         # ic(pr.shape, pr.dtype, pr[75:80, 920:960])
         # # ic(np.where(pr > 100))
         #
@@ -257,67 +295,6 @@ if __name__ == '__main__':
         pmu.plot_piano_roll(pm, fqs=100)
         # pmu.plot_piano_roll(instr0)
     # check_piano_roll()
-
-    fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
-    ic(fnm)
-    scr = music21.converter.parse(fnm)
-    ic(scr)
-    # scr.plot('pianoroll', figureSize=(10, 3), constrained_layout=False)
-    part: music21.stream.Part = scr.parts[0]
-    ic(part)
-    ic(isinstance(part, music21.stream.Stream))
-    ic(isinstance(part.measures(1, 10), music21.stream.Stream))
-    # part.measures(1, 10).plot()
-    plt_ = graph.plot.HorizontalBarPitchSpaceOffset(streamObj=part, doneAction=None)
-    # plt_ = graph.plot.HorizontalBarPitchSpaceOffset(streamObj=part.measures(0, 100), doneAction=None)
-    # ic(plt_.axisY._pitchTickHelper('nameWithOctave', 'ps'))
-    plt_.run()  # Turend out the problem was, there's not any node in the data to begin wit
-
-    # def extract_debug(self):
-    #     if None in self.allAxes:
-    #         raise PlotStreamException('Set all axes before calling extractData() via run()')
-    #
-    #     if self.recurse:
-    #         sIter = self.streamObj.recurse()
-    #     else:
-    #         sIter = self.streamObj.iter()
-    #
-    #     if self.classFilterList:
-    #         sIter = sIter.getElementsByClass(self.classFilterList)
-    #
-    #     self.data = []
-    #
-    #     for el in sIter:
-    #         dataList = self.processOneElement(el)
-    #         if dataList is not None:
-    #             self.data.extend(dataList)
-    # extract_debug(plt_)
-
-    # plt_.setAxisKeywords()
-    ic(plt_.allAxes)
-    ic(plt_.data)
-    ic(vars(plt_.axisY), type(plt_.axisY))
-    ic(plt_.axisY.minValue)
-    # plt_.extractData()
-    # if hasattr(self, 'axisY') and self.axisY:
-    #     self.setTicks('y', self.axisY.ticks())
-    #     self.setAxisLabel('y', self.axisY.label)
-    # if hasattr(self, 'axisX') and self.axisX:
-    #     self.setTicks('x', self.axisX.ticks())
-    #     self.setAxisLabel('x', self.axisX.label)
-
-    # plt_.process()
-    # plt_.process()
-    plt.show()
-    # ic(part.minValue)
-    # part.measures(1, 10).plot('scatterweighted', 'pitch', 'quarterLength', doneAction=None, minValue=0, maxValue=11)
-    # r = part.plot('pianoroll', doneAction=None)
-    # ic(type(r), r, isinstance(r, graph.primitives.Graph))
-    # r.run()
-    # plt.show()
-    # part.measures(numberStart=0, numberEnd=20).plot('pianoroll')
-    # voice = scr.parts[0]
-    # voice.measures(1, 10).show()
 
     def test_show_in_plot():
         data = [('Chopin', [(1810, 1849 - 1810)]),
@@ -337,11 +314,28 @@ if __name__ == '__main__':
         plt.show()
     # test_show_in_plot()
 
-    # from music21 import corpus
-    # verdi = corpus.parse('verdi/laDonnaEMobile')
-    # ic(verdi)
-    # verdi.id = 'verdi'
-    # # verdi.measures(1, 10).show()
-    # voice = verdi.parts[0]
-    # voice.measures(1, 10).plot()
-    # ic(voice.minValue)
+    def test_piano_roll():
+        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        ic(fnm)
+
+        scr = music21.converter.parse(fnm)
+        ic(scr.id)
+        # Looks like this doesn't work **sometimes**?
+        # r = scr.plot('pianoroll', figureSize=(16, 9), doneAction=None)
+        # ic(r)
+
+        part = scr.parts[0]
+        # plt_ = graph.plot.HorizontalBarPitchSpaceOffset(part.measures(25, 90), doneAction=None, figsize=(16, 9))
+        # plt_.run()
+        # ic(len(plt_.data), plt_.data)
+        # plt.tight_layout()
+        # ic(plt.xlim(), plt.ylim())
+        # ic(plt.xticks(), plt.yticks())
+        # # plt.xlim([0, 501])
+        # plt.show()
+
+        m2u = Music21Util()
+        m2u.plot_piano_roll(part.measures(25, 90))
+    ic(plt.rcParams["font.family"])
+    test_piano_roll()
+
