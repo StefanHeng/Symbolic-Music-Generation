@@ -184,57 +184,42 @@ class MxlMelodyExtractor:
 
             .. note:: The `bars` attribute is modified
             """
-            # ic(self.bars[list(self.bars.keys())[0]].number)
             for pnm, bar in self.bars.items():
-                # bar.show(fmt='musicxml.png')
                 notes = bar.notes
                 assert notes.isSorted
-                # notes = sorted(bar.notes, key=lambda n: n.offset)
-                # ic(notes)
-
-                if notes:
-                    # chd = notes[0]
-                    # ic(chd, chd.pitches, chd.notes)
-                    # ic(chd.notes[0].pitch.midi, chd.notes[1].pitch.midi)
-                    # nt = chd.notes[0]
-                    # ic(nt, nt.pitch, nt.pitch.midi, nt.pitch.frequency)
-                    assert_notes_no_overlap(notes)
-                    # for n in notes:
-                    #     ic(n.isNote)
+                assert_notes_no_overlap(notes)
 
                 def chord2note(c):
                     return max(c.notes, key=lambda n: n.pitch.frequency)
-                # m21.stream.Measure
-                # for elm in bar:
-                #     ic(elm)
-                # notes_ = list(map(lambda elm: chord2note(elm) if isinstance(elm, m21.chord.Chord) else elm, notes))
-                # # self.bars[pnm].remove(notes)
-                #
-                # if not list(bar):
-                #     ic(list(bar))
-                # ic(list(bar))
-                # bar.remove(list(notes))
-                # ic(list(bar), notes_)
-                if notes:
-                    ic(list(bar))
-                    # bar.show()
-                    for note in notes:
-                        ic([p.octave for p in note.pitches])
-                        # ic(note.pitch.octave)
-                        if isinstance(note, m21.chord.Chord):
-                            bar.replace(note, chord2note(note))
-                    ic(list(bar))
-                    for note in bar.notes:
-                        ic(note.pitch.octave)
+                for note in notes:
+                    if isinstance(note, m21.chord.Chord):
+                        self.bars[pnm].replace(note, chord2note(note))
+            return self
 
-                    exit(1)
+        def avg_pitch(self, method='fqs'):
+            """
+            :param method: Mapping function from Note to value,
+                either `fqs` for pitch frequency, or `midi` for MIDI pitch encoding
+            :return: Average pitch, weighted by duration, for each bar
+            :precondition: Each bar contains `music21.note.Note`s only
 
-    def pitch_avg(self):
-        """
-        :return: Average pitch, weighted by duration, for each bar
-
-        Pitch value by either MIDI representation integer, or frequency
-        """
+            Pitch value by either MIDI representation integer, or frequency
+            """
+            d_func = dict(
+                fqs=lambda n: n.pitch.frequency,
+                midi=lambda n: n.pitch.midi
+            )
+            f = d_func[method]
+            # bar = next(iter(self.bars.values()))
+            # ic(type(self.bars.values()))
+            # ic(bar)
+            # ic(np.array([f(n) for n in bar.notes]))
+            # ic(np.array([n.duration.quarterLength for n in bar.notes]))
+            return {pnm: np.average(
+                np.array([f(n) for n in bar.notes]), weights=np.array([n.duration.quarterLength for n in bar.notes])
+            ) if len(bar.notes) > 0 else
+                float('-inf')
+                for pnm, bar in self.bars.items()}
 
     @property
     def vertical_bars(self):
@@ -267,6 +252,7 @@ class MxlMelodyExtractor:
             # if vb.n == 83:
             #     list(vb.bars.values())[0].show()
             vb.single()
+            # ic(vb.avg_pitch())
 
         s = m21.stream.Score()
         # Per `music21`, duration is represented in terms of quarter notes, definitely an integer
