@@ -178,32 +178,20 @@ class MxlMelodyExtractor:
             # obj = None if inplace else deepcopy(self)
             obj = self if inplace else deepcopy(self)
             for pnm, bar in obj.bars.items():
-                voices = bar.voices
-                ic(bar.hasVoices())
-                if voices:
-                    # v = list(voices)[0]
-                    # v.show(fmt='musicxml.png')
-                    # ic(list(voices))
-                    # v: m21.stream.Voice
-                    # ic(v, v.index())
-                    # ic(vars(v), dir(v))
-                    ic(list(bar))
+                if bar.hasVoices():
+                    voices = bar.voices
                     ids = [v.id for v in voices]
                     assert all(i in ids for i in ['1', '2', '3', '4'])
                     soprano = next(filter(lambda v: v.id == '1', voices))
-                    ic(list(soprano))
-                    ic(list(soprano.notes))
+
                     # Get the correct index to insert notes for `soprano`
                     min_voice = min(voices, key=lambda v: obj.bars[pnm].index(v))
                     idx = obj.bars[pnm].index(min_voice)
                     obj.bars[pnm].remove(list(voices))
-                    ic(idx)
-                    # obj.bars[pnm].insert(idx, list(soprano)[2:])
                     obj.bars[pnm].insert(alternate(range(idx, idx+len(soprano)), list(soprano)))
-                    ic(list(bar))
             for pnm, bar in obj.bars.items():
+                assert not bar.hasVoices()
                 notes = bar.notes
-                # ic(type(notes))
                 assert notes.isSorted
                 assert_notes_no_overlap(notes)
 
@@ -212,9 +200,6 @@ class MxlMelodyExtractor:
                 for note in notes:
                     if isinstance(note, m21.chord.Chord):
                         obj.bars[pnm].replace(note, chord2note(note))
-                if bar.hasVoices():
-                    ic(list(bar))
-            # exit(1)
             return obj
 
         def avg_pitch(self, method='fqs', val_rest=0):
@@ -235,22 +220,30 @@ class MxlMelodyExtractor:
 
             ic(self.bars)
 
-            # def _avg_pitch(b):
-            #     ic('here', b)
-            #     # if b.notes:
-            #     for n in b:
-            #         ic(n, n.quarterLength)
-            # # _avg_pitch(list(self.bars.values())[2])
+            def _avg_pitch(b):
+                # ic('here', b)
+                if b.notes:
+                    fs = [f(n) for n in b.notes]
+                    ws = [n.duration.quarterLength for n in b.notes]
+                    fs.append(val_rest)
+                    ws.append(sum([r.quarterLength for r in b[m21.note.Rest]]))
+                    ic(fs, ws)
+                    # for n in b:
+                    #     ic(n, n.quarterLength)
+                    return np.average(np.array(fs), weights=np.array(ws))
+                else:
+                    return float('-inf')
+            # _avg_pitch(list(self.bars.values())[2])
             # _avg_pitch(self.bars['Piano, CH #2'])
             #
             # ic('here')
-            # return {pnm: _avg_pitch(bar) for pnm, bar in self.items()}
-            return {
-                pnm: np.average(
-                    np.array([f(n) for n in bar.notes]), weights=np.array([n.duration.quarterLength for n in bar.notes])
-                ) if len(bar.notes) > 0 else float('-inf')
-                for pnm, bar in self.bars.items()
-            }
+            return {pnm: _avg_pitch(bar) for pnm, bar in self.items()}
+            # return {
+            #     pnm: np.average(
+            #         np.array([f(n) for n in bar.notes]), weights=np.array([n.duration.quarterLength for n in bar.notes])
+            #     ) if len(bar.notes) > 0 else float('-inf')
+            #     for pnm, bar in self.bars.items()
+            # }
 
         def pnm_with_max_pitch(self, method='fqs', val_rest=0):
             """
