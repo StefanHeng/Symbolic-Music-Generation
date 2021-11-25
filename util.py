@@ -90,6 +90,13 @@ def keys(dic, prefix=''):
             yield _full(k)
 
 
+def alternate(lst1, lst2):
+    lst = [None] * (len(lst1)+len(lst2))
+    lst[::2] = lst1
+    lst[1::2] = lst2
+    return lst
+
+
 def config(attr):
     """
     Retrieves the queried attribute value from the config file.
