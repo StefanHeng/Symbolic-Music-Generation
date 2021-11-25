@@ -132,7 +132,7 @@ class MxlMelodyExtractor:
         if not len(pnms) == len(set(pnms)):  # Unique part names
             for idx, p in enumerate(self.scr.parts):
                 p.partName = f'{p.partName}, CH #{idx+1}'
-        ic([p.partName for p in self.scr.parts])
+        # ic([p.partName for p in self.scr.parts])
 
         self._vertical_bars: list[MxlMelodyExtractor.VerticalBar] = []
 
@@ -183,15 +183,12 @@ class MxlMelodyExtractor:
 
             .. note:: The `bars` attribute is modified
             """
-            # obj = None if inplace else deepcopy(self)
             obj = self if inplace else deepcopy(self)
             for pnm, bar in obj.bars.items():
                 if bar.hasVoices():
                     voices = bar.voices
                     ids = [v.id for v in voices]
-                    # Looks like some bar have just 2 voices
-                    # if not all(i in ids for i in ['1', '2', '3', '4']):
-                    #     ic(list(voices), bar.number)
+                    # A bar may have just 2 voices
                     assert all(i in ids for i in ['1', '2'])
                     soprano = next(filter(lambda v: v.id == '1', voices))
 
@@ -244,6 +241,9 @@ class MxlMelodyExtractor:
             """
             :return: The part name key, that has the maximum pitch, per `avg_pitch`
             """
+            # ic(list(self.bars.values())[0].number)
+            # for pnm, b in self.bars.items():
+            #     ic(list(b))
             pchs = self.avg_pitch(method=method, val_rest=val_rest)
             return max(self.bars, key=lambda p: pchs[p])
 
@@ -300,26 +300,26 @@ class MxlMelodyExtractor:
         tempos, weights = zip(*flatten(_mean_tempo(bars) for bars in bars_with_tempo.values()))
         return np.average(np.array(tempos), weights=np.array(weights))
 
-    def bar_with_max_pitch(self, exp='stream'):
+    def bar_with_max_pitch(self, exp=None):
         """
         :param exp: Export format,
-            either `stream` for `music21.stream.Score` or `symbol` for symbolic encodings
+            `mxl`: write to MXL file
+            `symbol`: symbolic encodings
+            otherwise, `music21.stream.Score` is returned
         For each bar, pick the track with highest average pitch
         """
         scr = deepcopy(self.scr)
         scr.metadata.composer = PROJ_NM
-        # Pick one `Part` arbitrarily to replace elements one by one, the 1st part contains all metadata
+        # Pick a `Part` to replace elements one by one, the 1st part selected as it contains all metadata
         idx_part = 0
         scr.remove(list(filter(lambda p: p is not scr.parts[idx_part], scr.parts)))
         assert len(scr.parts) == 1
         part = scr.parts[0]
         pnm = part.partName
-        ic(pnm)
 
         for i in range(1, len(self.scr.parts)):
             assert len(self.scr.parts[i][m21.tempo.MetronomeMark]) == 0
 
-        vb = self.vertical_bars[6].single()
         for idx, bar in enumerate(part[m21.stream.Measure]):
             vb = self.vertical_bars[idx].single()
             pnm_ = vb.pnm_with_max_pitch(method='fqs')
@@ -332,31 +332,27 @@ class MxlMelodyExtractor:
 
         # Set tempo
         bar0 = part.measure(0)
-        # ic(list(bar0))
         tempos = list(bar0[m21.tempo.MetronomeMark])
         assert len(tempos) > 0
-        tempo = tempos[0]  # Get 1st tempo in the score
-
+        tempo = tempos[0]
         [bar.removeByClass(m21.tempo.MetronomeMark) for bar in part[m21.stream.Measure]]
         tempo.number = self.mean_tempo
         bar0.insert(tempo)
-        # ic(list(bar0))
-        # ic(bar0.isSorted)
-        # assert bar0.isSorted
 
-        ic(scr.metadata.composer)
         title = scr.metadata.title
         if title.endswith('.mxl'):
             title = title[:-4]
-
-        if exp == 'stream':
-            fnm = f'{title}, bar with max pitch.mxl'
-            # ic(os.path.join(PATH_BASE, DIR_DSET, config(f'{DIR_DSET}.MXL_EG.dir_nm')))
-            scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, config(f'{DIR_DSET}.MXL_EG.dir_nm'), fnm))
+        title = f'{title}, bar with max pitch'
+        if exp == 'mxl':
+            dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
+            dir_nm = f'{dir_nm}_out'
+            scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
         elif exp == 'symbol':
             # Per `music21`, duration is represented in terms of quarter notes
             slot_dur = int(2**-2 / 2**-self.prec)  # Duration of a time slot
             ic(slot_dur)
+        else:
+            return scr
 
     def slot_with_max_pitch(self):
         """
@@ -381,6 +377,6 @@ if __name__ == '__main__':
         # fnm = eg_songs('Shape of You', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm)
-        me.bar_with_max_pitch()
+        me.bar_with_max_pitch(exp='mxl')
     check_mxl()
 
