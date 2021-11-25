@@ -132,7 +132,7 @@ class MxlMelodyExtractor:
         if not len(pnms) == len(set(pnms)):  # Unique part names
             for idx, p in enumerate(self.scr.parts):
                 p.partName = f'{p.partName}, CH #{idx+1}'
-        # ic([p.partName for p in self.scr.parts])
+        ic([p.partName for p in self.scr.parts])
 
         self._vertical_bars: list[MxlMelodyExtractor.VerticalBar] = []
 
@@ -243,7 +243,7 @@ class MxlMelodyExtractor:
             """
             # ic(list(self.bars.values())[0].number)
             # for pnm, b in self.bars.items():
-            #     ic(list(b))
+            #     ic(pnm, list(b))
             pchs = self.avg_pitch(method=method, val_rest=val_rest)
             return max(self.bars, key=lambda p: pchs[p])
 
@@ -308,6 +308,10 @@ class MxlMelodyExtractor:
             otherwise, `music21.stream.Score` is returned
         For each bar, pick the track with highest average pitch
         """
+        # ic(self.scr.getElementsByClass(m21.instrument.Instrument))
+        for p in self.scr.parts:
+            # ic(list(p.getElementsByClass(m21.instrument.Instrument)))
+            ic(list(p[m21.instrument.Instrument]))
         scr = deepcopy(self.scr)
         scr.metadata.composer = PROJ_NM
         # Pick a `Part` to replace elements one by one, the 1st part selected as it contains all metadata
@@ -328,7 +332,13 @@ class MxlMelodyExtractor:
                 assert part.index(bar) == idx+1
                 part.replace(bar, vb[pnm_])
 
-        part.partName = f'{PROJ_NM}, CH #1'
+        # Set instrument as Piano
+        instr = m21.instrument.Piano()
+        [part.remove(ins) for ins in part[m21.instrument.Instrument]]
+        ic(instr, instr.instrumentName)
+        part.insert(instr)
+        ic(part.isSorted)
+        part.partName = f'{PROJ_NM}, {instr.instrumentName}, CH #1'
 
         # Set tempo
         bar0 = part.measure(0)
@@ -338,6 +348,8 @@ class MxlMelodyExtractor:
         [bar.removeByClass(m21.tempo.MetronomeMark) for bar in part[m21.stream.Measure]]
         tempo.number = self.mean_tempo
         bar0.insert(tempo)
+        ic(list(bar0))
+        ic(list(part)[:5])
 
         title = scr.metadata.title
         if title.endswith('.mxl'):
