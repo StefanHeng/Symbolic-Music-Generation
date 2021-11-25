@@ -32,7 +32,8 @@ def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord]]):
             #         ic(n, n.duration, type(n.duration), n.duration.quarterLength)
             #         ic(n.offset, end)
             #     exit(1)
-            assert end <= note.offset or math.isclose(end, note.offset, abs_tol=1e-6)  # Takes care of tuplets
+            # Since numeric representation of one-third durations, aka tuplets
+            assert end <= note.offset or math.isclose(end, note.offset, abs_tol=1e-6)
             end = note.offset + note.duration.quarterLength
 
 
@@ -175,20 +176,65 @@ class MxlMelodyExtractor:
                      f'precision [{prec}] and time signature [{self.time_sig}]')
             return int(n_slot)
 
-        def single(self):
+        def single(self):  # TODO: `, inplace=False` ?
             """
             For each time step in each bar, filter notes such that only the note with highest pitch remains
-            """
-            ic(self.bars[list(self.bars.keys())[0]].number)
-            for pnm, bar in self.bars.items():
-                notes = sorted(bar.notes, key=lambda n: n.offset)
-                if notes:
-                    # ic(list(notes[0].pitches))
-                    assert_notes_no_overlap(notes)
 
-                # ic(len(bar.notes))
-                # for note in bar.notes:
-                #     ic(note, note.offset, note.duration)
+            Chords are effectively converted to notes
+
+            .. note:: The `bars` attribute is modified
+            """
+            # ic(self.bars[list(self.bars.keys())[0]].number)
+            for pnm, bar in self.bars.items():
+                # bar.show(fmt='musicxml.png')
+                notes = bar.notes
+                assert notes.isSorted
+                # notes = sorted(bar.notes, key=lambda n: n.offset)
+                # ic(notes)
+
+                if notes:
+                    # chd = notes[0]
+                    # ic(chd, chd.pitches, chd.notes)
+                    # ic(chd.notes[0].pitch.midi, chd.notes[1].pitch.midi)
+                    # nt = chd.notes[0]
+                    # ic(nt, nt.pitch, nt.pitch.midi, nt.pitch.frequency)
+                    assert_notes_no_overlap(notes)
+                    # for n in notes:
+                    #     ic(n.isNote)
+
+                def chord2note(c):
+                    return max(c.notes, key=lambda n: n.pitch.frequency)
+                # m21.stream.Measure
+                # for elm in bar:
+                #     ic(elm)
+                # notes_ = list(map(lambda elm: chord2note(elm) if isinstance(elm, m21.chord.Chord) else elm, notes))
+                # # self.bars[pnm].remove(notes)
+                #
+                # if not list(bar):
+                #     ic(list(bar))
+                # ic(list(bar))
+                # bar.remove(list(notes))
+                # ic(list(bar), notes_)
+                if notes:
+                    ic(list(bar))
+                    # bar.show()
+                    for note in notes:
+                        ic([p.octave for p in note.pitches])
+                        # ic(note.pitch.octave)
+                        if isinstance(note, m21.chord.Chord):
+                            bar.replace(note, chord2note(note))
+                    ic(list(bar))
+                    for note in bar.notes:
+                        ic(note.pitch.octave)
+
+                    exit(1)
+
+    def pitch_avg(self):
+        """
+        :return: Average pitch, weighted by duration, for each bar
+
+        Pitch value by either MIDI representation integer, or frequency
+        """
 
     @property
     def vertical_bars(self):
