@@ -1,4 +1,5 @@
 import math
+from copy import deepcopy
 from warnings import warn
 from typing import Union
 
@@ -19,19 +20,9 @@ def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord]]):
     Asserts that the notes don't overlap, given the start time and duration
     """
     if len(notes) >= 2:
-        # ic(dir(notes[0].duration))
-        # ic(notes[0].duration)
-        # ic(notes[0].duration.quarterLength)
         end = notes[0].offset + notes[0].duration.quarterLength
         for note in notes[1:]:
-            # Current note should begin, not before the previous one ends
-            # if end > note.offset:
-            #     ic('large', end, note.offset, end > note.offset, math.isclose(end, note.offset, abs_tol=1e-6))
-            #     for n in notes:
-            #         res = n.offset + n.duration.quarterLength
-            #         ic(n, n.duration, type(n.duration), n.duration.quarterLength)
-            #         ic(n.offset, end)
-            #     exit(1)
+            # Current note should begin, after the previous one ends
             # Since numeric representation of one-third durations, aka tuplets
             assert end <= note.offset or math.isclose(end, note.offset, abs_tol=1e-6)
             end = note.offset + note.duration.quarterLength
@@ -176,7 +167,7 @@ class MxlMelodyExtractor:
                      f'precision [{prec}] and time signature [{self.time_sig}]')
             return int(n_slot)
 
-        def single(self):  # TODO: `, inplace=False` ?
+        def single(self, inplace=False):
             """
             For each time step in each bar, filter notes such that only the note with highest pitch remains
 
@@ -184,7 +175,10 @@ class MxlMelodyExtractor:
 
             .. note:: The `bars` attribute is modified
             """
-            for pnm, bar in self.bars.items():
+            # obj = None if inplace else deepcopy(self)
+            obj = self if inplace else deepcopy(self)
+            # ic(obj, self, (self if inplace else obj))
+            for pnm, bar in obj.bars.items():
                 notes = bar.notes
                 assert notes.isSorted
                 assert_notes_no_overlap(notes)
@@ -193,8 +187,11 @@ class MxlMelodyExtractor:
                     return max(c.notes, key=lambda n: n.pitch.frequency)
                 for note in notes:
                     if isinstance(note, m21.chord.Chord):
-                        self.bars[pnm].replace(note, chord2note(note))
-            return self
+                        # (self if inplace else obj).bars[pnm].replace(note, chord2note(note))
+                        obj.bars[pnm].replace(note, chord2note(note))
+                        # ic(list(self.bars[pnm].notes))
+                        # ic(list(obj.bars[pnm].notes))
+            return obj
 
         def avg_pitch(self, method='fqs'):
             """
@@ -210,16 +207,33 @@ class MxlMelodyExtractor:
                 midi=lambda n: n.pitch.midi
             )
             f = d_func[method]
-            # bar = next(iter(self.bars.values()))
-            # ic(type(self.bars.values()))
-            # ic(bar)
-            # ic(np.array([f(n) for n in bar.notes]))
-            # ic(np.array([n.duration.quarterLength for n in bar.notes]))
-            return {pnm: np.average(
-                np.array([f(n) for n in bar.notes]), weights=np.array([n.duration.quarterLength for n in bar.notes])
-            ) if len(bar.notes) > 0 else
-                float('-inf')
-                for pnm, bar in self.bars.items()}
+            return {
+                pnm: np.average(
+                    np.array([f(n) for n in bar.notes]), weights=np.array([n.duration.quarterLength for n in bar.notes])
+                ) if len(bar.notes) > 0 else float('-inf')
+                for pnm, bar in self.bars.items()
+            }
+
+        def pnm_with_max_pitch(self, method='fqs'):
+            """
+            :return: The part name key, that has the maximum pitch, per `avg_pitch`
+            """
+            pchs = self.avg_pitch(method=method)
+            m = max(self.bars, key=lambda p: pchs[p])
+            # ic(self.bars, pchs, m)
+            return max(self.bars, key=lambda p: pchs[p])
+
+        def __getitem__(self, key):
+            return self.bars[key]
+
+        def __iter__(self):
+            return iter(self.bars.keys())
+
+        def values(self):
+            return self.bars.values()
+
+        def items(self):
+            return self.bars.items()
 
     @property
     def vertical_bars(self):
@@ -233,32 +247,66 @@ class MxlMelodyExtractor:
             assert all(bars[0].number == 0 for bars in d_bars.values())  # All parts starts bar number with 0
 
             vbs = [self.VerticalBar({b.activeSite.partName: b for b in bars}) for bars in zip(*d_bars.values())]
-            ts = vbs[0].time_sig
+            ts = vbs[0].time_sig  # Get Score starting time signature
             assert ts is not None
             for vb in vbs:  # Unroll time signature to each VerticalBar
                 if vb.time_sig is None:
                     vb.time_sig = ts
                 else:
                     ts = vb.time_sig
-            # ic([vb.time_sig for vb in vbs])
             self._vertical_bars = vbs
         return self._vertical_bars
 
-    def bar_with_max_pitch(self):
+    def bar_with_max_pitch(self, exp='stream'):
         """
+        :param exp: Export format,
+            either `stream` for `music21.stream.Score` or `symbol` for symbolic encodings
         For each bar, pick the track with highest average pitch
         """
-        for vb in self.vertical_bars:
-            # if vb.n == 83:
-            #     list(vb.bars.values())[0].show()
-            vb.single()
-            # ic(vb.avg_pitch())
+        # for vb in self.vertical_bars:
+        #     # if vb.n == 83:
+        #     #     list(vb.bars.values())[0].show()
+        #     vb.single()
+        #     # ic(vb.avg_pitch())
 
-        s = m21.stream.Score()
-        # Per `music21`, duration is represented in terms of quarter notes, definitely an integer
-        slot_dur = int(2**-2 / 2**-self.prec)  # Duration of a time slot
+        # s = m21.stream.Score()
+        scr = deepcopy(self.scr)
+        scr.metadata.composer = PROJ_NM
+        # pchs = [vb.single().avg_pitch() for vb in self.vertical_bars]
+        # vbs_ = [vb.single() for vb in self.vertical_bars]
+        # vb_ = vbs_[0]
+        # ic(vb_.bars)
+        # ic(vb_.pnm_with_max_pitch(method='midi'))
+        # Pick one `Part` arbitrarily to replace elements one by one
+        idx_part_map = 0
+        scr.remove(list(filter(lambda p: p is not scr.parts[idx_part_map], scr.parts)))
+        assert len(scr.parts) == 1
+        part = scr.parts[0]
+        pnm = part.partName
+        ic(pnm)
+        # for vb in self.vertical_bars[:5]:
+        for idx, bar in enumerate(part[m21.stream.Measure]):
+            # ic(idx, bar)
+            vb = self.vertical_bars[idx]
+            vb_ = vb.single()
+            # ic(vb_ == vb)
+            # ic([list(bar.notes) for bar in vb.values()])
+            # ic([list(bar.notes) for bar in vb_.values()])
+            pnm_ = vb_.pnm_with_max_pitch(method='midi')
+            # ic(vb[pnm], vb_[pnm_])
+            assert bar.number == idx
+            if pnm_ != pnm:
+                # ic(part.index(bar))
+                assert part.index(bar) == idx+1  # Since the first element in a `Part` is the
+                part.replace(bar, vb_[pnm_])
 
-        ic(slot_dur)
+        part.partName = f'{PROJ_NM}, CH #1'
+        part.show()
+
+        if exp == 'symbol':
+            # Per `music21`, duration is represented in terms of quarter notes
+            slot_dur = int(2**-2 / 2**-self.prec)  # Duration of a time slot
+            ic(slot_dur)
 
     def slot_with_max_pitch(self):
         """
