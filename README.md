@@ -16,8 +16,7 @@ your system data path, and relative repository & dataset folder names:
 PATH_BASE = '/Users/stefanh/Documents/UMich/Research/Music with NLP'  # System data path
 DIR_PROJ = 'Symbolic_Music_Generation'  # Repo root folder name 
 DIR_DSET = 'datasets'  # Dataset root folder name 
-``` 
-Note to follow the convention of your OS. 
+```
 
 
 Also, a `datasets` folder should be kept at the same level as 

@@ -4,6 +4,7 @@ from copy import deepcopy
 from warnings import warn
 from typing import Union
 
+import numpy as np
 from mido import MidiFile
 import pretty_midi
 from pretty_midi import PrettyMIDI
@@ -124,7 +125,7 @@ class MxlMelodyExtractor:
         self.prec = precision
 
         self.scr: m21.stream.Score = m21.converter.parse(self.fnm)
-        ic(self.scr.seconds)  # TODO
+        ic(self.scr.seconds)  # TODO: MXL file duration in physical time
         lens = [len(p[m21.stream.Measure]) for p in self.scr.parts]
         assert_list_same_elms(lens)
         self.bar_strt_idx = None  # First element in a `Part` is the can be not a measure
