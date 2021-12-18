@@ -4,6 +4,7 @@ assets/
 .vscode/
 data_path.py
 test_lang.py
+inspiration/
 
 
 # Byte-compiled / optimized / DLL files

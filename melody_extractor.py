@@ -3,6 +3,7 @@ import math
 from copy import deepcopy
 from warnings import warn
 from typing import Union
+from itertools import chain
 
 import numpy as np
 from mido import MidiFile
@@ -121,13 +122,6 @@ class MxlMelodyExtractor:
     The pitch will be encoded as integer in [0-127] per MIDI convention
         Triplets are handled with a special id at the last quarter
     """
-    class BarEnc:
-        """
-        Handles pitch id encoding of each music21.stream.Measure
-        """
-        def __init__(self, bar):
-            ic(bar)
-
 
     def __init__(self, fl_nm, precision=5):
         self.fnm = fl_nm
@@ -159,18 +153,11 @@ class MxlMelodyExtractor:
         # The **first** bar of at least one track should contain the tempo & the time signature
         bars_1st = [next(p[m21.stream.Measure]) for p in self.scr.parts]
         tempos_strt = [bar[m21.tempo.MetronomeMark] for bar in bars_1st]
-        # ic(tempos_strt)
         assert any(len(tempo) > 0 for tempo in tempos_strt)
-        # tempos_strt = [list(next(p[m21.stream.Measure])[m21.tempo.MetronomeMark]) for p in self.scr.parts]
-        # ic(tempos_strt)
-        # assert any(len(tempo) > 0 for tempo in tempos_strt)
         self.tempo_strt = next(filter(lambda tempos: len(tempos), tempos_strt))[0]
 
-        # ic([list(b) for b in bars_1st])
         tss_strt = [bar[m21.meter.TimeSignature] for bar in bars_1st]
-        # ic([list(t) for t in tss_strt])
         assert any(len(time_sigs) > 0 for time_sigs in tss_strt)
-        # exit(1)
 
         self._vertical_bars: list[MxlMelodyExtractor.VerticalBar] = []
 
@@ -184,17 +171,12 @@ class MxlMelodyExtractor:
             assert_list_same_elms(nums)
             self.n = nums[0]
 
-            # tss = [b.timeSignature for b in self.bars.values()]
             tss = [b[m21.meter.TimeSignature] for b in self.bars.values()]
-
-            # ic(tss)
             self._time_sig = None
-            # if tss[0] is not None:
             if any(tss):
                 assert all(len(t) == 1 for t in tss)  # At most 1 time signature per bar
                 tss = [next(t) for t in tss]
-                # Time signature across bars should be the same
-                dss = [(ds.numerator, ds.denominator) for ds in tss]
+                dss = [(ds.numerator, ds.denominator) for ds in tss]  # Time signature across bars should be the same
                 assert_list_same_elms(dss)
 
                 self._time_sig = dss[0]
@@ -348,6 +330,97 @@ class MxlMelodyExtractor:
         tempos, weights = zip(*flatten(_mean_tempo(bars) for bars in bars_with_tempo.values()))
         return np.average(np.array(tempos), weights=np.array(weights))
 
+    class EncModel:
+        """
+        Encodes each music21 element in a bar to the pitch id
+        """
+        def __init__(self):
+            # Hard-coded special values
+            n_special = 2**7
+            half = n_special/2
+            self.spec_vocab = {
+                '[SEP]': 0,  # Bar separation
+                '[TRIP]': 1,  # Last quarter encoding for triplets
+                '[REST]': int(half)
+            }
+
+        def __call__(self, obj):
+            if isinstance(obj, m21.note.Note):
+                p = obj.pitch
+                ic(p, vars(p))
+                exit(1)
+            elif isinstance(obj, m21.note.Rest):
+                # ic(obj, vars(obj))
+                return self.spec_vocab['[REST]']
+            else:
+                ic(obj)
+                exit(1)
+
+    class BarEnc:
+        """
+        Handles pitch id encoding of each music21.stream.Measure
+
+        Enforce that each time slot should be assigned one and only one id
+        """
+        class Slot:
+            def __init__(self):
+                self._id = nan
+                self.set = False
+
+            @property
+            def id(self):
+                return self._id
+
+            @id.setter
+            def id(self, val):
+                # ic(val, self.set)
+                assert not self.set  # Should be defined only once
+                self.set = True
+                self._id = val
+
+            def __repr__(self):
+                return f'<{self.__class__.__qualname__} id={self._id} set={self.set}>'
+
+        def __init__(self, bar: m21.stream.Measure, time_sig: m21.meter.TimeSignature, prec: int):
+            ic(bar.__repr__())
+            self.bar = bar
+            self.time_sig = time_sig
+            ic(bar, time_sig, prec)
+            n_slots_per_beat = (1/time_sig.denominator / (2**-prec))
+            assert n_slots_per_beat.is_integer()
+            n_slots = int(time_sig.numerator * n_slots_per_beat)
+            ic(n_slots_per_beat, n_slots)
+
+            self.enc = [MxlMelodyExtractor.BarEnc.Slot() for _ in range(n_slots)]
+            ic(nan, self.enc)
+            # self.enc[0].set = True
+            # ic(self.enc)
+
+            self.tokenizer = MxlMelodyExtractor.EncModel()
+
+            # for e in chain(bar[m21.note.Note], bar[m21.note.Rest]):
+            for e in filter(lambda elm: isinstance(elm, m21.note.Note) or isinstance(elm, m21.note.Rest), bar):
+                # ic(n, vars(n))
+            # for r in :
+            #     ic(e, vars(e))
+            #     ic(e.offset)
+            #     ic(e.duration.quarterLength)
+                strt, dur = e.offset, e.duration.quarterLength
+                num = n_slots_per_beat*dur + 1
+                assert num.is_integer()
+                idxs_ = (np.linspace(strt, strt+dur, num=int(num)) * n_slots_per_beat)[:-1]
+                idxs = idxs_.astype(int)
+                assert np.all(idxs_-idxs == 0)
+                ic(idxs)
+
+                id_ = self.tokenizer(e)
+                for idx in idxs:
+                    # ic(idx, self.enc[idx])
+                    self.enc[idx].id = id_
+                # ic(id)
+            ic(self.enc)
+            exit(1)
+
     def bar_with_max_pitch(self, exp=None):
         """
         :param exp: Export format,
@@ -401,38 +474,20 @@ class MxlMelodyExtractor:
             # Per `music21`, duration is represented in terms of quarter notes
             slot_dur = int(2**-2 / 2**-self.prec)  # Duration of a time slot
             ic(slot_dur)
-            # ic(list(scr.notes))
-            # ic(list(part))
-
-            # bars = iter(list(part[m21.stream.Measure]))
-            # ic(next(bars))
-            # for b in bars:
-            #     ic(b)
-            # exit(1)
 
             # Get signature for each bar
             bars = iter(list(part[m21.stream.Measure]))
             bar0 = next(bars)
             ts = next(bar0[m21.meter.TimeSignature])
             lst_bar_n_ts = [(bar0, ts)]
-            ic(list(bar0))
-            # ic(list(bars))
             for bar in bars:
-            # while bars:
-            #     bar = next(bars)
-            #     ic(list(bar))
-                ts_: m21.stream.iterator.RecursiveIterator
                 ts_ = bar[m21.meter.TimeSignature]
                 if ts_:
-                    # ic(list(ts_))
-                    # ic(ts_, bar.number)
                     ts = next(iter(ts_))
                 lst_bar_n_ts.append((bar, ts))
-                # ic(list(bar))
-                # ic(list(bar[m21.note.Rest or m21.tempo.MetronomeMark]))
-                # exit(1)
-                # ic(bar)
-            ic(lst_bar_n_ts)
+            # ic(lst_bar_n_ts)
+            for (bar, ts) in lst_bar_n_ts:
+                ic(MxlMelodyExtractor.BarEnc(bar, ts, self.prec))
             exit(1)
         else:
             return scr

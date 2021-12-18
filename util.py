@@ -24,6 +24,8 @@ from data_path import *
 rcParams['figure.constrained_layout.use'] = True
 sns.set_style('darkgrid')
 
+nan = float('nan')
+
 
 def flatten(lsts):
     """ Flatten list of [list of elements] to list of elements """
