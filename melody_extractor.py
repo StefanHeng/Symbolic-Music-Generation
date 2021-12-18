@@ -92,9 +92,9 @@ class MidiMelodyExtractor:
 
     def bar_with_max_pitch(self):
         """
-        For each bar, pick the track with highest average pitch
+        For each bar, pick the track with the highest average pitch
 
-        If multiple notes at a time step, pick the one with highest pitch
+        If multiple notes at a time step, pick the one with the highest pitch
         """
         # ic(self.precision - self.frac_per_beat, (self.precision - self.frac_per_beat)**2)
         # ic(spb, spt, 1/spt)
@@ -116,10 +116,19 @@ class MxlMelodyExtractor:
 
     For now, enforce that at each time step, there will be only one note played
     In case of multiple notes at a time step,
-    the concurrent notes are filtered such that only the note with highest pitch remains
+    the concurrent notes are filtered such that only the note with the highest pitch remains
 
     The pitch will be encoded as integer in [0-127] per MIDI convention
+        Triplets are handled with a special id at the last quarter
     """
+    class BarEnc:
+        """
+        Handles pitch id encoding of each music21.stream.Measure
+        """
+        def __init__(self, bar):
+            ic(bar)
+
+
     def __init__(self, fl_nm, precision=5):
         self.fnm = fl_nm
         self.prec = precision
@@ -128,7 +137,7 @@ class MxlMelodyExtractor:
         ic(self.scr.seconds)  # TODO: MXL file duration in physical time
         lens = [len(p[m21.stream.Measure]) for p in self.scr.parts]
         assert_list_same_elms(lens)
-        self.bar_strt_idx = None  # First element in a `Part` is the can be not a measure
+        self.bar_strt_idx = None  # First element in a `Part` can be a non-measure
 
         pnms = [p.partName for p in self.scr.parts]
         if not len(pnms) == len(set(pnms)):  # Unique part names
@@ -147,10 +156,21 @@ class MxlMelodyExtractor:
         for p in parts_drum:
             self.scr.remove(p)
 
-        # The first bar of at least one track should contain the tempo
-        tempos_strt = [list(next(p[m21.stream.Measure])[m21.tempo.MetronomeMark]) for p in self.scr.parts]
+        # The **first** bar of at least one track should contain the tempo & the time signature
+        bars_1st = [next(p[m21.stream.Measure]) for p in self.scr.parts]
+        tempos_strt = [bar[m21.tempo.MetronomeMark] for bar in bars_1st]
+        # ic(tempos_strt)
         assert any(len(tempo) > 0 for tempo in tempos_strt)
+        # tempos_strt = [list(next(p[m21.stream.Measure])[m21.tempo.MetronomeMark]) for p in self.scr.parts]
+        # ic(tempos_strt)
+        # assert any(len(tempo) > 0 for tempo in tempos_strt)
         self.tempo_strt = next(filter(lambda tempos: len(tempos), tempos_strt))[0]
+
+        # ic([list(b) for b in bars_1st])
+        tss_strt = [bar[m21.meter.TimeSignature] for bar in bars_1st]
+        # ic([list(t) for t in tss_strt])
+        assert any(len(time_sigs) > 0 for time_sigs in tss_strt)
+        # exit(1)
 
         self._vertical_bars: list[MxlMelodyExtractor.VerticalBar] = []
 
@@ -164,11 +184,19 @@ class MxlMelodyExtractor:
             assert_list_same_elms(nums)
             self.n = nums[0]
 
-            tss = [b.timeSignature for b in self.bars.values()]
+            # tss = [b.timeSignature for b in self.bars.values()]
+            tss = [b[m21.meter.TimeSignature] for b in self.bars.values()]
+
+            # ic(tss)
             self._time_sig = None
-            if tss[0] is not None:
+            # if tss[0] is not None:
+            if any(tss):
+                assert all(len(t) == 1 for t in tss)  # At most 1 time signature per bar
+                tss = [next(t) for t in tss]
+                # Time signature across bars should be the same
                 dss = [(ds.numerator, ds.denominator) for ds in tss]
                 assert_list_same_elms(dss)
+
                 self._time_sig = dss[0]
 
         def __getitem__(self, key):
@@ -324,9 +352,9 @@ class MxlMelodyExtractor:
         """
         :param exp: Export format,
             `mxl`: write to MXL file
-            `symbol`: symbolic encodings
+            `symbol`: symbolic encodings, pitch ids of each time slot
             otherwise, return the `music21.stream.Score` object
-        For each bar, pick the track with highest average pitch
+        For each bar, pick the track with the highest average pitch
         """
         scr = deepcopy(self.scr)
         scr.metadata.composer = PROJ_NM
@@ -373,12 +401,45 @@ class MxlMelodyExtractor:
             # Per `music21`, duration is represented in terms of quarter notes
             slot_dur = int(2**-2 / 2**-self.prec)  # Duration of a time slot
             ic(slot_dur)
+            # ic(list(scr.notes))
+            # ic(list(part))
+
+            # bars = iter(list(part[m21.stream.Measure]))
+            # ic(next(bars))
+            # for b in bars:
+            #     ic(b)
+            # exit(1)
+
+            # Get signature for each bar
+            bars = iter(list(part[m21.stream.Measure]))
+            bar0 = next(bars)
+            ts = next(bar0[m21.meter.TimeSignature])
+            lst_bar_n_ts = [(bar0, ts)]
+            ic(list(bar0))
+            # ic(list(bars))
+            for bar in bars:
+            # while bars:
+            #     bar = next(bars)
+            #     ic(list(bar))
+                ts_: m21.stream.iterator.RecursiveIterator
+                ts_ = bar[m21.meter.TimeSignature]
+                if ts_:
+                    # ic(list(ts_))
+                    # ic(ts_, bar.number)
+                    ts = next(iter(ts_))
+                lst_bar_n_ts.append((bar, ts))
+                # ic(list(bar))
+                # ic(list(bar[m21.note.Rest or m21.tempo.MetronomeMark]))
+                # exit(1)
+                # ic(bar)
+            ic(lst_bar_n_ts)
+            exit(1)
         else:
             return scr
 
     def slot_with_max_pitch(self):
         """
-        For each time slot, pick track with highest pitch
+        For each time slot, pick track with the highest pitch
         """
         pass
 
@@ -400,5 +461,13 @@ if __name__ == '__main__':
         ic(fnm)
         me = MxlMelodyExtractor(fnm)
         me.bar_with_max_pitch(exp='mxl')
-    check_mxl()
+    # check_mxl()
+
+    def extract_encoding():
+        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        # fnm = eg_songs('Shape of You', fmt='MXL')
+        ic(fnm)
+        me = MxlMelodyExtractor(fnm)
+        me.bar_with_max_pitch(exp='symbol')
+    extract_encoding()
 

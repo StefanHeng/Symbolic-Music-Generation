@@ -13,10 +13,10 @@ from pretty_midi import PrettyMIDI
 import librosa
 from librosa import display
 import music21 as m21
-import matplotlib.pyplot as plt
 from matplotlib import rcParams
+import matplotlib.pyplot as plt
 import seaborn as sns
-from icecream import ic
+# from icecream import ic
 
 from data_path import *
 
@@ -26,7 +26,7 @@ sns.set_style('darkgrid')
 
 
 def flatten(lsts):
-    """ Flatten list of list of elements to list of elements """
+    """ Flatten list of [list of elements] to list of elements """
     return [e for lst in lsts for e in lst]
 
 
