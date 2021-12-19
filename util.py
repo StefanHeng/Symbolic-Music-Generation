@@ -29,7 +29,8 @@ nan = float('nan')
 
 def flatten(lsts):
     """ Flatten list of [list of elements] to list of elements """
-    return [e for lst in lsts for e in lst]
+    # return [e for lst in lsts for e in lst]
+    return sum(lsts, [])
 
 
 def clip(val, vmin, vmax):

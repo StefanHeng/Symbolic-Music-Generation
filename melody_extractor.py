@@ -30,6 +30,13 @@ def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord]]):
             end = note.offset + note.duration.quarterLength
 
 
+def it_bar_elm(bar, types=(m21.note.Note, m21.note.Rest)):
+    """
+    Iterates elements in a bar, for those that are instances of that of `type`, in the original order
+    """
+    return filter(lambda elm: any(isinstance(elm, t) for t in types), bar)
+
+
 class MidiMelodyExtractor:
     """
     Given MIDI file, export single-track melody representations, as matrix or MIDI file
@@ -132,13 +139,9 @@ class MxlMelodyExtractor:
         self.prec = precision
 
         self.scr: m21.stream.Score = m21.converter.parse(self.fnm)
-        ic(list(self.scr))
-        for p in self.scr.parts:
-            ic(list(p))
-            p.remove(list(p)[n:])
-            ic(list(p))
-        ic(list(self.scr))
-        exit(1)
+        if n is not None:
+            for p in self.scr.parts:
+                p.remove(list(p)[n:])
 
         ic(self.scr.seconds)  # TODO: MXL file duration in physical time
         lens = [len(p[m21.stream.Measure]) for p in self.scr.parts]
@@ -244,17 +247,35 @@ class MxlMelodyExtractor:
             obj = self if inplace else deepcopy(self)
             for pnm, bar in obj.bars.items():
                 if bar.hasVoices():
+                    # ic(bar.number, list(bar))
+                    # for v in bar.voices:
+                    #     ic(v, v.id, v.offset, v.duration)
+                    #     for e in v:
+                    #         ic(e, e.id, e.offset, e.duration)
+
                     voices = bar.voices
                     ids = [v.id for v in voices]
                     # A bar may have just 2 voices
                     assert all(i in ids for i in ['1', '2'])
                     soprano = next(filter(lambda v: v.id == '1', voices))
+                    # ic(soprano, list(soprano))
+                    # for e in soprano:
+                    #     ic(e, e.id, e.offset, e.duration)
 
                     # Get the correct index to insert notes for `soprano`
-                    min_voice = min(voices, key=lambda v: obj.bars[pnm].index(v))
-                    idx = obj.bars[pnm].index(min_voice)
+                    # min_voice = min(voices, key=lambda v: obj.bars[pnm].index(v))
+                    # idx = obj.bars[pnm].index(min_voice)
                     obj.bars[pnm].remove(list(voices))
-                    obj.bars[pnm].insert(alternate(range(idx, idx+len(soprano)), list(soprano)))
+                    # obj.bars[pnm].insert(alternate(range(idx, idx+len(soprano)), list(soprano)))
+                    # for e in soprano:
+                    obj.bars[pnm].insert(flatten([e.offset, e] for e in soprano))
+                    ic(list(bar))
+                    # for e in filter(lambda elm: isinstance(elm, m21.note.Note) or isinstance(elm, m21.note.Rest), bar):
+                    # for e in it_bar_elm(bar, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord)):
+                    for e in bar:
+                        ic(e, e.id, e.offset, e.duration)
+                    # obj.bars[pnm].show()
+                    # exit(1)
             for pnm, bar in obj.bars.items():
                 assert not bar.hasVoices()
                 notes = bar.notes
@@ -396,17 +417,13 @@ class MxlMelodyExtractor:
                 return f'<{self.__class__.__qualname__} id={self._id} set={self.set}>'
 
         def __init__(self, bar: m21.stream.Measure, time_sig: m21.meter.TimeSignature, prec: int):
-            # ic(bar.__repr__())
             self.bar = bar
             self.time_sig = time_sig
-            # ic(bar, time_sig, prec)
             n_slots_per_beat = (1/time_sig.denominator / (2**-prec))
             assert n_slots_per_beat.is_integer()
             n_slots = int(time_sig.numerator * n_slots_per_beat)
-            # ic(n_slots_per_beat, n_slots)
 
             self.enc = [MxlMelodyExtractor.BarEnc.Slot() for _ in range(n_slots)]
-            # ic(self.enc)
 
             self.tokenizer = MxlMelodyExtractor.EncModel()
 
@@ -420,6 +437,13 @@ class MxlMelodyExtractor:
                 # ic(idxs)
 
                 id_ = self.tokenizer(e)
+                if bar.number == 6:
+                    # bar.show()
+                    ic(e, vars(e), strt, dur)
+                    # ic(self.enc, len(self.enc))
+                    ic(id_, idxs)
+                    for elm in bar:
+                        ic(elm, elm.offset, elm.duration)
                 for idx in idxs:
                     self.enc[idx].id = id_
             assert all(s.set for s in self.enc)  # Each slot has an id set
