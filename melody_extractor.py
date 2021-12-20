@@ -442,17 +442,11 @@ class MxlMelodyExtractor:
             n_slots = int(self.numer * n_slots_per_beat)
 
             self.enc = [MxlMelodyExtractor.BarEnc.Slot() for _ in range(n_slots)]
-
             self.tokenizer = MxlMelodyExtractor.EncModel()
 
-            # if bar.number == 73:
-            #     ic(list(bar))
-            #     for e in bar:
-            #         ic(e, e.offset, e.duration.fullName)
-            #     ic(group_triplets(bar))
-            #     exit(1)
-
-            ic(bar.number)
+            # ic(bar.number)
+            # if bar.number == 87:
+            #     bar.show()
             for e in group_triplets(bar):
                 if isinstance(e, list):  # Triplet case
                     lst = e
@@ -461,19 +455,20 @@ class MxlMelodyExtractor:
                     dur = dur.numerator
                     # The smallest duration of triplet that can be encoded is 4 time slots
                     num_ea = (dur / 4 * n_slots_per_beat)
-                    ic(num_ea)
                     assert num_ea.is_integer()
-                    strt = lst[0].offset
+                    strt_idx = lst[0].offset * n_slots_per_beat
+                    assert strt_idx.is_integer()
+                    e1 = lst[0]
+                    if bar.number == 87:
+                        ic(e1, e1, e1.offset, e1.duration)
+
                     for offset, elm in zip([0, 1, 2, 3], lst + ['[TRIP]']):  # Special encoding for triplets at the end
-                        ic(strt, strt + offset * num_ea)
-                        idxs = (strt + np.arange(num_ea) + offset * num_ea).astype(int)
-                        # idx = np.linspace(strt + offset*num_ea, strt + (offset+1)*num)
-                        ic(idxs)
+                        idxs = (strt_idx + np.arange(num_ea) + offset * num_ea).astype(int)
                         id_ = self.tokenizer(elm)
+                        if bar.number == 87:
+                            ic(e, idxs, id_)
                         for idx in idxs:
                             self.enc[idx].id = id_
-
-                    # exit(1)
                 else:
                     strt, dur = e.offset, e.duration.quarterLength
                     num = n_slots_per_beat*dur + 1
@@ -485,6 +480,8 @@ class MxlMelodyExtractor:
                     id_ = self.tokenizer(e)
                     for idx in idxs:
                         self.enc[idx].id = id_
+                if bar.number == 87:
+                    ic(self.enc)
             assert all(s.set for s in self.enc)  # Each slot has an id set
 
         def __repr__(self):
@@ -580,7 +577,7 @@ if __name__ == '__main__':
         fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
         ic(fnm)
-        me = MxlMelodyExtractor(fnm, n=80)
+        me = MxlMelodyExtractor(fnm, n=None)
         me.bar_with_max_pitch(exp='symbol')
     extract_encoding()
 
