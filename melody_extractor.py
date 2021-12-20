@@ -4,6 +4,7 @@ from copy import deepcopy
 from warnings import warn
 from typing import Union
 
+import lst as lst
 import numpy as np
 from mido import MidiFile
 import pretty_midi
@@ -41,6 +42,7 @@ def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSign
     """
     :return: List of tuple of corresponding time signature for each bar
     """
+    bars = iter(bars)
     bar0 = next(bars)
     ts = next(bar0[m21.meter.TimeSignature])
     lst_bar_n_ts = [(bar0, ts)]
@@ -396,17 +398,30 @@ class MxlMelodyExtractor:
 
         def __call__(self, obj):
             if isinstance(obj, m21.note.Note):
-                # p = obj.pitch
-                # ic(p, vars(p))
-                # ic(p.midi)
                 return self.n_special + obj.pitch.midi
             elif isinstance(obj, m21.note.Rest):
-                # ic(obj, vars(obj))
                 return self.spec_vocab['[REST]']
             elif obj in self.spec_vocab:
                 return self.spec_vocab[obj]
             else:
                 raise ValueError(f'Unexpected object type: {obj}')
+
+        def decode(self, ids, precision=5):
+            """
+            :param ids: A list of token ids
+            :param precision: as in `MxlMelodyExtractor`
+            :return: A human-readable representation of `ids`
+            """
+            ids = np.asarray(ids)
+            enc_sep = self.spec_vocab['[SEP]']
+            idxs = np.where(ids == enc_sep)[0]
+            # idxs_ = np.argwhere(ids == enc_sep)
+            # ic(idxs, idxs_)
+            lst_ids = np.split(ids, idxs)
+            # All lists except the 1st one starts with the bar SEP encoding
+            lst_ids = [(l if idx == 0 else l[1:]) for idx, l in enumerate(lst_ids)]
+            lst_idts = [compress(list(l)) for l in lst_ids]
+            ic(lst_ids, lst_idts)
 
     class BarEnc:
         """
@@ -444,9 +459,6 @@ class MxlMelodyExtractor:
             self.enc = [MxlMelodyExtractor.BarEnc.Slot() for _ in range(n_slots)]
             self.tokenizer = MxlMelodyExtractor.EncModel()
 
-            # ic(bar.number)
-            # if bar.number == 87:
-            #     bar.show()
             for e in group_triplets(bar):
                 if isinstance(e, list):  # Triplet case
                     lst = e
@@ -458,15 +470,9 @@ class MxlMelodyExtractor:
                     assert num_ea.is_integer()
                     strt_idx = lst[0].offset * n_slots_per_beat
                     assert strt_idx.is_integer()
-                    e1 = lst[0]
-                    if bar.number == 87:
-                        ic(e1, e1, e1.offset, e1.duration)
-
                     for offset, elm in zip([0, 1, 2, 3], lst + ['[TRIP]']):  # Special encoding for triplets at the end
                         idxs = (strt_idx + np.arange(num_ea) + offset * num_ea).astype(int)
                         id_ = self.tokenizer(elm)
-                        if bar.number == 87:
-                            ic(e, idxs, id_)
                         for idx in idxs:
                             self.enc[idx].id = id_
                 else:
@@ -480,9 +486,11 @@ class MxlMelodyExtractor:
                     id_ = self.tokenizer(e)
                     for idx in idxs:
                         self.enc[idx].id = id_
-                if bar.number == 87:
-                    ic(self.enc)
             assert all(s.set for s in self.enc)  # Each slot has an id set
+
+        @property
+        def ids(self):
+            return [e.id for e in self.enc]
 
         def __repr__(self):
             return f'<{self.__class__.__qualname__} enc={[e.id for e in self.enc]} ' \
@@ -539,10 +547,15 @@ class MxlMelodyExtractor:
             scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
         elif exp == 'symbol':
             # Get signature for each bar
-            bars = iter(list(part[m21.stream.Measure]))
-            lst_bar_n_ts = bars2lst_bar_n_ts(bars)
+            # bars = iter(list())
+            lst_bar_n_ts = bars2lst_bar_n_ts(part[m21.stream.Measure])
             encs = [MxlMelodyExtractor.BarEnc(bar, ts, self.prec) for (bar, ts) in lst_bar_n_ts]
+            tokenizer = MxlMelodyExtractor.EncModel()
+            enc_bar = tokenizer('[SEP]')
             ic(encs)
+            enc = reduce(lambda a, b: a+[enc_bar]+b, [e.ids for e in encs])  # Join the encodings with bar separation
+            ic(enc)
+            ic(tokenizer.decode(enc))
             exit(1)
         else:
             return scr
@@ -577,7 +590,7 @@ if __name__ == '__main__':
         fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
         ic(fnm)
-        me = MxlMelodyExtractor(fnm, n=None)
+        me = MxlMelodyExtractor(fnm, n=10)
         me.bar_with_max_pitch(exp='symbol')
     extract_encoding()
 

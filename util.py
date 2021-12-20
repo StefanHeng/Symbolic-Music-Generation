@@ -3,6 +3,8 @@ import pickle
 import glob
 from math import floor, ceil
 from functools import reduce
+from itertools import takewhile, dropwhile
+from typing import TypeVar
 
 import numpy as np
 import pandas as pd
@@ -93,11 +95,20 @@ def keys(dic, prefix=''):
             yield _full(k)
 
 
-def alternate(lst1, lst2):
-    lst = [None] * (len(lst1)+len(lst2))
-    lst[::2] = lst1
-    lst[1::2] = lst2
-    return lst
+T = TypeVar('T')
+
+
+def compress(lst: list[T]) -> list[tuple[T, int]]:
+    """
+    :return: A compressed version of `lst`, as 2-tuple containing the occurrence counts
+    """
+    if not lst:
+        return []
+    # lhs = [(s[0], len(list(takewhile(lambda c: c == s[0], s))))]
+    # ic(list(dropwhile(lambda c: c == s[0], s)))
+    # rhs = compress(sum(list(dropwhile(lambda c: c == s[0], s)), []))
+    return ([(lst[0], len(list(takewhile(lambda elm: elm == lst[0], lst))))]
+            + compress(list(dropwhile(lambda elm: elm == lst[0], lst))))
 
 
 def config(attr):
@@ -388,7 +399,7 @@ if __name__ == '__main__':
         # ic(mes, nums)
         # for mes in ms.measures(0, None):
         #     ic(mes)
-    test_piano_roll()
+    # test_piano_roll()
 
     def check_show_title():
         fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
@@ -404,5 +415,13 @@ if __name__ == '__main__':
         ic(part_ch2, part_ch2.partName, part_ch2.metadata)
         # ic(vars(part_ch2), vars_(part_ch2))
         ic(part_ch2.activeSite.metadata.title)
-    check_show_title()
+    # check_show_title()
 
+    # s = 'pythooonnnpool'
+    # ic(compress(list(s)))
+    arr = [
+        202, 202, 202, 202, 203, 203, 203, 203, 202, 202, 202, 202, 203,
+        203, 203, 203, 202, 202, 202, 202, 203, 203, 203, 203
+    ]
+    ic(compress(arr))
+    # ic(compress(np.array(arr)))
