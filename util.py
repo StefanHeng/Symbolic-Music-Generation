@@ -417,11 +417,8 @@ if __name__ == '__main__':
         ic(part_ch2.activeSite.metadata.title)
     # check_show_title()
 
-    # s = 'pythooonnnpool'
-    # ic(compress(list(s)))
     arr = [
         202, 202, 202, 202, 203, 203, 203, 203, 202, 202, 202, 202, 203,
         203, 203, 203, 202, 202, 202, 202, 203, 203, 203, 203
     ]
     ic(compress(arr))
-    # ic(compress(np.array(arr)))
