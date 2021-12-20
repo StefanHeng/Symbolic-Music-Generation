@@ -37,6 +37,22 @@ def it_bar_elm(bar, types=(m21.note.Note, m21.note.Rest)):
     return filter(lambda elm: any(isinstance(elm, t) for t in types), bar)
 
 
+def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSignature]]:
+    """
+    :return: List of tuple of corresponding time signature for each bar
+    """
+    bar0 = next(bars)
+    ts = next(bar0[m21.meter.TimeSignature])
+    lst_bar_n_ts = [(bar0, ts)]
+
+    for bar in bars:
+        ts_ = bar[m21.meter.TimeSignature]
+        if ts_:
+            ts = next(iter(ts_))
+        lst_bar_n_ts.append((bar, ts))
+    return lst_bar_n_ts
+
+
 class MidiMelodyExtractor:
     """
     Given MIDI file, export single-track melody representations, as matrix or MIDI file
@@ -129,7 +145,7 @@ class MxlMelodyExtractor:
         Triplets are handled with a special id at the last quarter
     """
 
-    def __init__(self, fl_nm, precision=5, n=None):
+    def __init__(self, fl_nm, precision=5, strt=None, end=None):
         """
         :param fl_nm: Music MXL file path
         :param precision: Time slot duration as negative exponent of 2
@@ -139,9 +155,16 @@ class MxlMelodyExtractor:
         self.prec = precision
 
         self.scr: m21.stream.Score = m21.converter.parse(self.fnm)
-        if n is not None:
+        if strt is not None:
             for p in self.scr.parts:
-                p.remove(list(p)[n:])
+                p.remove(list(p)[:strt])
+        if end is not None:
+            end -= 0 if strt is None else strt
+            for p in self.scr.parts:
+                p.remove(list(p)[end:])
+        # for bar in self.scr.parts[1]:
+        #     ic(bar.number)
+        # exit(1)
 
         ic(self.scr.seconds)  # TODO: MXL file duration in physical time
         lens = [len(p[m21.stream.Measure]) for p in self.scr.parts]
@@ -247,35 +270,15 @@ class MxlMelodyExtractor:
             obj = self if inplace else deepcopy(self)
             for pnm, bar in obj.bars.items():
                 if bar.hasVoices():
-                    # ic(bar.number, list(bar))
-                    # for v in bar.voices:
-                    #     ic(v, v.id, v.offset, v.duration)
-                    #     for e in v:
-                    #         ic(e, e.id, e.offset, e.duration)
-
                     voices = bar.voices
                     ids = [v.id for v in voices]
                     # A bar may have just 2 voices
                     assert all(i in ids for i in ['1', '2'])
                     soprano = next(filter(lambda v: v.id == '1', voices))
-                    # ic(soprano, list(soprano))
-                    # for e in soprano:
-                    #     ic(e, e.id, e.offset, e.duration)
 
-                    # Get the correct index to insert notes for `soprano`
-                    # min_voice = min(voices, key=lambda v: obj.bars[pnm].index(v))
-                    # idx = obj.bars[pnm].index(min_voice)
+                    # Insert notes in `soprano` by offset
                     obj.bars[pnm].remove(list(voices))
-                    # obj.bars[pnm].insert(alternate(range(idx, idx+len(soprano)), list(soprano)))
-                    # for e in soprano:
                     obj.bars[pnm].insert(flatten([e.offset, e] for e in soprano))
-                    ic(list(bar))
-                    # for e in filter(lambda elm: isinstance(elm, m21.note.Note) or isinstance(elm, m21.note.Rest), bar):
-                    # for e in it_bar_elm(bar, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord)):
-                    for e in bar:
-                        ic(e, e.id, e.offset, e.duration)
-                    # obj.bars[pnm].show()
-                    # exit(1)
             for pnm, bar in obj.bars.items():
                 assert not bar.hasVoices()
                 notes = bar.notes
@@ -395,7 +398,7 @@ class MxlMelodyExtractor:
         """
         Handles pitch id encoding of each music21.stream.Measure
 
-        Enforce that each time slot should be assigned one and only one id
+        Enforce that each time slot should be assigned an id, only once
         """
         class Slot:
             def __init__(self):
@@ -408,7 +411,6 @@ class MxlMelodyExtractor:
 
             @id.setter
             def id(self, val):
-                # ic(val, self.set)
                 assert not self.set  # Should be defined only once
                 self.set = True
                 self._id = val
@@ -419,36 +421,33 @@ class MxlMelodyExtractor:
         def __init__(self, bar: m21.stream.Measure, time_sig: m21.meter.TimeSignature, prec: int):
             self.bar = bar
             self.time_sig = time_sig
-            n_slots_per_beat = (1/time_sig.denominator / (2**-prec))
+            self.denom = time_sig.denominator
+            self.numer = time_sig.numerator
+            n_slots_per_beat = (1/self.denom / (2**-prec))
             assert n_slots_per_beat.is_integer()
-            n_slots = int(time_sig.numerator * n_slots_per_beat)
+            n_slots = int(self.numer * n_slots_per_beat)
 
             self.enc = [MxlMelodyExtractor.BarEnc.Slot() for _ in range(n_slots)]
 
             self.tokenizer = MxlMelodyExtractor.EncModel()
 
-            for e in filter(lambda elm: isinstance(elm, m21.note.Note) or isinstance(elm, m21.note.Rest), bar):
+            for e in it_bar_elm(bar):
                 strt, dur = e.offset, e.duration.quarterLength
                 num = n_slots_per_beat*dur + 1
+                if bar.number == 73:
+                    ic(list(bar))
                 assert num.is_integer()
                 idxs_ = (np.linspace(strt, strt+dur, num=int(num)) * n_slots_per_beat)[:-1]
                 idxs = idxs_.astype(int)
                 assert np.all(idxs_-idxs == 0)  # Should be integers
-                # ic(idxs)
 
                 id_ = self.tokenizer(e)
-                if bar.number == 6:
-                    # bar.show()
-                    ic(e, vars(e), strt, dur)
-                    # ic(self.enc, len(self.enc))
-                    ic(id_, idxs)
-                    for elm in bar:
-                        ic(elm, elm.offset, elm.duration)
                 for idx in idxs:
                     self.enc[idx].id = id_
             assert all(s.set for s in self.enc)  # Each slot has an id set
-            # ic(self.enc)
-            # exit(1)
+
+        def __repr__(self):
+            return f'<{self.__class__.__qualname__} enc={[e.id for e in self.enc]} time_sig={self.numer}/{self.denom}>'
 
     def bar_with_max_pitch(self, exp=None):
         """
@@ -500,28 +499,11 @@ class MxlMelodyExtractor:
             dir_nm = f'{dir_nm}_out'
             scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
         elif exp == 'symbol':
-            # Per `music21`, duration is represented in terms of quarter notes
-            # slot_dur = int(2**-2 / 2**-self.prec)  # Duration of a time slot
-            # ic(slot_dur)
-
             # Get signature for each bar
             bars = iter(list(part[m21.stream.Measure]))
-            bar0 = next(bars)
-            ts = next(bar0[m21.meter.TimeSignature])
-            lst_bar_n_ts = [(bar0, ts)]
-
-            for bar in bars:
-                ts_ = bar[m21.meter.TimeSignature]
-                if ts_:
-                    ts = next(iter(ts_))
-                lst_bar_n_ts.append((bar, ts))
-
-            encs = []
-            for i, (bar, ts) in enumerate(lst_bar_n_ts):
-                ic(bar.number)
-                MxlMelodyExtractor.BarEnc(bar, ts, self.prec)
-                # if i == 2:  # TODO: debug
-                #     exit(1)
+            lst_bar_n_ts = bars2lst_bar_n_ts(bars)
+            encs = [MxlMelodyExtractor.BarEnc(bar, ts, self.prec) for (bar, ts) in lst_bar_n_ts]
+            ic(encs)
             exit(1)
         else:
             return scr
@@ -556,7 +538,7 @@ if __name__ == '__main__':
         fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
         ic(fnm)
-        me = MxlMelodyExtractor(fnm, n=20)
+        me = MxlMelodyExtractor(fnm, strt=70, end=80)
         me.bar_with_max_pitch(exp='symbol')
     extract_encoding()
 
