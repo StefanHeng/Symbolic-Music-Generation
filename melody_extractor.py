@@ -34,7 +34,7 @@ def it_bar_elm(bar, types=(m21.note.Note, m21.note.Rest)):
     """
     Iterates elements in a bar, for those that are instances of that of `type`, in the original order
     """
-    return filter(lambda elm: any(isinstance(elm, t) for t in types), bar)
+    return iter(filter(lambda elm: any(isinstance(elm, t) for t in types), bar))
 
 
 def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSignature]]:
@@ -51,6 +51,25 @@ def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSign
             ts = next(iter(ts_))
         lst_bar_n_ts.append((bar, ts))
     return lst_bar_n_ts
+
+
+def group_triplets(bar) -> list[Union[list[m21.note.Note], Union[m21.note.Note, m21.note.Rest]]]:
+    """
+    Identify triplets from a bar from normal notes & group them
+    """
+    lst = []
+    it = it_bar_elm(bar)
+    elm = next(it, None)
+    while elm:
+        if 'Triplet' in elm.fullName:
+            elm2, elm3 = next(it, None), next(it, None)
+            assert elm2 is not None and elm3 is not None \
+                   and 'Triplet' in elm2.fullName and 'Triplet' in elm3.fullName
+            lst.append([elm, elm2, elm3])
+        else:
+            lst.append(elm)
+        elm = next(it, None)
+    return lst
 
 
 class MidiMelodyExtractor:
@@ -145,7 +164,7 @@ class MxlMelodyExtractor:
         Triplets are handled with a special id at the last quarter
     """
 
-    def __init__(self, fl_nm, precision=5, strt=None, end=None):
+    def __init__(self, fl_nm, precision=5, n=None):
         """
         :param fl_nm: Music MXL file path
         :param precision: Time slot duration as negative exponent of 2
@@ -155,16 +174,9 @@ class MxlMelodyExtractor:
         self.prec = precision
 
         self.scr: m21.stream.Score = m21.converter.parse(self.fnm)
-        if strt is not None:
+        if n is not None:
             for p in self.scr.parts:
-                p.remove(list(p)[:strt])
-        if end is not None:
-            end -= 0 if strt is None else strt
-            for p in self.scr.parts:
-                p.remove(list(p)[end:])
-        # for bar in self.scr.parts[1]:
-        #     ic(bar.number)
-        # exit(1)
+                p.remove(list(p)[n:])
 
         ic(self.scr.seconds)  # TODO: MXL file duration in physical time
         lens = [len(p[m21.stream.Measure]) for p in self.scr.parts]
@@ -391,6 +403,8 @@ class MxlMelodyExtractor:
             elif isinstance(obj, m21.note.Rest):
                 # ic(obj, vars(obj))
                 return self.spec_vocab['[REST]']
+            elif obj in self.spec_vocab:
+                return self.spec_vocab[obj]
             else:
                 raise ValueError(f'Unexpected object type: {obj}')
 
@@ -431,23 +445,51 @@ class MxlMelodyExtractor:
 
             self.tokenizer = MxlMelodyExtractor.EncModel()
 
-            for e in it_bar_elm(bar):
-                strt, dur = e.offset, e.duration.quarterLength
-                num = n_slots_per_beat*dur + 1
-                if bar.number == 73:
-                    ic(list(bar))
-                assert num.is_integer()
-                idxs_ = (np.linspace(strt, strt+dur, num=int(num)) * n_slots_per_beat)[:-1]
-                idxs = idxs_.astype(int)
-                assert np.all(idxs_-idxs == 0)  # Should be integers
+            # if bar.number == 73:
+            #     ic(list(bar))
+            #     for e in bar:
+            #         ic(e, e.offset, e.duration.fullName)
+            #     ic(group_triplets(bar))
+            #     exit(1)
 
-                id_ = self.tokenizer(e)
-                for idx in idxs:
-                    self.enc[idx].id = id_
+            ic(bar.number)
+            for e in group_triplets(bar):
+                if isinstance(e, list):  # Triplet case
+                    lst = e
+                    dur = sum(e.duration.quarterLength for e in lst)  # Over `Fraction`s
+                    assert dur.denominator == 1
+                    dur = dur.numerator
+                    # The smallest duration of triplet that can be encoded is 4 time slots
+                    num_ea = (dur / 4 * n_slots_per_beat)
+                    ic(num_ea)
+                    assert num_ea.is_integer()
+                    strt = lst[0].offset
+                    for offset, elm in zip([0, 1, 2, 3], lst + ['[TRIP]']):  # Special encoding for triplets at the end
+                        ic(strt, strt + offset * num_ea)
+                        idxs = (strt + np.arange(num_ea) + offset * num_ea).astype(int)
+                        # idx = np.linspace(strt + offset*num_ea, strt + (offset+1)*num)
+                        ic(idxs)
+                        id_ = self.tokenizer(elm)
+                        for idx in idxs:
+                            self.enc[idx].id = id_
+
+                    # exit(1)
+                else:
+                    strt, dur = e.offset, e.duration.quarterLength
+                    num = n_slots_per_beat*dur + 1
+                    assert num.is_integer()
+                    idxs_ = (np.linspace(strt, strt+dur, num=int(num)) * n_slots_per_beat)[:-1]
+                    idxs = idxs_.astype(int)
+                    assert np.all(idxs_-idxs == 0)  # Should be integers
+
+                    id_ = self.tokenizer(e)
+                    for idx in idxs:
+                        self.enc[idx].id = id_
             assert all(s.set for s in self.enc)  # Each slot has an id set
 
         def __repr__(self):
-            return f'<{self.__class__.__qualname__} enc={[e.id for e in self.enc]} time_sig={self.numer}/{self.denom}>'
+            return f'<{self.__class__.__qualname__} enc={[e.id for e in self.enc]} ' \
+                   f'num={self.bar.number} time_sig={self.numer}/{self.denom}>'
 
     def bar_with_max_pitch(self, exp=None):
         """
@@ -538,7 +580,7 @@ if __name__ == '__main__':
         fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
         ic(fnm)
-        me = MxlMelodyExtractor(fnm, strt=70, end=80)
+        me = MxlMelodyExtractor(fnm, n=80)
         me.bar_with_max_pitch(exp='symbol')
     extract_encoding()
 
