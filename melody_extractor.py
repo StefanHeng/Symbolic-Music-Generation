@@ -35,7 +35,7 @@ def it_bar_elm(bar, types=(m21.note.Note, m21.note.Rest)):
     """
     Iterates elements in a bar, for those that are instances of that of `type`, in the original order
     """
-    return iter(filter(lambda elm: any(isinstance(elm, t) for t in types), bar))
+    return iter(filter(lambda elm: isinstance(elm, types), bar))
 
 
 def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSignature]]:
@@ -72,6 +72,18 @@ def group_triplets(bar) -> list[Union[list[m21.note.Note], Union[m21.note.Note, 
             lst.append(elm)
         elm = next(it, None)
     return lst
+
+
+def time_sig2n_slots(time_sig, precision):
+    """
+    :return: 2 tuple of (#time slots per beat, #time slots in total)
+    """
+    denom = time_sig.denominator
+    numer = time_sig.numerator
+    n_slots_per_beat = (1 / denom / (2 ** -precision))
+    assert n_slots_per_beat.is_integer()
+    n_slots = int(numer * n_slots_per_beat)
+    return n_slots_per_beat, n_slots
 
 
 class MidiMelodyExtractor:
@@ -380,7 +392,6 @@ class MxlMelodyExtractor:
         tempos, weights = zip(*flatten(_mean_tempo(bars) for bars in bars_with_tempo.values()))
         return np.average(np.array(tempos), weights=np.array(weights))
 
-
     class Tokenizer:
         """
         Handles pitch id encoding of each music21.stream.Measure
@@ -405,6 +416,44 @@ class MxlMelodyExtractor:
             def __repr__(self):
                 return f'<{self.__class__.__qualname__} id={self._id} set={self.set}>'
 
+        class _Tokenizer:
+            """
+            Encodes each music21 element in a bar to the pitch id
+
+            Expects single `Note` or `Rest`
+            """
+            def __init__(self):
+                # Hard-coded special values
+                self.n_special = 2**7  # pitch midi follows
+                half = self.n_special/2
+                self.spec_vocab = {
+                    '[SEP]': 0,  # Bar separation
+                    '[TRIP]': 1,  # Last quarter encoding for triplets
+                    '[REST]': int(half)
+                }
+                self.spec_vocab_dec = {v: k for k, v in self.spec_vocab.items()}
+
+            def __call__(self, obj):
+                if isinstance(obj, m21.note.Note):
+                    return self.n_special + obj.pitch.midi
+                elif isinstance(obj, m21.note.Rest):
+                    return self.spec_vocab['[REST]']
+                elif obj in self.spec_vocab:
+                    return self.spec_vocab[obj]
+                else:
+                    raise ValueError(f'Unexpected object type: {obj}')
+
+            def decode(self, i) -> int:
+                return self.spec_vocab_dec[i] if i in self.spec_vocab_dec else i - self.n_special
+
+            class Token:
+                def __init__(self, tok: Union[int, str], duration):
+                    """
+                    :param tok: A pitch or a special token
+                    :param duration: Duration in quarterLength
+                    """
+                    ic(tok, duration)
+
         def __init__(self, precision: int):
             self.prec = precision
             self.tokenizer = MxlMelodyExtractor.Tokenizer._Tokenizer()
@@ -426,16 +475,14 @@ class MxlMelodyExtractor:
             """
             if time_sigs is None:
                 lst_bar_n_ts = bars
+                self.time_sigs = [ts for _, ts in lst_bar_n_ts]
             else:
+                assert len(bars) == len(time_sigs)
                 lst_bar_n_ts = list(zip(bars, time_sigs))
+                self.time_sigs = time_sigs
 
             def _call(bar, time_sig):
-                denom = time_sig.denominator
-                numer = time_sig.numerator
-                n_slots_per_beat = (1 / denom / (2 ** -self.prec))
-                assert n_slots_per_beat.is_integer()
-                n_slots = int(numer * n_slots_per_beat)
-
+                n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
                 enc = [MxlMelodyExtractor.Tokenizer.Slot() for _ in range(n_slots)]
                 for e in group_triplets(bar):
                     if isinstance(e, list):  # Triplet case
@@ -469,80 +516,46 @@ class MxlMelodyExtractor:
                 return [s.id for s in enc]
 
             ids = [_call(*args) for args in lst_bar_n_ts]
-            ic(len(ids))
             id_bar = self.tokenizer('[SEP]')
-            ids = reduce(lambda a, b: a+[id_bar]+b, ids)  # Join the encodings with bar separation
-            ic(len(ids))
-            ic(self.decode(ids))
+            return reduce(lambda a, b: a+[id_bar]+b, ids)  # Join the encodings with bar separation
+
 
         # def __repr__(self):
         #     return f'<{self.__class__.__qualname__} enc={[e.id for e in self.enc]} ' \
         #            f'num={self.bar.number} time_sig={self.numer}/{self.denom}>'
 
-        # @property
-        # def ids(self):
-        #     return [e.id for e in self.enc]
-
-        class _Tokenizer:
-            """
-            Encodes each music21 element in a bar to the pitch id
-
-            Expects single `Note` or `Rest`
-            """
-            def __init__(self):
-                # Hard-coded special values
-                self.n_special = 2**7  # pitch midi follows
-                half = self.n_special/2
-                self.spec_vocab = {
-                    '[SEP]': 0,  # Bar separation
-                    '[TRIP]': 1,  # Last quarter encoding for triplets
-                    '[REST]': int(half)
-                }
-                self.spec_vocab_dec = {v: k for v, k in self.spec_vocab.items()}
-
-            def __call__(self, obj):
-                if isinstance(obj, m21.note.Note):
-                    return self.n_special + obj.pitch.midi
-                elif isinstance(obj, m21.note.Rest):
-                    return self.spec_vocab['[REST]']
-                elif obj in self.spec_vocab:
-                    return self.spec_vocab[obj]
-                else:
-                    raise ValueError(f'Unexpected object type: {obj}')
-
-            def decode(self, i):
-                return self.spec_vocab_dec[i] if i in self.spec_vocab_dec else i - self.n_special
-
-            class Token:
-                def __init__(self, tok: Union[int, str], duration):
-                    """
-                    :param tok: A pitch or a special token
-                    :param duration: Duration in quarterLength
-                    """
-                    ic(tok, duration)
-
-        def decode(self, ids, precision=5):
+        def decode(self, ids: list[list[int]], time_sigs: list[m21.meter.TimeSignature] = None):
             """
             :param ids: A list of token ids
-            :param precision: as in `MxlMelodyExtractor`
+            :param time_sigs: Time Signatures of each bar
+                If not given, the one from last encoding call is used
             :return: A human-readable representation of `ids`
             """
+            if time_sigs is None:
+                time_sigs = self.time_sigs
 
             ids = np.asarray(ids)
             enc_sep = self.tokenizer('[SEP]')
             idxs = np.where(ids == enc_sep)[0]
             lst_ids = np.split(ids, idxs)
+            assert len(lst_ids) == len(time_sigs)
             # All lists except the 1st one starts with the bar SEP encoding
             lst_ids = [(l if idx == 0 else l[1:]) for idx, l in enumerate(lst_ids)]
-            lst_idts = [compress(list(l)) for l in lst_ids]
-            ic(lst_idts)
-            for lst in lst_idts:
-                for (id_, count) in lst:
+            lst_ids_n_ct = [compress(list(l)) for l in lst_ids]
+
+            # lst_toks = [ lst_id_n_ct]
+            # ic(lst_idts)
+            for ids_n_cnt, time_sig in zip(lst_ids_n_ct, time_sigs):
+                ic(time_sig)
+                n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
+                for (id_, count) in ids_n_cnt:
                     tok = self.tokenizer.decode(id_)
-                    assert isinstance(tok, int) or isinstance(tok, str)
-                    dur = count / self.n_slots_per_beat
+                    ic(id_, tok, type(tok))
+                    assert isinstance(tok, (int, str, np.integer))
+                    dur = count / n_slots_per_beat
                     tok = self.tokenizer.Token(tok, dur)
                     ic(tok)
+                    exit(1)
                     # if isinstance(tok, int):  # Pitch
 
     def bar_with_max_pitch(self, exp=None):
@@ -600,7 +613,10 @@ class MxlMelodyExtractor:
             lst_bar_n_ts = bars2lst_bar_n_ts(part[m21.stream.Measure])
             # encs = [MxlMelodyExtractor.Tokenizer(bar, ts, self.prec) for (bar, ts) in lst_bar_n_ts]
             tokenizer = MxlMelodyExtractor.Tokenizer(self.prec)
-            ic(tokenizer(*zip(*lst_bar_n_ts)))
+            ids = tokenizer(lst_bar_n_ts)
+            ic(len(ids))
+
+            ic(tokenizer.decode(ids))
             exit(1)
             enc_bar = tokenizer('[SEP]')
             ic(encs)

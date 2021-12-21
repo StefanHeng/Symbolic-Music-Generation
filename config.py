@@ -14,6 +14,27 @@ fnm = f'../datasets/{d_allie["dir_nm"]}/{d_allie["nm_data"]}'
 d_allie['n_entry'] = len(read_pickle(fnm)[0])
 
 
+def get_tokenizer_attr():
+    # should be a one-to-one map
+    n_special = 2 ** 7
+    half = n_special / 2
+    vocab_enc = {
+        '[SEP]': 0,  # Bar separation
+        '[TRIP]': 1,  # Last quarter encoding for triplets
+        '[REST]': int(half)
+    }
+    # pitch midi follows after `n_special`
+    vocab_enc.update({pitch: pitch+n_special for pitch in range(2**7)})  # Per MIDI spec
+    # ic(vocab_enc)
+    vocab_dec = {v: k for k, v in vocab_enc.items()}
+    # ic(vocab_dec)
+    return dict(
+        n_special_token=n_special,
+        vocab_enc=vocab_enc,
+        vocab_dec=vocab_dec
+    )
+
+
 config = {
     DIR_DSET: dict(
         Allie_Chords=d_allie,
@@ -35,11 +56,16 @@ config = {
             dir_nm='MXL-eg',
             fmt_song='*.mxl'
         )
+    ),
+    'Melody-Extraction': dict(
+        tokenizer=get_tokenizer_attr()
     )
 }
 
 
-for k in keys(config):    # Accommodate other OS
+for k in keys(config[DIR_DSET]):    # Accommodate other OS
+    # ic(k)
+    k = f'{DIR_DSET}.{k}'
     val = get(config, k)
     if k[k.rfind('.')+1:] == 'dir_nm':
         set_(config, k, os.path.join(*val.split('/')))
