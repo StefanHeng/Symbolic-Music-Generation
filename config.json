@@ -28,7 +28,12 @@
     "Melody-Extraction": {
         "tokenizer": {
             "n_special_token": 128,
-            "vocab_enc": {
+            "vocab_special": [
+                "[SEP]",
+                "[TRIP]",
+                "[REST]"
+            ],
+            "encoder": {
                 "[SEP]": 0,
                 "[TRIP]": 1,
                 "[REST]": 64,
@@ -161,7 +166,7 @@
                 "126": 254,
                 "127": 255
             },
-            "vocab_dec": {
+            "decoder": {
                 "0": "[SEP]",
                 "1": "[TRIP]",
                 "64": "[REST]",

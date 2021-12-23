@@ -14,24 +14,26 @@ fnm = f'../datasets/{d_allie["dir_nm"]}/{d_allie["nm_data"]}'
 d_allie['n_entry'] = len(read_pickle(fnm)[0])
 
 
-def get_tokenizer_attr():
+def get_tokenizer():
     # should be a one-to-one map
     n_special = 2 ** 7
     half = n_special / 2
-    vocab_enc = {
+    encoder = {
         '[SEP]': 0,  # Bar separation
         '[TRIP]': 1,  # Last quarter encoding for triplets
         '[REST]': int(half)
     }
+    vocab_special = list(encoder.keys())
     # pitch midi follows after `n_special`
-    vocab_enc.update({pitch: pitch+n_special for pitch in range(2**7)})  # Per MIDI spec
+    encoder.update({pitch: pitch+n_special for pitch in range(2**7)})  # Per MIDI spec
     # ic(vocab_enc)
-    vocab_dec = {v: k for k, v in vocab_enc.items()}
+    decoder = {v: k for k, v in encoder.items()}
     # ic(vocab_dec)
     return dict(
         n_special_token=n_special,
-        vocab_enc=vocab_enc,
-        vocab_dec=vocab_dec
+        vocab_special=vocab_special,
+        encoder=encoder,
+        decoder=decoder
     )
 
 
@@ -58,7 +60,7 @@ config = {
         )
     ),
     'Melody-Extraction': dict(
-        tokenizer=get_tokenizer_attr()
+        tokenizer=get_tokenizer()
     )
 }
 

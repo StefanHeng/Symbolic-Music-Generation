@@ -120,6 +120,16 @@ def config(attr):
     if not hasattr(config, 'config'):
         with open(f'{PATH_BASE}/{DIR_PROJ}/config.json') as f:
             config.config = json.load(f)
+            # str -> int
+            for k, v in config.config['Melody-Extraction']['tokenizer'].items():
+                # ic(k, v)
+                if isinstance(v, dict):
+                    config.config['Melody-Extraction']['tokenizer'][k] = {
+                        (int(k_) if k_.isnumeric() else k_): v_
+                        for k_, v_ in v.items()
+                    }
+                    # ic(config.config)
+                    # exit(1)
     return get(config.config, attr)
 
 
@@ -326,6 +336,8 @@ if __name__ == '__main__':
     from icecream import ic
     from music21 import graph
 
+    ic(config('Melody-Extraction.tokenizer'))
+
     # ic(tempo2bpm(DEF_TPO))
 
     def check_note2hz():
@@ -417,8 +429,10 @@ if __name__ == '__main__':
         ic(part_ch2.activeSite.metadata.title)
     # check_show_title()
 
-    arr = [
-        202, 202, 202, 202, 203, 203, 203, 203, 202, 202, 202, 202, 203,
-        203, 203, 203, 202, 202, 202, 202, 203, 203, 203, 203
-    ]
-    ic(compress(arr))
+    def check_compress():
+        arr = [
+            202, 202, 202, 202, 203, 203, 203, 203, 202, 202, 202, 202, 203,
+            203, 203, 203, 202, 202, 202, 202, 203, 203, 203, 203
+        ]
+        ic(compress(arr))
+    # check_compress()
