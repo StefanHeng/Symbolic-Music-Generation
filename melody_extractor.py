@@ -443,20 +443,36 @@ class MxlMelodyExtractor:
                 else:
                     raise ValueError(f'Unexpected object type: {obj}')
 
-            def decode(self, i) -> int:
+            def decode(self, i) -> Union[int, np.integer, str]:
                 return self.spec_vocab_dec[i] if i in self.spec_vocab_dec else i - self.n_special
 
             class Token:
-                def __init__(self, tok: Union[int, str], duration):
+                def __init__(self, tok: Union[int, np.integer, str], duration):
                     """
                     :param tok: A pitch or a special token
                     :param duration: Duration in quarterLength
                     """
-                    ic(tok, duration)
+                    self.dur = duration
+                    dur = m21.duration.Duration(quarterLength=duration)
+                    # ic(dur)
+                    if isinstance(tok, str):
+                        if tok == '[REST]':
+                            self.note = m21.note.Rest(duration=dur)
+                        else:
+                            ic(tok)
+                            exit(1)
+                    else:  # Integer
+                        self.note = m21.note.Note(tok, duration=dur)
+                    # ic(tok, duration)
+
+                def __repr__(self):
+                    return f'<{self.__class__.__qualname__} note={self.note} dur={self.dur}>'
 
         def __init__(self, precision: int):
             self.prec = precision
             self.tokenizer = MxlMelodyExtractor.Tokenizer._Tokenizer()
+            # tokenizer = MxlMelodyExtractor.Tokenizer(self.prec)
+            self.time_sigs = None
 
         def __call__(
                 self,
@@ -475,7 +491,9 @@ class MxlMelodyExtractor:
             """
             if time_sigs is None:
                 lst_bar_n_ts = bars
+                ic(lst_bar_n_ts)
                 self.time_sigs = [ts for _, ts in lst_bar_n_ts]
+                ic(self.time_sigs)
             else:
                 assert len(bars) == len(time_sigs)
                 lst_bar_n_ts = list(zip(bars, time_sigs))
@@ -519,11 +537,6 @@ class MxlMelodyExtractor:
             id_bar = self.tokenizer('[SEP]')
             return reduce(lambda a, b: a+[id_bar]+b, ids)  # Join the encodings with bar separation
 
-
-        # def __repr__(self):
-        #     return f'<{self.__class__.__qualname__} enc={[e.id for e in self.enc]} ' \
-        #            f'num={self.bar.number} time_sig={self.numer}/{self.denom}>'
-
         def decode(self, ids: list[list[int]], time_sigs: list[m21.meter.TimeSignature] = None):
             """
             :param ids: A list of token ids
@@ -533,6 +546,7 @@ class MxlMelodyExtractor:
             """
             if time_sigs is None:
                 time_sigs = self.time_sigs
+                ic(self.time_sigs, time_sigs)
 
             ids = np.asarray(ids)
             enc_sep = self.tokenizer('[SEP]')
@@ -541,22 +555,41 @@ class MxlMelodyExtractor:
             assert len(lst_ids) == len(time_sigs)
             # All lists except the 1st one starts with the bar SEP encoding
             lst_ids = [(l if idx == 0 else l[1:]) for idx, l in enumerate(lst_ids)]
-            lst_ids_n_ct = [compress(list(l)) for l in lst_ids]
+            # Each element as 2-tuple of (id list, count list)
+            lst_ids_n_cts = [list(zip(*compress(list(l)))) for l in lst_ids]
+            # ic(lst_ids_n_cts[0])
 
-            # lst_toks = [ lst_id_n_ct]
-            # ic(lst_idts)
-            for ids_n_cnt, time_sig in zip(lst_ids_n_ct, time_sigs):
-                ic(time_sig)
+            bars = []
+            for i, (ids_n_cnt, time_sig) in enumerate(zip(lst_ids_n_cts, time_sigs)):
+                bar = m21.stream.Measure(number=i)
+                # ic(time_sig, bar)
                 n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
-                for (id_, count) in ids_n_cnt:
+                # ic(ids_n_cnt)
+                ids, counts = ids_n_cnt
+
+                durs = [count/n_slots_per_beat for count in counts]
+                # offsets = np.cumsum(np.array([0] + durs))[:-1]
+                # ic(durs, offsets)
+                # def group_ids(ids):
+                    # For triplets
+
+                # for id_, dur, offset in zip(ids, durs, offsets):
+                for id_, dur in zip(ids, durs):
+                    # ic(id_, dur, offset)
                     tok = self.tokenizer.decode(id_)
-                    ic(id_, tok, type(tok))
-                    assert isinstance(tok, (int, str, np.integer))
-                    dur = count / n_slots_per_beat
                     tok = self.tokenizer.Token(tok, dur)
-                    ic(tok)
-                    exit(1)
-                    # if isinstance(tok, int):  # Pitch
+                    bar.append(tok.note)
+                    # ic(tok)
+
+                ic(bar.number, bar.duration)
+                for e in bar:
+                    ic(e, e.offset, e.duration)
+                # For quarterLength in music21
+                dur_bar = time_sig.numerator * (4 / time_sig.denominator)
+                assert bar.duration.quarterLength == dur_bar
+                bars.append(bar)
+                # exit(1)
+            return bars
 
     def bar_with_max_pitch(self, exp=None):
         """
@@ -567,7 +600,8 @@ class MxlMelodyExtractor:
         For each bar, pick the track with the highest average pitch
         """
         scr = deepcopy(self.scr)
-        scr.metadata.composer = PROJ_NM
+        composer = PROJ_NM
+        scr.metadata.composer = composer
 
         # Pick a `Part` to replace elements one by one, the 1st part selected as it contains all metadata
         idx_part = 0
@@ -608,22 +642,10 @@ class MxlMelodyExtractor:
             dir_nm = f'{dir_nm}_out'
             scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
         elif exp == 'symbol':
-            # Get signature for each bar
-            # bars = iter(list())
+            # Get time signature for each bar
             lst_bar_n_ts = bars2lst_bar_n_ts(part[m21.stream.Measure])
-            # encs = [MxlMelodyExtractor.Tokenizer(bar, ts, self.prec) for (bar, ts) in lst_bar_n_ts]
             tokenizer = MxlMelodyExtractor.Tokenizer(self.prec)
-            ids = tokenizer(lst_bar_n_ts)
-            ic(len(ids))
-
-            ic(tokenizer.decode(ids))
-            exit(1)
-            enc_bar = tokenizer('[SEP]')
-            ic(encs)
-            enc = reduce(lambda a, b: a+[enc_bar]+b, [e.ids for e in encs])  # Join the encodings with bar separation
-            ic(enc)
-            ic(tokenizer.decode(enc))
-            exit(1)
+            return tokenizer(lst_bar_n_ts)
         else:
             return scr
 
@@ -632,6 +654,19 @@ class MxlMelodyExtractor:
         For each time slot, pick track with the highest pitch
         """
         pass
+
+    def encoding2score(self, ids, precision=5, title=None):
+        tokenizer = MxlMelodyExtractor.Tokenizer(precision)
+        # ic(ids)
+        bars = tokenizer.decode(ids)
+        ic(bars)
+
+        s = m21.stream.Score()
+        s.metadata.composer = PROJ_NM
+        s.metadata.title = title
+        part = m21.stream.Part()
+        ic(s.id)
+        exit(1)
 
 
 if __name__ == '__main__':
@@ -657,7 +692,16 @@ if __name__ == '__main__':
         fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
         ic(fnm)
-        me = MxlMelodyExtractor(fnm, n=10)
+        me = MxlMelodyExtractor(fnm, n=None)
         me.bar_with_max_pitch(exp='symbol')
-    extract_encoding()
+    # extract_encoding()
+
+    def sanity_check_encoding():
+        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        # fnm = eg_songs('Shape of You', fmt='MXL')
+        ic(fnm)
+        me = MxlMelodyExtractor(fnm, n=10)
+        ids = me.bar_with_max_pitch(exp='symbol')
+        ic(me.encoding2score(ids))
+    sanity_check_encoding()
 
