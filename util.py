@@ -122,14 +122,11 @@ def config(attr):
             config.config = json.load(f)
             # str -> int
             for k, v in config.config['Melody-Extraction']['tokenizer'].items():
-                # ic(k, v)
                 if isinstance(v, dict):
                     config.config['Melody-Extraction']['tokenizer'][k] = {
                         (int(k_) if k_.isnumeric() else k_): v_
                         for k_, v_ in v.items()
                     }
-                    # ic(config.config)
-                    # exit(1)
     return get(config.config, attr)
 
 

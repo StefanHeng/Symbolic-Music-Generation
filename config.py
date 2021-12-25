@@ -60,7 +60,10 @@ config = {
         )
     ),
     'Melody-Extraction': dict(
-        tokenizer=get_tokenizer()
+        tokenizer=get_tokenizer(),
+        output=dict(
+            BPM=120
+        )
     )
 }
 
