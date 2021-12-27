@@ -3,6 +3,7 @@ import math
 from copy import deepcopy
 from warnings import warn
 from typing import Union
+from fractions import Fraction
 
 import lst as lst
 import numpy as np
@@ -471,7 +472,6 @@ class MxlMelodyExtractor:
         def __init__(self, precision: int):
             self.prec = precision
             self.tokenizer = MxlMelodyExtractor.Tokenizer._Tokenizer()
-            # tokenizer = MxlMelodyExtractor.Tokenizer(self.prec)
             self.time_sigs = None
 
         def __call__(
@@ -561,6 +561,8 @@ class MxlMelodyExtractor:
 
             ids = np.asarray(ids)
             enc_sep = self.tokenizer('[SEP]')
+            enc_trip = self.tokenizer('[TRIP]')
+            ic(enc_trip)
             idxs = np.where(ids == enc_sep)[0]
             lst_ids = np.split(ids, idxs)
             assert len(lst_ids) == len(time_sigs)
@@ -571,21 +573,76 @@ class MxlMelodyExtractor:
 
             bars = []
             for i, (ids_n_cnt, time_sig) in enumerate(zip(lst_ids_n_cts, time_sigs)):
+                ic(i)
                 bar = m21.stream.Measure(number=i)
                 # ic(time_sig, bar)
                 n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
                 # ic(ids_n_cnt)
-                ids, counts = ids_n_cnt
+                ids_, counts = ids_n_cnt
+                durs = [count / n_slots_per_beat for count in counts]
 
-                durs = [count/n_slots_per_beat for count in counts]
-                # offsets = np.cumsum(np.array([0] + durs))[:-1]
-                # def group_ids(ids):
+                def group_ids():
                     # For triplets
+                    ids__ = np.asarray(ids_)
+                    # if i == 74:
+                    # Starting indices for each triplet group
+                    idxs_trip = np.where(ids__ == enc_trip)[0] - 3
+                    if idxs_trip.size >= 1:
+                        l = ids__.size
+                        idx = 0
+                        groups, durs__ = [], []
+                        while idx < l:
+                            if idx in idxs_trip:
+                                groups.append(tuple(ids__[idx:idx+4]))
+                                durs__.append(tuple(durs[idx:idx+4]))
+                                idx += 4
+                            else:
+                                groups.append(tuple([ids__[idx]]))
+                                # ic(durs__, idx)
+                                durs__.append(tuple([durs[idx]]))
+                                idx += 1
+                        ic(groups, durs__)
+                        # exit(1)
+                        return groups, durs__
+                    else:
+                        # ic(ids__)
+                        # for i_ in ids_:
+                        #     ic(i_, type(i_))
+                        return (
+                            [tuple([id__]) for id__ in ids__],
+                            [tuple([d]) for d in durs]
+                        )
+                        # ic(ids_trip)
+                        # ic(ids_)
+                    # return ids_
+                ids_, durs_ = group_ids()
 
-                for id_, dur in zip(ids, durs):
-                    tok = self.tokenizer.decode(id_)
-                    tok = MxlMelodyExtractor.Tokenizer.Token(tok, dur)
-                    bar.append(tok.note)  # TODO: vectorize
+                # offsets = np.cumsum(np.array([0] + durs))[:-1]
+
+                # TODO: vectorize
+                def id_n_dur2tok(i_, d_):
+                    # tok = self.tokenizer.decode(id_)
+                    # tok = MxlMelodyExtractor.Tokenizer.Token(tok, dur)
+                    # bar.append(tok.note)
+                    return MxlMelodyExtractor.Tokenizer.Token(self.tokenizer.decode(i_), d_).note
+
+                lst_tok = []
+                for id_, dur in zip(ids_, durs_):
+                    if len(id_) == 4:  # Triplet
+                        ic(dur[0] * 4, 3, type(dur[0] * 4))
+                        dur = dur[0] * 4
+                        assert dur.is_integer()
+                        dur = Fraction(int(dur), 3)
+                        for id__ in id_[:3]:
+                            lst_tok.append(id_n_dur2tok(id__, dur))
+                        # ic(id_, dur)
+                        # exit(1)
+                    else:
+                        # id_, dur = id_[0], dur[0]
+                        lst_tok.append(id_n_dur2tok(id_[0], dur[0]))
+                ic(lst_tok)
+                bar.append(lst_tok)
+                # exit(1)
 
                 # ic(bar.number, bar.duration)
                 # for e in bar:
@@ -670,8 +727,6 @@ class MxlMelodyExtractor:
         bars = self.tokenizer.decode(ids)
         # Set default tempo
         bars[0].insert(m21.tempo.MetronomeMark(number=config('Melody-Extraction.output.BPM')))
-        # bars[0].insert(m21.tempo.MetronomeMark(number=180))
-        ic(bars)
         part = m21.stream.Part()
         instr = m21.instrument.Piano()
         part.partName = f'{PROJ_NM}, {instr.instrumentName}, CH #1'
@@ -679,14 +734,11 @@ class MxlMelodyExtractor:
         # for b in bars:
         part.append(bars)
 
-        ic(part, part.partName, list(part))
-
         scr = m21.stream.Score()
         scr.append(m21.metadata.Metadata())
         scr.metadata.composer = PROJ_NM
         scr.metadata.title = f'{self.score_title}, decoded'
         scr.append(part)
-        ic(scr, list(scr))
         scr.show()
 
         exit(1)
@@ -723,7 +775,7 @@ if __name__ == '__main__':
         fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
         ic(fnm)
-        me = MxlMelodyExtractor(fnm, n=10)
+        me = MxlMelodyExtractor(fnm, n=80)
         ids = me.bar_with_max_pitch(exp='symbol')
         ic(ids[:10])
         ic(me.encoding2score(ids))
