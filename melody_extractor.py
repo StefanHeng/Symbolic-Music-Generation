@@ -471,7 +471,10 @@ class MxlMelodyExtractor:
 
         def __init__(self, precision: int):
             self.prec = precision
+
             self.tokenizer = MxlMelodyExtractor.Tokenizer._Tokenizer()
+            self.enc_trip = self.tokenizer('[TRIP]')
+
             self.time_sigs = None
 
         def __call__(
@@ -561,84 +564,72 @@ class MxlMelodyExtractor:
 
             ids = np.asarray(ids)
             enc_sep = self.tokenizer('[SEP]')
-            enc_trip = self.tokenizer('[TRIP]')
-            ic(enc_trip)
+            ic(self.enc_trip)
             idxs = np.where(ids == enc_sep)[0]
             lst_ids = np.split(ids, idxs)
             assert len(lst_ids) == len(time_sigs)
             # All lists except the 1st one starts with the bar SEP encoding
             lst_ids = [(l if idx == 0 else l[1:]) for idx, l in enumerate(lst_ids)]
             # Each element as 2-tuple of (id list, count list)
-            lst_ids_n_cts = [list(zip(*compress(list(l)))) for l in lst_ids]
+            lst_ids_n_cts = [tuple(zip(*compress(list(l)))) for l in lst_ids]
+            # ic(lst_ids_n_cts)
+            # exit(1)
 
             bars = []
             for i, (ids_n_cnt, time_sig) in enumerate(zip(lst_ids_n_cts, time_sigs)):
                 ic(i)
-                bar = m21.stream.Measure(number=i)
-                n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
-                ids_, counts = ids_n_cnt
-                durs = [count/n_slots_per_beat for count in counts]
-
-                # TODO: vectorize
-                def id_n_dur2tok(i_, d_):
-                    return MxlMelodyExtractor.Tokenizer.Token(self.tokenizer.decode(i_), d_).note
-
-                def get_toks():
-                    # To handle triplets
-                    ids__ = np.asarray(ids_)
-                    # Starting indices for each triplet group
-                    idxs_trip = np.where(ids__ == enc_trip)[0] - 3
-                    if idxs_trip.size >= 1:
-                        l = ids__.size
-                        idx = 0
-                        # groups, durs__ = [], []
-                        lst_tok = []
-                        while idx < l:
-                            if idx in idxs_trip:
-                                # groups.append(tuple(ids__[idx:idx+4]))
-                                # durs__.append(tuple(durs[idx:idx+4]))
-                                dur = durs[idx] * 4
-                                assert dur.is_integer()
-                                dur = Fraction(int(dur), 3)
-                                for id__ in ids__[idx:idx+3]:
-                                    lst_tok.append(id_n_dur2tok(id__, dur))
-                                idx += 4
-                            else:
-                                # groups.append(tuple([ids__[idx]]))
-                                # durs__.append(tuple([durs[idx]]))
-                                lst_tok.append(id_n_dur2tok(ids__[idx], durs[idx]))
-                                idx += 1
-                        # return groups, durs__
-                        return lst_tok
-                    else:
-                        # return (
-                        #     [tuple([id__]) for id__ in ids__],
-                        #     [tuple([d]) for d in durs]
-                        # )
-                        return [id_n_dur2tok(i_, d_) for i_, d_ in zip(ids__, durs)]
-                # ids_, durs_ = group_ids()
-
-                # def get_toks():
-                #     lst_tok = []
-                #     for id_, dur in zip(ids_, durs_):
-                #         if len(id_) == 4:  # Triplet
-                #             ic(dur[0] * 4, 3, type(dur[0] * 4))
-                #             dur = dur[0] * 4
-                #             assert dur.is_integer()
-                #             dur = Fraction(int(dur), 3)
-                #             for id__ in id_[:3]:
-                #                 lst_tok.append(id_n_dur2tok(id__, dur))
-                #         else:
-                #             lst_tok.append(id_n_dur2tok(id_[0], dur[0]))
-                #     return lst_tok
-                bar.append(get_toks())
-
-                # For quarterLength in music21
-                dur_bar = time_sig.numerator * (4 / time_sig.denominator)
-                assert bar.duration.quarterLength == dur_bar
+                bar = self._decode(ids_n_cnt, time_sig, number=i)
                 bars.append(bar)
-                # exit(1)
             return bars
+
+        def _decode(
+                self,
+                ids_n_cnt: tuple[tuple[int], tuple[int]],
+                time_sig: m21.meter.TimeSignature,
+                number=None
+        ):
+            """
+            For single bar
+            """
+            kwargs = {} if number is None else dict(number=number)
+            bar = m21.stream.Measure(**kwargs)
+            n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
+            ids_, counts = ids_n_cnt
+            durs = [count/n_slots_per_beat for count in counts]
+
+            # TODO: vectorize
+            def id_n_dur2tok(i_, d_):
+                return MxlMelodyExtractor.Tokenizer.Token(self.tokenizer.decode(i_), d_).note
+
+            def get_toks():
+                # To handle triplets
+                ids__ = np.asarray(ids_)
+                # Starting indices for each triplet group
+                idxs_trip = np.where(ids__ == self.enc_trip)[0] - 3
+                if idxs_trip.size >= 1:
+                    l = ids__.size
+                    idx = 0
+                    lst_tok = []
+                    while idx < l:
+                        if idx in idxs_trip:
+                            dur = durs[idx] * 4
+                            assert dur.is_integer()
+                            dur = Fraction(int(dur), 3)
+                            for id__ in ids__[idx:idx+3]:
+                                lst_tok.append(id_n_dur2tok(id__, dur))
+                            idx += 4
+                        else:
+                            lst_tok.append(id_n_dur2tok(ids__[idx], durs[idx]))
+                            idx += 1
+                    return lst_tok
+                else:
+                    return [id_n_dur2tok(i_, d_) for i_, d_ in zip(ids__, durs)]
+            bar.append(get_toks())
+
+            # For quarterLength in music21
+            dur_bar = time_sig.numerator * (4 / time_sig.denominator)
+            assert bar.duration.quarterLength == dur_bar
+            return bar
 
     @property
     def score_title(self):
