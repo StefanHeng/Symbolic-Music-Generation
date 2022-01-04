@@ -39,6 +39,10 @@ def clip(val, vmin, vmax):
     return max(min(val, vmax), vmin)
 
 
+def np_index(arr, idx):
+    return np.where(arr == idx)[0][0]
+
+
 def vars_(obj, include_private=False):
     """
     :return: A variant of `vars` that returns all properties and corresponding values in `dir`, except the
