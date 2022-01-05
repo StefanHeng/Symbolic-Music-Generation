@@ -4,6 +4,7 @@ from copy import deepcopy
 from warnings import warn
 from typing import Union
 from fractions import Fraction
+import datetime
 
 from util import *
 
@@ -191,7 +192,6 @@ class MxlMelodyExtractor:
             for p in self.scr.parts:
                 p.remove(list(p)[n:])
 
-        ic(self.scr.seconds)  # TODO: MXL file duration in physical time
         lens = [len(p[m21.stream.Measure]) for p in self.scr.parts]
         assert_list_same_elms(lens)
         self.bar_strt_idx = None  # First element in a `Part` can be a non-measure
@@ -246,6 +246,29 @@ class MxlMelodyExtractor:
 
                 self._time_sig = dss[0]
 
+            tempos = [b[m21.tempo.MetronomeMark] for b in self.bars.values()]
+            self._tempo = None
+            if any(tempos):
+                tempos = [t for t in tempos if len(t) != 0]
+                # ic([list(t) for t in tempos])
+                # When multiple tempos, take the mean
+                # ic([np.array([t.number for t in ts]) for ts in tempos])
+                tempos = [m21.tempo.MetronomeMark(number=np.array([t.number for t in ts]).mean()) for ts in tempos]
+                # ic([list(t) for t in tempos])
+                # ic([t for t in tempos])
+                # ic(tempos, [list(t) for t in tempos])
+                # ic(list(tempos))
+                # assert all(len(t) == 1 for t in tempos)
+                # ic(list(tempos))
+                # tempos = [next(t) for t in tempos]
+                # ic(list(tempos))
+                # ic(tempos)
+                bpms = [t.number for t in tempos]
+                # ic(bpms)
+                assert_list_same_elms(bpms)
+
+                self._tempo = m21.tempo.MetronomeMark(number=bpms[0])
+
         def __getitem__(self, key):
             return self.bars[key]
 
@@ -271,6 +294,14 @@ class MxlMelodyExtractor:
         @time_sig.setter
         def time_sig(self, val):
             self._time_sig = val
+
+        @property
+        def tempo(self):
+            return self._tempo
+
+        @tempo.setter
+        def tempo(self, val):
+            self._tempo = val
 
         def n_slot(self, prec):
             """
@@ -355,7 +386,7 @@ class MxlMelodyExtractor:
             pchs = self.avg_pitch(method=method, val_rest=val_rest)
             return max(self.bars, key=lambda p: pchs[p])
 
-    def vertical_bars(self, scr):
+    def vertical_bars(self, scr) -> list['MxlMelodyExtractor.VerticalBar']:
         """
         :return: List of `VerticalBar`s
         """
@@ -366,13 +397,41 @@ class MxlMelodyExtractor:
 
         vbs = [self.VerticalBar({b.activeSite.partName: b for b in bars}) for bars in zip(*d_bars.values())]
         ts = vbs[0].time_sig  # Get Score starting time signature
+        tp = vbs[0].tempo
         assert ts is not None
         for vb in vbs:  # Unroll time signature to each VerticalBar
             if vb.time_sig is None:
                 vb.time_sig = ts
             else:
                 ts = vb.time_sig
+
+            if vb.tempo is None:
+                vb.tempo = tp
+            else:
+                tp = vb.tempo
+        # ic([b.tempo for b in vbs])
+
+        # for vb in vbs:
+        #     bar = next(iter(vb.bars.values()))
+        #     tempo = vb.tempo
+        #     ic(bar.duration, tempo.number, tempo.durationToSeconds(bar.duration))
+        # scr.seconds = sum(vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vbs)
+        # scr.seconds = sum(vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vbs)
+        # ic([vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vbs])
+        # ic(sum(vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vbs))
+        # ic(scr.seconds)
+        # ic(isinstance(scr, m21.base.Music21Object))
+        # exit(1)
         return vbs
+
+    @staticmethod
+    def score_seconds(vert_bars, as_str=True):
+        """
+        :param vert_bars: `VerticalBar`s for the score
+        :param as_str: If true, a human-readable string representation is returned
+        """
+        s = int(sum(vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vert_bars))
+        return str(datetime.timedelta(seconds=s))[2:] if as_str else s  # mm:ss
 
     @property
     def mean_tempo(self):
@@ -583,15 +642,11 @@ class MxlMelodyExtractor:
             """
             For single bar
             """
-            ic(number)
             kwargs = {} if number is None else dict(number=number)
             bar = m21.stream.Measure(**kwargs)
             n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
             ids_, counts = ids_n_cnt
             durs = [count/n_slots_per_beat for count in counts]
-
-            if number == 162:
-                ic(ids_, durs)
 
             def id_n_dur2tok(i_, d_):
                 return MxlMelodyExtractor.Tokenizer.Token(self.tokenizer.decode(i_), d_).note
@@ -602,14 +657,11 @@ class MxlMelodyExtractor:
                 idxs_trip_end = np.where(ids__ == self.enc_trip)[0]
                 idxs_trip_strt = idxs_trip_end - 3
                 idxs_trip_strt[np.where(idxs_trip_strt < 0)[0]] = 0  # Starting indices should be at least 0
-                if number == 162:
-                    ic(idxs_trip_strt)
                 if idxs_trip_strt.size >= 1:
                     l = ids__.size
                     idx = 0
                     lst_tok = []
                     while idx < l:
-                        ic(idx)
                         if idx in idxs_trip_strt:
                             idx_end = idxs_trip_end[np_index(idxs_trip_strt, idx)]
                             dur_total = durs[idx_end] * 4  # The triplet encoding
@@ -628,19 +680,12 @@ class MxlMelodyExtractor:
                                     exit(1)
                                 else:  # 1st triplet pitch same as prior normal pitch
                                     dur_n_trip = dur_-dur_total + dur_total/4
-                                    ic(dur_n_trip)
                                     lst_tok.append(id_n_dur2tok(ids__[idx], dur_n_trip))  # The Non-triplet note
                                     dur_total -= dur_n_trip
 
                                     if ln == 1:
-                                        ic(dur)
                                         for i in range(3):
                                             lst_tok.append(id_n_dur2tok(ids__[idx], dur))
-                                    # if number == 162:
-                                    #     ic(idx_end)
-                                    #     ic(durs, idx)
-                                    #     ic(durs[idx + 3])
-                                    #     ic(dur_total)
                                 idx = idx_end+1
                         else:
                             lst_tok.append(id_n_dur2tok(ids__[idx], durs[idx]))
@@ -688,8 +733,11 @@ class MxlMelodyExtractor:
         for i in range(1, len(self.scr.parts)):
             assert len(self.scr.parts[i][m21.tempo.MetronomeMark]) == 0
 
+        vbs = self.vertical_bars(self.scr)
+        # TODO: MXL file duration in physical time
+        print(f'{now()}| Extracting file [{stem(self.fnm)}] of duration [{self.score_seconds(vbs)}]... ')
         for idx, bar in enumerate(part[m21.stream.Measure]):
-            vb = self.vertical_bars(self.scr)[idx].single()
+            vb = vbs[idx].single()
             pnm_ = vb.pnm_with_max_pitch(method='fqs')
             assert bar.number == idx + self.bar_strt_idx
             if pnm_ != pnm:
@@ -726,7 +774,7 @@ class MxlMelodyExtractor:
         """
         pass
 
-    def encoding2score(self, ids):
+    def encoding2score(self, ids, save=False):
         bars = self.tokenizer.decode(ids)
         # Set default tempo
         bars[0].insert(m21.tempo.MetronomeMark(number=config('Melody-Extraction.output.BPM')))
@@ -741,7 +789,14 @@ class MxlMelodyExtractor:
         scr.metadata.composer = PROJ_NM
         scr.metadata.title = f'{self.score_title}, decoded'
         scr.append(part)
-        scr.show()
+
+        if save:
+            dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
+            dir_nm = f'{dir_nm}_out'
+            scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{scr.metadata.title}.mxl'))
+        else:
+            scr.show()
+        return scr
 
 
 if __name__ == '__main__':
@@ -777,7 +832,16 @@ if __name__ == '__main__':
         ic(fnm)
         me = MxlMelodyExtractor(fnm, n=None)
         ids = me.bar_with_max_pitch(exp='symbol')
-        ic(ids[:10])
-        ic(me.encoding2score(ids))
+        ic(ids[:2**5])
+        ic(me.encoding2score(ids, save=True))
     sanity_check_encoding()
 
+    def encode_a_few():
+        n = 2**6
+        fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')[:n]
+        ic(fnms[:5])
+        for fnm in fnms:
+            me = MxlMelodyExtractor(fnm, n=None)
+            ids = me.bar_with_max_pitch(exp='symbol')
+            ic(ids[:20])
+    # encode_a_few()

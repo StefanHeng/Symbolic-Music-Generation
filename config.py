@@ -48,6 +48,12 @@ config = {
             nm='The Lakh MIDI Dataset, Aligned',
             dir_nm='Lakh-MIDI-Dataset/LMD-Aligned',
         ),
+        LMD_Cleaned=dict(
+            nm='The Lakh MIDI Dataset, Cleaned',
+            dir_nm='Lakh-MIDI-Dataset/LMD-Cleaned',
+            rec_fmt='**/*.mid',
+            rec_exp_fmt='**/*.mxl'
+        ),
         MIDI_EG=dict(
             nm='Some hand-selected MIDI samples',
             dir_nm='MIDI-eg',
@@ -69,7 +75,6 @@ config = {
 
 
 for k in keys(config[DIR_DSET]):    # Accommodate other OS
-    # ic(k)
     k = f'{DIR_DSET}.{k}'
     val = get(config, k)
     if k[k.rfind('.')+1:] == 'dir_nm':

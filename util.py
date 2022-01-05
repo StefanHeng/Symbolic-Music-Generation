@@ -1,10 +1,13 @@
-import json
-import pickle
+import os
 import glob
+import json
+import pathlib
+import pickle
 from math import floor, ceil
 from functools import reduce
 from itertools import takewhile, dropwhile
 from typing import TypeVar
+import datetime
 
 import numpy as np
 import pandas as pd
@@ -99,6 +102,11 @@ def keys(dic, prefix=''):
             yield _full(k)
 
 
+def now(as_str=True):
+    d = datetime.datetime.now()
+    return d.strftime('%Y-%m-%d %H:%M:%S') if as_str else d
+
+
 T = TypeVar('T')
 
 
@@ -108,9 +116,6 @@ def compress(lst: list[T]) -> list[tuple[T, int]]:
     """
     if not lst:
         return []
-    # lhs = [(s[0], len(list(takewhile(lambda c: c == s[0], s))))]
-    # ic(list(dropwhile(lambda c: c == s[0], s)))
-    # rhs = compress(sum(list(dropwhile(lambda c: c == s[0], s)), []))
     return ([(lst[0], len(list(takewhile(lambda elm: elm == lst[0], lst))))]
             + compress(list(dropwhile(lambda elm: elm == lst[0], lst))))
 
@@ -333,11 +338,32 @@ def eg_songs(k=None, pretty=False, fmt='MIDI'):
         return [p[p.find(dir_nm):] for p in mids] if pretty else mids
 
 
+def fl_nms(dnm, k='rec_fmt') -> list[str]:
+    """
+    :return: List of music file paths
+    """
+    if not hasattr(fl_nms, 'd_dsets'):
+        fl_nms.d_dsets = config('datasets')
+    d_dset = fl_nms.d_dsets[dnm]
+    return sorted(
+        glob.iglob(os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'], d_dset[k]), recursive=True)
+    )
+
+
+def stem(path, ext=False):
+    """
+    :param path: A potentially full path to a file
+    :param ext: If True, file extensions is preserved
+    :return: The file name, without parent directories
+    """
+    return os.path.basename(path) if ext else pathlib.Path(path).stem
+
+
 if __name__ == '__main__':
     from icecream import ic
     from music21 import graph
 
-    ic(config('Melody-Extraction.tokenizer'))
+    # ic(config('Melody-Extraction.tokenizer'))
 
     # ic(tempo2bpm(DEF_TPO))
 
@@ -437,3 +463,10 @@ if __name__ == '__main__':
         ]
         ic(compress(arr))
     # check_compress()
+
+    def check_fl_nms():
+        fnms = fl_nms('LMD_Cleaned')
+        ic(len(fnms), fnms[:20])
+        fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')
+        ic(len(fnms), fnms[:20])
+    check_fl_nms()

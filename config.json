@@ -14,6 +14,12 @@
             "nm": "The Lakh MIDI Dataset, Aligned",
             "dir_nm": "Lakh-MIDI-Dataset/LMD-Aligned"
         },
+        "LMD_Cleaned": {
+            "nm": "The Lakh MIDI Dataset, Cleaned",
+            "dir_nm": "Lakh-MIDI-Dataset/LMD-Cleaned",
+            "rec_fmt": "**/*.mid",
+            "rec_exp_fmt": "**/*.mxl"
+        },
         "MIDI_EG": {
             "nm": "Some hand-selected MIDI samples",
             "dir_nm": "MIDI-eg",
