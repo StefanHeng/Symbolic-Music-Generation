@@ -56,7 +56,10 @@ def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSign
     return lst_bar_n_ts
 
 
-def group_triplets(bar) -> list[Union[list[m21.note.Note], Union[m21.note.Note, m21.note.Rest]]]:
+def group_triplets(bar) -> list[Union[
+    list[m21.note.Note],
+    Union[m21.note.Note, m21.note.Rest]
+]]:
     """
     Identify triplets from a bar from normal notes & group them
     """
@@ -66,13 +69,18 @@ def group_triplets(bar) -> list[Union[list[m21.note.Note], Union[m21.note.Note, 
     while elm:
         if 'Triplet' in elm.fullName:
             elm2, elm3 = next(it, None), next(it, None)
-            assert elm2 is not None and elm3 is not None \
-                   and 'Triplet' in elm2.fullName and 'Triplet' in elm3.fullName
+            assert elm2 is not None and elm3 is not None
+            assert 'Triplet' in elm2.fullName and 'Triplet' in elm3.fullName
             lst.append([elm, elm2, elm3])
         else:
             lst.append(elm)
         elm = next(it, None)
     return lst
+
+
+def has_quintuplet(scr):
+    # Expect rarely seen: Fails the time-slot encoding
+    return any(any('Quintuplet' in n.fullName for n in p[m21.note.Note]) for p in scr.parts)
 
 
 def time_sig2n_slots(time_sig, precision):
@@ -202,6 +210,11 @@ class MxlMelodyExtractor:
                 p.partName = f'{p.partName}, CH #{idx+1}'
 
         # Remove drum tracks
+        def is_drum(part):
+            """
+            :return: True if `part` contains *only* `Unpitched`
+            """
+            return list(part[m21.note.Unpitched]) and not list(part[m21.note.Note])
         parts_drum = filter(lambda p_: any(p_[drum] for drum in [
             m21.instrument.BassDrum,
             m21.instrument.BongoDrums,
@@ -209,7 +222,15 @@ class MxlMelodyExtractor:
             m21.instrument.SnareDrum,
             m21.instrument.SteelDrum,
             m21.instrument.TenorDrum,
-        ]), self.scr.parts)
+        ]) or is_drum(p_), self.scr.parts)
+        # for p in self.scr.parts:
+        #     ic(p.partName)
+        #     if 'Drumset' in p.partName:
+        #         inst = list(p[m21.instrument.Instrument])[0]
+        #         ic(inst, vars(inst))
+        #         ic(list(p[m21.note.Unpitched]))
+        #         ic(list(p[m21.note.Note]))
+        # exit(1)
         for p in parts_drum:
             self.scr.remove(p)
 
@@ -250,21 +271,9 @@ class MxlMelodyExtractor:
             self._tempo = None
             if any(tempos):
                 tempos = [t for t in tempos if len(t) != 0]
-                # ic([list(t) for t in tempos])
                 # When multiple tempos, take the mean
-                # ic([np.array([t.number for t in ts]) for ts in tempos])
                 tempos = [m21.tempo.MetronomeMark(number=np.array([t.number for t in ts]).mean()) for ts in tempos]
-                # ic([list(t) for t in tempos])
-                # ic([t for t in tempos])
-                # ic(tempos, [list(t) for t in tempos])
-                # ic(list(tempos))
-                # assert all(len(t) == 1 for t in tempos)
-                # ic(list(tempos))
-                # tempos = [next(t) for t in tempos]
-                # ic(list(tempos))
-                # ic(tempos)
                 bpms = [t.number for t in tempos]
-                # ic(bpms)
                 assert_list_same_elms(bpms)
 
                 self._tempo = m21.tempo.MetronomeMark(number=bpms[0])
@@ -326,17 +335,28 @@ class MxlMelodyExtractor:
             .. note:: The `bars` attribute is modified
             """
             obj = self if inplace else deepcopy(self)
+            del_pnms = []
             for pnm, bar in obj.bars.items():
                 if bar.hasVoices():
+                    # ic(pnm, bar)
+                    # ic(bar.number)
                     voices = bar.voices
-                    ids = [v.id for v in voices]
-                    # A bar may have just 2 voices
-                    assert all(i in ids for i in ['1', '2'])
-                    soprano = next(filter(lambda v: v.id == '1', voices))
+                    # ids = [v.id for v in voices]
+                    # ic(voices, [v.id for v in voices])
+                    # ic(ids)
+                    # A bar may have a subset of ['1', '2', '3', '4']
+                    # assert all(i in ids for i in ['1', '2'])
+                    if '1' in [v.id for v in voices]:
+                        soprano = next(filter(lambda v: v.id == '1', voices))
 
-                    # Insert notes in `soprano` by offset
-                    obj.bars[pnm].remove(list(voices))
-                    obj.bars[pnm].insert(flatten([e.offset, e] for e in soprano))
+                        # Insert notes in `soprano` by offset
+                        obj.bars[pnm].remove(list(voices))
+                        obj.bars[pnm].insert(flatten([e.offset, e] for e in soprano))
+                    else:
+                        del_pnms.append(pnm)
+                        warn(f'Soprano not found in bar [{bar.number}], channel [{pnm}] - Bar removed')
+            for pnm in del_pnms:
+                del obj.bars[pnm]
             for pnm, bar in obj.bars.items():
                 assert not bar.hasVoices()
                 notes = bar.notes
@@ -346,8 +366,12 @@ class MxlMelodyExtractor:
                 def chord2note(c):
                     return max(c.notes, key=lambda n: n.pitch.frequency)
                 for note in notes:
+                    # if bar.number == 12:
+                    #     ic(note, isinstance(note, m21.chord.Chord))
                     if isinstance(note, m21.chord.Chord):
                         obj.bars[pnm].replace(note, chord2note(note))
+                if bar.number == 12:
+                    ic(list(obj.bars[pnm]))
             return obj
 
         def avg_pitch(self, method='fqs', val_rest=0):
@@ -382,6 +406,7 @@ class MxlMelodyExtractor:
             :return: The part name key, that has the maximum pitch, per `avg_pitch`
             """
             for pnm, b in self.bars.items():
+                # ic(pnm, b)
                 assert not b[m21.note.Unpitched]
             pchs = self.avg_pitch(method=method, val_rest=val_rest)
             return max(self.bars, key=lambda p: pchs[p])
@@ -409,19 +434,6 @@ class MxlMelodyExtractor:
                 vb.tempo = tp
             else:
                 tp = vb.tempo
-        # ic([b.tempo for b in vbs])
-
-        # for vb in vbs:
-        #     bar = next(iter(vb.bars.values()))
-        #     tempo = vb.tempo
-        #     ic(bar.duration, tempo.number, tempo.durationToSeconds(bar.duration))
-        # scr.seconds = sum(vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vbs)
-        # scr.seconds = sum(vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vbs)
-        # ic([vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vbs])
-        # ic(sum(vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vbs))
-        # ic(scr.seconds)
-        # ic(isinstance(scr, m21.base.Music21Object))
-        # exit(1)
         return vbs
 
     @staticmethod
@@ -492,8 +504,6 @@ class MxlMelodyExtractor:
 
             def __call__(self, obj):
                 if isinstance(obj, m21.note.Note):
-                    # ic(self.enc[obj.pitch.midi])
-                    # exit(1)
                     return self.enc[obj.pitch.midi]
                 elif isinstance(obj, m21.note.Rest):
                     return self.enc['[REST]']
@@ -503,7 +513,6 @@ class MxlMelodyExtractor:
                     raise ValueError(f'Unexpected object: {obj}')
 
             def decode(self, obj) -> Union[int, np.integer, str]:
-                # return self.spec_vocab_dec[i] if i in self.spec_vocab_dec else i - self.n_special
                 return self.dec[obj]
 
         class Token:
@@ -570,12 +579,24 @@ class MxlMelodyExtractor:
             def _call(bar, time_sig):
                 n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
                 enc = [MxlMelodyExtractor.Tokenizer.Slot() for _ in range(n_slots)]
+                ic(bar.number)
+                if bar.number == 16:
+                    bar.show()
                 for e in group_triplets(bar):
                     if isinstance(e, list):  # Triplet case
                         lst = e
                         dur = sum(e.duration.quarterLength for e in lst)  # Over `Fraction`s
-                        assert dur.denominator == 1
-                        dur = dur.numerator
+                        # if bar.number == 20:
+                        #     ic([e.duration.quarterLength for e in lst])
+                        #     ic(dur)
+                        if isinstance(dur, float):
+                            assert dur.is_integer()
+                        elif isinstance(dur, Fraction):
+                            assert dur.denominator == 1
+                            dur = dur.numerator
+                        else:
+                            ic()
+                            exit(1)
                         # The smallest duration of triplet that can be encoded is 4 time slots
                         num_ea = (dur / 4 * n_slots_per_beat)
                         assert num_ea.is_integer()
@@ -590,6 +611,10 @@ class MxlMelodyExtractor:
                     else:
                         strt, dur = e.offset, e.duration.quarterLength
                         num = n_slots_per_beat*dur + 1
+                        if bar.number == 16:
+                            ic(e, e.offset, e.duration.quarterLength, e.fullName)
+                            ic(num)
+                            # exit(1)
                         assert num.is_integer()
                         idxs_ = (np.linspace(strt, strt+dur, num=int(num)) * n_slots_per_beat)[:-1]
                         idxs = idxs_.astype(int)
@@ -598,6 +623,11 @@ class MxlMelodyExtractor:
                         id_ = self.tokenizer(e)
                         for idx in idxs:
                             enc[idx].id = id_
+                # if bar.number == 12:
+                #     bar.show()
+                #     for e in bar:
+                #         ic(e, e.offset, e.duration)
+                #     ic(enc)
                 assert all(s.set for s in enc)  # Each slot has an id set
                 return [s.id for s in enc]
 
@@ -730,19 +760,52 @@ class MxlMelodyExtractor:
         part = scr.parts[0]
         pnm = part.partName
 
-        for i in range(1, len(self.scr.parts)):
-            assert len(self.scr.parts[i][m21.tempo.MetronomeMark]) == 0
+        # for p in self.scr.parts:
+        #     ic(p.partName, list(p[m21.tempo.MetronomeMark]))
+
+        def pnm_ori(nm):
+            return nm[:nm.rfind(', CH #')]
+        # pnm_ori = pnm[:pnm.rfind(', CH #')]
+        pnm_ori_ = pnm_ori(pnm)
+        # ic(pnm_ori)
+        # for i in range(1, len(self.scr.parts)):
+        for p in self.scr.parts[1:]:
+            # ic(list(self.scr.parts[i][m21.tempo.MetronomeMark]))
+            # There should be no tempo in all other tracks, unless essentially the "same" track
+            assert len(p[m21.tempo.MetronomeMark]) == 0 or pnm_ori(p.partName) == pnm_ori_
 
         vbs = self.vertical_bars(self.scr)
-        # TODO: MXL file duration in physical time
-        print(f'{now()}| Extracting file [{stem(self.fnm)}] of duration [{self.score_seconds(vbs)}]... ')
-        for idx, bar in enumerate(part[m21.stream.Measure]):
+        print(f'{now()}| Extracting music [{stem(self.fnm)}] of duration [{self.score_seconds(vbs)}]... ')
+        for idx, bar in enumerate(part[m21.stream.Measure]):  # Ensure each bar is set
+            # ic(idx)
             vb = vbs[idx].single()
             pnm_ = vb.pnm_with_max_pitch(method='fqs')
+            if bar.number == 12:
+                ic(pnm_)
+                for e in vb.bars[pnm_]:
+                    ic(e, e.offset, e.duration)
+                for e in vb[pnm_]:
+                    ic(e, e.offset, e.duration)
             assert bar.number == idx + self.bar_strt_idx
-            if pnm_ != pnm:
-                assert part.index(bar) == idx+1
-                part.replace(bar, vb[pnm_])
+            # if pnm_ != pnm:
+            assert part.index(bar) == idx+1
+            part.replace(bar, vb.bars[pnm_])
+            # if bar.number == 12:
+            #     ic(pnm_)
+            #     for e in vb.bars[pnm_]:
+            #         ic(e, e.offset, e.duration)
+            #     for e in vb[pnm_]:
+            #         ic(e, e.offset, e.duration)
+            # for b in part[m21.stream.Measure]:
+            #     ic(b.number)
+            #     assert not any(isinstance(e, m21.chord.Chord) for e in b)
+
+        # bar = list(part[m21.stream.Measure])[11]
+        # ic(bar.number)
+        # for e in bar:
+        #     ic(e, e.offset, e.duration)
+        #
+        # exit(1)
 
         # Set instrument as Piano
         instr = m21.instrument.Piano()
@@ -819,8 +882,8 @@ if __name__ == '__main__':
     # check_mxl()
 
     def extract_encoding():
-        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
-        # fnm = eg_songs('Shape of You', fmt='MXL')
+        # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        fnm = eg_songs('Shape of You', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm, n=None)
         me.bar_with_max_pitch(exp='symbol')
@@ -834,14 +897,17 @@ if __name__ == '__main__':
         ids = me.bar_with_max_pitch(exp='symbol')
         ic(ids[:2**5])
         ic(me.encoding2score(ids, save=True))
-    sanity_check_encoding()
+    # sanity_check_encoding()
 
     def encode_a_few():
         n = 2**6
         fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')[:n]
         ic(fnms[:5])
-        for fnm in fnms:
+        for fnm in fnms[2:]:
             me = MxlMelodyExtractor(fnm, n=None)
-            ids = me.bar_with_max_pitch(exp='symbol')
-            ic(ids[:20])
-    # encode_a_few()
+            if has_quintuplet(m21.converter.parse(fnm)):
+                warn(f'Song [{stem(fnm)}] ignored for containing quintuplets')
+            else:
+                ids = me.bar_with_max_pitch(exp='symbol')
+                ic(ids[:20])
+    encode_a_few()

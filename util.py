@@ -139,10 +139,10 @@ def config(attr):
     return get(config.config, attr)
 
 
-def get_midi_paths(dnm):
-    dset_dir = config(f'datasets.{dnm}.dir_nm')
-    paths = sorted(glob.iglob(f'{PATH_BASE}/{DIR_DSET}/{dset_dir}/**/*.mid', recursive=True))
-    return paths
+# def get_midi_paths(dnm):
+#     dset_dir = config(f'datasets.{dnm}.dir_nm')
+#     paths = sorted(glob.iglob(f'{PATH_BASE}/{DIR_DSET}/{dset_dir}/**/*.mid', recursive=True))
+#     return paths
 
 
 DEF_TPO = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)
@@ -302,9 +302,6 @@ class Music21Util:
         fig.set_size_inches(16, clip(9 * (y_e-y_s) / (x_e-x_s), 16/2**3, 16/2))
         strt = s
         end = len(stream.measures(0, e)) if e is None else e
-        # mess = filter(lambda elm: isinstance(elm, music21.stream.Measure), mess)
-        # nums = list(map(lambda m: m.number, mess))
-        # t = f'Piano roll, bars {nums[0]}-{nums[-1]}'
         title = (
             title or
             (stream.metadata and stream.metadata.title) or
