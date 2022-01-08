@@ -70,6 +70,9 @@ def group_triplets(bar) -> list[Union[
     """
     lst = []
     it = it_m21_elm(bar)
+    if bar.number == 55:
+        for e in it_m21_elm(bar):
+            ic(e, e.fullName, e.offset, e.duration)
     elm = next(it, None)
     while elm:
         if 'Triplet' in elm.fullName:
@@ -85,6 +88,10 @@ def group_triplets(bar) -> list[Union[
 
 def invalid_triplets(scr: m21.stream.Score):
     def _invalid(bar: m21.stream.Measure):
+        if bar.number == 55:
+            for e in it_m21_elm(bar):
+                ic(e, e.fullName, e.offset, e.duration)
+
         it = it_m21_elm(bar)
         elm = next(it, None)
         while elm:
@@ -94,8 +101,16 @@ def invalid_triplets(scr: m21.stream.Score):
                     return True
                 if 'Triplet' not in elm2.fullName or 'Triplet' not in elm3.fullName:
                     return True
+                if not (elm.duration.quarterLength == elm2.duration.quarterLength == elm3.duration.quarterLength):
+                    return True
             elm = next(it, None)
         return False
+    return any(any(_invalid(b) for b in p[m21.stream.Measure]) for p in scr.parts)
+
+
+def multiple_clef(scr: m21.stream.Score):
+    def _invalid(bar: m21.stream.Measure):
+        return sum(isinstance(c, m21.clef.Clef) for c in bar) > 1
     return any(any(_invalid(b) for b in p[m21.stream.Measure]) for p in scr.parts)
 
 
@@ -601,7 +616,13 @@ class MxlMelodyExtractor:
             def _call(bar, time_sig):
                 n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
                 enc = [MxlMelodyExtractor.Tokenizer.Slot() for _ in range(n_slots)]
-                # ic(bar.number)
+                ic(bar.number)
+                if bar.number == 5:
+                    # bar.show()
+                    for e in bar:
+                        ic(e)
+                    for e in it_m21_elm(bar):
+                        ic(e, e.fullName, e.offset, e.duration)
                 r_dur = time_sig2ratio(time_sig)
                 for e in group_triplets(bar):
                     if isinstance(e, list):  # Triplet case
@@ -906,7 +927,8 @@ if __name__ == '__main__':
 
     def sanity_check_encoding():
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
-        fnm = eg_songs('Shape of You', fmt='MXL')
+        # fnm = eg_songs('Shape of You', fmt='MXL')
+        fnm = eg_songs('平凡之路', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm, n=None)
         ids = me.bar_with_max_pitch(exp='symbol')
@@ -916,18 +938,20 @@ if __name__ == '__main__':
 
     def encode_a_few():
         # n = 2**6
-        # fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')
-        fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')
-        for fnm in fnms[60:]:
-        # for fnm in fnms:
-            ic(stem(fnm))
+        dnm = 'POP909'
+        fnms = fl_nms(dnm, k='song_fmt_exp')
+        # for fnm in fnms[60:]:
+        for idx, fnm in enumerate(fnms[100:]):
+            ic(idx, stem(fnm))
             me = MxlMelodyExtractor(fnm)
-            if has_quintuplet(m21.converter.parse(fnm)):
+            if has_quintuplet(me.scr):
                 warn(f'Song [{stem(fnm)}] ignored for containing quintuplets')
             elif me.beyond_precision():
                 warn(f'Song [{stem(fnm)}] ignored for duration beyond precision')
             elif invalid_triplets(me.scr):
                 warn(f'Song [{stem(fnm)}] ignored for containing invalid triplets')
+            elif multiple_clef(me.scr):
+                warn(f'Song [{stem(fnm)}] ignored for containing multiple clefs')
             else:
                 ids = me.bar_with_max_pitch(exp='symbol')
                 # ic(ids[:20])

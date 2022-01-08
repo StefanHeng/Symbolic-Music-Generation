@@ -32,8 +32,9 @@
         },
         "POP909": {
             "nm": "POP909 Dataset for Music Arrangement Generation",
-            "dir_nm": "POP909-Dataset",
-            "song_fmt": "POP909/*/*.mid"
+            "dir_nm": "POP909",
+            "song_fmt": "*.mid",
+            "song_fmt_exp": "*.mxl"
         }
     },
     "Melody-Extraction": {

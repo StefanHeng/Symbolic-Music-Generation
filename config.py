@@ -62,12 +62,13 @@ config = {
         MXL_EG=dict(
             nm='Some hand-selected MXL samples',
             dir_nm='MXL-eg',
-            song_fmt='*.mxl'
+            song_fmt='*.mxl',
         ),
         POP909=dict(
             nm='POP909 Dataset for Music Arrangement Generation',
-            dir_nm='POP909-Dataset',
-            song_fmt='POP909/*/*.mid'
+            dir_nm='POP909',
+            song_fmt='*.mid',
+            song_fmt_exp='*.mxl'
         )
     ),
     'Melody-Extraction': dict(

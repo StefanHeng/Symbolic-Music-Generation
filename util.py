@@ -325,7 +325,7 @@ def eg_songs(k=None, pretty=False, fmt='MIDI'):
     d_dset = config(f'{DIR_DSET}.{dnm}')
     dir_nm = d_dset['dir_nm']
     path = f'{PATH_BASE}/{DIR_DSET}/{dir_nm}'
-    mids = sorted(glob.iglob(f'{path}/{d_dset["fmt_song"]}', recursive=True))
+    mids = sorted(glob.iglob(f'{path}/{d_dset["song_fmt"]}', recursive=True))
     if k:
         if type(k) is int:
             return mids[k]
@@ -335,7 +335,7 @@ def eg_songs(k=None, pretty=False, fmt='MIDI'):
         return [p[p.find(dir_nm):] for p in mids] if pretty else mids
 
 
-def fl_nms(dnm, k='rec_fmt') -> list[str]:
+def fl_nms(dnm, k='song_fmt') -> list[str]:
     """
     :return: List of music file paths
     """
@@ -462,11 +462,12 @@ if __name__ == '__main__':
     # check_compress()
 
     def check_fl_nms():
-        fnms = fl_nms('LMD_Cleaned')
+        dnm = 'POP909'
+        fnms = fl_nms(dnm)
         ic(len(fnms), fnms[:20])
-        fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')
+        fnms = fl_nms(dnm, k='song_fmt_exp')
         ic(len(fnms), fnms[:20])
-    # check_fl_nms()
+    check_fl_nms()
 
     def setup_pop909():
         from shutil import copyfile
@@ -477,15 +478,10 @@ if __name__ == '__main__':
         os.makedirs(path_exp, exist_ok=True)
 
         df = pd.read_excel(os.path.join(path, 'index.xlsx'))
-        # ic(df)
-        # exit(1)
-
         paths = sorted(glob.iglob(os.path.join(path, '*/*.mid'), recursive=True))
         for i in trange(len(paths)):
             p = paths[i]
-            # fnm = stem(p)
             rec = df.iloc[i, :]
             fnm = f'{rec["artist"]} - {rec["name"]}.mid'
-            # ic(p, fnm)
             copyfile(p, os.path.join(path_exp, fnm))
-    setup_pop909()
+    # setup_pop909()
