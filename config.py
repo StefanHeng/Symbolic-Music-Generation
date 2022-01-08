@@ -51,18 +51,23 @@ config = {
         LMD_Cleaned=dict(
             nm='The Lakh MIDI Dataset, Cleaned',
             dir_nm='Lakh-MIDI-Dataset/LMD-Cleaned',
-            rec_fmt='**/*.mid',
-            rec_exp_fmt='**/*.mxl'
+            song_fmt='**/*.mid',
+            song_fmt_exp='**/*.mxl'
         ),
         MIDI_EG=dict(
             nm='Some hand-selected MIDI samples',
             dir_nm='MIDI-eg',
-            fmt_song='*.mid'
+            song_fmt='*.mid'
         ),
         MXL_EG=dict(
             nm='Some hand-selected MXL samples',
             dir_nm='MXL-eg',
-            fmt_song='*.mxl'
+            song_fmt='*.mxl'
+        ),
+        POP909=dict(
+            nm='POP909 Dataset for Music Arrangement Generation',
+            dir_nm='POP909-Dataset',
+            song_fmt='POP909/*/*.mid'
         )
     ),
     'Melody-Extraction': dict(

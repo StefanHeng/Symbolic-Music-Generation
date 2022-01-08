@@ -466,4 +466,26 @@ if __name__ == '__main__':
         ic(len(fnms), fnms[:20])
         fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')
         ic(len(fnms), fnms[:20])
-    check_fl_nms()
+    # check_fl_nms()
+
+    def setup_pop909():
+        from shutil import copyfile
+        from tqdm import trange
+        dnm = 'POP909'
+        path = os.path.join(PATH_BASE, DIR_DSET, 'POP909-Dataset', dnm)
+        path_exp = os.path.join(PATH_BASE, DIR_DSET, dnm)
+        os.makedirs(path_exp, exist_ok=True)
+
+        df = pd.read_excel(os.path.join(path, 'index.xlsx'))
+        # ic(df)
+        # exit(1)
+
+        paths = sorted(glob.iglob(os.path.join(path, '*/*.mid'), recursive=True))
+        for i in trange(len(paths)):
+            p = paths[i]
+            # fnm = stem(p)
+            rec = df.iloc[i, :]
+            fnm = f'{rec["artist"]} - {rec["name"]}.mid'
+            # ic(p, fnm)
+            copyfile(p, os.path.join(path_exp, fnm))
+    setup_pop909()

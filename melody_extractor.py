@@ -698,7 +698,7 @@ class MxlMelodyExtractor:
             """
             For single bar
             """
-            ic(number)
+            # ic(number)
             kwargs = {} if number is None else dict(number=number)
             bar = m21.stream.Measure(**kwargs)
             n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
@@ -713,6 +713,7 @@ class MxlMelodyExtractor:
                 ids__ = np.asarray(ids_)
                 # Indices for each triplet
                 idxs_trip_end = np.where(ids__ == self.enc_trip)[0]
+
                 idxs_trip_strt = []
                 for idx_end in idxs_trip_end:
                     dur = durs[idx_end]
@@ -723,22 +724,14 @@ class MxlMelodyExtractor:
                     while dur_total < dur * 3:
                         idx_strt -= 1
                         dur_total += durs[idx_strt]
-                    if number == 119:
-                        ic(durs, dur, dur_total)
                     # `dur_total` may be greater than `dur * 3`, if the previous note has the same pitch
-                    # assert dur_total == dur * 3
                     idxs_trip_strt.append(idx_strt)
-                # idxs_trip_strt = idxs_trip_end - 3
-                # idxs_trip_strt[np.where(idxs_trip_strt < 0)[0]] = 0  # Starting indices should be at least 0
-                if number == 71:
-                    ic(ids__, idxs_trip_strt, idxs_trip_end)
-                    ic(idxs_trip_strt)
+
                 if idxs_trip_end.size >= 1:
                     l = ids__.size
                     idx = 0
                     lst_tok = []
                     while idx < l:
-                        ic(idx)
                         if idx in idxs_trip_strt:
                             # idx_end = idxs_trip_end[np_index(idxs_trip_strt, idx)]
                             idx_end = idxs_trip_end[idxs_trip_strt.index(idx)]
@@ -747,8 +740,7 @@ class MxlMelodyExtractor:
                             dur = Fraction(int(dur_total), 3)
 
                             dur_non_trip = sum(durs[idx:idx_end]) + dur_total / 4 - dur_total
-                            ic(dur_non_trip)
-                            if dur_non_trip != 0:
+                            if dur_non_trip != 0:  # 1st triplet pitch same as prior normal pitch
                                 lst_tok.append(id_n_dur2tok(ids__[idx], dur_non_trip))  # The Non-triplet note
                                 dur_total -= dur_non_trip
 
@@ -756,16 +748,7 @@ class MxlMelodyExtractor:
                             if ln == 3:  # Normal case
                                 for id__ in ids__[idx:idx+3]:
                                     lst_tok.append(id_n_dur2tok(id__, dur))
-                                idx += 4
                             else:  # Multiple contiguous triplet pitches with the same pitch
-                                # dur_ = sum(durs[idx:idx_end])
-                                # ic(dur_, dur_total)
-                                # if dur_ == dur_total:
-                                #     ic()
-                                #     exit(1)
-                                # else:  # 1st triplet pitch same as prior normal pitch
-                                #     dur_n_trip = dur_-dur_total + dur_total/4
-
                                 if ln == 1:  # Same pitch for all 3 triplet notes
                                     for i in range(3):
                                         lst_tok.append(id_n_dur2tok(ids__[idx], dur))
@@ -778,11 +761,7 @@ class MxlMelodyExtractor:
                                         assert dur1st*2 == dur2nd
                                         lst_tok.append(id_n_dur2tok(ids__[idx+1], dur))
                                     lst_tok.append(id_n_dur2tok(ids__[idx+1], dur))
-                                    ic(dur_total, idx, idx_end, durs)
-                                    # ic('here', dur_total)
-                                    # ic(lst_tok)
-                                    # exit(1)
-                                idx = idx_end+1
+                            idx = idx_end+1
                         else:
                             lst_tok.append(id_n_dur2tok(ids__[idx], durs[idx]))
                             idx += 1
@@ -936,8 +915,9 @@ if __name__ == '__main__':
     # sanity_check_encoding()
 
     def encode_a_few():
-        n = 2**6
-        fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')[:n]
+        # n = 2**6
+        # fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')
+        fnms = fl_nms('LMD_Cleaned', k='rec_exp_fmt')
         for fnm in fnms[60:]:
         # for fnm in fnms:
             ic(stem(fnm))
