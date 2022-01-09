@@ -8,6 +8,7 @@ from functools import reduce
 from itertools import takewhile, dropwhile, groupby
 from typing import TypeVar, Callable
 import datetime
+import colorama
 
 import numpy as np
 import pandas as pd
@@ -125,6 +126,44 @@ def split(lst: list[T], call: Callable[[T], bool]) -> list[list[T]]:
     :return: Split a list by locations of elements satisfying a condition
     """
     return [list(g) for k, g in groupby(lst, call) if k]
+
+
+def log(s, c: str = '', as_str=False):
+    """
+    Prints `s` to console with color `c`
+    """
+    if not hasattr(log, 'reset'):
+        log.reset = colorama.Fore.RESET + colorama.Back.RESET + colorama.Style.RESET_ALL
+    if not hasattr(log, 'd'):
+        log.d = dict(
+            log='',
+            warn=colorama.Fore.YELLOW,
+            error=colorama.Fore.RED,
+            err=colorama.Fore.RED,
+            success=colorama.Fore.GREEN,
+            suc=colorama.Fore.GREEN,
+            info=colorama.Fore.BLUE,
+            i=colorama.Fore.BLUE,
+
+            y=colorama.Fore.YELLOW,
+            yellow=colorama.Fore.YELLOW,
+            red=colorama.Fore.RED,
+            r=colorama.Fore.RED,
+            green=colorama.Fore.GREEN,
+            g=colorama.Fore.GREEN,
+            blue=colorama.Fore.BLUE,
+            b=colorama.Fore.BLUE,
+        )
+    if c in log.d:
+        c = log.d[c]
+    if as_str:
+        return f'{c}{s}{log.reset}'
+    else:
+        print(f'{c}{now()} |{s}{log.reset}')
+
+
+def logs(s, c):
+    return log(s, c=c, as_str=True)
 
 
 def config(attr):

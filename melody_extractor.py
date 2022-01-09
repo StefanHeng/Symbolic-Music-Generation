@@ -12,6 +12,7 @@ from mido import MidiFile
 import pretty_midi
 from pretty_midi import PrettyMIDI
 import music21 as m21
+from py_console import console
 
 
 def assert_list_same_elms(lst):
@@ -235,7 +236,7 @@ class MxlMelodyExtractor:
         Triplets are handled with a special id at the last quarter
     """
 
-    def __init__(self, fl_nm, precision=5, n=None):
+    def __init__(self, fl_nm, precision=5, n=None, verbose=True):
         """
         :param fl_nm: Music MXL file path
         :param precision: Time slot duration as negative exponent of 2
@@ -243,6 +244,7 @@ class MxlMelodyExtractor:
         """
         self.fnm = fl_nm
         self.prec = precision
+        self.verbose = verbose
 
         self.scr: m21.stream.Score = m21.converter.parse(self.fnm)
         if n is not None:
@@ -858,7 +860,8 @@ class MxlMelodyExtractor:
             assert len(p[m21.tempo.MetronomeMark]) == 0 or pnm_ori(p.partName) == pnm_ori_
 
         vbs = self.vertical_bars(self.scr)
-        print(f'{now()}| Extracting music [{stem(self.fnm)}] of duration [{self.score_seconds(vbs)}]... ')
+        if self.verbose:
+            print(f'{now()}| Extracting music [{stem(self.fnm)}] of duration [{self.score_seconds(vbs)}]... ')
         for idx, bar in enumerate(part[m21.stream.Measure]):  # Ensure each bar is set
             vb = vbs[idx].single()
             pnm_ = vb.pnm_with_max_pitch(method='fqs')
@@ -933,13 +936,13 @@ def extract(dnms: list[str], exp='json') -> list[dict[str]]:
     fnms = {dnm: fl_nms(dnm, k='song_fmt_exp')[:5] for dnm in dnms}
     n_songs = sum(len(e) for e in fnms.values())
     n = len(str(n_songs))
-    ic(n)
     for dnm, fnms in fnms.items():
         for fnm in fnms:
             fnm_ = stem(fnm)
             num = f'{{:>0{n}}}'.format(count)
-            print(f'{now()}| Encoding song #{num} [{fnm_}]... ')
-            me = MxlMelodyExtractor(fnm)
+            # console.info(f'Encoding song #{num} [{fnm_}]... ')
+            log(f'Encoding song #{logs(num, c="i")} [{logs(fnm_, c="i")}]... ')
+            me = MxlMelodyExtractor(fnm, verbose=False)
             if has_quintuplet(me.scr):
                 warn(f'Song [{fnm_}] ignored for containing quintuplets')
             elif invalid_triplets(me.scr):
@@ -948,13 +951,15 @@ def extract(dnms: list[str], exp='json') -> list[dict[str]]:
                 warn(f'Song [{fnm_}] ignored for duration beyond precision')
             else:
                 ids = me.bar_with_max_pitch(exp='symbol')
-                print(f'{now()}| Encoding song #{count:>n} [{fnm_}] success')
+                log(f'Encoding song #{count:>n} [{fnm_}] success', c='g')
+                # console.success(f'Encoding song #{count:>n} [{fnm_}] success')
                 songs.append(dict(
                     nm=fnm_,
                     ids=ids
                 ))
             count += 1
-    print(f'{now()}| {count} songs encoded')
+    log(f'{count} songs encoded', c='g')
+    # console.log(f'{count} songs encoded')
     if exp == 'json':
         fnm = 'Song-ids'
         with open(os.path.join(PATH_BASE, DIR_DSET, config(f'{DIR_DSET}.my.dir_nm'), f'{fnm}.json'), 'w') as f:
