@@ -5,8 +5,8 @@ import pathlib
 import pickle
 from math import floor, ceil
 from functools import reduce
-from itertools import takewhile, dropwhile
-from typing import TypeVar
+from itertools import takewhile, dropwhile, groupby
+from typing import TypeVar, Callable
 import datetime
 
 import numpy as np
@@ -118,6 +118,13 @@ def compress(lst: list[T]) -> list[tuple[T, int]]:
         return []
     return ([(lst[0], len(list(takewhile(lambda elm: elm == lst[0], lst))))]
             + compress(list(dropwhile(lambda elm: elm == lst[0], lst))))
+
+
+def split(lst: list[T], call: Callable[[T], bool]) -> list[list[T]]:
+    """
+    :return: Split a list by locations of elements satisfying a condition
+    """
+    return [list(g) for k, g in groupby(lst, call) if k]
 
 
 def config(attr):

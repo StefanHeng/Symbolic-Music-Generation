@@ -381,7 +381,50 @@ class MxlMelodyExtractor:
             obj = self if inplace else deepcopy(self)
             del_pnms = []
             for pnm, bar in obj.bars.items():
+                ic(bar.number)
                 if bar.hasVoices():
+                    if bar.number == 13:
+                        ic(pnm)
+                        # bar.show()
+                        for e in bar:
+                            ic(e, e.offset, e.duration)
+                        for v in bar.voices:
+                            ic(v)
+                            for elm in v:
+                                ic(elm, elm.offset, elm.duration)
+
+                    # Seems to be a problem in prior processing: overlapping notes => Fix it
+                    clefs = [e for e in bar if isinstance(e, m21.clef.Clef)]
+                    ln_clef = len(clefs)
+                    ic(ln_clef)
+                    if ln_clef >= 1:
+                        warn(f'Clef found in bar {bar.number}, channel [{pnm}] containing voices - durations adjusted')
+                        assert ln_clef == 1  # TODO: generalize
+
+                        clef = clefs[0]
+
+                        for v in bar.voices:
+                            notes_before = [e for e in v if e.offset < clef.offset]
+                            l_n = len(notes_before)
+                            if l_n > 0:
+                                assert len(notes_before) == 1  # TODO: generalize
+                                n = notes_before[0]
+                                # Up until start of Clef
+                                n.duration = m21.duration.Duration(quarterLength=clef.offset)
+                                ic(n.duration)
+
+                            # notes_bf, notes_af = [], []  # Split by clef
+                            # elm = next(v)
+                            # while not isinstance(elm, m21.clef.Clef):
+                            #     notes_bf.append(elm)
+                            #     elm = next(v)
+                            # elm = next(v)  # Skip `Clef`
+                            # notes_af = list(v)
+                            # ic(notes_bf, notes_af)
+                            # notes = list(it_m21_elm(v))
+                            # ic(split(v, lambda elm: isinstance(elm, m21.clef.Clef)))
+                            # exit(1)
+                        # exit(1)
                     voices = bar.voices
                     if '1' in [v.id for v in voices]:
                         soprano = next(filter(lambda v: v.id == '1', voices))
@@ -613,27 +656,17 @@ class MxlMelodyExtractor:
                 n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
                 enc = [MxlMelodyExtractor.Tokenizer.Slot() for _ in range(n_slots)]
                 ic(bar.number)
+                # if bar.number == 153:
+                #     for e in it_m21_elm(bar):
+                #         ic(e, e.fullName, e.offset, e.duration)
+                #     bar.show()
                 r_dur = time_sig2ratio(time_sig)
-                if bar.number == 36:
-                    for e in bar:
-                        ic(e, e.offset, e.duration)
-                    ic(r_dur, n_slots_per_beat, n_slots)
                 for e in group_triplets(bar):
                     if isinstance(e, list):  # Triplet case
                         lst = e
                         dur = sum(e.duration.quarterLength for e in lst)  # Over `Fraction`s
-                        # assert isinstance(dur, (float, Fraction))
-                        # if isinstance(dur, float):
-                        #     assert dur.is_integer()
-                        # else:
-                        #     dur: Fraction
-                        #     assert dur.denominator == 1
-                        #     dur: int = dur.numerator
                         # The smallest duration of triplet that can be encoded is 4 time slots
                         num_ea = (dur / 4 * n_slots_per_beat) * r_dur
-                        # if bar.number == 36:
-                        #     ic(num_ea)
-                        #     exit(1)
                         assert num_ea.is_integer()
                         strt_idx = lst[0].offset * n_slots_per_beat
                         assert strt_idx.is_integer()
@@ -716,7 +749,7 @@ class MxlMelodyExtractor:
             """
             For single bar
             """
-            ic(number)
+            # ic(number)
             kwargs = {} if number is None else dict(number=number)
             bar = m21.stream.Measure(**kwargs)
             n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
@@ -759,9 +792,6 @@ class MxlMelodyExtractor:
                             assert ratio.is_integer()
                             assert (dur_total * ratio).is_integer()  # 4 for duration in quarterLength
                             dur = Fraction(int(dur_total * ratio), int(3 * ratio))
-                            if number == 36:
-                                ic(idx, durs, dur_total)
-                                ic(n_slots_per_beat, n_slots, r_dur, dur)
 
                             dur_non_trip = sum(durs[idx:idx_end]) + dur_total / 4 - dur_total
                             if dur_non_trip != 0:  # 1st triplet pitch same as prior normal pitch
@@ -864,6 +894,7 @@ class MxlMelodyExtractor:
             scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
         elif exp == 'symbol':
             # Get time signature for each bar
+            # exit(1)
             lst_bar_n_ts = bars2lst_bar_n_ts(part[m21.stream.Measure])
             return self.tokenizer(lst_bar_n_ts)
         else:
@@ -943,18 +974,19 @@ if __name__ == '__main__':
         # n = 2**6
         dnm = 'POP909'
         fnms = fl_nms(dnm, k='song_fmt_exp')
-        # for fnm in fnms[60:]:
-        for idx, fnm in enumerate(fnms[147:]):
+        for idx, fnm in enumerate(fnms[59:]):
+        # for idx, fnm in enumerate(fnms[147+392:]):
             ic(idx, stem(fnm))
             me = MxlMelodyExtractor(fnm)
             if has_quintuplet(me.scr):
                 warn(f'Song [{stem(fnm)}] ignored for containing quintuplets')
-            elif me.beyond_precision():
-                warn(f'Song [{stem(fnm)}] ignored for duration beyond precision')
             elif invalid_triplets(me.scr):
                 warn(f'Song [{stem(fnm)}] ignored for containing invalid triplets')
-            elif multiple_clef(me.scr):
-                warn(f'Song [{stem(fnm)}] ignored for containing multiple clefs')
+            elif me.beyond_precision():  # TODO: resolve later
+                warn(f'Song [{stem(fnm)}] ignored for duration beyond precision')
+            # Multiple clef is not a problem
+            # elif multiple_clef(me.scr):
+            #     warn(f'Song [{stem(fnm)}] ignored for containing multiple clefs')
             else:
                 ids = me.bar_with_max_pitch(exp='symbol')
                 # ic(ids[:20])
