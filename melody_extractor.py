@@ -32,13 +32,13 @@ def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord]]):
 
 
 def it_m21_elm(
-        stream: Union[m21.stream.Measure, m21.stream.Part, m21.stream.Score],
+        stream: Union[m21.stream.Measure, m21.stream.Part, m21.stream.Score, m21.stream.Voice],
         types=(m21.note.Note, m21.note.Rest)
 ):
     """
     Iterates elements in a stream, for those that are instances of that of `type`, in the original order
     """
-    if isinstance(stream, m21.stream.Measure):
+    if isinstance(stream, (m21.stream.Measure, m21.stream.Voice)):
         return iter(filter(lambda elm: isinstance(elm, types), stream))
     else:
         return iter(filter(lambda elm: isinstance(elm, types), stream.flatten()))
@@ -70,9 +70,12 @@ def group_triplets(bar) -> list[Union[
     """
     lst = []
     it = it_m21_elm(bar)
-    if bar.number == 55:
-        for e in it_m21_elm(bar):
+    if bar.number == 322:
+        for e in bar:
+            ic(type(e))
+            # if isinstance(e, m21.)
             ic(e, e.fullName, e.offset, e.duration)
+            # exit(1)
     elm = next(it, None)
     while elm:
         if 'Triplet' in elm.fullName:
@@ -87,15 +90,28 @@ def group_triplets(bar) -> list[Union[
 
 
 def invalid_triplets(scr: m21.stream.Score):
-    def _invalid(bar: m21.stream.Measure):
-        if bar.number == 55:
-            for e in it_m21_elm(bar):
-                ic(e, e.fullName, e.offset, e.duration)
+    ic(list(scr.parts))
 
-        it = it_m21_elm(bar)
+    def _invalid(bar: Union[m21.stream.Measure, m21.stream.Voice]):
+        it = it_m21_elm(bar, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord, m21.stream.Voice))
         elm = next(it, None)
+        # if bar.number == 322:
+        #     for e in bar:
+        #         if isinstance(e, m21.stream.base.Voice):
+        #             ic(e)
+        #             for elm in e:
+        #                 ic(elm)
+        #         else:
+        #             ic(e, e.fullName, e.offset, e.duration)
         while elm:
-            if 'Triplet' in elm.fullName:
+            # if bar.number == 322:
+            #     ic(bar.number, elm)
+            if isinstance(elm, m21.stream.Voice):
+                ic('here', bar.number)
+                # if any(_invalid(e) for e in elm):
+                if _invalid(elm):
+                    return True
+            elif 'Triplet' in elm.fullName:
                 elm2, elm3 = next(it, None), next(it, None)
                 if elm2 is None or elm3 is None:
                     return True
@@ -385,6 +401,15 @@ class MxlMelodyExtractor:
             obj = self if inplace else deepcopy(self)
             del_pnms = []
             for pnm, bar in obj.bars.items():
+                if bar.number == 322:
+                    ic(pnm, bar.number)
+                    for e in bar.flatten():
+                        ic(e, e.fullName)
+                    for e in bar:
+                        ic(e, e.offset, e.duration)
+                        if isinstance(e, m21.stream.Voice):
+                            for elm in e:
+                                ic(elm, elm.fullName)
                 if bar.hasVoices():
                     voices = bar.voices
                     if '1' in [v.id for v in voices]:
@@ -409,6 +434,10 @@ class MxlMelodyExtractor:
                 for note in notes:
                     if isinstance(note, m21.chord.Chord):
                         obj.bars[pnm].replace(note, chord2note(note))
+            b = obj.bars['Piano, PIANO']
+            if b.number == 322:
+                # b.show()
+                exit(1)
             return obj
 
         def avg_pitch(self, method='fqs', val_rest=0):
@@ -617,12 +646,6 @@ class MxlMelodyExtractor:
                 n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
                 enc = [MxlMelodyExtractor.Tokenizer.Slot() for _ in range(n_slots)]
                 ic(bar.number)
-                if bar.number == 5:
-                    # bar.show()
-                    for e in bar:
-                        ic(e)
-                    for e in it_m21_elm(bar):
-                        ic(e, e.fullName, e.offset, e.duration)
                 r_dur = time_sig2ratio(time_sig)
                 for e in group_triplets(bar):
                     if isinstance(e, list):  # Triplet case
@@ -941,7 +964,7 @@ if __name__ == '__main__':
         dnm = 'POP909'
         fnms = fl_nms(dnm, k='song_fmt_exp')
         # for fnm in fnms[60:]:
-        for idx, fnm in enumerate(fnms[100:]):
+        for idx, fnm in enumerate(fnms[140:]):
             ic(idx, stem(fnm))
             me = MxlMelodyExtractor(fnm)
             if has_quintuplet(me.scr):
