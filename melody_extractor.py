@@ -70,12 +70,6 @@ def group_triplets(bar) -> list[Union[
     """
     lst = []
     it = it_m21_elm(bar)
-    if bar.number == 322:
-        for e in bar:
-            ic(type(e))
-            # if isinstance(e, m21.)
-            ic(e, e.fullName, e.offset, e.duration)
-            # exit(1)
     elm = next(it, None)
     while elm:
         if 'Triplet' in elm.fullName:
@@ -90,25 +84,11 @@ def group_triplets(bar) -> list[Union[
 
 
 def invalid_triplets(scr: m21.stream.Score):
-    ic(list(scr.parts))
-
     def _invalid(bar: Union[m21.stream.Measure, m21.stream.Voice]):
         it = it_m21_elm(bar, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord, m21.stream.Voice))
         elm = next(it, None)
-        # if bar.number == 322:
-        #     for e in bar:
-        #         if isinstance(e, m21.stream.base.Voice):
-        #             ic(e)
-        #             for elm in e:
-        #                 ic(elm)
-        #         else:
-        #             ic(e, e.fullName, e.offset, e.duration)
         while elm:
-            # if bar.number == 322:
-            #     ic(bar.number, elm)
             if isinstance(elm, m21.stream.Voice):
-                ic('here', bar.number)
-                # if any(_invalid(e) for e in elm):
                 if _invalid(elm):
                     return True
             elif 'Triplet' in elm.fullName:
@@ -401,15 +381,6 @@ class MxlMelodyExtractor:
             obj = self if inplace else deepcopy(self)
             del_pnms = []
             for pnm, bar in obj.bars.items():
-                if bar.number == 322:
-                    ic(pnm, bar.number)
-                    for e in bar.flatten():
-                        ic(e, e.fullName)
-                    for e in bar:
-                        ic(e, e.offset, e.duration)
-                        if isinstance(e, m21.stream.Voice):
-                            for elm in e:
-                                ic(elm, elm.fullName)
                 if bar.hasVoices():
                     voices = bar.voices
                     if '1' in [v.id for v in voices]:
@@ -434,10 +405,6 @@ class MxlMelodyExtractor:
                 for note in notes:
                     if isinstance(note, m21.chord.Chord):
                         obj.bars[pnm].replace(note, chord2note(note))
-            b = obj.bars['Piano, PIANO']
-            if b.number == 322:
-                # b.show()
-                exit(1)
             return obj
 
         def avg_pitch(self, method='fqs', val_rest=0):
@@ -647,19 +614,26 @@ class MxlMelodyExtractor:
                 enc = [MxlMelodyExtractor.Tokenizer.Slot() for _ in range(n_slots)]
                 ic(bar.number)
                 r_dur = time_sig2ratio(time_sig)
+                if bar.number == 36:
+                    for e in bar:
+                        ic(e, e.offset, e.duration)
+                    ic(r_dur, n_slots_per_beat, n_slots)
                 for e in group_triplets(bar):
                     if isinstance(e, list):  # Triplet case
                         lst = e
                         dur = sum(e.duration.quarterLength for e in lst)  # Over `Fraction`s
-                        assert isinstance(dur, (float, Fraction))
-                        if isinstance(dur, float):
-                            assert dur.is_integer()
-                        else:
-                            dur: Fraction
-                            assert dur.denominator == 1
-                            dur: int = dur.numerator
+                        # assert isinstance(dur, (float, Fraction))
+                        # if isinstance(dur, float):
+                        #     assert dur.is_integer()
+                        # else:
+                        #     dur: Fraction
+                        #     assert dur.denominator == 1
+                        #     dur: int = dur.numerator
                         # The smallest duration of triplet that can be encoded is 4 time slots
                         num_ea = (dur / 4 * n_slots_per_beat) * r_dur
+                        # if bar.number == 36:
+                        #     ic(num_ea)
+                        #     exit(1)
                         assert num_ea.is_integer()
                         strt_idx = lst[0].offset * n_slots_per_beat
                         assert strt_idx.is_integer()
@@ -742,7 +716,7 @@ class MxlMelodyExtractor:
             """
             For single bar
             """
-            # ic(number)
+            ic(number)
             kwargs = {} if number is None else dict(number=number)
             bar = m21.stream.Measure(**kwargs)
             n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
@@ -780,8 +754,14 @@ class MxlMelodyExtractor:
                             # idx_end = idxs_trip_end[np_index(idxs_trip_strt, idx)]
                             idx_end = idxs_trip_end[idxs_trip_strt.index(idx)]
                             dur_total = durs[idx_end] * 4  # The triplet encoding
-                            assert dur_total.is_integer()
-                            dur = Fraction(int(dur_total), 3)
+                            # Sanity check of encoding precision
+                            ratio = n_slots_per_beat / 4
+                            assert ratio.is_integer()
+                            assert (dur_total * ratio).is_integer()  # 4 for duration in quarterLength
+                            dur = Fraction(int(dur_total * ratio), int(3 * ratio))
+                            if number == 36:
+                                ic(idx, durs, dur_total)
+                                ic(n_slots_per_beat, n_slots, r_dur, dur)
 
                             dur_non_trip = sum(durs[idx:idx_end]) + dur_total / 4 - dur_total
                             if dur_non_trip != 0:  # 1st triplet pitch same as prior normal pitch
@@ -964,7 +944,7 @@ if __name__ == '__main__':
         dnm = 'POP909'
         fnms = fl_nms(dnm, k='song_fmt_exp')
         # for fnm in fnms[60:]:
-        for idx, fnm in enumerate(fnms[140:]):
+        for idx, fnm in enumerate(fnms[147:]):
             ic(idx, stem(fnm))
             me = MxlMelodyExtractor(fnm)
             if has_quintuplet(me.scr):
