@@ -18,7 +18,7 @@ def assert_list_same_elms(lst):
     assert all(l == lst[0] for l in lst)
 
 
-def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord]]):
+def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord, m21.note.Rest]]):
     """
     Asserts that the notes don't overlap, given the start time and duration
     """
@@ -84,11 +84,19 @@ def group_triplets(bar) -> list[Union[
 
 
 def invalid_triplets(scr: m21.stream.Score):
-    def _invalid(bar: Union[m21.stream.Measure, m21.stream.Voice]):
-        it = it_m21_elm(bar, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord, m21.stream.Voice))
+    def _invalid(stream: Union[m21.stream.Measure, m21.stream.Voice]):
+        # ic()
+        it = it_m21_elm(stream, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord, m21.stream.Voice))
         elm = next(it, None)
         while elm:
+            # if isinstance(elm, m21.stream.Voice):
+            #     ic(elm, elm.offset, elm.duration)
+            # else:
+            #     # ic(stream.number)
+            #     ic(elm, elm.fullName, elm.offset, elm.duration)
+
             if isinstance(elm, m21.stream.Voice):
+                # ic(stream.number)
                 if _invalid(elm):
                     return True
             elif 'Triplet' in elm.fullName:
@@ -387,16 +395,6 @@ class MxlMelodyExtractor:
                     clefs = [e for e in bar if isinstance(e, m21.clef.Clef)]
                     ln_clef = len(clefs)
 
-                    if bar.number == 16 and pnm == 'Piano, PIANO, CH #4':
-                        ic(pnm, bar.number)
-                        # bar.show()
-                        for e in bar:
-                            ic(e, e.offset, e.duration)
-                        for v in bar.voices:
-                            ic(v)
-                            for elm in v:
-                                ic(elm, elm.offset, elm.duration)
-
                     if ln_clef >= 1:
                         warn(f'Clef found in bar {bar.number}, channel [{pnm}] containing voices '
                              f'- voice durations potentially adjusted')
@@ -419,9 +417,7 @@ class MxlMelodyExtractor:
                                             dur_prev = 0 if l_n == 1 else sum(
                                                 e.duration.quarterLength for e in notes_before_[:-1]
                                             )
-                                            ic(dur_prev)
                                             n.duration = m21.duration.Duration(quarterLength=clef.offset - dur_prev)
-                                            ic(n, n.offset, n.duration)
                                 offset_prev = clef.offset
                     voices = bar.voices
                     if '1' in [v.id for v in voices]:
@@ -436,14 +432,10 @@ class MxlMelodyExtractor:
             for pnm in del_pnms:
                 del obj.bars[pnm]
             for pnm, bar in obj.bars.items():
-                ic(pnm, bar.number)
                 assert not bar.hasVoices()
                 notes = bar.notes  # TODO: include rest
                 assert notes.isSorted
-                if bar.number == 16 and pnm == 'Piano, PIANO, CH #4':
-                    for n in notes:
-                        ic(n, n.fullName, n.offset, n.duration)
-                    # bar.show()
+                # notes = list(it_m21_elm(bar))
                 assert_notes_no_overlap(notes)
 
                 def chord2note(c):
@@ -930,6 +922,46 @@ class MxlMelodyExtractor:
         return scr
 
 
+def extract(dnms: list[str], exp='json') -> list[dict[str]]:
+    """
+    :param dnms: Dataset names
+    :param exp: Encoded songs export format
+        `json` for JSON file
+    """
+    count = 0
+    songs = []
+    fnms = {dnm: fl_nms(dnm, k='song_fmt_exp')[:5] for dnm in dnms}
+    n_songs = sum(len(e) for e in fnms.values())
+    n = len(str(n_songs))
+    ic(n)
+    for dnm, fnms in fnms.items():
+        for fnm in fnms:
+            fnm_ = stem(fnm)
+            num = f'{{:>0{n}}}'.format(count)
+            print(f'{now()}| Encoding song #{num} [{fnm_}]... ')
+            me = MxlMelodyExtractor(fnm)
+            if has_quintuplet(me.scr):
+                warn(f'Song [{fnm_}] ignored for containing quintuplets')
+            elif invalid_triplets(me.scr):
+                warn(f'Song [{fnm_}] ignored for containing invalid triplets')
+            elif me.beyond_precision():  # TODO: resolve later
+                warn(f'Song [{fnm_}] ignored for duration beyond precision')
+            else:
+                ids = me.bar_with_max_pitch(exp='symbol')
+                print(f'{now()}| Encoding song #{count:>n} [{fnm_}] success')
+                songs.append(dict(
+                    nm=fnm_,
+                    ids=ids
+                ))
+            count += 1
+    print(f'{now()}| {count} songs encoded')
+    if exp == 'json':
+        fnm = 'Song-ids'
+        with open(os.path.join(PATH_BASE, DIR_DSET, config(f'{DIR_DSET}.my.dir_nm'), f'{fnm}.json'), 'w') as f:
+            json.dump(songs, f, indent=4)
+    return songs
+
+
 if __name__ == '__main__':
     from icecream import ic
 
@@ -968,6 +1000,8 @@ if __name__ == '__main__':
         ic(me.encoding2score(ids, save=True))
     # sanity_check_encoding()
 
+    # ic(fl_nms('LMD_Cleaned', k='song_fmt_exp'))
+
     def encode_a_few():
         # n = 2**6
         dnm = 'POP909'
@@ -984,6 +1018,12 @@ if __name__ == '__main__':
                 warn(f'Song [{stem(fnm)}] ignored for duration beyond precision')
             else:
                 ids = me.bar_with_max_pitch(exp='symbol')
-                print(f'Decoding song [{stem(fnm)}] success')
+                print(f'Encoding song [{stem(fnm)}] success')
                 me.encoding2score(ids, save=True)
-    encode_a_few()
+            # exit(1)
+    # encode_a_few()
+
+    def store_encoding():
+        dnms = ['LMD_Cleaned', 'POP909']
+        extract(dnms)
+    store_encoding()

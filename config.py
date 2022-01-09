@@ -69,6 +69,10 @@ config = {
             dir_nm='POP909',
             song_fmt='*.mid',
             song_fmt_exp='*.mxl'
+        ),
+        my=dict(
+            nm='Music with NLP, Project output',
+            dir_nm='MNLP-Combined'
         )
     ),
     'Melody-Extraction': dict(
