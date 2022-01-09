@@ -381,18 +381,22 @@ class MxlMelodyExtractor:
             obj = self if inplace else deepcopy(self)
             del_pnms = []
             for pnm, bar in obj.bars.items():
-                ic(bar.number)
+                # ic(bar.number)
                 if bar.hasVoices():
-                    if bar.number == 18:
+                    # Seems to be a problem in prior processing: overlapping notes => Fix it
+                    clefs = [e for e in bar if isinstance(e, m21.clef.Clef)]
+                    ln_clef = len(clefs)
+
+                    if bar.number == 16 and pnm == 'Piano, PIANO, CH #4':
+                        ic(pnm, bar.number)
+                        # bar.show()
                         for e in bar:
                             ic(e, e.offset, e.duration)
                         for v in bar.voices:
                             ic(v)
                             for elm in v:
                                 ic(elm, elm.offset, elm.duration)
-                    # Seems to be a problem in prior processing: overlapping notes => Fix it
-                    clefs = [e for e in bar if isinstance(e, m21.clef.Clef)]
-                    ln_clef = len(clefs)
+
                     if ln_clef >= 1:
                         warn(f'Clef found in bar {bar.number}, channel [{pnm}] containing voices '
                              f'- voice durations potentially adjusted')
@@ -402,29 +406,23 @@ class MxlMelodyExtractor:
                                for v in bar.voices):
                             offset_prev = 0
                             for clef in clefs:
-                                # clef = clefs[0]
                                 for v in bar.voices:
-                                    # ic(sum(e.duration.quarterLength for e in it_m21_elm(v, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord))))
                                     if sum(e.duration.quarterLength for e in
                                            it_m21_elm(v, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord))
                                            ) != v.duration.quarterLength:  # Inconsistent
                                         notes_before = [e for e in v if offset_prev <= e.offset < clef.offset]
                                         l_n = len(notes_before)
-                                        ic(l_n)
-                                        for e in v:
-                                            ic(e, e.offset, e.duration)
                                         if l_n > 0:
-                                            ic(notes_before)
-                                            # assert len(notes_before) == 1
                                             n = notes_before[-1]
                                             # Up until start of Clef
-                                            dur_prev = 0 if l_n == 1 else sum(e.duration.quarterLength for e in notes_before[:-1])
+                                            notes_before_ = [e for e in v if e.offset < clef.offset]  # ALl notes
+                                            dur_prev = 0 if l_n == 1 else sum(
+                                                e.duration.quarterLength for e in notes_before_[:-1]
+                                            )
+                                            ic(dur_prev)
                                             n.duration = m21.duration.Duration(quarterLength=clef.offset - dur_prev)
-                                            ic(n.duration)
+                                            ic(n, n.offset, n.duration)
                                 offset_prev = clef.offset
-                            # else:
-                            #     ic('multiple clef')
-                            #     exit(1)
                     voices = bar.voices
                     if '1' in [v.id for v in voices]:
                         soprano = next(filter(lambda v: v.id == '1', voices))
@@ -438,9 +436,14 @@ class MxlMelodyExtractor:
             for pnm in del_pnms:
                 del obj.bars[pnm]
             for pnm, bar in obj.bars.items():
+                ic(pnm, bar.number)
                 assert not bar.hasVoices()
-                notes = bar.notes
+                notes = bar.notes  # TODO: include rest
                 assert notes.isSorted
+                if bar.number == 16 and pnm == 'Piano, PIANO, CH #4':
+                    for n in notes:
+                        ic(n, n.fullName, n.offset, n.duration)
+                    # bar.show()
                 assert_notes_no_overlap(notes)
 
                 def chord2note(c):
@@ -890,7 +893,6 @@ class MxlMelodyExtractor:
             scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
         elif exp == 'symbol':
             # Get time signature for each bar
-            # exit(1)
             lst_bar_n_ts = bars2lst_bar_n_ts(part[m21.stream.Measure])
             return self.tokenizer(lst_bar_n_ts)
         else:
@@ -970,8 +972,8 @@ if __name__ == '__main__':
         # n = 2**6
         dnm = 'POP909'
         fnms = fl_nms(dnm, k='song_fmt_exp')
-        for idx, fnm in enumerate(fnms[66:]):
-        # for idx, fnm in enumerate(fnms[147+392:]):
+        for idx, fnm in enumerate(fnms[66+136+289:]):
+        # for idx, fnm in enumerate(fnms):
             ic(idx, stem(fnm))
             me = MxlMelodyExtractor(fnm)
             if has_quintuplet(me.scr):
