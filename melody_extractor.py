@@ -383,48 +383,48 @@ class MxlMelodyExtractor:
             for pnm, bar in obj.bars.items():
                 ic(bar.number)
                 if bar.hasVoices():
-                    if bar.number == 13:
-                        ic(pnm)
-                        # bar.show()
+                    if bar.number == 18:
                         for e in bar:
                             ic(e, e.offset, e.duration)
                         for v in bar.voices:
                             ic(v)
                             for elm in v:
                                 ic(elm, elm.offset, elm.duration)
-
                     # Seems to be a problem in prior processing: overlapping notes => Fix it
                     clefs = [e for e in bar if isinstance(e, m21.clef.Clef)]
                     ln_clef = len(clefs)
-                    ic(ln_clef)
                     if ln_clef >= 1:
-                        warn(f'Clef found in bar {bar.number}, channel [{pnm}] containing voices - durations adjusted')
-                        assert ln_clef == 1  # TODO: generalize
-
-                        clef = clefs[0]
-
-                        for v in bar.voices:
-                            notes_before = [e for e in v if e.offset < clef.offset]
-                            l_n = len(notes_before)
-                            if l_n > 0:
-                                assert len(notes_before) == 1  # TODO: generalize
-                                n = notes_before[0]
-                                # Up until start of Clef
-                                n.duration = m21.duration.Duration(quarterLength=clef.offset)
-                                ic(n.duration)
-
-                            # notes_bf, notes_af = [], []  # Split by clef
-                            # elm = next(v)
-                            # while not isinstance(elm, m21.clef.Clef):
-                            #     notes_bf.append(elm)
-                            #     elm = next(v)
-                            # elm = next(v)  # Skip `Clef`
-                            # notes_af = list(v)
-                            # ic(notes_bf, notes_af)
-                            # notes = list(it_m21_elm(v))
-                            # ic(split(v, lambda elm: isinstance(elm, m21.clef.Clef)))
-                            # exit(1)
-                        # exit(1)
+                        warn(f'Clef found in bar {bar.number}, channel [{pnm}] containing voices '
+                             f'- voice durations potentially adjusted')
+                        if any(sum(e.duration.quarterLength for e in
+                                   it_m21_elm(v, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord)))
+                               != v.duration.quarterLength
+                               for v in bar.voices):
+                            offset_prev = 0
+                            for clef in clefs:
+                                # clef = clefs[0]
+                                for v in bar.voices:
+                                    # ic(sum(e.duration.quarterLength for e in it_m21_elm(v, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord))))
+                                    if sum(e.duration.quarterLength for e in
+                                           it_m21_elm(v, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord))
+                                           ) != v.duration.quarterLength:  # Inconsistent
+                                        notes_before = [e for e in v if offset_prev <= e.offset < clef.offset]
+                                        l_n = len(notes_before)
+                                        ic(l_n)
+                                        for e in v:
+                                            ic(e, e.offset, e.duration)
+                                        if l_n > 0:
+                                            ic(notes_before)
+                                            # assert len(notes_before) == 1
+                                            n = notes_before[-1]
+                                            # Up until start of Clef
+                                            dur_prev = 0 if l_n == 1 else sum(e.duration.quarterLength for e in notes_before[:-1])
+                                            n.duration = m21.duration.Duration(quarterLength=clef.offset - dur_prev)
+                                            ic(n.duration)
+                                offset_prev = clef.offset
+                            # else:
+                            #     ic('multiple clef')
+                            #     exit(1)
                     voices = bar.voices
                     if '1' in [v.id for v in voices]:
                         soprano = next(filter(lambda v: v.id == '1', voices))
@@ -655,11 +655,7 @@ class MxlMelodyExtractor:
             def _call(bar, time_sig):
                 n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
                 enc = [MxlMelodyExtractor.Tokenizer.Slot() for _ in range(n_slots)]
-                ic(bar.number)
-                # if bar.number == 153:
-                #     for e in it_m21_elm(bar):
-                #         ic(e, e.fullName, e.offset, e.duration)
-                #     bar.show()
+                # ic(bar.number)
                 r_dur = time_sig2ratio(time_sig)
                 for e in group_triplets(bar):
                     if isinstance(e, list):  # Triplet case
@@ -974,7 +970,7 @@ if __name__ == '__main__':
         # n = 2**6
         dnm = 'POP909'
         fnms = fl_nms(dnm, k='song_fmt_exp')
-        for idx, fnm in enumerate(fnms[59:]):
+        for idx, fnm in enumerate(fnms[66:]):
         # for idx, fnm in enumerate(fnms[147+392:]):
             ic(idx, stem(fnm))
             me = MxlMelodyExtractor(fnm)
@@ -984,13 +980,8 @@ if __name__ == '__main__':
                 warn(f'Song [{stem(fnm)}] ignored for containing invalid triplets')
             elif me.beyond_precision():  # TODO: resolve later
                 warn(f'Song [{stem(fnm)}] ignored for duration beyond precision')
-            # Multiple clef is not a problem
-            # elif multiple_clef(me.scr):
-            #     warn(f'Song [{stem(fnm)}] ignored for containing multiple clefs')
             else:
                 ids = me.bar_with_max_pitch(exp='symbol')
-                # ic(ids[:20])
                 print(f'Decoding song [{stem(fnm)}] success')
                 me.encoding2score(ids, save=True)
-                # exit(1)
     encode_a_few()
