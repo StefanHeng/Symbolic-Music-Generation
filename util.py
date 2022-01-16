@@ -6,13 +6,11 @@ import pickle
 from math import floor, ceil
 from functools import reduce
 import itertools
-# from itertools import takewhile, dropwhile, groupby
 from typing import TypeVar, Callable
 from collections.abc import Iterable
 import datetime
+
 import colorama
-
-
 import numpy as np
 import pandas as pd
 import mido
@@ -25,7 +23,6 @@ import music21 as m21
 from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import seaborn as sns
-# from icecream import ic
 
 from data_path import *
 
@@ -38,7 +35,6 @@ nan = float('nan')
 
 def flatten(lsts):
     """ Flatten list of [list of elements] to list of elements """
-    # return [e for lst in lsts for e in lst]
     return sum(lsts, [])
 
 
@@ -61,8 +57,6 @@ def vars_(obj, include_private=False):
         else:
             return lambda a: not a.startswith('__') and not a.startswith('_')
     attrs = filter(is_relevant(), dir(obj))
-    # ic(len(list(attrs)))
-    # ic(dir(obj))
     return {a: getattr(obj, a) for a in attrs}
 
 
@@ -255,7 +249,7 @@ class PrettyMidiUtil:
         return df
 
     @staticmethod
-    def get_pitch_range(pm_, clip=False):
+    def get_pitch_range(pm_, clip_=False):
         """
         :return: Inclusive lower and upper bound of pitch in PrettyMIDI
         """
@@ -270,7 +264,7 @@ class PrettyMidiUtil:
             else:
                 return list(_get(pm_))
         strt, end = _get_pitch_range()
-        if clip:
+        if clip_:
             strt = floor(strt / N_NOTE_OCT) * N_NOTE_OCT
             end = ceil(end / N_NOTE_OCT) * N_NOTE_OCT
         return strt, end
@@ -288,7 +282,7 @@ class PrettyMidiUtil:
         if type(fl) is str:
             fl = PrettyMIDI(fl)
         if strt is None and end is None:
-            strt, end = PrettyMidiUtil.get_pitch_range(fl, clip=True)
+            strt, end = PrettyMidiUtil.get_pitch_range(fl, clip_=True)
             end += 1  # inclusive np array slicing
         pr_ = fl.get_piano_roll(fqs)[strt:end]
         strt_ = pretty_midi.note_number_to_name(strt)
