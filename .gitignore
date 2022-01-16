@@ -3,7 +3,7 @@ assets/
 .idea/
 .vscode/
 data_path.py
-test_lang.py
+src/test_lang.py
 inspiration/
 
 

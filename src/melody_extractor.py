@@ -12,7 +12,6 @@ from mido import MidiFile
 import pretty_midi
 from pretty_midi import PrettyMIDI
 import music21 as m21
-from py_console import console
 
 
 def assert_list_same_elms(lst):
@@ -932,15 +931,15 @@ def extract(dnms: list[str], exp='json') -> list[dict[str]]:
         `json` for JSON file
     """
     count = 0
+    count_suc = 0
     songs = []
-    fnms = {dnm: fl_nms(dnm, k='song_fmt_exp')[:5] for dnm in dnms}
+    fnms = {dnm: fl_nms(dnm, k='song_fmt_exp') for dnm in dnms}
     n_songs = sum(len(e) for e in fnms.values())
     n = len(str(n_songs))
     for dnm, fnms in fnms.items():
         for fnm in fnms:
             fnm_ = stem(fnm)
             num = f'{{:>0{n}}}'.format(count)
-            # console.info(f'Encoding song #{num} [{fnm_}]... ')
             log(f'Encoding song #{logs(num, c="i")} [{logs(fnm_, c="i")}]... ')
             me = MxlMelodyExtractor(fnm, verbose=False)
             if has_quintuplet(me.scr):
@@ -951,15 +950,15 @@ def extract(dnms: list[str], exp='json') -> list[dict[str]]:
                 warn(f'Song [{fnm_}] ignored for duration beyond precision')
             else:
                 ids = me.bar_with_max_pitch(exp='symbol')
-                log(f'Encoding song #{count:>n} [{fnm_}] success', c='g')
-                # console.success(f'Encoding song #{count:>n} [{fnm_}] success')
+                num_ = f'{{:>0{n}}}'.format(count_suc)
+                log(f'Encoding song [{fnm_}] success #{num_}', c='g')
                 songs.append(dict(
                     nm=fnm_,
                     ids=ids
                 ))
+                count_suc += 1
             count += 1
-    log(f'{count} songs encoded', c='g')
-    # console.log(f'{count} songs encoded')
+    log(f'{count_suc} songs encoded', c='g')
     if exp == 'json':
         fnm = 'Song-ids'
         with open(os.path.join(PATH_BASE, DIR_DSET, config(f'{DIR_DSET}.my.dir_nm'), f'{fnm}.json'), 'w') as f:
@@ -1031,4 +1030,11 @@ if __name__ == '__main__':
     def store_encoding():
         dnms = ['LMD_Cleaned', 'POP909']
         extract(dnms)
-    store_encoding()
+    # store_encoding()
+
+    def check_encoding_export():
+        fnm = 'Song-ids'
+        with open(os.path.join(PATH_BASE, DIR_DSET, config(f'{DIR_DSET}.my.dir_nm'), f'{fnm}.json'), 'r') as f:
+            songs = json.load(f)
+            ic(len(songs), songs[0])
+    check_encoding_export()

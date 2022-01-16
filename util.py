@@ -5,10 +5,13 @@ import pathlib
 import pickle
 from math import floor, ceil
 from functools import reduce
-from itertools import takewhile, dropwhile, groupby
+import itertools
+# from itertools import takewhile, dropwhile, groupby
 from typing import TypeVar, Callable
+from collections.abc import Iterable
 import datetime
 import colorama
+
 
 import numpy as np
 import pandas as pd
@@ -117,15 +120,22 @@ def compress(lst: list[T]) -> list[tuple[T, int]]:
     """
     if not lst:
         return []
-    return ([(lst[0], len(list(takewhile(lambda elm: elm == lst[0], lst))))]
-            + compress(list(dropwhile(lambda elm: elm == lst[0], lst))))
+    return ([(lst[0], len(list(itertools.takewhile(lambda elm: elm == lst[0], lst))))]
+            + compress(list(itertools.dropwhile(lambda elm: elm == lst[0], lst))))
 
 
 def split(lst: list[T], call: Callable[[T], bool]) -> list[list[T]]:
     """
     :return: Split a list by locations of elements satisfying a condition
     """
-    return [list(g) for k, g in groupby(lst, call) if k]
+    return [list(g) for k, g in itertools.groupby(lst, call) if k]
+
+
+def join_its(its: Iterable[Iterable[T]]) -> Iterable[T]:
+    out = itertools.chain()
+    for it in its:
+        out = itertools.chain(out, it)
+    return out
 
 
 def log(s, c: str = '', as_str=False):
@@ -183,12 +193,6 @@ def config(attr):
                         for k_, v_ in v.items()
                     }
     return get(config.config, attr)
-
-
-# def get_midi_paths(dnm):
-#     dset_dir = config(f'datasets.{dnm}.dir_nm')
-#     paths = sorted(glob.iglob(f'{PATH_BASE}/{DIR_DSET}/{dset_dir}/**/*.mid', recursive=True))
-#     return paths
 
 
 DEF_TPO = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)
