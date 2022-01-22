@@ -924,6 +924,62 @@ class MxlMelodyExtractor:
         return scr
 
 
+class MelodyTokenizer:
+    """
+    Music MXL file to melody pitch representation tokenizer
+
+    Wrapper for `MxlMelodyExtractor` (TODO)
+    """
+
+    D_CONF = config('Melody-Extraction.tokenizer')
+
+    MAP_DF = {
+        '[SEP]': '<s>',
+        '[TRIP]': '<t>',
+        '[PAD]': '<p>',
+        '[REST]': '<r>'
+    }
+
+    def __init__(self, spec_map: Callable[[str], str] = MAP_DF.get):
+        """
+        :param spec_map: Maps each decoded special token to a new string
+        """
+        self.n_spec = self.D_CONF['n_special_token']
+        self.spec = self.D_CONF['vocab_special']
+        self.enc = self.D_CONF['encoder']
+        self.dec = self.D_CONF['decoder']
+        self.spec_map = spec_map
+        self.pchs = set(range(2**7))  # Valid pitch encodings per MIDI
+
+    def decode(
+            self,
+            ids: Union[int, list[int], list[list[int]], np.ndarray, list[np.ndarray]],
+            return_joined=True
+    ) -> Union[str, list[str], list[list[str]]]:
+        """
+        :param ids: Pitch ids
+        :param return_joined: If True and iterable ids passed in, the melody is joined into a single string
+        :return: A string representation of each id
+        """
+        def id2str(id_):
+            id_ = self.dec[id_]
+            if id_ in self.pchs:
+                return m21.pitch.Pitch(midi=id_).nameWithOctave
+            else:
+                assert isinstance(id_, str)
+                return self.spec_map(id_) if self.spec_map is not None else id_
+
+        def _decode(ids_: list[int]):
+            return ' '.join(id2str(id_) for id_ in ids_) if return_joined else [id2str(id_) for id_ in ids_]
+        if isinstance(ids, int):
+            return id2str(ids)
+        elif isinstance(ids, list) and isinstance(ids[0], (list, np.ndarray)):
+            return list(conc_map(_decode, ids))
+        else:
+            assert isinstance(ids, (list, np.ndarray))
+            return _decode(ids)
+
+
 def extract(dnms: list[str], exp='json') -> list[dict[str]]:
     """
     :param dnms: Dataset names
@@ -1034,7 +1090,19 @@ if __name__ == '__main__':
 
     def check_encoding_export():
         fnm = 'Song-ids'
-        with open(os.path.join(PATH_BASE, DIR_DSET, config(f'{DIR_DSET}.my.dir_nm'), f'{fnm}.json'), 'r') as f:
+        with open(os.path.join(config('path-export'), f'{fnm}.json'), 'r') as f:
             songs = json.load(f)
             ic(len(songs), songs[0])
-    check_encoding_export()
+    # check_encoding_export()
+
+    def check_melody_tokenizer():
+        from melody_loader import MelodyLoader
+
+        mt = MelodyTokenizer()
+        ml = MelodyLoader()
+        ids = list(ml)
+        # ic(ids)
+        ic(mt.decode(ids[0]))
+        # ic(mt.decode(ids))
+    check_melody_tokenizer()
+

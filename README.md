@@ -18,6 +18,11 @@ DIR_PROJ = 'Symbolic_Music_Generation'  # Repo root folder name
 DIR_DSET = 'datasets'  # Dataset root folder name 
 ```
 
+Run 
+```bash
+$ python config.py
+```
+
 
 Also, a `datasets` folder should be kept at the same level as 
 this repository, with dataset folder names specified as 

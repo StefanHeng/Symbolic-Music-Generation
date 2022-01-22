@@ -21,6 +21,7 @@ def get_tokenizer():
     encoder = {
         '[SEP]': 0,  # Bar separation
         '[TRIP]': 1,  # Last quarter encoding for triplets
+        '[PAD]': 2,  # Will not occur in melody
         '[REST]': int(half)
     }
     vocab_special = list(encoder.keys())
@@ -82,6 +83,9 @@ config = {
         )
     )
 }
+
+d_my = config['datasets']['my']
+config['path-export'] = os.path.join(PATH_BASE, DIR_DSET, d_my['dir_nm'])
 
 
 for k in keys(config[DIR_DSET]):    # Accommodate other OS

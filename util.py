@@ -6,6 +6,7 @@ import pickle
 from math import floor, ceil
 from functools import reduce
 import itertools
+import concurrent.futures
 from typing import TypeVar, Callable
 from collections.abc import Iterable
 import datetime
@@ -98,6 +99,18 @@ def keys(dic, prefix=''):
                 yield k__
         else:
             yield _full(k)
+
+
+def conc_map(fn, it):
+    """
+    Wrapper for `concurrent.futures.map`
+
+    :param fn: A function
+    :param it: A list of elements
+    :return: Iterator of `lst` elements mapped by `fn` with concurrency
+    """
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        return executor.map(fn, it)
 
 
 def now(as_str=True):

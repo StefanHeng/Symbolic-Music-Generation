@@ -47,11 +47,13 @@
             "vocab_special": [
                 "[SEP]",
                 "[TRIP]",
+                "[PAD]",
                 "[REST]"
             ],
             "encoder": {
                 "[SEP]": 0,
                 "[TRIP]": 1,
+                "[PAD]": 2,
                 "[REST]": 64,
                 "0": 128,
                 "1": 129,
@@ -185,6 +187,7 @@
             "decoder": {
                 "0": "[SEP]",
                 "1": "[TRIP]",
+                "2": "[PAD]",
                 "64": "[REST]",
                 "128": 0,
                 "129": 1,
@@ -319,5 +322,6 @@
         "output": {
             "BPM": 120
         }
-    }
+    },
+    "path-export": "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MNLP-Combined"
 }
