@@ -840,7 +840,7 @@ class MxlMelodyExtractor:
         For each bar, pick the track with the highest average pitch
         """
         scr = deepcopy(self.scr)
-        composer = PROJ_NM
+        composer = PKG_NM
         scr.metadata.composer = composer
 
         # Pick a `Part` to replace elements one by one, the 1st part selected as it contains all metadata
@@ -871,7 +871,7 @@ class MxlMelodyExtractor:
         instr = m21.instrument.Piano()
         [part.remove(ins) for ins in part[m21.instrument.Instrument]]
         part.insert(instr)
-        part.partName = f'{PROJ_NM}, {instr.instrumentName}, CH #1'
+        part.partName = f'{PKG_NM}, {instr.instrumentName}, CH #1'
 
         # Set tempo
         [bar.removeByClass(m21.tempo.MetronomeMark) for bar in part[m21.stream.Measure]]
@@ -904,13 +904,13 @@ class MxlMelodyExtractor:
         part = m21.stream.Part()
         instr = m21.instrument.Piano()
         bars[0].insert(m21.meter.TimeSignature('12/8'))
-        part.partName = f'{PROJ_NM}, {instr.instrumentName}, CH #1'
+        part.partName = f'{PKG_NM}, {instr.instrumentName}, CH #1'
         part.append(instr)
         part.append(bars)
 
         scr = m21.stream.Score()
         scr.append(m21.metadata.Metadata())
-        scr.metadata.composer = PROJ_NM
+        scr.metadata.composer = PKG_NM
         scr.metadata.title = f'{self.score_title}, decoded'
         scr.append(part)
 
@@ -1102,14 +1102,17 @@ if __name__ == '__main__':
     # check_encoding_export()
 
     def check_melody_tokenizer():
-        from melody_loader import MelodyLoader
+        from musicnlp.model import Loader
 
         mt = MelodyTokenizer()
         ic(len(mt.vocab), mt.vocab[:20])
-        ml = MelodyLoader()
+        ml = Loader()
         ids = list(ml)
         # ic(ids)
         ic(mt.decode(ids[0]))
         # ic(mt.decode(ids))
-    check_melody_tokenizer()
+    # check_melody_tokenizer()
+
+    ic(__name__, __file__)
+
 
