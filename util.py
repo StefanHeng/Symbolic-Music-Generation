@@ -7,7 +7,7 @@ from math import floor, ceil
 from functools import reduce
 import itertools
 import concurrent.futures
-from typing import TypeVar, Callable
+from typing import TypeVar, Callable, Union
 from collections.abc import Iterable
 import datetime
 
@@ -118,6 +118,22 @@ def now(as_str=True):
     return d.strftime('%Y-%m-%d %H:%M:%S') if as_str else d
 
 
+def fmt_dt(secs: Union[int, float, datetime.timedelta]):
+    if isinstance(secs, datetime.timedelta):
+        secs = secs.seconds + (secs.microseconds/1e6)
+    if secs >= 86400:
+        d = secs // 86400  # // floor division
+        return f'{round(d)}d{fmt_dt(secs-d*86400)}'
+    elif secs >= 3600:
+        h = secs // 3600
+        return f'{round(h)}h{fmt_dt(secs-h*3600)}'
+    elif secs >= 60:
+        m = secs // 60
+        return f'{round(m)}m{fmt_dt(secs-m*60)}'
+    else:
+        return f'{round(secs)}s'
+
+
 T = TypeVar('T')
 
 
@@ -145,7 +161,7 @@ def join_its(its: Iterable[Iterable[T]]) -> Iterable[T]:
     return out
 
 
-def log(s, c: str = '', as_str=False):
+def log(s, c: str = 'log', c_time='green', as_str=False):
     """
     Prints `s` to console with color `c`
     """
@@ -161,6 +177,7 @@ def log(s, c: str = '', as_str=False):
             suc=colorama.Fore.GREEN,
             info=colorama.Fore.BLUE,
             i=colorama.Fore.BLUE,
+            w=colorama.Fore.RED,
 
             y=colorama.Fore.YELLOW,
             yellow=colorama.Fore.YELLOW,
@@ -176,11 +193,18 @@ def log(s, c: str = '', as_str=False):
     if as_str:
         return f'{c}{s}{log.reset}'
     else:
-        print(f'{c}{now()} |{s}{log.reset}')
+        print(f'{c}{log(now(), c=c_time, as_str=True)}| {s}{log.reset}')
 
 
 def logs(s, c):
     return log(s, c=c, as_str=True)
+
+
+def logi(s):
+    """
+    Syntactic sugar for logging `info` as string
+    """
+    return logs(s, c='i')
 
 
 def config(attr):

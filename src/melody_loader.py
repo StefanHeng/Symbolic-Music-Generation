@@ -27,12 +27,19 @@ class MelodyLoader:
 
     def __getitem__(self, idx):
         ids_ = self.ids[idx]
-        return ids_ if self.pad else ids_[~np.isnan(ids_)]  # Remove padding
+        return ids_ if self.pad else ids_[ids_ != ID_PAD]  # Remove padding
 
 
 if __name__ == '__main__':
     from icecream import ic
 
     ml = MelodyLoader()
-    ic(len(ml), ml[0], ml.nms[:20])
-    ic(ml[0].shape, MelodyLoader(pad=False)[0].shape)
+
+    def sanity_check():
+        ic(len(ml), ml[0], ml.nms[:20])
+        ic(ml[0].shape, MelodyLoader(pad=False)[0].shape)
+    sanity_check()
+
+    def why_starting_rests():
+        ic(ml[0])
+    # why_starting_rests()

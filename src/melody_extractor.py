@@ -951,6 +951,20 @@ class MelodyTokenizer:
         self.spec_map = spec_map
         self.pchs = set(range(2**7))  # Valid pitch encodings per MIDI
 
+        self.vocab = [self.id2str(id_) for id_ in self.dec]
+
+    def id2str(self, id_: Union[int, str]) -> str:
+        """
+        :param id_: Encoded id
+        :return: A string representation
+        """
+        id_ = self.dec[id_]
+        if id_ in self.pchs:
+            return m21.pitch.Pitch(midi=id_).nameWithOctave
+        else:
+            assert isinstance(id_, str)
+            return self.spec_map(id_) if self.spec_map is not None else id_
+
     def decode(
             self,
             ids: Union[int, list[int], list[list[int]], np.ndarray, list[np.ndarray]],
@@ -961,18 +975,11 @@ class MelodyTokenizer:
         :param return_joined: If True and iterable ids passed in, the melody is joined into a single string
         :return: A string representation of each id
         """
-        def id2str(id_):
-            id_ = self.dec[id_]
-            if id_ in self.pchs:
-                return m21.pitch.Pitch(midi=id_).nameWithOctave
-            else:
-                assert isinstance(id_, str)
-                return self.spec_map(id_) if self.spec_map is not None else id_
 
         def _decode(ids_: list[int]):
-            return ' '.join(id2str(id_) for id_ in ids_) if return_joined else [id2str(id_) for id_ in ids_]
+            return ' '.join(self.id2str(id_) for id_ in ids_) if return_joined else [self.id2str(id_) for id_ in ids_]
         if isinstance(ids, int):
-            return id2str(ids)
+            return self.id2str(ids)
         elif isinstance(ids, list) and isinstance(ids[0], (list, np.ndarray)):
             return list(conc_map(_decode, ids))
         else:
@@ -1099,6 +1106,7 @@ if __name__ == '__main__':
         from melody_loader import MelodyLoader
 
         mt = MelodyTokenizer()
+        ic(len(mt.vocab), mt.vocab[:20])
         ml = MelodyLoader()
         ids = list(ml)
         # ic(ids)

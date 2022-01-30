@@ -15,7 +15,6 @@ d_allie['n_entry'] = len(read_pickle(fnm)[0])
 
 
 def get_tokenizer():
-    # should be a one-to-one map
     n_special = 2 ** 7
     half = n_special / 2
     encoder = {
@@ -27,9 +26,8 @@ def get_tokenizer():
     vocab_special = list(encoder.keys())
     # pitch midi follows after `n_special`
     encoder.update({pitch: pitch+n_special for pitch in range(2**7)})  # Per MIDI spec
-    # ic(vocab_enc)
-    decoder = {v: k for k, v in encoder.items()}
-    # ic(vocab_dec)
+    decoder = {v: k_ for k_, v in encoder.items()}
+    assert len(encoder) == len(decoder)  # should be a one-to-one map
     return dict(
         n_special_token=n_special,
         vocab_special=vocab_special,
@@ -81,7 +79,8 @@ config = {
         output=dict(
             BPM=120
         )
-    )
+    ),
+    'random_seed': 77,
 }
 
 d_my = config['datasets']['my']
