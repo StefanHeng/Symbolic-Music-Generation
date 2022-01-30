@@ -2,9 +2,9 @@ from gensim.models import Word2Vec
 from gensim.models.callbacks import CallbackAny2Vec
 import torch.nn as nn
 
-from util import *
+from musicnlp.util import *
 from melody_loader import MelodyLoader
-from melody_extractor import MelodyTokenizer
+from musicnlp.preprocess.melody_extractor import MelodyTokenizer
 
 
 class PitchEmbeddingModel:

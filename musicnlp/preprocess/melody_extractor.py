@@ -1,15 +1,12 @@
-import os
 import math
 from copy import deepcopy
 from warnings import warn
-from typing import Union
 from fractions import Fraction
 
-from util import *
+from musicnlp.util.util import *
 
 import numpy as np
 from mido import MidiFile
-import pretty_midi
 from pretty_midi import PrettyMIDI
 import music21 as m21
 
@@ -164,6 +161,8 @@ class MidiMelodyExtractor:
             Number of time steps per second in output representation
         - n_ts:
             Number of time steps in a bar, 2**`precision`
+
+    .. note:: Obsolete
     """
     def __init__(self, fl_nm, precision=5):
         """

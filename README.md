@@ -8,23 +8,16 @@ at [LIT](https://lit.eecs.umich.edu/people.html).
 
 ## To use 
 
-Create a file `data_path.py` in root level. 
+Modify the `DIR_DSET` variable in file [`data_path.py`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/musicnlp/util/data_path.py) 
+as instructed.
 
-In the file specify the following variables with 
-your system data path, and relative repository & dataset folder names:
-```python
-PATH_BASE = '/Users/stefanh/Documents/UMich/Research/Music with NLP'  # System data path
-DIR_PROJ = 'Symbolic_Music_Generation'  # Repo root folder name 
-DIR_DSET = 'datasets'  # Dataset root folder name 
-```
 
 Run 
 ```bash
 $ python config.py
 ```
 
-
-Also, a `datasets` folder should be kept at the same level as 
+A folder named as `DIR_DSET` should be kept at the same level as 
 this repository, with dataset folder names specified as 
-in [`config.json`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/config.json).
+in [`config.json`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/musicnlp/util/config.json).
 

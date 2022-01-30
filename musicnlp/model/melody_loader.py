@@ -2,7 +2,7 @@
 Data Loader for pytorch
 """
 
-from util import *
+from musicnlp.util import *
 
 
 ID_PAD = config('Melody-Extraction.tokenizer.encoder')['[PAD]']
