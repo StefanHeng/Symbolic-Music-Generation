@@ -1,4 +1,4 @@
-import os
+import math
 import glob
 import json
 import pathlib
@@ -7,7 +7,7 @@ from math import floor, ceil
 from functools import reduce
 import itertools
 import concurrent.futures
-from typing import TypeVar, Callable, Union
+from typing import TypeVar, Callable, Union, List, Dict
 from collections.abc import Iterable
 import datetime
 
@@ -224,6 +224,87 @@ def config(attr):
                         for k_, v_ in v.items()
                     }
     return get(config.config, attr)
+
+
+def assert_list_same_elms(lst: List[T]):
+    assert all(l == lst[0] for l in lst)
+
+
+def time_sig2n_slots(time_sig: m21.meter.TimeSignature, precision: int):
+    """
+    :return: 2 tuple of (#time slots per beat, #time slots in total)
+    """
+    denom = time_sig.denominator
+    numer = time_sig.numerator
+    n_slots_per_beat = (1 / denom / (2 ** -precision))
+    assert n_slots_per_beat.is_integer()
+    n_slots_per_beat = int(n_slots_per_beat)
+    n_slots = int(numer * n_slots_per_beat)
+    return n_slots_per_beat, n_slots
+
+
+def it_m21_elm(
+        stream: Union[m21.stream.Measure, m21.stream.Part, m21.stream.Score, m21.stream.Voice],
+        types=(m21.note.Note, m21.note.Rest)
+):
+    """
+    Iterates elements in a stream, for those that are instances of that of `type`, in the original order
+    """
+    if isinstance(stream, (m21.stream.Measure, m21.stream.Voice)):
+        return iter(filter(lambda elm: isinstance(elm, types), stream))
+    else:
+        return iter(filter(lambda elm: isinstance(elm, types), stream.flatten()))
+
+
+def group_triplets(bar) -> list[Union[
+    tuple[m21.note.Note],
+    m21.note.Note,
+    m21.note.Rest
+]]:
+    """
+    Identify triplets from a bar from normal notes & group them
+
+    Expect no `Chord` or `Voice` in bar
+    """
+    lst = []
+    it = it_m21_elm(bar)
+    elm = next(it, None)
+    while elm:
+        if 'Triplet' in elm.fullName:
+            elm2, elm3 = next(it, None), next(it, None)
+            assert elm2 is not None and elm3 is not None
+            assert 'Triplet' in elm2.fullName and 'Triplet' in elm3.fullName
+            lst.append((elm, elm2, elm3))
+        else:
+            lst.append(elm)
+        elm = next(it, None)
+    return lst
+
+
+EPS = 1e-6
+
+
+def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord, m21.note.Rest, tuple[m21.note.Note]]]):
+    """
+    Asserts that the notes don't overlap, given the start time and duration
+    """
+    # from icecream import ic
+    if len(notes) >= 2:
+        # ic(notes)
+        # for n in notes:
+        #     ic(n.offset, n.duration.quarterLength)
+        end = notes[0].offset + notes[0].duration.quarterLength
+        for note in notes[1:]:
+            # Current note should begin, after the previous one ends
+            # Since numeric representation of one-third durations, aka tuplets
+            # assert end <= note.offset or math.isclose(end, note.offset, abs_tol=1e-6)
+            if isinstance(note, tuple):  # Triplet
+                for n in note:
+                    assert (end-EPS) <= n.offset
+                    end = n.offset + n.duration.quarterLength
+            else:
+                assert (end-EPS) <= note.offset
+                end = note.offset + note.duration.quarterLength
 
 
 DEF_TPO = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)

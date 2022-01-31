@@ -1,4 +1,3 @@
-import math
 from copy import deepcopy
 from warnings import warn
 from fractions import Fraction
@@ -9,36 +8,6 @@ import numpy as np
 from mido import MidiFile
 from pretty_midi import PrettyMIDI
 import music21 as m21
-
-
-def assert_list_same_elms(lst):
-    assert all(l == lst[0] for l in lst)
-
-
-def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord, m21.note.Rest]]):
-    """
-    Asserts that the notes don't overlap, given the start time and duration
-    """
-    if len(notes) >= 2:
-        end = notes[0].offset + notes[0].duration.quarterLength
-        for note in notes[1:]:
-            # Current note should begin, after the previous one ends
-            # Since numeric representation of one-third durations, aka tuplets
-            assert end <= note.offset or math.isclose(end, note.offset, abs_tol=1e-6)
-            end = note.offset + note.duration.quarterLength
-
-
-def it_m21_elm(
-        stream: Union[m21.stream.Measure, m21.stream.Part, m21.stream.Score, m21.stream.Voice],
-        types=(m21.note.Note, m21.note.Rest)
-):
-    """
-    Iterates elements in a stream, for those that are instances of that of `type`, in the original order
-    """
-    if isinstance(stream, (m21.stream.Measure, m21.stream.Voice)):
-        return iter(filter(lambda elm: isinstance(elm, types), stream))
-    else:
-        return iter(filter(lambda elm: isinstance(elm, types), stream.flatten()))
 
 
 def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSignature]]:
@@ -56,28 +25,6 @@ def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSign
             ts = next(iter(ts_))
         lst_bar_n_ts.append((bar, ts))
     return lst_bar_n_ts
-
-
-def group_triplets(bar) -> list[Union[
-    list[m21.note.Note],
-    Union[m21.note.Note, m21.note.Rest]
-]]:
-    """
-    Identify triplets from a bar from normal notes & group them
-    """
-    lst = []
-    it = it_m21_elm(bar)
-    elm = next(it, None)
-    while elm:
-        if 'Triplet' in elm.fullName:
-            elm2, elm3 = next(it, None), next(it, None)
-            assert elm2 is not None and elm3 is not None
-            assert 'Triplet' in elm2.fullName and 'Triplet' in elm3.fullName
-            lst.append([elm, elm2, elm3])
-        else:
-            lst.append(elm)
-        elm = next(it, None)
-    return lst
 
 
 def invalid_triplets(scr: m21.stream.Score):
@@ -118,19 +65,6 @@ def multiple_clef(scr: m21.stream.Score):
 def has_quintuplet(scr):
     # Expect rarely seen: Fails the time-slot encoding
     return any(any('Quintuplet' in n.fullName for n in p[m21.note.Note]) for p in scr.parts)
-
-
-def time_sig2n_slots(time_sig, precision):
-    """
-    :return: 2 tuple of (#time slots per beat, #time slots in total)
-    """
-    denom = time_sig.denominator
-    numer = time_sig.numerator
-    n_slots_per_beat = (1 / denom / (2 ** -precision))
-    assert n_slots_per_beat.is_integer()
-    n_slots = int(numer * n_slots_per_beat)
-    # ic(n_slots_per_beat, n_slots)
-    return n_slots_per_beat, n_slots
 
 
 def time_sig2ratio(time_sig: m21.meter.TimeSignature):
@@ -435,7 +369,6 @@ class MxlMelodyExtractor:
                 assert not bar.hasVoices()
                 notes = bar.notes  # TODO: include rest
                 assert notes.isSorted
-                # notes = list(it_m21_elm(bar))
                 assert_notes_no_overlap(notes)
 
                 def chord2note(c):
@@ -1113,6 +1046,6 @@ if __name__ == '__main__':
         # ic(mt.decode(ids))
     # check_melody_tokenizer()
 
-    ic(__name__, __file__)
+    # ic(__name__, __file__)
 
 

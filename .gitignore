@@ -2,7 +2,7 @@
 assets/
 .idea/
 .vscode/
-test_lang.py
+test_lang*
 inspiration/
 
 
