@@ -4,12 +4,10 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 See `melody_extractor` for the old version.
 """
 
-import itertools
 from copy import deepcopy
-from typing import Iterator
 from warnings import warn
 from fractions import Fraction
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 from music21.stream import Score, Measure, Voice
 from music21.meter import TimeSignature
@@ -56,6 +54,7 @@ def expand_bar(bar: Union[Measure, Voice], keep_chord=False, number=None) -> Lis
                 words = elm.fullName.split()
                 word_n_tup = words[words.index(tup)+2]
                 n_tup = int(word_n_tup[:word_n_tup.find('/')])
+
             elms_tup: List[Note] = [elm]
             elm_ = next(it, None)
             while elm_ is not None and tup in elm_.fullName:  # Look for all elements of the same `n_tup`
@@ -76,7 +75,6 @@ def expand_bar(bar: Union[Measure, Voice], keep_chord=False, number=None) -> Lis
                 if ln != n_tup:
                     warn(f'Invalid {tup}: {tup} with invalid number of notes added at bar#{number}'
                          f' - expect {n_tup}, got {ln}')
-
             while e_tup is not None:  # MIDI & MuseScore transcription quality, e.g. A triplet may not contain 3 notes
                 dur += e_tup.duration.quarterLength
                 n_tup_curr += 1
@@ -117,13 +115,10 @@ def expand_bar(bar: Union[Measure, Voice], keep_chord=False, number=None) -> Lis
                         tups_new.extend(list(itertools.product(*opns)))
                 if has_chord:  # Update prior triplet groups
                     lst = lst[:idx_tup_strt] + tups_new
-
             if not trip_added:
                 ic('triplet not added')
                 exit(1)
-
             elm = elm_
-            # exit(1)
             continue  # Skip `next` for peeked 1 step ahead
         elif isinstance(elm, (Note, Rest)):
             lst.append(elm)
@@ -201,10 +196,12 @@ class MusicExtractor:
     def __call__(self, exp='mxl'):
         scr = deepcopy(self.scr)
 
-        for bars, time_sig, tempo in MusicExtractor.it_bars(scr):
+        lst_bar_info = list(MusicExtractor.it_bars(scr))  # TODO
+        lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
+        for n_out, (bars, time_sig, tempo) in enumerate(lst_bar_info):
             number = bars[0].number
             ic(number)
-            # if number == 164:
+            # if number == 73:
             #     for b in bars:
             #         b.show()
             n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
@@ -214,9 +211,7 @@ class MusicExtractor:
                 if isinstance(note, tuple):  # Triplet, return average pitch
                     # Duration for each note not necessarily same duration, for transcription quality
                     fs, durs = zip(*[(note2pitch(n__), n__.duration.quarterLength) for n__ in note])
-                    # ic(fs, durs, np.average(fs, weights=durs))
                     return np.average(fs, weights=durs)
-                    # return sum(n__.pitch.frequency for n__ in note) / len(note)
                 elif isinstance(note, Note):
                     return note.pitch.frequency
                 else:
@@ -225,11 +220,13 @@ class MusicExtractor:
 
             groups = defaultdict(list)  # Group notes by starting location
             for n in notes:
-                n_ = n[-1] if isinstance(n, tuple) else n
+                n_ = n[0] if isinstance(n, tuple) else n
                 groups[n_.offset].append(n)
             groups = {offset: sorted(ns, key=note2pitch) for offset, ns in groups.items()}
+            # if number == 73:
+            #     ic(groups)
 
-            def get_notes_out() -> List[Union[tuple[Note], Note, Chord]]:
+            def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
                 ns_out = []
                 offset_next = 0
                 for offset in sorted(groups.keys()):  # Pass through notes in order
@@ -240,14 +237,13 @@ class MusicExtractor:
                             # Offset would closely line up across tracks, expect this to be less frequent
                             warn(f'High pitch overlap: later overlapping note with higher pitch observed '
                                  f'at bar#{number} - prior note truncated')
-                            # Definitely non-0 for offset grouping
-                            if number == 73:
-                                ic(nt, ns_out[-1])
+                            # if number == 73:
+                            #     ic(nt, ns_out[-1])
                             if isinstance(ns_out[-1], tuple):  # TODO: recomputing notes, if triplet is overlapping
                                 ic('triplet being truncated')
                                 exit(1)
                             else:  # Triplet replaces pr..           ior note, which is definitely non triplet
-                                nt_ = nt[0] if isinstance(nt, tuple) else nt
+                                nt_ = nt[0] if isinstance(nt, tuple) else nt  # Definitely non-0 for offset grouping
                                 ns_out[-1].duration = Duration(quarterLength=nt_.offset - ns_out[-1].offset)
                         else:  # Skip if later note is lower in pitch
                             continue
@@ -260,9 +256,153 @@ class MusicExtractor:
             n_last = notes_out[-1]
             n_last = n_last[-1] if isinstance(n_last, tuple) else n_last
             assert (n_last.offset + n_last.duration.quarterLength) == (time_sig.numerator / time_sig.denominator * 4)
+            # if number == 73:
+            #     for n in notes_out:
+            #         if isinstance(n, tuple):
+            #             ic(n)
+            #         else:
+            #             ic(n, n.offset, n.duration.quarterLength)
+            #     exit(1)
+            lst_notes.append(notes_out)
 
-        composer = PKG_NM
-        scr.metadata.composer = composer
+        # for p in scr.parts:
+        #     ic(p.id, p.partName)
+        # exit(1)
+        tempo_nums, time_sigs, bars = zip(*[  # Pick 1st bar arbitrarily
+            (tempo.number, time_sig, bars[0].duration.quarterLength) for bars, time_sig, tempo in lst_bar_info
+        ])
+        # ic(tempo_nums, time_sigs, bars)
+        mean_tempo = np.array(tempo_nums).mean()
+        counter_ts = Counter((ts.numerator, ts.denominator) for ts in time_sigs)
+        time_sig_mode = max(counter_ts, key=counter_ts.get)
+        th = 0.95
+        n_mode, n_bar = counter_ts[time_sig_mode], len(time_sigs)
+        if n_mode / n_bar < th:  # Arbitrary threshold; Too much invalid time signature
+            warn(f'Inconsistent Time Signatures: ratio of mode time signature below {th}'
+                 f' - #mode {n_mode}, #total {n_bar}')
+        # exit(1)
+        # ic(vars(scr.metadata))
+        # ic(scr.metadata.all())
+        # ic(scr.metadata.title)
+        # exit(1)
+
+        if exp == 'mxl':
+            lst_bars = []
+            for i, notes in enumerate(lst_notes):
+                bar = Measure(number=i)  # Original bar number may not start from 0
+                for n in notes:
+                    bar.append(n)  # So that works with Tuplets
+                # if i == 73:
+                #     for e in bar:
+                #         ic(e, e.offset, e.duration.quarterLength)
+                # ic(bar)
+                # for e in bar:
+                #     ic(e, e.offset, e.duration.quarterLength)
+                lst_bars.append(bar)
+
+            scr_out = Score()
+            scr_out.insert(m21.metadata.Metadata())
+            title = scr.metadata.title
+            if title.endswith('.mxl'):
+                title = title[:-4]
+            post = 'Melody only' if self.mode == 'melody' else 'Melody & Chord'
+            title = f'{title}, {post}'
+            scr_out.metadata.title = title
+            scr_out.metadata.composer = PKG_NM
+
+            part_nm = 'Melody, Ch#1'  # TODO: a 2nd chord part
+            part = m21.stream.Part(partName=part_nm)
+            part.partName = part_nm
+            # ic(part.id, part.partName)
+            instr = m21.instrument.Piano()
+            part.append(instr)
+            # ic(lst_bars)
+            part.append(lst_bars)
+            # for e in part:
+            #     ic(e)
+            #     if isinstance(e, Measure):
+            #         ic(e.number)
+
+            bar0 = part.measure(0)  # Insert metadata into 1st bar
+            bar0.insert(MetronomeMark(number=mean_tempo))
+            bar0.insert(TimeSignature(f'{time_sig_mode[0]}/{time_sig_mode[1]}'))
+
+            dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
+            dir_nm = f'{dir_nm}_out'
+            scr_out.append(part)
+            # scr.show()
+            scr_out.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
+
+
+            # scr = Score(id='mainScore')
+            # p0 = stream.Part(id='part0')
+            # p1 = stream.Part(id='part1')
+            #
+            # m01 = stream.Measure(number=1)
+            # m01.append(note.Note('C', type="whole"))
+            # m02 = stream.Measure(number=2)
+            # m02.append(note.Note('D', type="whole"))
+            # p0.append([m01, m02])
+            #
+            # m11 = stream.Measure(number=1)
+            # m11.append(note.Note('E', type="whole"))
+            # m12 = stream.Measure(number=2)
+            # m12.append(note.Note('F', type="whole"))
+            # p1.append([m11, m12])
+            #
+            # s.insert(0, p0)
+            # s.insert(0, p1)
+            # s.show('text')
+
+
+            # # Pick a `Part` to replace elements one by one, the 1st part selected as it contains all metadata
+            # idx_part = 0
+            # scr.remove(list(filter(lambda p: p is not scr.parts[idx_part], scr.parts)))
+            # assert len(scr.parts) == 1
+            # part = scr.parts[0]
+            # pnm = part.partName
+            #
+            # def pnm_ori(nm):
+            #     return nm[:nm.rfind(', CH #')]
+            #
+            # pnm_ori_ = pnm_ori(pnm)
+            # for p in self.scr.parts[1:]:
+            #     # There should be no tempo in all other channels, unless essentially the "same" channel
+            #     assert len(p[m21.tempo.MetronomeMark]) == 0 or pnm_ori(p.partName) == pnm_ori_
+            #
+            # vbs = self.vertical_bars(self.scr)
+            # if self.verbose:
+            #     print(f'{now()}| Extracting music [{stem(self.fnm)}] of duration [{self.score_seconds(vbs)}]... ')
+            # for idx, bar in enumerate(part[m21.stream.Measure]):  # Ensure each bar is set
+            #     vb = vbs[idx].single()
+            #     pnm_ = vb.pnm_with_max_pitch(method='fqs')
+            #     assert bar.number == idx + self.bar_strt_idx
+            #     assert part.index(bar) == idx + 1
+            #     part.replace(bar, vb.bars[pnm_])
+            #
+            # # Set instrument as Piano
+            # instr = m21.instrument.Piano()
+            # [part.remove(ins) for ins in part[m21.instrument.Instrument]]
+            # part.insert(instr)
+            # part.partName = f'{PKG_NM}, {instr.instrumentName}, CH #1'
+            #
+            # # Set tempo
+            # [bar.removeByClass(m21.tempo.MetronomeMark) for bar in part[m21.stream.Measure]]
+            # self.tempo_strt.number = self.mean_tempo
+            # bar0 = part.measure(self.bar_strt_idx)
+            # bar0.insert(self.tempo_strt)
+            #
+            # title = f'{self.score_title}, bar with max pitch'
+            # if exp == 'mxl':
+            #     dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
+            #     dir_nm = f'{dir_nm}_out'
+            #     scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
+            # elif exp == 'symbol':
+            #     # Get time signature for each bar
+            #     lst_bar_n_ts = bars2lst_bar_n_ts(part[m21.stream.Measure])
+            #     return self.tokenizer(lst_bar_n_ts)
+            # else:
+            #     return scr
 
 
 if __name__ == '__main__':

@@ -1,4 +1,3 @@
-import math
 import glob
 import json
 import pathlib
@@ -7,7 +6,7 @@ from math import floor, ceil
 from functools import reduce
 import itertools
 import concurrent.futures
-from typing import TypeVar, Callable, Union, List, Dict
+from typing import TypeVar, Callable, Union, List, Dict, Iterator
 from collections.abc import Iterable
 import datetime
 
@@ -284,27 +283,47 @@ def group_triplets(bar) -> list[Union[
 EPS = 1e-6
 
 
-def assert_notes_no_overlap(notes: list[Union[m21.note.Note, m21.chord.Chord, m21.note.Rest, tuple[m21.note.Note]]]):
+def flatten_notes(notes: List[Union[
+    m21.note.Note, tuple[m21.note.Note]
+]]) -> Iterator[m21.note.Note]:
+    """
+    Expand the intermediate grouping of tuplets
+    """
+    for n in notes:
+        if isinstance(n, tuple):
+            for n_ in n:
+                yield n_
+        else:
+            yield n
+
+
+def assert_notes_no_overlap(notes: List[Union[m21.note.Note, m21.chord.Chord, m21.note.Rest, tuple[m21.note.Note]]]):
     """
     Asserts that the notes don't overlap, given the start time and duration
     """
     # from icecream import ic
-    if len(notes) >= 2:
-        # ic(notes)
-        # for n in notes:
-        #     ic(n.offset, n.duration.quarterLength)
-        end = notes[0].offset + notes[0].duration.quarterLength
-        for note in notes[1:]:
-            # Current note should begin, after the previous one ends
-            # Since numeric representation of one-third durations, aka tuplets
-            # assert end <= note.offset or math.isclose(end, note.offset, abs_tol=1e-6)
-            if isinstance(note, tuple):  # Triplet
-                for n in note:
-                    assert (end-EPS) <= n.offset
-                    end = n.offset + n.duration.quarterLength
-            else:
-                assert (end-EPS) <= note.offset
-                end = note.offset + note.duration.quarterLength
+    notes = flatten_notes(notes)
+    # if len(notes) >= 2:
+    # ic(notes)
+    # for n in notes:
+    #     ic(n.offset, n.duration.quarterLength)
+    note = next(notes, None)
+    # end = notes[0].offset + notes[0].duration.quarterLength
+    end = note.offset + note.duration.quarterLength
+    # for note in notes[1:]:
+    note = next(notes, None)
+    while note is not None:
+        # Current note should begin, after the previous one ends
+        # Since numeric representation of one-third durations, aka tuplets
+        # assert end <= note.offset or math.isclose(end, note.offset, abs_tol=1e-6)
+        # if isinstance(note, tuple):  # Triplet
+        #     for n in note:
+        #         assert (end-EPS) <= n.offset
+        #         end = n.offset + n.duration.quarterLength
+        # else:
+        assert (end-EPS) <= note.offset
+        end = note.offset + note.duration.quarterLength
+        note = next(notes, None)
 
 
 DEF_TPO = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)
