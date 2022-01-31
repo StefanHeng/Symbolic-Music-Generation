@@ -4,7 +4,7 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 See `melody_extractor` for the old version.
 """
 
-
+import itertools
 from copy import deepcopy
 from typing import Iterator
 from warnings import warn
@@ -42,19 +42,12 @@ def expand_bar(bar: Union[Measure, Voice], keep_chord=False, number=None) -> Lis
     post = expand_bar.post
 
     lst = []
-    # ic(list(bar))
     it = iter(bar)
     elm = next(it, None)
     while elm is not None:
-        # TODO: Quintuplet, tuplet, generalize to `plet`
         if hasattr(elm, 'fullName') and post in elm.fullName:
-            ic(number, 'processing tuplets')
             pref = elm.fullName[:elm.fullName.find(post)].split()[-1]
             tup = f'{pref}{post}'
-            ic(elm.fullName, pref, tup)
-            if number == 134:
-                for e in bar:
-                    ic(e.fullName, e.offset, e.duration.quarterLength)
             if pref in expand_bar.pref2n:
                 n_tup = expand_bar.pref2n[pref]
             else:
@@ -63,15 +56,11 @@ def expand_bar(bar: Union[Measure, Voice], keep_chord=False, number=None) -> Lis
                 words = elm.fullName.split()
                 word_n_tup = words[words.index(tup)+2]
                 n_tup = int(word_n_tup[:word_n_tup.find('/')])
-                # ic(word_n_tup, n_tup)
-                # exit(1)
             elms_tup: List[Note] = [elm]
             elm_ = next(it, None)
-            while elm_ is not None and tup in elm_.fullName:
+            while elm_ is not None and tup in elm_.fullName:  # Look for all elements of the same `n_tup`
                 elms_tup.append(elm_)
                 elm_ = next(it, None)  # Peeked 1 ahead
-            # for e in elms_trip:
-            #     ic(e.fullName, e.offset, e.duration.quarterLength)
 
             # Consecutive tuplet notes => (potentially multiple) groups
             it_tup = iter(elms_tup)
@@ -81,10 +70,17 @@ def expand_bar(bar: Union[Measure, Voice], keep_chord=False, number=None) -> Lis
             n_tup_curr = 0
             trip_added = False
             idx_tup_strt = len(lst)
+
+            def check_wrong_n_tup():
+                ln = len(lst[-1])
+                if ln != n_tup:
+                    warn(f'Invalid {tup}: {tup} with invalid number of notes added at bar#{number}'
+                         f' - expect {n_tup}, got {ln}')
+
             while e_tup is not None:  # MIDI & MuseScore transcription quality, e.g. A triplet may not contain 3 notes
                 dur += e_tup.duration.quarterLength
                 n_tup_curr += 1
-                # TODO: generalize beat/tuplet duration checking logic
+                # TODO: generalize beat/tuplet duration checking logic, might involve time signature
                 # Enforce a tuplet must have at least `n_tup` notes
                 # Duration ends as a beat; Heuristic for end of tuplet group
                 if n_tup_curr >= n_tup and dur.denominator == 1:
@@ -96,26 +92,32 @@ def expand_bar(bar: Union[Measure, Voice], keep_chord=False, number=None) -> Lis
                     n_tup_curr = 0
                     dur = 0
 
-                    ln = len(lst[-1])
-                    if ln != n_tup:
-                        warn(f'{tup} with invalid number of notes added - expect {n_tup}, got {ln}')
-                    if number == 134:
-                        ic(lst[-1])
+                    if idx == idx_last:  # Postpone warning later, see below
+                        check_wrong_n_tup()
                 # Processed til last element, last tuplet group not enough elements
                 if idx == idx_last and n_tup_curr < n_tup:
                     assert trip_added
                     assert dur.denominator == 1
                     lst[-1] = lst[-1] + tuple(elms_tup[idx_prev:])  # Join the prior tuplet group
-                if number == 134:
-                    ic(idx, dur)
+                    check_wrong_n_tup()
                 idx += 1
                 e_tup = next(it_tup, None)
             # All triple notes with the same `n_tup` are added
-            if number == 134:
-                ic(lst[idx_tup_strt:])
             assert sum(len(tup) for tup in lst[idx_tup_strt:]) == len(elms_tup)
-            # if number == 134:
-            #     exit(1)
+            if not keep_chord:
+                tups_new = []
+                has_chord = False
+                for i in range(idx_tup_strt, len(lst)):  # Ensure all tuplet groups contain no Chord
+                    tup = lst[i]
+                    # Bad transcription quality => Keep all possible tuplet combinations
+                    # Expect to be the same
+                    if any(isinstance(n, Chord) for n in tup):
+                        has_chord = True
+                        opns = [tuple(n.notes) if isinstance(n, Chord) else (n,) for n in tup]
+                        tups_new.extend(list(itertools.product(*opns)))
+                if has_chord:  # Update prior triplet groups
+                    lst = lst[:idx_tup_strt] + tups_new
+
             if not trip_added:
                 ic('triplet not added')
                 exit(1)
@@ -123,53 +125,27 @@ def expand_bar(bar: Union[Measure, Voice], keep_chord=False, number=None) -> Lis
             elm = elm_
             # exit(1)
             continue  # Skip `next` for peeked 1 step ahead
-
-            # elm2, elm3 = next(it, None), next(it, None)
-            # assert elm2 is not None and elm3 is not None
-            # assert NM_TRIP in elm2.fullName and NM_TRIP in elm3.fullName
-            #
-            # elm4 = next(it, None)
-            # if hasattr(elm4, 'fullName') and NM_TRIP in elm4.fullName:
-            #     if number is None:
-            #         number = bar.number
-            #     warn(f'4th triplet observed at bar#{number} - appended')
-            #     lst.append((elm, elm2, elm3, elm4))
-            # else:
-            #     lst.append((elm, elm2, elm3))
-            #     elm = elm4
-            #     continue
         elif isinstance(elm, (Note, Rest)):
             lst.append(elm)
         elif isinstance(elm, Chord):
             if keep_chord:
                 lst.append(elm)
             else:
-                # ic(elm.notes)
                 notes = deepcopy(elm.notes)
                 for n in notes:
                     n.offset += elm.offset  # Shift offset in the scope of bar
                 lst.extend(notes)
-                # ic('chord encountered')
-                # ic(elm)
-                # exit(1)
-        # elif isinstance(elm, Voice):
-        #     ic(elm, list(elm.voices))
-        #     exit(1)
         else:
             if not isinstance(elm, (  # Ensure all relevant types are considered
                 TimeSignature, MetronomeMark, Voice,
-                m21.layout.LayoutBase, m21.clef.Clef, m21.key.KeySignature
+                m21.layout.LayoutBase, m21.clef.Clef, m21.key.KeySignature, m21.bar.Barline
             )):
                 ic(elm)
                 print('unexpected type')
                 exit(1)
         elm = next(it, None)
     if bar.hasVoices():  # Join all voices to notes
-        # ic(bar.number)
         lst.extend(join_its(expand_bar(v, number=bar.number) for v in bar.voices))
-        # for v in bar.voices:
-        #     ic(v, list(v))
-        # ic(list())
     return lst
 
 
@@ -228,23 +204,19 @@ class MusicExtractor:
         for bars, time_sig, tempo in MusicExtractor.it_bars(scr):
             number = bars[0].number
             ic(number)
-            # if number == 134:
+            # if number == 164:
             #     for b in bars:
             #         b.show()
-            # ic(bars, time_sig, tempo)
             n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
-            # if number == 2:
-            #     for c in list(bars[1]):
-            #         ic(c, c.offset)
             notes = sum((expand_bar(b, keep_chord=self.mode == 'full') for b in bars), [])
-            # if number == 2:
-            #     ic(notes)
-            # ic(notes)
 
             def note2pitch(note):
                 if isinstance(note, tuple):  # Triplet, return average pitch
                     # Duration for each note not necessarily same duration, for transcription quality
-                    return sum(n__.pitch.frequency for n__ in note) / len(note)
+                    fs, durs = zip(*[(note2pitch(n__), n__.duration.quarterLength) for n__ in note])
+                    # ic(fs, durs, np.average(fs, weights=durs))
+                    return np.average(fs, weights=durs)
+                    # return sum(n__.pitch.frequency for n__ in note) / len(note)
                 elif isinstance(note, Note):
                     return note.pitch.frequency
                 else:
@@ -253,19 +225,14 @@ class MusicExtractor:
 
             groups = defaultdict(list)  # Group notes by starting location
             for n in notes:
-                # if number == 2:
-                #     ic(n, n.offset)
                 n_ = n[-1] if isinstance(n, tuple) else n
                 groups[n_.offset].append(n)
             groups = {offset: sorted(ns, key=note2pitch) for offset, ns in groups.items()}
-            # if number == 6:
-            #     ic(groups)
 
             def get_notes_out() -> List[Union[tuple[Note], Note, Chord]]:
                 ns_out = []
                 offset_next = 0
                 for offset in sorted(groups.keys()):  # Pass through notes in order
-                    # ic(offset, offset_next)
                     notes_ = groups[offset]
                     nt = notes_[-1]
                     if offset < offset_next:
@@ -289,23 +256,10 @@ class MusicExtractor:
                     offset_next = nt_.offset + nt_.duration.quarterLength
                 return ns_out
             notes_out = get_notes_out()
-
-            # if number == 9:
-            #     ic(groups)
-            #     ic(notes_out)
-            #     for n in notes_out:
-            #         ic(n.offset, n.duration.quarterLength)
-
-            # if number == 2:
-            #     ic(notes_out)
             assert_notes_no_overlap(notes_out)  # Ensure notes cover the entire bar
             n_last = notes_out[-1]
             n_last = n_last[-1] if isinstance(n_last, tuple) else n_last
-            # if number == 2:
-            #     ic((n_last.offset + n_last.duration.quarterLength), (time_sig.numerator / time_sig.denominator * 4))
             assert (n_last.offset + n_last.duration.quarterLength) == (time_sig.numerator / time_sig.denominator * 4)
-
-            # exit(1)
 
         composer = PKG_NM
         scr.metadata.composer = composer
