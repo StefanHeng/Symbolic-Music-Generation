@@ -1,8 +1,9 @@
+import math
 from copy import deepcopy
 from warnings import warn
 from fractions import Fraction
 
-from musicnlp.util.util import *
+from musicnlp.util import *
 
 import numpy as np
 from mido import MidiFile
@@ -447,7 +448,7 @@ class MxlMelodyExtractor:
         :param as_str: If true, a human-readable string representation is returned
         """
         s = int(sum(vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vert_bars))
-        return str(datetime.timedelta(seconds=s))[2:] if as_str else s  # mm:ss
+        return sec2mmss(s) if as_str else s
 
     @property
     def mean_tempo(self):

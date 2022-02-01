@@ -133,6 +133,10 @@ def fmt_dt(secs: Union[int, float, datetime.timedelta]):
         return f'{round(secs)}s'
 
 
+def sec2mmss(sec: int) -> str:
+    return str(datetime.timedelta(seconds=sec))[2:]
+
+
 T = TypeVar('T')
 
 
