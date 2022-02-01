@@ -301,26 +301,13 @@ def assert_notes_no_overlap(notes: List[Union[m21.note.Note, m21.chord.Chord, m2
     """
     Asserts that the notes don't overlap, given the start time and duration
     """
-    # from icecream import ic
     notes = flatten_notes(notes)
-    # if len(notes) >= 2:
-    # ic(notes)
-    # for n in notes:
-    #     ic(n.offset, n.duration.quarterLength)
     note = next(notes, None)
-    # end = notes[0].offset + notes[0].duration.quarterLength
     end = note.offset + note.duration.quarterLength
-    # for note in notes[1:]:
     note = next(notes, None)
     while note is not None:
         # Current note should begin, after the previous one ends
         # Since numeric representation of one-third durations, aka tuplets
-        # assert end <= note.offset or math.isclose(end, note.offset, abs_tol=1e-6)
-        # if isinstance(note, tuple):  # Triplet
-        #     for n in note:
-        #         assert (end-EPS) <= n.offset
-        #         end = n.offset + n.duration.quarterLength
-        # else:
         assert (end-EPS) <= note.offset
         end = note.offset + note.duration.quarterLength
         note = next(notes, None)
