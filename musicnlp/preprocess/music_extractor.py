@@ -4,6 +4,7 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 See `melody_extractor` for the old version.
 """
 
+import math
 from copy import deepcopy
 from warnings import warn
 from fractions import Fraction
@@ -56,29 +57,31 @@ class WarnLog:
         return df
 
 
-class MusicExtractor:
+class MusicTokenizer:
     """
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation
     """
-    def __init__(self, scr: Union[str, Score], precision: int = 5, mode: str = 'melody', logger: WarnLog = None):
+    SPEC_TOKS = dict(
+        sep='_',  # Separation
+        rest='r',
+        prefix_pitch='p',
+        prefix_duration='d',
+        begin_of_tuplet='<tup>',
+        end_of_tuplet='</tup>',
+        bar_sep='<bar>',
+        prefix_time_sig='TimeSig',
+        prefix_tempo='Tempo'
+    )
+
+    def __init__(self, precision: int = 5, mode: str = 'melody', logger: WarnLog = None):
         """
-        :param scr: A music21 Score object, or file path to an MXL file
         :param precision: Bar duration quantization, see `melody_extractor.MxlMelodyExtractor`
         :param mode: Extraction mode, one of [`melody`, `full`]
             `melody`: Only melody is extracted
             `full`: Melody and Chord as 2 separate channels extracted TODO
         :param logger: A logger for processing
         """
-        if isinstance(scr, str):
-            self.scr = m21.converter.parse(scr)
-        else:
-            self.scr = scr
-        self.scr: Score
-
-        title = self.scr.metadata.title
-        if title.endswith('.mxl'):
-            title = title[:-4]
-        self.title = title
+        self.title = None  # Current score title
 
         self.prec = precision
         self.mode = mode
@@ -97,15 +100,15 @@ class MusicExtractor:
 
         .. note:: Triplets (potentially any n-plets) are grouped; `Voice`s are expanded
         """
-        if not hasattr(MusicExtractor, 'post'):
-            MusicExtractor.post = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
-        if not hasattr(MusicExtractor, 'post2tup'):
-            MusicExtractor.pref2n = dict(  # Tuplet prefix to the expected number of notes
+        if not hasattr(MusicTokenizer, 'post'):
+            MusicTokenizer.post = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
+        if not hasattr(MusicTokenizer, 'post2tup'):
+            MusicTokenizer.pref2n = dict(  # Tuplet prefix to the expected number of notes
                 Tri=3,
                 Quintu=5,
                 Nonu=9
             )
-        post = MusicExtractor.post
+        post = MusicTokenizer.post
 
         lst = []
         it = iter(bar)
@@ -114,8 +117,8 @@ class MusicExtractor:
             if hasattr(elm, 'fullName') and post in elm.fullName:
                 pref = elm.fullName[:elm.fullName.find(post)].split()[-1]
                 tup = f'{pref}{post}'
-                if pref in MusicExtractor.pref2n:
-                    n_tup = MusicExtractor.pref2n[pref]
+                if pref in MusicTokenizer.pref2n:
+                    n_tup = MusicTokenizer.pref2n[pref]
                 else:
                     assert pref == 'Tu'  # A generic case, music21 processing, different from that of MuseScore
                     # e.g. 'C in octave 1 Dotted 32nd Tuplet of 9/8ths (1/6 QL) Note' makes 9 notes in tuplet
@@ -261,10 +264,38 @@ class MusicExtractor:
                 tempo = MetronomeMark(number=bpms[0])
             yield bars, time_sig, tempo
 
-    def __call__(self, exp='mxl'):
-        scr = deepcopy(self.scr)
+    def __call__(self, scr: Union[str, Score], exp='mxl'):
+        """
+        :param scr: A music21 Score object, or file path to an MXL file
+        :param exp: Export mode, one of [`mxl`, `str_id`, `str_id_color`]
+        """
+        if isinstance(scr, str):
+            scr = m21.converter.parse(scr)
+        scr: Score
 
-        lst_bar_info = list(MusicExtractor.it_bars(scr))  # TODO
+        title = scr.metadata.title
+        if title.endswith('.mxl'):
+            title = title[:-4]
+        self.title = title
+
+        def note2pitch(note):
+            if isinstance(note, tuple):  # Triplet, return average pitch
+                # Duration for each note not necessarily same duration, for transcription quality
+                fs, durs = zip(*[(note2pitch(n__), n__.duration.quarterLength) for n__ in note])
+                return np.average(fs, weights=durs)
+            elif isinstance(note, Note):
+                return note.pitch.frequency
+            else:
+                assert isinstance(note, Rest)
+                return 0  # `Rest` given pitch frequency of 0
+
+        def note2dur(note):
+            if isinstance(note, tuple):
+                return sum(note2dur(nt) for nt in note)
+            else:
+                return note.duration.quarterLength
+
+        lst_bar_info = list(MusicTokenizer.it_bars(scr))  # TODO
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
         for n_out, (bars, time_sig, tempo) in enumerate(lst_bar_info):
             number = bars[0].number
@@ -274,23 +305,6 @@ class MusicExtractor:
             #         b.show()
             # n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
             notes = sum((self.expand_bar(b, keep_chord=self.mode == 'full') for b in bars), [])
-
-            def note2pitch(note):
-                if isinstance(note, tuple):  # Triplet, return average pitch
-                    # Duration for each note not necessarily same duration, for transcription quality
-                    fs, durs = zip(*[(note2pitch(n__), n__.duration.quarterLength) for n__ in note])
-                    return np.average(fs, weights=durs)
-                elif isinstance(note, Note):
-                    return note.pitch.frequency
-                else:
-                    assert isinstance(note, Rest)
-                    return 0  # `Rest` given pitch frequency of 0
-
-            def note2dur(note):
-                if isinstance(note, tuple):
-                    return sum(note2dur(nt) for nt in note)
-                else:
-                    return note.duration.quarterLength
 
             groups = defaultdict(list)  # Group notes by starting location
             for n in notes:
@@ -352,6 +366,15 @@ class MusicExtractor:
                 tuple(note2note_cleand(n_) for n_ in n) if isinstance(n, tuple) else note2note_cleand(n)
                 for n in notes_out
             ])
+        # Enforce quantization
+        dur_slot = 4 / 2**self.prec  # quarterLength by quantization precision
+        # ic(dur_slot)
+        for notes in lst_notes:  # TODO: what if smaller than `prec`?
+            for n in notes:
+                # dur = note2dur(n)
+                # if not (dur >= dur_slot and math.log2(dur).is_integer()):
+                #     ic(n, n.duration.quarterLength)
+                assert (note2dur(n) / dur_slot).is_integer()
 
         tempo_nums, time_sigs, bars = zip(*[  # Pick 1st bar arbitrarily
             (tempo.number, time_sig, bars[0].duration.quarterLength) for bars, time_sig, tempo in lst_bar_info
@@ -399,6 +422,68 @@ class MusicExtractor:
             dir_nm = f'{dir_nm}_out'
             scr_out.append(part)
             scr_out.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
+        elif exp in ['str_id', 'str_id_color']:
+            color = exp == 'str_id_color'
+            sep, pref_dur, pref_pitch, rest, bot, eot, bar_sep, pref_time_sig, pref_tempo = (
+                MusicTokenizer.SPEC_TOKS[k] for k in [
+                    'sep', 'prefix_duration', 'prefix_pitch', 'rest',
+                    'begin_of_tuplet', 'end_of_tuplet', 'bar_sep', 'prefix_time_sig', 'prefix_tempo'
+                ]
+            )
+            pref_dur = f'{pref_dur}{sep}'
+            pref_pitch = f'{pref_pitch}{sep}'
+
+            rest = f'{pref_pitch}{rest}'
+
+            time_sig = f'{pref_time_sig}{sep}{time_sig_mode[0]}/{time_sig_mode[1]}'
+            tempo = f'{pref_tempo}{sep}{mean_tempo}'
+            bar_sep = f' {bar_sep} '
+            if color:
+                bot, eot = logs(bot, c='m'), logs(eot, c='m')
+                bar_sep = logs(bar_sep, c='m')
+                time_sig = logs(time_sig, c='m')
+                tempo = logs(tempo, c='m')
+                rest = logs(rest, c='b')
+
+            def elm2str(elm: Union[Note, Rest, tuple[Note]]) -> List[str]:  # TODO: Support chords?
+                """
+                Each relevant token into a string representation
+                """
+                def note2dur_str(e: Union[Rest, Note, tuple[Note]]) -> str:
+                    dur = Fraction(note2dur(e))
+                    if dur.denominator == 1:
+                        s = f'{pref_dur}{dur.numerator}'
+                    else:
+                        s = f'{pref_dur}{dur.numerator}/{dur.denominator}'
+                    return logs(s, c='g') if color else s
+
+                def note2pch_str(note: Note) -> str:
+                    pitch = note.pitch
+                    s = f'{pref_pitch}{pitch.name}/{pitch.octave}'
+                    return logs(s, c='b') if color else s
+
+                if isinstance(elm, Rest):
+                    return [rest, note2dur_str(elm)]
+                elif isinstance(elm, Note):
+                    return [note2pch_str(elm), note2dur_str(elm)]
+                elif isinstance(elm, tuple):
+                    # ic([bot])
+                    # ic(sum((note2pch_str(e) for e in elm), []))
+                    # ic([note2dur_str(elm), eot])
+                    # return [bot] + sum((note2pch_str(e) for e in elm), []) + [note2dur_str(elm), eot]
+                    # ic([bot] + [note2pch_str(e) for e in elm] + [note2dur_str(elm), eot])
+                    # ic(' '.join([bot] + [note2pch_str(e) for e in elm] + [note2dur_str(elm), eot]))
+                    # exit(1)
+                    # Single duration for tuplets
+                    return [bot] + [note2pch_str(e) for e in elm] + [note2dur_str(elm), eot]
+                else:  # TODO: chords
+                    ic('other element type', elm)
+                    exit(1)
+            # TODO: adding Chords as 2nd part?
+            return ' '.join([time_sig, tempo, bar_sep.join([
+                    (' '.join(join_its(elm2str(n) for n in notes))) for notes in lst_notes
+                ])
+            ])
 
 
 if __name__ == '__main__':
@@ -409,7 +494,12 @@ if __name__ == '__main__':
         fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
         ic(fnm)
-        me = MusicExtractor(fnm, logger=logger)
-        me(exp='mxl')
-        ic(logger.to_df())
+        mt = MusicTokenizer(logger=logger)
+
+        s = mt(fnm, exp='str_id')
+        toks = s.split()
+        ic(len(toks), toks[:20])
+        # s = mt(fnm, exp='str_id_color')
+        # print(s)
+        # ic(logger.to_df())
     toy_example()

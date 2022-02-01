@@ -186,6 +186,8 @@ def log(s, c: str = 'log', c_time='green', as_str=False):
             g=colorama.Fore.GREEN,
             blue=colorama.Fore.BLUE,
             b=colorama.Fore.BLUE,
+
+            m=colorama.Fore.MAGENTA
         )
     if c in log.d:
         c = log.d[c]
