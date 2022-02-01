@@ -19,6 +19,16 @@ from music21.duration import Duration
 from musicnlp.util import *
 
 
+class WarnLog:
+    """
+    Keeps track of warnings in music extraction
+    """
+    T_WN = ['Invalid Tuplet']
+
+    def __init__(self):
+        self.warnings = []
+
+
 def expand_bar(bar: Union[Measure, Voice], keep_chord=False, number=None) -> List[Union[tuple[Note], Rest, Note]]:
     """
     Expand elements in a bar into individual notes, no order is enforced
@@ -217,10 +227,10 @@ class MusicExtractor:
         for n_out, (bars, time_sig, tempo) in enumerate(lst_bar_info):
             number = bars[0].number
             ic(number)
-            # if number == 73:
+            # if number == 85:
             #     for b in bars:
             #         b.show()
-            n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
+            # n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
             notes = sum((expand_bar(b, keep_chord=self.mode == 'full') for b in bars), [])
 
             def note2pitch(note):
@@ -234,11 +244,29 @@ class MusicExtractor:
                     assert isinstance(note, Rest)
                     return 0  # `Rest` given pitch frequency of 0
 
+            def note2dur(note):
+                if isinstance(note, tuple):
+                    return sum(note2dur(nt) for nt in note)
+                else:
+                    return note.duration.quarterLength
+
             groups = defaultdict(list)  # Group notes by starting location
             for n in notes:
                 n_ = n[0] if isinstance(n, tuple) else n
                 groups[n_.offset].append(n)
-            groups = {offset: sorted(ns, key=note2pitch) for offset, ns in groups.items()}
+            # Sort by pitch then by duration
+            groups = {
+                offset: sorted(ns, key=lambda nt: (note2pitch(nt), note2dur(nt)))
+                for offset, ns in groups.items()
+            }
+            if number == 85:
+                ic(groups)
+                n_1stg = groups[0.][-1]
+                ic(n_1stg, n_1stg.pitch, n_1stg.pitch.midi)
+                for n in groups[1.]:
+                    ic(n)
+                    if isinstance(n, Note):
+                        ic(n.fullName, n.pitch.midi)
 
             def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
                 ns_out = []
@@ -246,7 +274,11 @@ class MusicExtractor:
                 for offset in sorted(groups.keys()):  # Pass through notes in order
                     notes_ = groups[offset]
                     nt = notes_[-1]
+                    if number == 85:
+                        ic(offset, offset_next)
                     if offset < offset_next:
+                        # if number == 85:
+                        #     ic(offset)
                         if note2pitch(nt) > note2pitch(ns_out[-1]):
                             # Offset would closely line up across tracks, expect this to be less frequent
                             warn(f'High pitch overlap: later overlapping note with higher pitch observed '
@@ -268,7 +300,25 @@ class MusicExtractor:
             n_last = notes_out[-1]
             n_last = n_last[-1] if isinstance(n_last, tuple) else n_last
             assert (n_last.offset + n_last.duration.quarterLength) == (time_sig.numerator / time_sig.denominator * 4)
-            lst_notes.append(notes_out)
+
+            def note2note_cleand(note):
+                dur = m21.duration.Duration(quarterLength=note.duration.quarterLength)
+                if isinstance(note, Note):  # Removes e.g. `tie`s
+                    return Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), duration=dur)
+                elif isinstance(note, Rest):
+                    return Rest(duration=dur)
+                else:
+                    assert isinstance(note, Chord)
+                    print('clean chord')
+                    exit(1)
+            lst_notes.append([
+                tuple(note2note_cleand(n_) for n_ in n) if isinstance(n, tuple) else note2note_cleand(n)
+                for n in notes_out
+            ])
+            if number == 85:
+                for n in lst_notes[-1]:
+                    ic(n, n.pitch.midi, n.fullName)
+                # exit(1)
 
         tempo_nums, time_sigs, bars = zip(*[  # Pick 1st bar arbitrarily
             (tempo.number, time_sig, bars[0].duration.quarterLength) for bars, time_sig, tempo in lst_bar_info
@@ -283,7 +333,6 @@ class MusicExtractor:
                  f' - #mode {n_mode}, #total {n_bar}')
 
         if exp == 'mxl':
-
             scr_out = Score()
             scr_out.insert(m21.metadata.Metadata())
             title = scr.metadata.title
@@ -303,8 +352,11 @@ class MusicExtractor:
             lst_bars = []
             for i, notes in enumerate(lst_notes):
                 bar = Measure(number=i)  # Original bar number may not start from 0
-                for n in notes:
-                    bar.append(n)  # So that works with Tuplets
+                # for n in notes:
+                #     bar.append(n)  # So that works with Tuplets
+                if i == 85:
+                    ic(list(flatten_notes(notes)))
+                bar.append(list(flatten_notes(notes)))
                 lst_bars.append(bar)
             part.append(lst_bars)
 
