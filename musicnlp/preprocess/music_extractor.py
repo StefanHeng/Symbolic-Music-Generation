@@ -186,10 +186,6 @@ class MusicTokenizer:
                         """
                         :return If Duration `d` in quarterLength, is multiple of 8th note
                         """
-                        # if isinstance(d, float):
-                        #     return (d*2).is_integer()
-                        # else:
-                        #     return (d*2).denominator == 1
                         return is_int(d*2)
 
                     if n_tup_curr >= n_tup and is_8th(dur):
@@ -321,8 +317,6 @@ class MusicTokenizer:
         ])
         # Pick 1st bar arbitrarily
         secs = round(sum(t.durationToSeconds(bars[0].duration) for t, bars in zip(tempos, lst_bars_)))
-        # ic(s)
-        # ic(lst_bars_[0][0].duration)
         mean_tempo = round(np.array([t.number for t in tempos]).mean())  # To the closest integer
         counter_ts = Counter((ts.numerator, ts.denominator) for ts in time_sigs)
         time_sig_mode = max(counter_ts, key=counter_ts.get)
@@ -333,7 +327,6 @@ class MusicTokenizer:
                 f'{logi(len(lst_bars_))} bars with Duration {logi(sec2mmss(secs))}...')
             if self.logger is not None:
                 self.logger.start_tracking()
-        # secs =
 
         def note2pitch(note):
             if isinstance(note, tuple):  # Triplet, return average pitch
@@ -390,9 +383,10 @@ class MusicTokenizer:
                                     id=self.title, timestamp=now()
                                 ))
                             if isinstance(ns_out[-1], tuple):  # TODO: recomputing notes, if triplet is overlapping
-                                # triplet being truncated => Remove triplet the, start over
+                                # triplet being truncated => Remove triplet, start over
                                 del groups[offset][-1]
-                                warn(f'High Pitch Overlap on Triplet: Higher pitch observed at bar#{number} - triplet truncated')
+                                warn(f'High Pitch Overlap on Triplet: Higher pitch observed at bar#{number}'
+                                     f' - triplet truncated')
                                 if self.logger is not None:
                                     self.logger.update(dict(
                                         nm=WarnLog.HighPchTup, args=dict(bar_num=number),
@@ -407,12 +401,6 @@ class MusicTokenizer:
                     ns_out.append(nt)  # Note with the highest pitch
                     nt_ = nt[-1] if isinstance(nt, tuple) else nt
                     offset_next = nt_.offset + nt_.duration.quarterLength
-
-                    # if number == 19:
-                    #     n_ic = ns_out[-1]
-                    #     ic(n_ic)
-                    #     if isinstance(n_ic, Note):
-                    #         ic(n_ic.pitch.midi)
                 return ns_out
             notes_out = get_notes_out()
             assert_notes_no_overlap(notes_out)  # Ensure notes cover the entire bar
@@ -448,7 +436,7 @@ class MusicTokenizer:
             if self.logger is not None:
                 self.logger.update(dict(
                     nm=WarnLog.IncTs, args=dict(time_sig=time_sig_mode, n_bar_total=n_bar, n_bar_mode=n_mode),
-                    id=self.title, timestamp = now()
+                    id=self.title, timestamp=now()
                 ))
         if self.verbose and self.logger is not None:
             log(f'Encoding {self.title} completed - Observed warnings {{{self.logger.track()}}}')
@@ -545,19 +533,19 @@ if __name__ == '__main__':
 
     def toy_example():
         logger = WarnLog()
-        # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
-        fnm = eg_songs('平凡之路', fmt='MXL')
+        # fnm = eg_songs('平凡之路', fmt='MXL')
         ic(fnm)
-        mt = MusicTokenizer(logger=logger)
+        mt = MusicTokenizer(logger=logger, verbose=True)
 
-        s = mt(fnm, exp='mxl')
+        # s = mt(fnm, exp='mxl')
         # toks = s.split()
         # ic(len(toks), toks[:20])
-        # s = mt(fnm, exp='str_id_color')
-        # print(s)
+        s = mt(fnm, exp='str_id_color')
+        print(s)
         # ic(logger.to_df())
-    # toy_example()
+    toy_example()
 
     def encode_a_few():
         dnm = 'POP909'
@@ -566,7 +554,7 @@ if __name__ == '__main__':
 
         logger = WarnLog()
         mt = MusicTokenizer(logger=logger, verbose=True)
-        for fnm in fnms[0:20]:
+        for fnm in fnms[2:20]:
             # log(f'{dnm} - {os.path.basename(fnm)}')
             mt(fnm)
     encode_a_few()
