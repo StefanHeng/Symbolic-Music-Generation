@@ -289,7 +289,7 @@ def group_triplets(bar) -> list[Union[
 EPS = 1e-6
 
 
-def flatten_notes(notes: List[Union[
+def flatten_notes(notes: Iterable[Union[
     m21.note.Note, tuple[m21.note.Note]
 ]]) -> Iterator[m21.note.Note]:
     """
@@ -303,9 +303,11 @@ def flatten_notes(notes: List[Union[
             yield n
 
 
-def assert_notes_no_overlap(notes: List[Union[m21.note.Note, m21.chord.Chord, m21.note.Rest, tuple[m21.note.Note]]]):
+def is_notes_no_overlap(
+        notes: Iterable[Union[m21.note.Note, m21.chord.Chord, m21.note.Rest, tuple[m21.note.Note]]]
+) -> bool:
     """
-    Asserts that the notes don't overlap, given the start time and duration
+    :return True if notes don't overlap, given the start time and duration
     """
     notes = flatten_notes(notes)
     note = next(notes, None)
@@ -314,9 +316,12 @@ def assert_notes_no_overlap(notes: List[Union[m21.note.Note, m21.chord.Chord, m2
     while note is not None:
         # Current note should begin, after the previous one ends
         # Since numeric representation of one-third durations, aka tuplets
-        assert (end-EPS) <= note.offset
-        end = note.offset + note.duration.quarterLength
-        note = next(notes, None)
+        if (end-EPS) <= note.offset:
+            end = note.offset + note.duration.quarterLength
+            note = next(notes, None)
+        else:
+            return False
+    return True
 
 
 DEF_TPO = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)

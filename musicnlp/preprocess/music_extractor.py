@@ -20,19 +20,24 @@ from music21.duration import Duration
 from musicnlp.util import *
 
 
+pd.set_option('display.max_columns', None)  # TODO
+
+
 class WarnLog:
     """
     Keeps track of warnings in music extraction
 
     JSON-serializable
     """
-    InvTup, HighPch, IncTs = 'Invalid Tuplet', 'Higher Pitch Overlap', 'Inconsistent Time Signatures'
+    InvTupSz, InvTupNt = 'Invalid Tuplet Size', 'Invalid Tuplet Notes'
+    HighPch, IncTs = 'Higher Pitch Overlap', 'Inconsistent Time Signatures'
     HighPchTup = 'Higher Pitch Overlap with Triplet'
-    T_WN = [InvTup, HighPch, HighPchTup, IncTs]  # Warning types
+    T_WN = [InvTupSz, InvTupNt, HighPch, HighPchTup, IncTs]  # Warning types
 
     def __init__(self):
         self.warnings: List[Dict] = []
         self.idx_track = None
+        self.args_func = None
 
     def update(self, warn_: Dict):
         """
@@ -46,25 +51,33 @@ class WarnLog:
         nm, args = warn_['nm'], warn_['args']
 
         assert nm in WarnLog.T_WN
-        if nm == WarnLog.InvTup:
+        if nm == WarnLog.InvTupSz:
             assert all(k in args for k in ['bar_num', 'n_expect', 'n_got'])
+        elif nm == WarnLog.InvTupNt:
+            assert all(k in args for k in ['offsets', 'durations'])
         elif nm in [WarnLog.HighPch, WarnLog.HighPchTup]:
             assert 'bar_num' in args
         else:  # IncTs
+            assert nm == WarnLog.IncTs
             assert all(k in args for k in ['time_sig', 'n_bar_total', 'n_bar_mode'])
+        if self.args_func is not None:
+            warn_ = self.args_func() | warn_
         self.warnings.append(warn_)
 
     def to_df(self) -> pd.DataFrame:
         df = pd.DataFrame(self.warnings)  # TODO: change column names?
         return df
 
-    def start_tracking(self):
+    def start_tracking(self, args_func: Callable[[], Dict] = None):
         """
         Start tracking warnings added after the call
+
+        :args_func: A function that returns a dictionary of metadata, merged to each `update` call
         """
         self.idx_track = len(self.warnings)
+        self.args_func = args_func
 
-    def track(self):
+    def show_track(self) -> str:
         """
         Statistics of warnings since tracking started
         """
@@ -222,12 +235,12 @@ class MusicTokenizer:
                 def check_wrong_n_tup():
                     ln = len(lst[-1])
                     if ln != n_tup:
-                        warn(f'Invalid {tup}: {tup} with invalid number of notes added at bar#{number}'
+                        warn(f'Invalid {tup} sizes: {tup} with invalid number of notes added at bar#{number}'
                              f' - expect {n_tup}, got {ln}')
                         if self.logger is not None:
                             self.logger.update(dict(
-                                nm=WarnLog.InvTup, args=dict(bar_num=number, n_expect=n_tup, n_got=ln),
-                                id=self.title, timestamp=now()
+                                nm=WarnLog.InvTupSz, args=dict(bar_num=number, n_expect=n_tup, n_got=ln),
+                                # id=self.title, timestamp=now()
                             ))
                 # MIDI & MuseScore transcription quality, e.g. A triplet may not contain 3 notes
                 while e_tup is not None:
@@ -287,6 +300,28 @@ class MusicTokenizer:
                 # All triple notes with the same `n_tup` are added
                 if not is_single_tup:
                     assert sum(len(tup) for tup in lst[idx_tup_strt:]) == len(elms_tup)
+
+                    for tup in lst[idx_tup_strt:]:  # Enforce on overlap in each triplet group
+                        ic('in here')
+                        if not is_notes_no_overlap(tup):
+                            tup: tuple[Note, Rest, Chord]
+                            offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in tup])
+                            for n in tup:
+                                ic(n, n.fullName, n.offset, n.duration.quarterLength)
+                            warn(f'Invalid {tup} notes: {tup} with overlapping notes added at bar#{number}, '
+                                 f'with offsets: {offsets}, durations: {durs} - notes are cut off')
+                            if self.logger is not None:
+                                self.logger.update(dict(
+                                    nm=WarnLog.InvTupNt, args=dict(bar_num=number, offsets=offsets, durations=durs),
+                                ))
+                            it_n = iter(tup)
+                            nt = next(it_n)
+                            end = nt.offset + nt.duration.quarterLength
+                            tup_new = [nt]
+                            # bar.show()
+                            exit(1)
+                            # while nt is not None:
+
                     if not keep_chord:
                         tups_new = []
                         has_chord = False
@@ -295,8 +330,20 @@ class MusicTokenizer:
                             # Bad transcription quality => Keep all possible tuplet combinations
                             # Expect to be the same
                             if any(isinstance(n, Chord) for n in tup):
+                                def chord2notes(c):
+                                    notes_ = list(c.notes)
+                                    ic(type(notes_), notes_)
+                                    for i_ in range(len(notes_)):
+                                        notes_[i_].offset = c.offset
+                                    # notes.offset = c.offset
+                                    # exit(1)
+                                    return notes_
                                 has_chord = True
-                                opns = [tuple(n.notes) if isinstance(n, Chord) else (n,) for n in tup]
+                                opns = [chord2notes(n) if isinstance(n, Chord) else (n,) for n in tup]
+                                # Offsets for notes in chords are 0, restore them
+                                # for lst in list(itertools.product(*opns)):
+                                #     for n in lst:
+                                #         ic(n, n.offset, n.duration.quarterLength)
                                 tups_new.extend(list(itertools.product(*opns)))
                         if has_chord:  # Replace prior triplet groups
                             lst = lst[:idx_tup_strt] + tups_new
@@ -357,7 +404,7 @@ class MusicTokenizer:
                 f' - Time signature {logi(ts_mode_str)}, avg Tempo {logi(mean_tempo)}, '
                 f'{logi(len(lst_bars_))} bars with Duration {logi(sec2mmss(secs))}...')
             if self.logger is not None:
-                self.logger.start_tracking()
+                self.logger.start_tracking(args_func=lambda: dict(id=self.title, timestamp=now()))
 
         def note2pitch(note):
             if isinstance(note, tuple):  # Triplet, return average pitch
@@ -411,7 +458,7 @@ class MusicTokenizer:
                             if self.logger is not None:
                                 self.logger.update(dict(
                                     nm=WarnLog.HighPch, args=dict(bar_num=number),
-                                    id=self.title, timestamp=now()
+                                    # id=self.title, timestamp=now()
                                 ))
                             if isinstance(ns_out[-1], tuple):  # TODO: recomputing notes, if triplet is overlapping
                                 # triplet being truncated => Remove triplet, start over
@@ -421,7 +468,7 @@ class MusicTokenizer:
                                 if self.logger is not None:
                                     self.logger.update(dict(
                                         nm=WarnLog.HighPchTup, args=dict(bar_num=number),
-                                        id=self.title, timestamp=now()
+                                        # id=self.title, timestamp=now()
                                     ))
                                 return get_notes_out()
                             else:  # Triplet replaces pr..           ior note, which is definitely non triplet
@@ -437,7 +484,7 @@ class MusicTokenizer:
             if number == 21:
                 for n in flatten_notes(notes_out):
                     ic(n, n.fullName, n.offset, n.duration.quarterLength)
-            assert_notes_no_overlap(notes_out)  # Ensure notes cover the entire bar
+            assert is_notes_no_overlap(notes_out)  # Ensure notes cover the entire bar
             n_last = notes_out[-1]
             n_last = n_last[-1] if isinstance(n_last, tuple) else n_last
             assert (n_last.offset + n_last.duration.quarterLength) == (time_sig.numerator / time_sig.denominator * 4)
@@ -470,10 +517,10 @@ class MusicTokenizer:
             if self.logger is not None:
                 self.logger.update(dict(
                     nm=WarnLog.IncTs, args=dict(time_sig=time_sig_mode, n_bar_total=n_bar, n_bar_mode=n_mode),
-                    id=self.title, timestamp=now()
+                    # id=self.title, timestamp=now()
                 ))
         if self.verbose and self.logger is not None:
-            log(f'Encoding {self.title} completed - Observed warnings {{{self.logger.track()}}}')
+            log(f'Encoding {self.title} completed - Observed warnings {{{self.logger.show_track()}}}')
 
         if exp == 'mxl':
             scr_out = Score()
@@ -584,6 +631,7 @@ if __name__ == '__main__':
 
         def check_mxl_out():
             mt(fnm, exp='mxl')
+            ic(logger.to_df())
 
         def check_str():
             s = mt(fnm, exp='str_id')
@@ -593,12 +641,11 @@ if __name__ == '__main__':
         def check_str_color():
             s = mt(fnm, exp='str_id_color')
             print(s)
-        # ic(logger.to_df())
 
-        # check_mxl_out()
+        check_mxl_out()
         # check_str()
-        check_str_color()
-    toy_example()
+        # check_str_color()
+    # toy_example()
 
     def encode_a_few():
         dnm = 'POP909'
@@ -610,5 +657,5 @@ if __name__ == '__main__':
         for fnm in fnms[4:20]:
             # log(f'{dnm} - {os.path.basename(fnm)}')
             mt(fnm)
-    # encode_a_few()
+    encode_a_few()
 
