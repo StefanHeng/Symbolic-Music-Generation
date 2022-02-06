@@ -20,6 +20,8 @@ from pretty_midi import PrettyMIDI
 import librosa
 from librosa import display
 import music21 as m21
+from music21.note import Note, Rest
+from music21.chord import Chord
 import colorama
 from matplotlib import rcParams
 import matplotlib.pyplot as plt
@@ -304,9 +306,7 @@ def is_8th(d: Union[float, Fraction]):
     return is_int(d*2)
 
 
-def flatten_notes(notes: Iterable[Union[
-    m21.note.Note, tuple[m21.note.Note]
-]]) -> Iterator[m21.note.Note]:
+def flatten_notes(notes: Iterable[Union[Note, Rest, tuple[Note]]]) -> Iterator[Note]:
     """
     Expand the intermediate grouping of tuplets
     """
@@ -318,9 +318,39 @@ def flatten_notes(notes: Iterable[Union[
             yield n
 
 
-def is_notes_no_overlap(
-        notes: Iterable[Union[m21.note.Note, m21.chord.Chord, m21.note.Rest, tuple[m21.note.Note]]]
-) -> bool:
+def unroll_notes(notes: Iterable[Union[Note, Rest]]) -> List[Union[Note, Rest]]:
+    """
+    :param notes: individual notes with offsets not back-to-back
+    :return: Notes as if jointed in time together
+    """
+    if not isinstance(notes, list):
+        notes = list(notes)
+    notes[0].offset = 0
+    strt = notes[0].duration.quarterLength
+    for i, note in enumerate(notes[1:]):
+        notes[i+1].offset = strt  # Since omitted 1st note
+        strt += note.duration.quarterLength
+    # from icecream import ic
+    # for n in notes:
+    #     ic(n, n.offset, n.duration.quarterLength)
+    return notes
+
+
+def note2note_cleand(note: Union[Rest, Note, Chord], q_len=None) -> Union[Rest, Note, Chord]:
+    if q_len is None:
+        q_len = note.duration.quarterLength
+    dur = m21.duration.Duration(quarterLength=q_len)
+    if isinstance(note, Note):  # Removes e.g. `tie`s
+        return Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), duration=dur)
+    elif isinstance(note, Rest):
+        return Rest(duration=dur)
+    else:
+        assert isinstance(note, Chord)  # TODO
+        print('clean chord')
+        exit(1)
+
+
+def is_notes_no_overlap(notes: Iterable[Union[Note, Chord, Rest, tuple[Note]]]) -> bool:
     """
     :return True if notes don't overlap, given the start time and duration
     """
