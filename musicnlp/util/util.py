@@ -1,16 +1,16 @@
+import math
 import glob
 import json
-import pathlib
 import pickle
-from math import floor, ceil
-from functools import reduce
+import pathlib
+import datetime
 import itertools
 import concurrent.futures
 from typing import TypeVar, Callable, Union, List, Dict, Iterator
+from fractions import Fraction
+from functools import reduce
 from collections.abc import Iterable
-import datetime
 
-import colorama
 import numpy as np
 import pandas as pd
 import mido
@@ -20,6 +20,7 @@ from pretty_midi import PrettyMIDI
 import librosa
 from librosa import display
 import music21 as m21
+import colorama
 from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -289,6 +290,20 @@ def group_triplets(bar) -> list[Union[
 EPS = 1e-6
 
 
+def is_int(num: Union[float, Fraction]):
+    if isinstance(num, float):
+        return num.is_integer()
+    else:
+        return num.denominator == 1
+
+
+def is_8th(d: Union[float, Fraction]):
+    """
+    :return If Duration `d` in quarterLength, is multiple of 8th note
+    """
+    return is_int(d*2)
+
+
 def flatten_notes(notes: Iterable[Union[
     m21.note.Note, tuple[m21.note.Note]
 ]]) -> Iterator[m21.note.Note]:
@@ -400,8 +415,8 @@ class PrettyMidiUtil:
                 return list(_get(pm_))
         strt, end = _get_pitch_range()
         if clip_:
-            strt = floor(strt / N_NOTE_OCT) * N_NOTE_OCT
-            end = ceil(end / N_NOTE_OCT) * N_NOTE_OCT
+            strt = math.floor(strt / N_NOTE_OCT) * N_NOTE_OCT
+            end = math.ceil(end / N_NOTE_OCT) * N_NOTE_OCT
         return strt, end
 
     @staticmethod
