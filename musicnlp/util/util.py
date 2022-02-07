@@ -306,6 +306,25 @@ def is_8th(d: Union[float, Fraction]):
     return is_int(d*2)
 
 
+def note2pitch(note):
+    if isinstance(note, tuple):  # Triplet, return average pitch
+        # Duration for each note not necessarily same duration, for transcription quality
+        fs, durs = zip(*[(note2pitch(n__), n__.duration.quarterLength) for n__ in note])
+        return np.average(fs, weights=durs)
+    elif isinstance(note, Note):
+        return note.pitch.frequency
+    else:
+        assert isinstance(note, Rest)
+        return 0  # `Rest` given pitch frequency of 0
+
+
+def note2dur(note):
+    if isinstance(note, tuple):
+        return sum(note2dur(nt) for nt in note)
+    else:
+        return note.duration.quarterLength
+
+
 def flatten_notes(notes: Iterable[Union[Note, Rest, tuple[Note]]]) -> Iterator[Note]:
     """
     Expand the intermediate grouping of tuplets
@@ -318,32 +337,97 @@ def flatten_notes(notes: Iterable[Union[Note, Rest, tuple[Note]]]) -> Iterator[N
             yield n
 
 
-def unroll_notes(notes: Iterable[Union[Note, Rest]]) -> List[Union[Note, Rest]]:
+def unpack_notes(
+        notes: List[Union[Note, Rest, tuple[Note]]]
+) -> tuple[List[Union[Note, Rest]], object]:
+    """
+    :param notes: Notes representation with tuplets in tuples
+    :return: 2-tuple of flattened notes, and a cache for reconstructing the packed tuple representation
+
+    .. note:: See `pack_notes`
+    """
+    return (
+        list(flatten_notes(notes)),
+        # Stores the starting index & length of each tuple
+        {idx: len(notes[idx]) for idx in range(len(notes)) if isinstance(notes[idx], tuple)}
+    )
+
+
+def pack_notes(notes: List[Union[Note, Rest]], cache: object) -> List[Union[Note, Rest, tuple[Note]]]:
+    """
+    Reconstructs original note with tuplets in tuples from cache
+    """
+    notes_out = []
+    cache: Dict[int, int]
+    if cache:
+        it = iter(notes)
+        from icecream import ic
+        ic(notes, cache)
+        idx = 0
+        n_notes = len(notes)
+        while idx < n_notes:
+            if idx in cache:
+                tups = []
+                for _ in range(cache[idx]):
+                    tups.append(next(it))
+                    idx += 1
+                notes_out.append(tuple(tups))
+            else:
+                notes_out.append(next(it))
+                idx += 1
+        return notes_out
+    else:  # Cache empty, i.e. no tuplets
+        return notes
+
+
+def unroll_notes(notes: List[Union[Note, Rest, tuple[Note]]]) -> List[Union[Note, Rest, tuple[Note]]]:
     """
     :param notes: individual notes with offsets not back-to-back
     :return: Notes as if jointed in time together
     """
-    if not isinstance(notes, list):
-        notes = list(notes)
-    notes[0].offset = 0
-    strt = notes[0].duration.quarterLength
-    for i, note in enumerate(notes[1:]):
-        notes[i+1].offset = strt  # Since omitted 1st note
+    # if not isinstance(notes, list):
+    #     notes = list(notes)
+    # notes[0].offset = 0
+    notes_ = list(flatten_notes(notes))
+    offsets = [0]
+    strt = notes_[0].duration.quarterLength
+    for note in notes_[1:]:
+        # notes[i+1].offset = strt  # Since omitted 1st note
+        offsets.append(strt)
         strt += note.duration.quarterLength
-    # from icecream import ic
-    # for n in notes:
-    #     ic(n, n.offset, n.duration.quarterLength)
+    offsets = iter(offsets)
+    for i, note in enumerate(notes):
+        if isinstance(note, tuple):
+            notes_tup = list(note)
+            for idx, n in enumerate(notes_tup):
+                notes_tup[idx].offset = next(offsets)
+            notes[i] = tuple(notes_tup)
+        else:
+            notes[i].offset = next(offsets)
     return notes
 
 
-def note2note_cleand(note: Union[Rest, Note, Chord], q_len=None) -> Union[Rest, Note, Chord]:
+def note2note_cleaned(
+        note: Union[Rest, Note, Chord, tuple[Note]], q_len=None,
+        tuple_note=False  # For inner recursion
+) -> Union[Rest, Note, Chord, tuple[Note]]:
+    """
+    :return: A cleaned version of Note or tuplets with only duration and pitch set
+        Notes in tuplets are set with-equal duration given by (`q_len` if `q_len` given, else tuplet total length)
+    """
+    # if isinstance(note, tuple):
+    #     # ic('tuple', note)
+    #     return tuple([note2note_cleaned(n, q_len=note2dur(note)/len(note)) for n in note])
+    # # if tuple_note or q_len is None:
     if q_len is None:
-        q_len = note.duration.quarterLength
+        q_len = note2dur(note)
     dur = m21.duration.Duration(quarterLength=q_len)
     if isinstance(note, Note):  # Removes e.g. `tie`s
         return Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), duration=dur)
     elif isinstance(note, Rest):
         return Rest(duration=dur)
+    elif isinstance(note, tuple):
+        return tuple([note2note_cleaned(n, q_len=q_len/len(note)) for n in note])
     else:
         assert isinstance(note, Chord)  # TODO
         print('clean chord')
