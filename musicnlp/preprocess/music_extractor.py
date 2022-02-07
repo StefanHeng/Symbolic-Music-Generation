@@ -33,13 +33,13 @@ class WarnLog:
     InvTupDr, InvTupDrSv = 'Invalid Tuplet Durations', 'Invalid Tuplet Durations, Severe'
     HighPch, HighPchTup = 'Higher Pitch Overlap', 'Higher Pitch Overlap with Triplet'
     IncTs = 'Inconsistent Time Signatures'
-    NoteQuant = 'Notes Beyond Quantization'
+    NoteQuant, TupNtQuant = 'Notes Beyond Quantization', 'Tuplet Notes Quantizable'
     T_WN = [  # Warning types
         InvTupSz, InvTupNt,
         InvTupDr, InvTupDrSv,
         HighPch, HighPchTup,
         IncTs,
-        NoteQuant
+        NoteQuant, TupNtQuant
     ]
 
     def __init__(self):
@@ -63,9 +63,9 @@ class WarnLog:
             assert all(k in args for k in ['bar_num', 'n_expect', 'n_got'])
         elif nm in [
             WarnLog.InvTupNt, WarnLog.InvTupDr, WarnLog.InvTupDrSv,
-            WarnLog.NoteQuant
+            WarnLog.NoteQuant, WarnLog.TupNtQuant
         ]:
-            assert all(k in args for k in ['offsets', 'durations'])
+            assert all(k in args for k in ['bar_num', 'offsets', 'durations'])
 
         elif nm in [WarnLog.HighPch, WarnLog.HighPchTup]:
             assert 'bar_num' in args
@@ -132,7 +132,7 @@ class MusicTokenizer:
         self.verbose = verbose
 
     @staticmethod
-    def it_bars(scr: Score) -> Iterator[tuple[Measure, TimeSignature, MetronomeMark]]:
+    def it_bars(scr: Score) -> Iterator[tuple[tuple[Measure], TimeSignature, MetronomeMark]]:
         """
         Unroll a score by time, with the time signatures of each bar
         """
@@ -202,8 +202,6 @@ class MusicTokenizer:
         n_slots = int(n_slots)
         bin_edges = [(i*dur_slot, (i+1)*dur_slot) for i in range(n_slots)]  # All info indexed by note order
         notes = unroll_notes(notes)
-        # notes, cache = unpack_notes(notes)
-        # TODO: handle triplets
 
         def note2range(note):
             if isinstance(note, tuple):
@@ -227,9 +225,6 @@ class MusicTokenizer:
         idxs_note = [assign_max_note_idx(*edge, range(n_notes)) for edge in bin_edges]
         notes_out = [note2note_cleaned(notes[i], q_len=n*dur_slot) for i, n in compress(idxs_note)]
 
-        if number == 23:
-            ic(n_slots, compress(idxs_note), notes, notes_out)
-
         def sanity_check():
             for n in notes:
                 ic('ori', n.duration.quarterLength)
@@ -242,9 +237,7 @@ class MusicTokenizer:
             bar_ori.show()
             bar_quant.show()
 
-        # notes_out = pack_notes(notes, cache)
         assert is_notes_no_overlap(unroll_notes(notes_out))  # Sanity check
-        ic('in quantize', number, sum(note2dur(n) for n in notes_out))
         assert sum(note2dur(n) for n in notes_out) == dur_bar
         return notes_out
 
@@ -263,7 +256,6 @@ class MusicTokenizer:
         """
         if number is None:  # For debugging
             number = bar.number
-        # ic('in expand', number)
 
         if not hasattr(MusicTokenizer, 'post'):
             MusicTokenizer.post = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
@@ -372,9 +364,6 @@ class MusicTokenizer:
                                 elms_tup[i].offset = strt
                                 elms_tup[i].duration = m21.duration.Duration(quarterLength=dur_ea)
                                 strt += dur_ea
-                            if number == 24:
-                                ic('here')
-                                exit(1)
                         lst.append(tuple(elms_tup))
                         tup_added = True
                         offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in elms_tup])
@@ -388,11 +377,6 @@ class MusicTokenizer:
                 # All triple notes with the same `n_tup` are added
                 assert tup_added
                 if not is_single_tup:
-                    if number == 83:
-                        ic(tup_added, idx_tup_strt)
-                        ic(lst[idx_tup_strt:], lst)
-                        for tup in lst[idx_tup_strt:]:
-                            ic(tup)
                     assert sum(len(tup) for tup in lst[idx_tup_strt:]) == len(elms_tup)
 
                     for tup in lst[idx_tup_strt:]:  # Enforce no overlap in each triplet group
@@ -471,9 +455,9 @@ class MusicTokenizer:
             title = title[:-4]
         self.title = title
 
-        lst_bar_info = list(MusicTokenizer.it_bars(scr))  # TODO
-        tempos, time_sigs, lst_bars_ = zip(*[
-            (tempo, time_sig, bars) for bars, time_sig, tempo in lst_bar_info
+        lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(MusicTokenizer.it_bars(scr))
+        lst_bars_, time_sigs, tempos = zip(*[
+            (bars, time_sig, tempo) for bars, time_sig, tempo in lst_bar_info
         ])
         # Pick 1st bar arbitrarily
         secs = round(sum(t.durationToSeconds(bars[0].duration) for t, bars in zip(tempos, lst_bars_)))
@@ -488,8 +472,11 @@ class MusicTokenizer:
             if self.logger is not None:
                 self.logger.start_tracking(args_func=lambda: dict(id=self.title, timestamp=now()))
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
-        for n_out, (bars, time_sig, tempo) in enumerate(lst_bar_info):
-            number = bars[0].number
+        i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
+        ic(i_bar_strt)
+        for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
+            number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
+            assert number == i_bar
             ic(number)
             # if number == 85:
             #     for b in bars:
@@ -545,22 +532,7 @@ class MusicTokenizer:
             dur_bar = time_sig.numerator / time_sig.denominator * 4
             assert (n_last.offset + n_last.duration.quarterLength) == dur_bar
             assert sum(n.duration.quarterLength for n in flatten_notes(notes_out)) == dur_bar
-            if number == 24:
-                ic(n_last.offset + n_last.duration.quarterLength), (time_sig.numerator / time_sig.denominator * 4)
-                ic(notes_out)
-                for n in flatten_notes(notes_out):
-                    ic(n, n.fullName, n.offset, n.duration.quarterLength, n.offset+n.duration.quarterLength)
-            # lst_notes.append([
-            #     tuple(note2note_cleand(n_) for n_ in n) if isinstance(n, tuple) else note2note_cleand(n)
-            #     for n in notes_out
-            # ])
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
-
-            if number == 24:  # TODO: Debug
-                notes = lst_notes[-1]
-                ic(notes)
-                for n in flatten_notes(notes):
-                    ic(n, n.fullName, n.offset, n.duration.quarterLength, n.offset+n.duration.quarterLength)
 
         # Enforce quantization
         dur_slot = 4 / 2**self.prec  # quarterLength by quantization precision
@@ -570,14 +542,33 @@ class MusicTokenizer:
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
             if not all(note_within_prec(n) for n in notes):
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
-                if i_bar == 23:
-                    ic(lst_notes[i_bar])
                 offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in flatten_notes(unroll_notes(notes))])
                 msg = f'Notes Beyond Quantization: Note durations smaller than quantized slot at bar#{i_bar} ' \
                       f'- Note durations approximated'
                 self.my_log_warn(msg, dict(
                     nm=WarnLog.NoteQuant, args=dict(bar_num=i_bar, offsets=offsets, durations=durs)
                 ))
+        # Now, triplets fixed to equal duration by `notes2quantized_notes`
+
+        def trip_n_quant2notes(notes_: List[Union[Rest, Note, tuple[Note]]], num_bar: int):
+            lst = []
+            for nt in notes_:
+                # If triplet notes turned out quantized, i.e. durations are in powers of 2, turn to normal notes
+                if isinstance(nt, tuple) and any(note_within_prec(n__) for n__ in nt):
+                    assert all(note_within_prec(n__) for n__ in nt)  # Should be equivalent
+                    lst.extend(nt)
+                    offsets, durs = zip(
+                        *[(n___.offset, n___.duration.quarterLength) for n___ in flatten_notes(unroll_notes(notes))]
+                    )
+                    msg = f'Tuplet Notes Quantizable: Tuplet notes of equal duration is quantizable at bar#{num_bar}' \
+                          f' - Tuplet notes converted to normal notes'
+                    self.my_log_warn(msg, dict(
+                        nm=WarnLog.TupNtQuant, args=dict(bar_num=num_bar, offsets=offsets, durations=durs)
+                    ))
+                else:
+                    lst.append(nt)
+            return lst
+        lst_notes = [trip_n_quant2notes(notes, num_bar=i) for i, notes in enumerate(lst_notes)]
 
         th = 0.95
         n_mode, n_bar = counter_ts[time_sig_mode], len(time_sigs)
@@ -607,15 +598,7 @@ class MusicTokenizer:
             lst_bars = []
             for i, notes in enumerate(lst_notes):
                 bar = Measure(number=i)  # Original bar number may not start from 0
-                ic(i)
-                if i == 23:
-                    # ic(notes, list(flatten_notes(notes)))
-                    ic(sum(n.duration.quarterLength for n in flatten_notes(notes)))
-                    # for n in flatten_notes(notes):
-                    #     ic(n, n.fullName, n.offset, n.duration.quarterLength)
-                    ic(notes)
-                    for n in flatten_notes(notes):
-                        ic(n, n.fullName, n.offset, n.duration.quarterLength, n.offset + n.duration.quarterLength)
+                # ic(i)
                 bar.append(list(flatten_notes(notes)))
                 lst_bars.append(bar)
             part.append(lst_bars)
@@ -731,7 +714,7 @@ if __name__ == '__main__':
 
         logger = WarnLog()
         mt = MusicTokenizer(logger=logger, verbose=True)
-        for fnm in fnms[9:20]:
+        for fnm in fnms[9:10]:
             # log(f'{dnm} - {os.path.basename(fnm)}')
             mt(fnm)
     encode_a_few()
