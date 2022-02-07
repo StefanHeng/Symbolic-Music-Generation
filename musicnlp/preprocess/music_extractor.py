@@ -178,7 +178,6 @@ class MusicTokenizer:
             self.logger.update(log_dict)
 
     def dur_within_prec(self, dur: Union[float, Fraction]) -> bool:
-        # ic(dur / 4 / (2**-self.prec))
         return is_int(dur / 4 / (2**-self.prec))
 
     def notes2quantized_notes(
@@ -390,7 +389,7 @@ class MusicTokenizer:
                             nt = next(it_n)
                             end = nt.offset + nt.duration.quarterLength
                             tup_new = [nt]
-                            # bar.show()
+                            # bar.show()  # TODO: Left as is since code didn't seem to reach here ever
                             exit(1)
                             # while nt is not None:
 
@@ -483,11 +482,11 @@ class MusicTokenizer:
 
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
-        ic(i_bar_strt)
+        # ic(i_bar_strt)
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
-            ic(number)
+            # ic(number)
             # if number == 85:
             #     for b in bars:
             #         b.show()
@@ -502,8 +501,8 @@ class MusicTokenizer:
                 offset: sorted(ns, key=lambda nt: (note2pitch(nt), note2dur(nt)))
                 for offset, ns in groups.items()
             }
-            if number == 63:
-                ic(groups)
+            # if number == 63:
+            #     ic(groups)
 
             def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
                 ns_out = []
@@ -536,16 +535,10 @@ class MusicTokenizer:
                     ns_out.append(nt)  # Note with the highest pitch
                     nt_ = nt[-1] if isinstance(nt, tuple) else nt
                     offset_next = nt_.offset + nt_.duration.quarterLength
-                    if number == 63:
-                        ic(offset, ns_out)
                 return ns_out
             notes_out = get_notes_out()
-            # if number == 63:
-            #     ic(notes_out)
-            #     for n in flatten_notes(notes_out):
-            #         ic(n, n.fullName, n.offset, n.duration.quarterLength, n.offset+n.duration.quarterLength)
-
-            # For poor transcription quality, postpone the check until after quantization
+            # For poor transcription quality, postpone `is_valid_bar_notes` check until after quantization
+            #   In particular, the duration-total-as-bar-duration check
             # since empirically observe notes don't sum to bar duration,
             #   e.g. tiny-duration notes shifts all subsequent notes
             #     n: <music21.note.Rest inexpressible>
@@ -553,7 +546,6 @@ class MusicTokenizer:
             #     n.offset: 2.0
             #     n.duration.quarterLength: Fraction(1, 480)
             assert is_notes_no_overlap(notes_out)
-            # assert is_valid_bar_notes(notes_out, time_sig)
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
 
         # Enforce quantization
@@ -730,7 +722,7 @@ if __name__ == '__main__':
         logger = WarnLog()
         mt = MusicTokenizer(logger=logger, verbose=True)
         # for i_fl, fnm in enumerate(fnms[15:20]):
-        for i_fl, fnm in enumerate(fnms[37:50]):
+        for i_fl, fnm in enumerate(fnms[:50]):
             ic(i_fl)
             # log(f'{dnm} - {os.path.basename(fnm)}')
             mt(fnm)
