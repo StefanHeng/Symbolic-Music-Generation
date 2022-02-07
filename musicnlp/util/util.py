@@ -16,6 +16,7 @@ import pandas as pd
 import mido
 from mido import MidiFile
 import pretty_midi
+from music21.meter import TimeSignature
 from pretty_midi import PrettyMIDI
 import librosa
 from librosa import display
@@ -304,6 +305,15 @@ def is_8th(d: Union[float, Fraction]):
     :return If Duration `d` in quarterLength, is multiple of 8th note
     """
     return is_int(d*2)
+
+
+def is_common_time_sig(ts: Union[TimeSignature, tuple[int, int]]):
+    if not hasattr(is_common_time_sig, 'COM_TS'):  # List of common time signatures
+        is_common_time_sig.COM_TS = {(4, 4), (2, 4), (2, 2), (3, 4), (6, 8), (5, 4), (12, 8)}
+        is_common_time_sig.COM_TS_OUT = sorted(is_common_time_sig.COM_TS)
+    if isinstance(ts, TimeSignature):
+        ts = (ts.numerator, ts.denominator)
+    return ts in is_common_time_sig.COM_TS
 
 
 def note2pitch(note):

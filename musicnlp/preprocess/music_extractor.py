@@ -32,13 +32,13 @@ class WarnLog:
     InvTupSz, InvTupNt = 'Invalid Tuplet Size', 'Invalid Tuplet Notes'
     InvTupDr, InvTupDrSv = 'Invalid Tuplet Durations', 'Invalid Tuplet Durations, Severe'
     HighPch, HighPchTup = 'Higher Pitch Overlap', 'Higher Pitch Overlap with Triplet'
-    IncTs = 'Inconsistent Time Signatures'
+    IncTs, UncomTs = 'Inconsistent Time Signatures', 'Uncommon Time Signature'
     NoteQuant, TupNtQuant = 'Notes Beyond Quantization', 'Tuplet Notes Quantizable'
     T_WN = [  # Warning types
         InvTupSz, InvTupNt,
         InvTupDr, InvTupDrSv,
         HighPch, HighPchTup,
-        IncTs,
+        IncTs, UncomTs,
         NoteQuant, TupNtQuant
     ]
 
@@ -69,6 +69,8 @@ class WarnLog:
 
         elif nm in [WarnLog.HighPch, WarnLog.HighPchTup]:
             assert 'bar_num' in args
+        elif nm == WarnLog.UncomTs:
+            assert 'ts_expect' in args and 'ts_got' in args
         else:  # IncTs
             assert nm == WarnLog.IncTs
             assert all(k in args for k in ['time_sig', 'n_bar_total', 'n_bar_mode'])
@@ -471,13 +473,19 @@ class MusicTokenizer:
                 f'{logi(len(lst_bars_))} bars with Duration {logi(sec2mmss(secs))}...')
             if self.logger is not None:
                 self.logger.start_tracking(args_func=lambda: dict(id=self.title, timestamp=now()))
+        if not is_common_time_sig(time_sig_mode):
+            com_time_sigs = is_common_time_sig.COM_TS_OUT
+            msg = f'Uncommon Time Signature: Time Signature is uncommon' \
+                  f' - Expect one of {com_time_sigs}, got {time_sig_mode}'
+            self.my_log_warn(msg, dict(nm=WarnLog.UncomTs, args=dict(ts_expect=com_time_sigs, ts_got=time_sig_mode)))
+
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
-        ic(i_bar_strt)
+        # ic(i_bar_strt)
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
-            ic(number)
+            # ic(number)
             # if number == 85:
             #     for b in bars:
             #         b.show()
@@ -531,7 +539,12 @@ class MusicTokenizer:
             n_last = n_last[-1] if isinstance(n_last, tuple) else n_last
             dur_bar = time_sig.numerator / time_sig.denominator * 4
             assert (n_last.offset + n_last.duration.quarterLength) == dur_bar
-            assert sum(n.duration.quarterLength for n in flatten_notes(notes_out)) == dur_bar
+            # if number == 161:
+            #     ic(sum(n.duration.quarterLength for n in flatten_notes(notes_out)), dur_bar)
+            #     for n in flatten_notes(notes_out):
+            #         ic(n, n.fullName, n.offset, n.duration.quarterLength)
+            # assert sum(n.duration.quarterLength for n in flatten_notes(notes_out)) == dur_bar
+            assert math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes_out)), dur_bar, abs_tol=1e-6)
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
 
         # Enforce quantization
@@ -683,9 +696,9 @@ if __name__ == '__main__':
 
     def toy_example():
         logger = WarnLog()
-        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
-        # fnm = eg_songs('平凡之路', fmt='MXL')
+        fnm = eg_songs('平凡之路', fmt='MXL')
         ic(fnm)
         mt = MusicTokenizer(logger=logger, verbose=True)
 
@@ -714,7 +727,9 @@ if __name__ == '__main__':
 
         logger = WarnLog()
         mt = MusicTokenizer(logger=logger, verbose=True)
-        for fnm in fnms[9:10]:
+        # for i_fl, fnm in enumerate(fnms[15:20]):
+        for i_fl, fnm in enumerate(fnms[20:50]):
+            ic(i_fl)
             # log(f'{dnm} - {os.path.basename(fnm)}')
             mt(fnm)
     encode_a_few()
