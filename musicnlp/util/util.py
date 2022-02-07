@@ -495,6 +495,13 @@ def is_notes_no_overlap(notes: Iterable[Union[Note, Chord, Rest, tuple[Note]]]) 
     return True
 
 
+def is_valid_bar_notes(notes: Iterable[Union[Note, Chord, Rest, tuple[Note]]], time_sig: TimeSignature) -> bool:
+    dur_bar = time_sig.numerator / time_sig.denominator * 4
+    # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
+    return is_notes_no_overlap(notes) \
+        and math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=1e-6)
+
+
 DEF_TPO = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)
 N_NOTE_OCT = 12  # Number of notes in an octave
 
