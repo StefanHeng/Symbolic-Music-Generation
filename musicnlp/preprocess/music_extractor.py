@@ -289,7 +289,7 @@ class MusicTokenizer:
                 elm_ = next(it, None)
                 while elm_ is not None:
                     # For poor transcription quality, skip over non-note elements in the middle
-                    if isinstance(elm_, m21.clef.TrebleClef):
+                    if isinstance(elm_, m21.clef.Clef):
                         elm_ = next(it, None)
                     elif tup in elm_.fullName:  # Look for all elements of the same `n_tup`
                         elms_tup.append(elm_)
@@ -307,14 +307,6 @@ class MusicTokenizer:
                 idx_tup_strt = len(lst)
                 is_single_tup = False  # Edge case, see below
 
-                def check_wrong_n_tup():
-                    ln = len(lst[-1])
-                    if ln != n_tup:
-                        msg = f'Invalid {tup} sizes: {tup} with invalid number of notes added at bar#{number}' \
-                              f' - expect {n_tup}, got {ln}'
-                        self.my_log_warn(msg, dict(
-                                nm=WarnLog.InvTupSz, args=dict(bar_num=number, n_expect=n_tup, n_got=ln)
-                        ))
                 # MIDI & MuseScore transcription quality, e.g. A triplet may not contain 3 notes
                 while e_tup is not None:
                     dur += e_tup.duration.quarterLength
@@ -330,56 +322,76 @@ class MusicTokenizer:
                         idx_prev = idx+1
                         n_tup_curr = 0
                         dur = 0
-
-                        if idx == idx_last:  # Postpone warning later, see below
-                            check_wrong_n_tup()
-                    # Processed til last element, last tuplet group not enough elements
-                    if idx == idx_last and n_tup_curr < n_tup:
+                        # if idx == idx_last:  # Postpone warning later, see below
+                        #     check_wrong_n_tup()
+                    if idx == idx_last:  # Processed til last element
                         if len(elms_tup) == 1:  # Poor processing, edge case
                             note = elms_tup[0]  # As if single note with weird duration
-                            # TODO: if selected later, quantize
                             lst.append(note)
                             tup_added, is_single_tup = True, True
                             e_tup = None
-                            continue  # Break out: Done processing this tuplet group
-                        if tup_added:
-                            lst[-1] = lst[-1] + tuple(elms_tup[idx_prev:])  # Join the prior tuplet group
-                        else:  # Number of tuplet notes not enough, create new tuplet anyway
-                            tup_added = True
-                            lst.append(tuple(elms_tup[idx_prev:]))
-                        check_wrong_n_tup()
-                    if idx == idx_last and not tup_added:
-                        # Must be that duration of all triplet elements don't sum up to an 8th note in quarterLength
-                        assert not is_8th(dur)  # Add such tuplets anyway for a valid quantized length
-                        warn_nm = WarnLog.InvTupDr
-                        if not self.dur_within_prec(dur):  # Enforce it by changing the durations
-                            warn_nm = WarnLog.InvTupDrSv
+                            continue  # Break out since done processing this tuplet group
 
-                            def round_by_factor(num, fact):
-                                return round(num / fact) * fact
-                            # Max duration allowed
-                            dur = min(round_by_factor(dur, 2**-self.prec), time_sig.numerator/time_sig.denominator*4)
-                            n_tup = len(elms_tup)
-                            dur_ea = dur / n_tup
-                            strt = elms_tup[0].offset
-                            for i in range(n_tup):
-                                elms_tup[i].offset = strt
-                                elms_tup[i].duration = m21.duration.Duration(quarterLength=dur_ea)
-                                strt += dur_ea
-                        lst.append(tuple(elms_tup))
-                        tup_added = True
-                        offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in elms_tup])
-                        msg = f'Invalid {tup} durations: {tup} durations don\'t sum up to 8th notes ' \
-                              f'- notes quantized and cropped to bar length if necessary'
-                        self.my_log_warn(msg, dict(
-                            nm=warn_nm, args=dict(bar_num=number, offsets=offsets, durations=durs)
-                        ))
+                        if is_8th(dur) and n_tup_curr < n_tup:  # Last tuplet group not enough elements
+                            if tup_added:  # Join the prior tuplet group if possible
+                                lst[-1] = lst[-1] + tuple(elms_tup[idx_prev:])
+                            else:  # Number of tuplet notes not enough, create new tuplet anyway
+                                tup_added = True
+                                lst.append(tuple(elms_tup[idx_prev:]))
+                            # check_wrong_n_tup()
+                        else:  # Resort to the erroneous case only til the end
+                            # Must be that duration of all triplet elements don't sum up to an 8th note in quarterLength
+                            assert not is_8th(dur)  # Add such tuplet notes anyway, set a valid quantized length
+                            warn_nm = WarnLog.InvTupDr
+                            if not self.dur_within_prec(dur):  # Enforce it by changing the durations
+                                warn_nm = WarnLog.InvTupDrSv
+
+                                def round_by_factor(num, fact):
+                                    return round(num / fact) * fact
+                                # Round to quantization duration; Crop by bar max duration
+                                dur = min(round_by_factor(dur, 2**-self.prec), time_sig.numerator/time_sig.denominator*4)
+                                n_tup = len(elms_tup)
+                                dur_ea = dur / n_tup
+                                strt = elms_tup[0].offset
+                                for i in range(n_tup):
+                                    elms_tup[i].offset = strt
+                                    elms_tup[i].duration = m21.duration.Duration(quarterLength=dur_ea)
+                                    strt += dur_ea
+                            lst.append(tuple(elms_tup[idx_prev:]))
+                            tup_added = True
+                            offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in elms_tup])
+                            msg = f'Invalid {tup} durations: {tup} durations don\'t sum up to 8th notes ' \
+                                  f'- notes quantized and cropped to bar length if necessary'
+                            self.my_log_warn(msg, dict(
+                                nm=warn_nm, args=dict(bar_num=number, offsets=offsets, durations=durs)
+                            ))
                     idx += 1
                     e_tup = next(it_tup, None)
                 # All triple notes with the same `n_tup` are added
                 assert tup_added
                 if not is_single_tup:
+                    if number == 270:
+                        ic(sum(len(tup) for tup in lst[idx_tup_strt:]), len(elms_tup))
+                        ic(lst[idx_tup_strt:])
+                        for tup in lst[idx_tup_strt:]:
+                            ic('new tup')
+                            for n in tup:
+                                ic(n, n.fullName, n.offset, n.duration.quarterLength)
+                        ic('ori list')
+                        for n in elms_tup:
+                            ic(n, n.fullName, n.offset, n.duration.quarterLength)
+                        ic('')
+                        # bar.show()
                     assert sum(len(tup) for tup in lst[idx_tup_strt:]) == len(elms_tup)
+
+                    for tup in lst[idx_tup_strt:]:
+                        ln = len(tup)
+                        if ln != n_tup:
+                            msg = f'Invalid {tup} sizes: {tup} with invalid number of notes added at bar#{number}' \
+                                  f' - expect {n_tup}, got {ln}'
+                            self.my_log_warn(msg, dict(
+                                nm=WarnLog.InvTupSz, args=dict(bar_num=number, n_expect=n_tup, n_got=ln)
+                            ))
 
                     for tup in lst[idx_tup_strt:]:  # Enforce no overlap in each triplet group
                         if not is_notes_no_overlap(tup):
@@ -478,14 +490,22 @@ class MusicTokenizer:
             msg = f'Uncommon Time Signature: Time Signature is uncommon' \
                   f' - Expect one of {com_time_sigs}, got {time_sig_mode}'
             self.my_log_warn(msg, dict(nm=WarnLog.UncomTs, args=dict(ts_expect=com_time_sigs, ts_got=time_sig_mode)))
+        th = 0.95
+        n_mode, n_bar = counter_ts[time_sig_mode], len(time_sigs)
+        if (n_mode / n_bar) < th:  # Arbitrary threshold; Too much invalid time signature
+            msg = f'Inconsistent Time Signatures: ratio of mode time signature below {th}' \
+                  f' - #mode {n_mode}, #total {n_bar}'
+            self.my_log_warn(msg, dict(
+                nm=WarnLog.IncTs, args=dict(time_sig=time_sig_mode, n_bar_total=n_bar, n_bar_mode=n_mode)
+            ))
 
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
-        # ic(i_bar_strt)
+        ic(i_bar_strt)
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
-            # ic(number)
+            ic(number)
             # if number == 85:
             #     for b in bars:
             #         b.show()
@@ -535,16 +555,17 @@ class MusicTokenizer:
                 return ns_out
             notes_out = get_notes_out()
             assert is_notes_no_overlap(notes_out)  # Ensure notes cover the entire bar
-            n_last = notes_out[-1]
-            n_last = n_last[-1] if isinstance(n_last, tuple) else n_last
+            # n_last = notes_out[-1]
+            # n_last = n_last[-1] if isinstance(n_last, tuple) else n_last
             dur_bar = time_sig.numerator / time_sig.denominator * 4
-            assert (n_last.offset + n_last.duration.quarterLength) == dur_bar
-            # if number == 161:
+            # assert (n_last.offset + n_last.duration.quarterLength) == dur_bar
+            # For addition between `float`s and `Fraction`s
+            assert math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes_out)), dur_bar, abs_tol=1e-6)
+            # if number == 73:
             #     ic(sum(n.duration.quarterLength for n in flatten_notes(notes_out)), dur_bar)
             #     for n in flatten_notes(notes_out):
             #         ic(n, n.fullName, n.offset, n.duration.quarterLength)
             # assert sum(n.duration.quarterLength for n in flatten_notes(notes_out)) == dur_bar
-            assert math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes_out)), dur_bar, abs_tol=1e-6)
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
 
         # Enforce quantization
@@ -582,15 +603,10 @@ class MusicTokenizer:
                     lst.append(nt)
             return lst
         lst_notes = [trip_n_quant2notes(notes, num_bar=i) for i, notes in enumerate(lst_notes)]
-
-        th = 0.95
-        n_mode, n_bar = counter_ts[time_sig_mode], len(time_sigs)
-        if n_mode / n_bar < th:  # Arbitrary threshold; Too much invalid time signature
-            msg = f'Inconsistent Time Signatures: ratio of mode time signature below {th}' \
-                  f' - #mode {n_mode}, #total {n_bar}'
-            self.my_log_warn(msg, dict(
-                nm=WarnLog.IncTs, args=dict(time_sig=time_sig_mode, n_bar_total=n_bar, n_bar_mode=n_mode)
-            ))
+        for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
+            assert is_notes_no_overlap(notes)
+            dur_bar = time_sig.numerator / time_sig.denominator * 4
+            assert math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=1e-6)
         if self.verbose and self.logger is not None:
             log(f'Encoding {logi(self.title)} completed - Observed warnings {{{self.logger.show_track()}}}')
 
@@ -728,7 +744,7 @@ if __name__ == '__main__':
         logger = WarnLog()
         mt = MusicTokenizer(logger=logger, verbose=True)
         # for i_fl, fnm in enumerate(fnms[15:20]):
-        for i_fl, fnm in enumerate(fnms[20:50]):
+        for i_fl, fnm in enumerate(fnms[25:50]):
             ic(i_fl)
             # log(f'{dnm} - {os.path.basename(fnm)}')
             mt(fnm)

@@ -1,3 +1,4 @@
+import os
 import math
 import glob
 import json
@@ -28,7 +29,8 @@ from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from .data_path import *
+from musicnlp.util.data_path import DIR_DSET, PATH_BASE, DIR_PROJ, PKG_NM
+# from data_path import DIR_DSET, PATH_BASE, DIR_PROJ, PKG_NM
 
 
 rcParams['figure.constrained_layout.use'] = True
@@ -417,6 +419,34 @@ def unroll_notes(notes: List[Union[Note, Rest, tuple[Note]]]) -> List[Union[Note
     return notes
 
 
+def quarter_len2fraction(q_len: Union[float, Fraction]) -> Fraction:
+    """
+    :param q_len: A quarterLength value to convert
+        Requires one of power of 2
+    """
+    if isinstance(q_len, float):
+        def get_2_decompose(num):
+            p = math.ceil(math.log2(num))
+            ic(p)
+
+        # ic(get_2_decompose(q_len))
+        # pow_ = math.ceil(math.log2(q_len))
+        numer, denom = q_len, 1.
+        # i = 0
+        while not (numer.is_integer() and denom.is_integer()):  # Should terminate quick for the expected use case
+            numer *= 2
+            denom *= 2
+        # assert numer.is_integer() and denom.is_integer()
+        # assert pow_.is_integer()
+        # if pow_ < 0:
+        #     return Fraction(int(q_len / 2**pow_), int(2**-pow_))
+        # else:
+        #     return Fraction(int(q_len), 1)
+        return Fraction(int(numer), int(denom))
+    else:
+        return q_len
+
+
 def note2note_cleaned(
         note: Union[Rest, Note, Chord, tuple[Note]], q_len=None,
         tuple_note=False  # For inner recursion
@@ -431,13 +461,15 @@ def note2note_cleaned(
     # # if tuple_note or q_len is None:
     if q_len is None:
         q_len = note2dur(note)
+    if isinstance(note, tuple):
+        # from icecream import ic
+        # ic(q_len, len(note), quarter_len2fraction(q_len)/len(note))
+        return tuple([note2note_cleaned(n, q_len=quarter_len2fraction(q_len)/len(note)) for n in note])
     dur = m21.duration.Duration(quarterLength=q_len)
     if isinstance(note, Note):  # Removes e.g. `tie`s
         return Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), duration=dur)
     elif isinstance(note, Rest):
         return Rest(duration=dur)
-    elif isinstance(note, tuple):
-        return tuple([note2note_cleaned(n, q_len=q_len/len(note)) for n in note])
     else:
         assert isinstance(note, Chord)  # TODO
         print('clean chord')
@@ -785,7 +817,7 @@ if __name__ == '__main__':
         ic(len(fnms), fnms[:20])
         fnms = fl_nms(dnm, k='song_fmt_exp')
         ic(len(fnms), fnms[:20])
-    check_fl_nms()
+    # check_fl_nms()
 
     def setup_pop909():
         from shutil import copyfile
@@ -803,3 +835,5 @@ if __name__ == '__main__':
             fnm = f'{rec["artist"]} - {rec["name"]}.mid'
             copyfile(p, os.path.join(path_exp, fnm))
     # setup_pop909()
+
+    ic(quarter_len2fraction(1.25), quarter_len2fraction(0.875))
