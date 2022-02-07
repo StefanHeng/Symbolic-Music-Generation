@@ -98,18 +98,154 @@ class MusicTokenizer:
     """
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation
     """
-    SPEC_TOKS = dict(
-        sep='_',  # Separation
-        rest='r',
-        prefix_pitch='p',
-        prefix_duration='d',
-        start_of_tuplet='<tup>',
-        end_of_tuplet='</tup>',
-        start_of_bar='<bar>',
-        end_of_song='</s>',
-        prefix_time_sig='TimeSig',
-        prefix_tempo='Tempo'
-    )
+    class Vocabulary:
+        """
+        Stores mapping between string tokens and integer ids
+        & support the conversion, from relevant `music21` objects to [`str`, `int] conversion
+        """
+        SPEC_TOKS = dict(
+            sep='_',  # Separation
+            rest='r',
+            prefix_pitch='p',
+            prefix_duration='d',
+            start_of_tuplet='<tup>',
+            end_of_tuplet='</tup>',
+            start_of_bar='<bar>',
+            end_of_song='</s>',
+            prefix_time_sig='TimeSig',
+            prefix_tempo='Tempo'
+        )
+
+        def __init__(self, prec: int, color: bool = False):
+            """
+            :param prec: See `MusicTokenizer`
+            :param color: If True, string outputs are colorized
+                Update individual coloring of subsequent tokens via `__getitem__`
+            """
+            self.prec = prec
+            self.color = color
+
+            self.slots = dict(  # Reserved slots for each token category
+                special=64,
+                pitch=256,
+                duration=512
+            )
+            specs = MusicTokenizer.Vocabulary.SPEC_TOKS  # Syntactic sugar
+            self.toks = dict(
+                special=list(specs.values()),
+                # pitch=
+            )
+
+            sep = MusicTokenizer.Vocabulary.SPEC_TOKS['sep']
+            self.cache = dict(  # Common intermediary substrings
+                pref_dur=specs['prefix_duration']+sep,
+                pref_pch=specs['prefix_pitch']+sep,
+                pref_time_sig=specs['prefix_time_sig']+sep,
+                pref_tempo=specs['prefix_tempo']+sep,
+                bot=self.__getitem__('start_of_tuplet'),
+                eot=self.__getitem__('end_of_tuplet')
+            )
+            self.cache['rest'] = self.cache['pref_pch'] + specs['rest']
+
+        def _colorize_spec(self, s: str, color: bool = None) -> str:
+            c = self.color if color is None else color
+            return logs(s, c='m') if c else s
+
+        def __getitem__(self, k: str) -> str:
+            """
+            Index into the special tokens
+            """
+            return self._colorize_spec(MusicTokenizer.Vocabulary.SPEC_TOKS[k])
+
+        def __call__(
+                self, elm: Union[
+                    Note, Rest, tuple[Note],
+                    Union[TimeSignature, tuple[int, int]],
+                    Union[MetronomeMark, int]
+                ],
+                color: bool = None,
+                return_int: bool = False  # TODO
+        ) -> Union[List[str], List[int]]:  # TODO: Support chords?
+            """
+            Convert music21 element to string or int
+
+            :param elm: A relevant token in melody extraction
+            :param color: If given, overrides coloring for current call
+            :param return_int: If true, integer ids are returned
+            :return List of strings of the converted tokens
+            """
+            c = self.color if color is None else color
+
+            def colorize(s):
+                return self._colorize_spec(s, color=c)
+
+            def note2dur_str(e: Union[Rest, Note, tuple[Note]]) -> str:
+                dur = Fraction(note2dur(e))
+                if dur.denominator == 1:
+                    s = f'{self.cache["pref_dur"]}{dur.numerator}'
+                else:
+                    s = f'{self.cache["pref_dur"]}{dur.numerator}/{dur.denominator}'
+                return logs(s, c='g') if color else s
+
+            def pch2step(p: m21.pitch.Pitch) -> int:
+                """
+                Naive mapping to the physical, mod-12 pitch frequency, in [1-12]
+                """
+                s = p.midi % 12
+                return 12 if s == 0 else s + 1
+
+            def note2pch_str(note: Note) -> str:
+                pitch = note.pitch
+                # `pitch.name` follows certain scale by music21 default, may cause confusion
+                s = f'{self.cache["pref_pch"]}{pch2step(pitch)}/{pitch.octave}'
+                return logs(s, c='b') if color else s
+
+            if isinstance(elm, TimeSignature) or (isinstance(elm, tuple) and isinstance(elm[0], int)):  # Time Signature
+                if isinstance(elm, TimeSignature):
+                    top, bot = elm.numerator, elm.denominator
+                else:
+                    top, bot = elm
+                return [colorize(self.cache['pref_time_sig']+f'{top}/{bot}')]
+            elif isinstance(elm, (int, MetronomeMark)):  # Tempo
+                if isinstance(elm, MetronomeMark):
+                    elm = elm.number
+                return [colorize(self.cache['pref_tempo']+str(elm))]
+            elif isinstance(elm, Rest):
+                r = self.cache['rest']
+                return [logs(r, c='b') if color else r, note2dur_str(elm)]
+            elif isinstance(elm, Note):
+                return [note2pch_str(elm), note2dur_str(elm)]
+            elif isinstance(elm, tuple):
+                # Sum duration for all tuplets
+                bot, eot = self.cache['bot'], self.cache['eot']
+                return [colorize(bot)] + [
+                    note2pch_str(e) for e in elm
+                ] + [note2dur_str(elm)] + [colorize(eot)]
+            else:  # TODO: chords
+                ic('other element type', elm)
+                exit(1)
+
+            # bot, eot = logs(bot, c='m'), logs(eot, c='m')
+            # bar_sep = logs(bar_sep, c='m')
+            # end = logs(end, c='m')
+            # time_sig = logs(time_sig, c='m')
+            # tempo = logs(tempo, c='m')
+            # rest = logs(rest, c='b')
+
+            # sep, pref_dur, pref_pitch, rest, bot, eot, bar_sep, end, pref_time_sig, pref_tempo = (
+            #     MusicTokenizer.SPEC_TOKS[k] for k in [
+            #         'sep', 'prefix_duration', 'prefix_pitch', 'rest',
+            #         'start_of_tuplet', 'end_of_tuplet', 'start_of_bar', 'end_of_song', 'prefix_time_sig', 'prefix_tempo'
+            #     ]
+            # )
+            # pref_dur = f'{pref_dur}{sep}'
+            # pref_pitch = f'{pref_pitch}{sep}'
+            #
+            # rest = f'{pref_pitch}{rest}'
+            #
+            # time_sig = f'{pref_time_sig}{sep}{ts_mode_str}'
+            # tempo = f'{pref_tempo}{sep}{mean_tempo}'
+            # # bar_sep = f' {bar_sep} '
 
     def __init__(self, precision: int = 5, mode: str = 'melody', logger: WarnLog = None, verbose=False):
         """
@@ -127,6 +263,8 @@ class MusicTokenizer:
 
         self.logger = logger
         self.verbose = verbose
+
+        self.vocab = MusicTokenizer.Vocabulary(precision)
 
     @staticmethod
     def it_bars(scr: Score) -> Iterator[tuple[tuple[Measure], TimeSignature, MetronomeMark]]:
@@ -621,67 +759,24 @@ class MusicTokenizer:
             return scr_out
         elif exp in ['str_id', 'str_id_color']:
             color = exp == 'str_id_color'
-            sep, pref_dur, pref_pitch, rest, bot, eot, bar_sep, end, pref_time_sig, pref_tempo = (
-                MusicTokenizer.SPEC_TOKS[k] for k in [
-                    'sep', 'prefix_duration', 'prefix_pitch', 'rest',
-                    'start_of_tuplet', 'end_of_tuplet', 'start_of_bar', 'end_of_song', 'prefix_time_sig', 'prefix_tempo'
-                ]
-            )
-            pref_dur = f'{pref_dur}{sep}'
-            pref_pitch = f'{pref_pitch}{sep}'
+            self.vocab.color = color
 
-            rest = f'{pref_pitch}{rest}'
-
-            time_sig = f'{pref_time_sig}{sep}{ts_mode_str}'
-            tempo = f'{pref_tempo}{sep}{mean_tempo}'
-            # bar_sep = f' {bar_sep} '
-            if color:
-                bot, eot = logs(bot, c='m'), logs(eot, c='m')
-                bar_sep = logs(bar_sep, c='m')
-                end = logs(end, c='m')
-                time_sig = logs(time_sig, c='m')
-                tempo = logs(tempo, c='m')
-                rest = logs(rest, c='b')
-
-            def elm2str(elm: Union[Note, Rest, tuple[Note]]) -> List[str]:  # TODO: Support chords?
-                """
-                Each relevant token into a string representation
-                """
-                def note2dur_str(e: Union[Rest, Note, tuple[Note]]) -> str:
-                    dur = Fraction(note2dur(e))
-                    if dur.denominator == 1:
-                        s = f'{pref_dur}{dur.numerator}'
-                    else:
-                        s = f'{pref_dur}{dur.numerator}/{dur.denominator}'
-                    return logs(s, c='g') if color else s
-
-                def pch2step(p: m21.pitch.Pitch) -> int:
-                    """
-                    Naive mapping to the physical, mod-12 pitch frequency, in [1-12]
-                    """
-                    s = p.midi % 12
-                    return 12 if s == 0 else s+1
-
-                def note2pch_str(note: Note) -> str:
-                    pitch = note.pitch
-                    # s = f'{pref_pitch}{pitch.name}/{pitch.octave}'
-                    s = f'{pref_pitch}{pch2step(pitch)}/{pitch.octave}'
-                    return logs(s, c='b') if color else s
-
-                if isinstance(elm, Rest):
-                    return [rest, note2dur_str(elm)]
-                elif isinstance(elm, Note):
-                    return [note2pch_str(elm), note2dur_str(elm)]
-                elif isinstance(elm, tuple):
-                    # Sum duration for all tuplets
-                    return [bot] + [note2pch_str(e) for e in elm] + [note2dur_str(elm), eot]
-                else:  # TODO: chords
-                    ic('other element type', elm)
-                    exit(1)
+            def e2s(elm):  # Syntactic sugar
+                return self.vocab(elm, color=color)
+            sob = self.vocab['start_of_bar']
             # TODO: adding Chords as 2nd part?
-            return ' '.join([time_sig, tempo, bar_sep, f' {bar_sep} '.join([
-                    (' '.join(join_its(elm2str(n) for n in notes))) for notes in lst_notes
-                ]), end
+
+            # if color:
+            #     bot, eot = logs(bot, c='m'), logs(eot, c='m')
+            #     bar_sep = logs(bar_sep, c='m')
+            #     end = logs(end, c='m')
+            #     time_sig = logs(time_sig, c='m')
+            #     tempo = logs(tempo, c='m')
+            #     rest = logs(rest, c='b')
+
+            return ' '.join([e2s(time_sig_mode)[0], e2s(mean_tempo)[0], sob, f' {sob} '.join([
+                    (' '.join(join_its(e2s(n) for n in notes))) for notes in lst_notes
+                ]), self.vocab['end_of_song']
             ])
 
 
@@ -709,10 +804,10 @@ if __name__ == '__main__':
             s = mt(fnm, exp='str_id_color')
             print(s)
 
-        check_mxl_out()
+        # check_mxl_out()
         # check_str()
-        # check_str_color()
-    # toy_example()
+        check_str_color()
+    toy_example()
 
     def encode_a_few():
         dnm = 'POP909'
@@ -726,5 +821,5 @@ if __name__ == '__main__':
             ic(i_fl)
             # log(f'{dnm} - {os.path.basename(fnm)}')
             mt(fnm)
-    encode_a_few()
+    # encode_a_few()
 
