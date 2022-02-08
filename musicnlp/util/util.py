@@ -312,7 +312,7 @@ def is_8th(d: Union[float, Fraction]):
 
 COMMON_TIME_SIGS = sorted(
     [(4, 4), (2, 4), (2, 2), (3, 4), (6, 8), (5, 4), (12, 8)],
-    key=lambda tup: tuple(reversed(tup))
+    key=lambda tup_: tuple(reversed(tup_))
 )
 
 
@@ -342,6 +342,18 @@ def note2dur(note) -> Union[float, Fraction]:
         return sum(note2dur(nt) for nt in note)
     else:
         return note.duration.quarterLength
+
+
+def notes2offset_duration(
+        notes: Union[
+            List[Union[Note, Rest, tuple[Note]]],
+            tuple[Union[Note, Rest]]
+        ]
+) -> tuple[List[float], List[Union[float, Fraction]]]:
+    if isinstance(notes, list):  # Else, single tuplet notes
+        notes = flatten_notes(unroll_notes(notes))
+    offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
+    return offsets, durs
 
 
 def flatten_notes(notes: Iterable[Union[Note, Rest, tuple[Note]]]) -> Iterator[Note]:
