@@ -156,21 +156,14 @@ class MusicVocabulary:
             return [elm2str(rev(ts))[0] for ts in sorted(rev(ts) for ts in COMMON_TIME_SIGS + uncommon_time_sigs)]
 
         def get_tempos():
-            return [elm2str(tp)[0] for tp in range(40, 161)]  # Expected normal song ranges
+            return [elm2str(tp)[0] for tp in range(20, 220)]  # Expected normal song ranges
 
         def get_pitches():
             return [self.cache['rest']] + [self._note2pch_str(Pitch(midi=i)) for i in range(128)]
 
         def get_durations():
             bound = 6  # Support duration up to 6 in terms of `quarterLength`; TODO: support for longer duration needed?
-
-            # def _get_durations(scale) -> List[float]:
-            #     return [(i*scale) for i in range(1, math.ceil(bound/scale))]
-            # return [self.note2dur_str(val) for val in list(dict.fromkeys(
-            #     sorted([0] + sum((_get_durations(2**-i) for i in range(1, (self.prec-2)+1)), start=[]))
-            # ))]
-            # -2 for durations in quarterLength
-            dur_slot = 4 / 2**self.prec
+            dur_slot = 4 / 2**self.prec  # for durations in quarterLength
             return [self._note2dur_str((i + 1) * dur_slot) for i in range(math.ceil(bound / dur_slot))]
 
         self.toks: Dict[str, List[str]] = dict(
@@ -180,16 +173,12 @@ class MusicVocabulary:
             pitch=get_pitches(),
             duration=get_durations()
         )
-        ic(self.toks)
-        for k in self.n_slots:
-            ic(k)
-        slot_offsets = list(itertools.accumulate(self.n_slots.values()))
-        ic(slot_offsets)
+        slot_offsets = [0] + list(itertools.accumulate(self.n_slots.values()))
         self.enc: Dict[str, int] = functools.reduce(lambda a, b: a | b, (
             {tok: id_+slot_offsets[i] for id_, tok in enumerate(self.toks[k])} for i, k in enumerate(self.n_slots)
         ))
-        ic(self.enc)
         self.dec = {v: k for k, v in self.enc.items()}
+        assert len(self.enc) == len(self.dec)  # Sanity check: no id collision
 
     @property
     def size(self):
@@ -376,7 +365,8 @@ class MusicTokenizer:
             yield bars, time_sig, tempo
 
     def my_log_warn(self, warn_msg: str, log_dict: Dict):
-        warn(warn_msg)  #
+        if self.verbose:
+            warn(warn_msg)
         if self.logger is not None:
             self.logger.update(log_dict)
 
@@ -639,10 +629,16 @@ class MusicTokenizer:
             lst.extend(join_its(self.expand_bar(v, time_sig, number=bar.number) for v in bar.voices))
         return lst
 
-    def __call__(self, scr: Union[str, Score], exp='mxl') -> Union[Score, str]:
+    def __call__(
+            self, scr: Union[str, Score], exp='mxl'
+    ) -> Union[Score, List[str], List[int], str]:
         """
         :param scr: A music21 Score object, or file path to an MXL file
-        :param exp: Export mode, one of [`mxl`, `str_id`, `str_id_color`]
+        :param exp: Export mode, one of ['mxl', 'str', 'id', 'str_join', 'str_color']
+            If `mxl`, a music21 Score is returned and written to file
+            If `str` or `int`, the corresponding tokens and integer ids are returned as lists
+            If `str_join`, the tokens are jointed together
+            If `str_color`, a colorized string is returned, for console output
         """
         if isinstance(scr, str):
             scr = m21.converter.parse(scr)
@@ -822,18 +818,24 @@ class MusicTokenizer:
             scr_out.append(part)
             scr_out.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
             return scr_out
-        elif exp in ['str_id', 'str_id_color']:
-            color = exp == 'str_id_color'
+        else:
+            assert exp in ['str', 'id', 'str_color', 'str_join']
+            color = exp == 'str_color'
             self.vocab.color = color
 
             def e2s(elm):  # Syntactic sugar
                 return self.vocab(elm, color=color)
-            sob = self.vocab['start_of_bar']
             # TODO: adding Chords as 2nd part?
-            return ' '.join([e2s(time_sig_mode)[0], e2s(mean_tempo)[0], sob, f' {sob} '.join([
-                    (' '.join(join_its(e2s(n) for n in notes))) for notes in lst_notes
-                ]), self.vocab['end_of_song']
-            ])
+            toks = e2s(time_sig_mode) + e2s(mean_tempo) + sum(
+                (([self.vocab['start_of_bar']] + sum(
+                    [e2s(n) for n in notes], start=[])) for notes in lst_notes
+                 ), start=[]
+            ) + [self.vocab['end_of_song']]
+            # ic(toks)
+            if exp in ['str', 'id']:
+                return toks if exp == 'str' else self.vocab.str2id(toks)
+            else:
+                return ' '.join(toks)
 
 
 if __name__ == '__main__':
@@ -852,12 +854,11 @@ if __name__ == '__main__':
             ic(logger.to_df())
 
         def check_str():
-            s = mt(fnm, exp='str_id')
-            toks = s.split()
+            toks = mt(fnm, exp='str')
             ic(len(toks), toks[:20])
 
         def check_str_color():
-            s = mt(fnm, exp='str_id_color')
+            s = mt(fnm, exp='str_color')
             print(s)
 
         # check_mxl_out()
@@ -881,5 +882,11 @@ if __name__ == '__main__':
 
     def check_vocabulary():
         vocab = MusicVocabulary()
+        ic(vocab.enc, vocab.size)
+
+        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        mt = MusicTokenizer()
+        toks = mt(fnm, exp='str')
+        ic(vocab.str2id(toks[:20]))
     check_vocabulary()
 
