@@ -1,9 +1,11 @@
 import os
+import re
 import math
 import glob
 import json
 import pickle
 import pathlib
+import logging
 import datetime
 import itertools
 import concurrent.futures
@@ -25,13 +27,13 @@ from librosa import display
 import music21 as m21
 from music21.note import Note, Rest
 from music21.chord import Chord
+import sty
 import colorama
 from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from musicnlp.util.data_path import DIR_DSET, PATH_BASE, DIR_PROJ, PKG_NM
-# from data_path import DIR_DSET, PATH_BASE, DIR_PROJ, PKG_NM
+from musicnlp.util.data_path import DIR_DSET, PATH_BASE, DIR_PROJ
 
 
 rcParams['figure.constrained_layout.use'] = True
@@ -218,6 +220,93 @@ def logi(s):
     Syntactic sugar for logging `info` as string
     """
     return logs(s, c='i')
+
+
+def hex2rgb(hx: str) -> Union[tuple[int], tuple[float]]:
+    # Modified from https://stackoverflow.com/a/62083599/10732321
+    if not hasattr(hex2rgb, 'regex'):
+        hex2rgb.regex = re.compile(r'#[a-fA-F0-9]{3}(?:[a-fA-F0-9]{3})?$')
+    m = hex2rgb.regex.match(hx)
+    assert m is not None
+    if len(hx) <= 4:
+        return tuple(int(hx[i]*2, 16) for i in range(1, 4))
+    else:
+        return tuple(int(hx[i:i+2], 16) for i in range(1, 7, 2))
+
+
+class MyTheme:
+    """
+    Theme based on `sty` and `Atom OneDark`
+    """
+    # sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.purple, sty.fg.red = (
+    #     hex2rgb(f'#{h}') for h in ['E5C0FB', '98C379', '61AFEF', 'C678DD', 'E06C75']
+    # )
+    # yellow, green, blue, purple, red = sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.purple, sty.fg.red
+    yellow, green, blue, cyan, red, purple = (
+        # hex2rgb(f'#{h}') for h in ['E5C07B', '98C379', '61AFEF', '2AA198', 'E06C75', 'C678DD']
+        hex2rgb(f'#{h}') for h in ['E5C07B', '00BA8E', '61AFEF', '2AA198', 'E06C75', 'C678DD']
+    )
+
+
+class MyFormatter(logging.Formatter):
+    """
+    Modified from https://stackoverflow.com/a/56944256/10732321
+
+    Default styling: Time in green, metadata indicates severity, plain log message
+    """
+    RESET = sty.rs.fg + sty.rs.bg + sty.rs.ef
+
+    sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.cyan, sty.fg.red, sty.fg.purple = (  # Modifies `sty`
+        sty.Style(sty.RgbFg(*c))
+        for c in [MyTheme.yellow, MyTheme.green, MyTheme.blue, MyTheme.cyan, MyTheme.red, MyTheme.purple]
+    )
+    yellow, green, blue, cyan, purple, red = sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.cyan, sty.fg.purple, sty.fg.red
+
+    KW_TIME = '%(asctime)s'
+    KW_MSG = '%(message)s'
+    KW_LINENO = '%(lineno)d'
+    KW_FNM = '%(filename)s'
+    KW_FUNCNM = '%(funcName)s'
+    KW_NAME = '%(name)s'
+
+    DEBUG = INFO = BASE = RESET
+    # WARN, ERR, SEV = (sty.Style(sty.RgbFg(*c)) for c in [MyTheme.yellow, MyTheme.red, MyTheme.purple])
+    WARN, ERR, CRIT = yellow, red, purple
+    CRIT += sty.Style(sty.ef.bold)
+
+    LVL_MAP = {  # level => (abbreviation, style)
+        logging.DEBUG: ('DBG', DEBUG),
+        logging.INFO: ('INFO', INFO),
+        logging.WARNING: ('WARN', WARN),
+        logging.ERROR: ('ERR', ERR),
+        logging.CRITICAL: ('CRIT', CRIT)
+    }
+
+    def __init__(self, fmt_time=green):
+        super().__init__()
+
+        sty_kw, reset = MyFormatter.blue, MyFormatter.RESET
+        fmt_time = f'{fmt_time}{MyFormatter.KW_TIME}{sty_kw}| {reset}'
+
+        def fmt_meta(meta_abv, meta_style):
+            return f'{meta_style}{MyFormatter.KW_NAME}::{MyFormatter.KW_FUNCNM}' \
+                   f'::{MyFormatter.KW_FNM}:{MyFormatter.KW_LINENO}, {meta_abv}{reset}'
+
+        self.formats = {
+            # level: ''.join(style) + FMT + RESET
+            level: fmt_time + fmt_meta(*args) + f'{sty_kw} - {reset}{MyFormatter.KW_MSG}' + reset
+            # for level, (abb, style) in zip(
+            #     [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL],
+            #     [MyFormatter.DEBUG, MyFormatter.INFO, MyFormatter.WARN, MyFormatter.ERR, MyFormatter.SEV]
+            # )
+            for level, args in MyFormatter.LVL_MAP.items()
+        }
+        self.formatter = {
+            lv: logging.Formatter(fmt, datefmt='%Y-%m-%d %H:%M:%S') for lv, fmt in self.formats.items()
+        }
+
+    def format(self, entry):
+        return self.formatter[entry.levelno].format(entry)
 
 
 def config(attr):
@@ -869,4 +958,33 @@ if __name__ == '__main__':
             copyfile(p, os.path.join(path_exp, fnm))
     # setup_pop909()
 
-    ic(quarter_len2fraction(1.25), quarter_len2fraction(0.875))
+    # ic(quarter_len2fraction(1.25), quarter_len2fraction(0.875))
+
+    # ic(hex2rgb('#E5C0FB'))
+
+    def check_logging():
+        ic(colorama.Fore.YELLOW)
+        ic(now())
+        ic()
+        print('normal str')
+
+        logger = logging.getLogger('Test Logger')
+        logger.setLevel(logging.DEBUG)
+
+        import sys
+        ch = logging.StreamHandler(stream=sys.stdout)  # For my own coloring
+        ch.setLevel(logging.DEBUG)
+        ch.setFormatter(MyFormatter())
+        logger.addHandler(ch)
+
+        logger.debug("debug message")
+        logger.info("info message")
+        logger.warning("warning message")
+        logger.error("error message")
+        logger.critical("critical message")
+
+        res = colorama.Fore.RESET + colorama.Back.RESET + colorama.Style.RESET_ALL
+        msg = colorama.Fore.YELLOW + 'my msg' + res
+        logger.critical(msg)
+    check_logging()
+
