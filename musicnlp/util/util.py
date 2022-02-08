@@ -7,6 +7,7 @@ import pathlib
 import datetime
 import itertools
 import concurrent.futures
+from copy import deepcopy
 from typing import TypeVar, Callable, Union, List, Dict, Iterator
 from fractions import Fraction
 from functools import reduce
@@ -415,27 +416,33 @@ def unroll_notes(notes: List[Union[Note, Rest, tuple[Note]]]) -> List[Union[Note
     """
     :param notes: individual notes with offsets not back-to-back
     :return: Notes as if jointed in time together
+
+    .. Original notes unmodified
     """
     # if not isinstance(notes, list):
     #     notes = list(notes)
     # notes[0].offset = 0
-    notes_ = list(flatten_notes(notes))
-    offsets = [0]
-    strt = notes_[0].duration.quarterLength
-    for note in notes_[1:]:
-        # notes[i+1].offset = strt  # Since omitted 1st note
-        offsets.append(strt)
-        strt += note.duration.quarterLength
-    offsets = iter(offsets)
-    for i, note in enumerate(notes):
-        if isinstance(note, tuple):
-            notes_tup = list(note)
-            for idx, n in enumerate(notes_tup):
-                notes_tup[idx].offset = next(offsets)
-            notes[i] = tuple(notes_tup)
-        else:
-            notes[i].offset = next(offsets)
-    return notes
+    if is_notes_no_overlap(notes):
+        return notes
+    else:
+        notes = [deepcopy(n) for n in notes]
+        notes_ = list(flatten_notes(notes))
+        offsets = [0]
+        strt = notes_[0].duration.quarterLength
+        for note in notes_[1:]:
+            # notes[i+1].offset = strt  # Since omitted 1st note
+            offsets.append(strt)
+            strt += note.duration.quarterLength
+        offsets = iter(offsets)
+        for i, note in enumerate(notes):
+            if isinstance(note, tuple):
+                notes_tup = list(note)
+                for idx, n in enumerate(notes_tup):
+                    notes_tup[idx].offset = next(offsets)
+                notes[i] = tuple(notes_tup)
+            else:
+                notes[i].offset = next(offsets)
+        return notes
 
 
 def quarter_len2fraction(q_len: Union[float, Fraction]) -> Fraction:
