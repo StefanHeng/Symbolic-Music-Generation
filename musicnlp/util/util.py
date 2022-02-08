@@ -106,18 +106,6 @@ def keys(dic, prefix=''):
             yield _full(k)
 
 
-def conc_map(fn, it):
-    """
-    Wrapper for `concurrent.futures.map`
-
-    :param fn: A function
-    :param it: A list of elements
-    :return: Iterator of `lst` elements mapped by `fn` with concurrency
-    """
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        return executor.map(fn, it)
-
-
 def now(as_str=True):
     d = datetime.datetime.now()
     return d.strftime('%Y-%m-%d %H:%M:%S') if as_str else d
@@ -144,6 +132,7 @@ def sec2mmss(sec: int) -> str:
 
 
 T = TypeVar('T')
+K = TypeVar('K')
 
 
 def compress(lst: list[T]) -> list[tuple[T, int]]:
@@ -168,6 +157,18 @@ def join_its(its: Iterable[Iterable[T]]) -> Iterable[T]:
     for it in its:
         out = itertools.chain(out, it)
     return out
+
+
+def conc_map(fn: Callable[[T], K], it: Iterable[T]) -> Iterable[K]:
+    """
+    Wrapper for `concurrent.futures.map`
+
+    :param fn: A function
+    :param it: A list of elements
+    :return: Iterator of `lst` elements mapped by `fn` with concurrency
+    """
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        return executor.map(fn, it)
 
 
 def log(s, c: str = 'log', c_time='green', as_str=False):
@@ -309,10 +310,16 @@ def is_8th(d: Union[float, Fraction]):
     return is_int(d*2)
 
 
+COMMON_TIME_SIGS = sorted(
+    [(4, 4), (2, 4), (2, 2), (3, 4), (6, 8), (5, 4), (12, 8)],
+    key=lambda tup: tuple(reversed(tup))
+)
+
+
 def is_common_time_sig(ts: Union[TimeSignature, tuple[int, int]]):
     if not hasattr(is_common_time_sig, 'COM_TS'):  # List of common time signatures
-        is_common_time_sig.COM_TS = {(4, 4), (2, 4), (2, 2), (3, 4), (6, 8), (5, 4), (12, 8)}
-        is_common_time_sig.COM_TS_OUT = sorted(is_common_time_sig.COM_TS)
+        is_common_time_sig.COM_TS = set(COMMON_TIME_SIGS)
+        # is_common_time_sig.COM_TS_OUT = sorted(is_common_time_sig.COM_TS)
     if isinstance(ts, TimeSignature):
         ts = (ts.numerator, ts.denominator)
     return ts in is_common_time_sig.COM_TS
@@ -330,7 +337,7 @@ def note2pitch(note):
         return 0  # `Rest` given pitch frequency of 0
 
 
-def note2dur(note):
+def note2dur(note) -> Union[float, Fraction]:
     if isinstance(note, tuple):
         return sum(note2dur(nt) for nt in note)
     else:

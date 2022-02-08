@@ -2,11 +2,13 @@
 Symbolic music generation taking inspiration from NLP Language Modeling, human composition process and music theory. 
 
 Contributor: [Stefan/Yuzhao Heng](https://stefanheng.github.io), [Carson/Jiachun Zhang](https://github.com/SonyaInSiberia).
-Mentored by [Artem Abzaliev](http://artem.site44.com) 
+Mentored by [Artem Abzaliev](http://artem.site44.com), 
+supported by [Prof. Rada Mihalcea](https://web.eecs.umich.edu/~mihalcea/)  
 at [LIT](https://lit.eecs.umich.edu/people.html).
 
 
 ## To use 
+Python version 3.9.7. 
 
 Modify the `DIR_DSET` variable in file [`data_path.py`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/musicnlp/util/data_path.py) 
 as instructed.
