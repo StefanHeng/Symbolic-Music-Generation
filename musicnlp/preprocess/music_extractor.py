@@ -84,7 +84,7 @@ class WarnLog:
         elif nm in [WarnLog.HighPchOvl, WarnLog.HighPchOvlTup]:
             assert 'bar_num' in args
         elif nm == WarnLog.UncomTimeSig:
-            assert 'ts_expect' in args and 'ts_got' in args
+            assert 'time_sig_expect' in args and 'time_sig_got' in args
         else:
             assert nm == WarnLog.IncTimeSig
             assert all(k in args for k in ['time_sig', 'n_bar_total', 'n_bar_mode'])
@@ -94,18 +94,18 @@ class WarnLog:
         def warn2str() -> str:
             # Map Warning to string output
             if nm in [WarnLog.InvTupDur, WarnLog.InvTupDurSv]:
-                msg = '{warn_name}: {tup_str} durations don\'t sum up to 8th notes ' \
+                msg = '{warn_name}: Tuplet durations don\'t sum up to 8th notes ' \
                       'at bar#{bar_num}, with offsets {offsets}, durations {durations} ' \
                       '- notes quantized and cropped to bar length if necessary'
             elif nm == WarnLog.InvTupSz:
                 msg = '{warn_name}: Tuplet with invalid number of notes added ' \
-                      'at bar#{bar_num} - expect {n_tup}, got {n_got}'
+                      'at bar#{bar_num} - expect {n_expect}, got {n_got}'
             # elif nm == WarnLog.InvTupNt:
             #     msg = '{warn_name}: Tuplet with overlapping notes added at bar#{bar_num}, ' \
             #           'with offsets: {offsets}, durations: {durs} - notes are cut off'
             elif nm == WarnLog.UncomTimeSig:
                 msg = '{warn_name}: Time Signature is uncommon' \
-                      ' - Expect one of {ts_expect}, got {time_sig_mode}'
+                      ' - Expect one of {time_sig_expect}, got {time_sig_got}'
             elif nm == WarnLog.IncTimeSig:
                 msg = '{warn_name}: ratio of mode time signature below {th}' \
                       ' - #mode {n_mode}, #total {n_bar}'
@@ -130,7 +130,6 @@ class WarnLog:
             return msg
         warn_out = {k: logi(v) for k, v in warn_.items()}
         warn_out['warn_name'] = sty.ef.bold + warn_out['warn_name']
-        # ic(warn_out)
         self.logger.warning(warn2str().format(**warn_out))
         self.warnings.append(warn_)
 
@@ -151,7 +150,7 @@ class WarnLog:
         """
         Statistics of warnings since tracking started
         """
-        counts = Counter(w['nm'] for w in self.warnings[self.idx_track:])
+        counts = Counter(w['warn_name'] for w in self.warnings[self.idx_track:])
         return ', '.join((f'{logi(k)}: {logi(v)}' for k, v in counts.items()))
 
 
@@ -533,9 +532,6 @@ class MusicTokenizer:
                 while elm_ is not None:
                     # For poor transcription quality, skip over non-note elements in the middle
                     if isinstance(elm_, (m21.clef.Clef, MetronomeMark)):
-                        if isinstance(elm_, MetronomeMark):
-                            ic(number, 'saw tempo')
-                            exit(1)
                         elm_ = next(it, None)
                     elif tup_str in elm_.fullName:  # Look for all elements of the same `n_tup`
                         elms_tup.append(elm_)
@@ -716,7 +712,7 @@ class MusicTokenizer:
             if self.logger is not None:
                 self.logger.start_tracking(args_func=lambda: dict(id=self.title, timestamp=now()))
         if not is_common_time_sig(time_sig_mode):
-            self.my_log_warn(dict(warn_name=WarnLog.UncomTimeSig, ts_expect=COMMON_TIME_SIGS, ts_got=time_sig_mode))
+            self.my_log_warn(dict(warn_name=WarnLog.UncomTimeSig, time_sig_expect=COMMON_TIME_SIGS, time_sig_got=time_sig_mode))
         th = 0.95
         n_mode, n_bar = counter_ts[time_sig_mode], len(time_sigs)
         if (n_mode / n_bar) < th:  # Arbitrary threshold; Too much invalid time signature
