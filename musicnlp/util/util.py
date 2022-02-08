@@ -13,6 +13,7 @@ from copy import deepcopy
 from typing import TypeVar, Callable, Union, List, Dict, Iterator
 from fractions import Fraction
 from functools import reduce
+from collections import OrderedDict
 from collections.abc import Iterable
 
 import numpy as np
@@ -238,14 +239,34 @@ class MyTheme:
     """
     Theme based on `sty` and `Atom OneDark`
     """
-    # sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.purple, sty.fg.red = (
-    #     hex2rgb(f'#{h}') for h in ['E5C0FB', '98C379', '61AFEF', 'C678DD', 'E06C75']
-    # )
-    # yellow, green, blue, purple, red = sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.purple, sty.fg.red
+    COLORS = OrderedDict([
+        ('yellow', 'E5C07B'),
+        ('green', '00BA8E'),
+        ('blue', '61AFEF'),
+        ('cyan', '2AA198'),
+        ('red', 'E06C75'),
+        ('purple', 'C678DD')
+    ])
     yellow, green, blue, cyan, red, purple = (
         # hex2rgb(f'#{h}') for h in ['E5C07B', '98C379', '61AFEF', '2AA198', 'E06C75', 'C678DD']
         hex2rgb(f'#{h}') for h in ['E5C07B', '00BA8E', '61AFEF', '2AA198', 'E06C75', 'C678DD']
     )
+
+    @staticmethod
+    def set_color_type(t: str):
+        """
+        Sets the class attribute accordingly
+
+        :param t: One of ['rgb`, `sty`]
+            If `rgb`: 3-tuple of rgb values
+            If `sty`: String for terminal styling prefix
+        """
+        for color, hex_ in MyTheme.COLORS.items():
+            val = hex2rgb(f'#{hex_}')  # For `rgb`
+            if t == 'sty':
+                setattr(sty.fg, color, sty.Style(sty.RgbFg(*val)))
+                val = getattr(sty.fg, color)
+            setattr(MyTheme, color, val)
 
 
 class MyFormatter(logging.Formatter):
@@ -256,11 +277,15 @@ class MyFormatter(logging.Formatter):
     """
     RESET = sty.rs.fg + sty.rs.bg + sty.rs.ef
 
-    sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.cyan, sty.fg.red, sty.fg.purple = (  # Modifies `sty`
-        sty.Style(sty.RgbFg(*c))
-        for c in [MyTheme.yellow, MyTheme.green, MyTheme.blue, MyTheme.cyan, MyTheme.red, MyTheme.purple]
+    # sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.cyan, sty.fg.red, sty.fg.purple = (  # Modifies `sty`
+    #     sty.Style(sty.RgbFg(*c))
+    #     for c in [MyTheme.yellow, MyTheme.green, MyTheme.blue, MyTheme.cyan, MyTheme.red, MyTheme.purple]
+    # )
+    # yellow, green, blue, cyan, purple, red = sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.cyan, sty.fg.purple, sty.fg.red
+    MyTheme.set_color_type('sty')
+    yellow, green, blue, cyan, purple, red = (
+        MyTheme.yellow, MyTheme.green, MyTheme.blue, MyTheme.cyan, MyTheme.red, MyTheme.purple
     )
-    yellow, green, blue, cyan, purple, red = sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.cyan, sty.fg.purple, sty.fg.red
 
     KW_TIME = '%(asctime)s'
     KW_MSG = '%(message)s'
@@ -289,16 +314,11 @@ class MyFormatter(logging.Formatter):
         fmt_time = f'{fmt_time}{MyFormatter.KW_TIME}{sty_kw}| {reset}'
 
         def fmt_meta(meta_abv, meta_style):
-            return f'{meta_style}{MyFormatter.KW_NAME}::{MyFormatter.KW_FUNCNM}' \
+            return f'{meta_style}[{MyFormatter.KW_NAME}]::{MyFormatter.KW_FUNCNM}' \
                    f'::{MyFormatter.KW_FNM}:{MyFormatter.KW_LINENO}, {meta_abv}{reset}'
 
         self.formats = {
-            # level: ''.join(style) + FMT + RESET
             level: fmt_time + fmt_meta(*args) + f'{sty_kw} - {reset}{MyFormatter.KW_MSG}' + reset
-            # for level, (abb, style) in zip(
-            #     [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL],
-            #     [MyFormatter.DEBUG, MyFormatter.INFO, MyFormatter.WARN, MyFormatter.ERR, MyFormatter.SEV]
-            # )
             for level, args in MyFormatter.LVL_MAP.items()
         }
         self.formatter = {
