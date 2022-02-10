@@ -277,13 +277,8 @@ class MyFormatter(logging.Formatter):
     """
     RESET = sty.rs.fg + sty.rs.bg + sty.rs.ef
 
-    # sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.cyan, sty.fg.red, sty.fg.purple = (  # Modifies `sty`
-    #     sty.Style(sty.RgbFg(*c))
-    #     for c in [MyTheme.yellow, MyTheme.green, MyTheme.blue, MyTheme.cyan, MyTheme.red, MyTheme.purple]
-    # )
-    # yellow, green, blue, cyan, purple, red = sty.fg.yellow, sty.fg.green, sty.fg.blue, sty.fg.cyan, sty.fg.purple, sty.fg.red
     MyTheme.set_color_type('sty')
-    yellow, green, blue, cyan, purple, red = (
+    yellow, green, blue, cyan, red, purple = (
         MyTheme.yellow, MyTheme.green, MyTheme.blue, MyTheme.cyan, MyTheme.red, MyTheme.purple
     )
 
@@ -295,7 +290,6 @@ class MyFormatter(logging.Formatter):
     KW_NAME = '%(name)s'
 
     DEBUG = INFO = BASE = RESET
-    # WARN, ERR, SEV = (sty.Style(sty.RgbFg(*c)) for c in [MyTheme.yellow, MyTheme.red, MyTheme.purple])
     WARN, ERR, CRIT = yellow, red, purple
     CRIT += sty.Style(sty.ef.bold)
 
@@ -314,8 +308,11 @@ class MyFormatter(logging.Formatter):
         fmt_time = f'{fmt_time}{MyFormatter.KW_TIME}{sty_kw}| {reset}'
 
         def fmt_meta(meta_abv, meta_style):
-            return f'{meta_style}[{MyFormatter.KW_NAME}]::{MyFormatter.KW_FUNCNM}' \
-                   f'::{MyFormatter.KW_FNM}:{MyFormatter.KW_LINENO}, {meta_abv}{reset}'
+            return f'{MyFormatter.purple}[{MyFormatter.KW_NAME}]' \
+                   f'{MyFormatter.blue}::{MyFormatter.purple}{MyFormatter.KW_FUNCNM}' \
+                   f'{MyFormatter.blue}::{MyFormatter.purple}{MyFormatter.KW_FNM}' \
+                   f'{MyFormatter.blue}:{MyFormatter.purple}{MyFormatter.KW_LINENO}' \
+                   f'{MyFormatter.blue}, {meta_style}{meta_abv}{reset}'
 
         self.formats = {
             level: fmt_time + fmt_meta(*args) + f'{sty_kw} - {reset}{MyFormatter.KW_MSG}' + reset
@@ -406,9 +403,13 @@ def group_triplets(bar) -> list[Union[
 EPS = 1e-6
 
 
-def is_int(num: Union[float, Fraction]):
+def is_int(num: Union[float, Fraction], check_close: Union[bool, float] = True):
     if isinstance(num, float):
-        return num.is_integer()
+        if check_close:  # Numeric issue summing Fractions with floats
+            eps = check_close if isinstance(check_close, float) else 1e-6
+            return math.isclose(num, round(num), abs_tol=eps)
+        else:
+            return num.is_integer()
     else:
         return num.denominator == 1
 
