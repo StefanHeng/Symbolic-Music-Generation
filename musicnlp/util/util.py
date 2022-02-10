@@ -110,9 +110,9 @@ def keys(dic, prefix=''):
             yield _full(k)
 
 
-def now(as_str=True):
+def now(as_str=True, sep=':'):
     d = datetime.datetime.now()
-    return d.strftime('%Y-%m-%d %H:%M:%S') if as_str else d
+    return d.strftime(f'%Y-%m-%d %H{sep}%M{sep}%S') if as_str else d  # Considering file output path
 
 
 def fmt_dt(secs: Union[int, float, datetime.timedelta]):
@@ -535,8 +535,9 @@ def unroll_notes(notes: List[Union[Note, Rest, tuple[Note]]]) -> List[Union[Note
     if is_notes_no_overlap(notes):
         return notes
     else:
-        notes = [deepcopy(n) for n in notes]
+        # notes = [deepcopy(n) for n in notes]
         notes_ = list(flatten_notes(notes))
+        notes_ = [deepcopy(n) for n in notes_]
         offsets = [0]
         strt = notes_[0].duration.quarterLength
         for note in notes_[1:]:
@@ -548,6 +549,7 @@ def unroll_notes(notes: List[Union[Note, Rest, tuple[Note]]]) -> List[Union[Note
             if isinstance(note, tuple):
                 notes_tup = list(note)
                 for idx, n in enumerate(notes_tup):
+                    # If `Chord`, notes inside with offset of 0 always, leave unchanged
                     notes_tup[idx].offset = next(offsets)
                 notes[i] = tuple(notes_tup)
             else:
