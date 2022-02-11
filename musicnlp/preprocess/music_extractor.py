@@ -6,18 +6,14 @@ See `melody_extractor` for the old version.
 
 import sys
 import functools
-from collections import defaultdict, Counter, OrderedDict
+from collections import defaultdict, Counter
 
-from music21.stream import Score, Part, Measure, Voice
+from music21.stream import Score, Measure, Voice
 from music21.tempo import MetronomeMark
 from music21.duration import Duration
 from music21.pitch import Pitch
 
 from musicnlp.util import *
-
-
-# TODO: remove
-from icecream import ic
 
 
 pd.set_option('display.max_columns', None)  # TODO
@@ -713,6 +709,11 @@ class MusicTokenizer:
                     print('unexpected type')
                     exit(1)
             elm = next(it, None)
+        if number == 19:
+            ic('in expand bar')
+            for n in bar:
+                if not isinstance(n, (Voice, m21.layout.LayoutBase, m21.clef.Clef)):
+                    ic(n, n.fullName, n.offset, n.duration.quarterLength)
         if bar.hasVoices():  # Join all voices to notes
             lst.extend(join_its(self.expand_bar(v, time_sig, number=number) for v in bar.voices))
         return lst
@@ -764,6 +765,7 @@ class MusicTokenizer:
         idx_end_1st_empty = idx+1
         if idx_end_1st_empty != n_bars_ori:
             empty_warns.append(dict(warn_name=WarnLog.EmptyEnd, bar_range=(idx_end_1st_empty, n_bars_ori-1)))
+        lst_bar_info = lst_bar_info[idx_strt_last_empty+1:idx_end_1st_empty]
 
         lst_bars_, time_sigs, tempos = zip(*[
             (bars, time_sig, tempo) for bars, time_sig, tempo in lst_bar_info
@@ -796,12 +798,12 @@ class MusicTokenizer:
 
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
-        # ic(i_bar_strt)
+        ic(i_bar_strt)
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
-            # ic(number)
-            # if number == 265:
+            ic(number)
+            # if number == 19:
             #     for b in bars:
             #         b.show()
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
@@ -815,14 +817,20 @@ class MusicTokenizer:
                 offset: sorted(ns, key=lambda nt: (note2pitch(nt), note2dur(nt)))
                 for offset, ns in groups.items()
             }
-            # if number == 265:
-            #     ic(groups)
+            if number == 19:
+                ic(groups)
 
             def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
+                if number == 19:
+                    ic('one get notes call')
                 ns_out = []
                 offset_next = 0
                 for offset in sorted(groups.keys()):  # Pass through notes in order
                     notes_ = groups[offset]
+                    if len(notes_) == 0:  # As a result of removing triplets TODO
+                        continue
+                    if number == 19:
+                        ic(offset, notes_, ns_out)
                     nt = notes_[-1]
                     if offset < offset_next:
                         # Tuplet notes not normalized at this point, remain faithful to the weighted average pitch
@@ -876,6 +884,8 @@ class MusicTokenizer:
                             warn_name=WarnLog.TupNoteOvl, bar_num=number, offsets=offsets, durations=durs
                         ))
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
+            # if number == 19:
+            #     exit(1)
 
         # Enforce quantization
         dur_slot = 4 / 2**self.prec  # quarterLength by quantization precision
@@ -998,10 +1008,10 @@ if __name__ == '__main__':
         for i_fl, fnm in enumerate(fnms[231:232]):
             ic(i_fl)
             # log(f'{dnm} - {os.path.basename(fnm)}')
-            # mt(fnm, exp='mxl')
+            mt(fnm, exp='mxl')
 
-            s = mt(fnm, exp='str_color')
-            print(s)
+            # s = mt(fnm, exp='str_color')
+            # print(s)
     encode_a_few()
 
     def check_vocabulary():

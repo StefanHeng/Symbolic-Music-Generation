@@ -32,7 +32,7 @@ class MusicExport:
         """
         lst_out = []
         mt = MusicTokenizer(mode=self.mode, logger=True, verbose=self.verbose)
-        for i_fl, fnm in tqdm(enumerate(fnms)):
+        for i_fl, fnm in tqdm(enumerate(fnms), total=len(fnms)):
             if self.verbose:
                 log(f'Extracting file {logi(stem(fnm))}... ')
             out = mt(fnm, exp=exp)
