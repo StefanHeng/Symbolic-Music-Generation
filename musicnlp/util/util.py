@@ -248,7 +248,6 @@ class MyTheme:
         ('purple', 'C678DD')
     ])
     yellow, green, blue, cyan, red, purple = (
-        # hex2rgb(f'#{h}') for h in ['E5C07B', '98C379', '61AFEF', '2AA198', 'E06C75', 'C678DD']
         hex2rgb(f'#{h}') for h in ['E5C07B', '00BA8E', '61AFEF', '2AA198', 'E06C75', 'C678DD']
     )
 
