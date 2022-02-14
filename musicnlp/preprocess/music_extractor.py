@@ -730,11 +730,11 @@ class MusicTokenizer:
     ) -> Union[Score, List[str], List[int], str]:
         """
         :param scr: A music21 Score object, or file path to an MXL file
-        :param exp: Export mode, one of ['mxl', 'str', 'id', 'str_join', 'str_color']
+        :param exp: Export mode, one of ['mxl', 'str', 'id', 'str_join', 'visualize']
             If `mxl`, a music21 Score is returned and written to file
             If `str` or `int`, the corresponding tokens and integer ids are returned as lists
             If `str_join`, the tokens are jointed together
-            If `str_color`, a colorized string is returned, for console output
+            If `visualize`, a grouped, colorized string is returned, intended for console output
         """
         if isinstance(scr, str):
             scr = m21.converter.parse(scr)
@@ -955,21 +955,50 @@ class MusicTokenizer:
             scr_out.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
             return scr_out
         else:
-            assert exp in ['str', 'id', 'str_color', 'str_join']
-            color = exp == 'str_color'
+            assert exp in ['str', 'id', 'visualize', 'str_join']
+            color = exp == 'visualize'
             self.vocab.color = color
 
             def e2s(elm):  # Syntactic sugar
                 return self.vocab(elm, color=color)
-            toks = e2s(time_sig_mode) + e2s(mean_tempo) + sum(
-                (([self.vocab['start_of_bar']] + sum(
-                    [e2s(n) for n in notes], start=[])) for notes in lst_notes  # TODO: adding Chords as 2nd part?
-                 ), start=[]
-            ) + [self.vocab['end_of_song']]
-            if exp in ['str', 'id']:
-                return toks if exp == 'str' else self.vocab.str2id(toks)
+
+            # groups: List[List[str]] = [e2s(time_sig_mode) + e2s(mean_tempo)]
+            # groups.extend(
+            #     ([self.vocab['start_of_bar']] + sum([e2s(n) for n in notes], start=[])) for notes in lst_notes
+            # )
+            # groups.append([self.vocab['end_of_song']])
+            # ic(e2s(time_sig_mode))
+            # ic([*e2s(time_sig_mode)])
+            # ic([*e2s(time_sig_mode), *e2s(mean_tempo)])
+            # notes = lst_notes[0]
+            # ic(sum([e2s(n) for n in notes], start=[]))
+            # ic(['asd', *(e2s(n) for n in notes)])
+
+            groups: List[List[str]] = [
+                [*e2s(time_sig_mode), *e2s(mean_tempo)],
+                *(([self.vocab['start_of_bar']] + sum([e2s(n) for n in notes], start=[])) for notes in lst_notes),
+                [self.vocab['end_of_song']]
+            ]
+            # groups.
+            # ic(groups)
+            # exit(1)
+            # toks = e2s(time_sig_mode) + e2s(mean_tempo) + sum(
+            #     (([self.vocab['start_of_bar']] + sum(
+            #         [e2s(n) for n in notes], start=[])) for notes in lst_notes  # TODO: adding Chords as 2nd part?
+            #      ), start=[]
+            # ) + [self.vocab['end_of_song']]
+            if exp == 'visualize':
+                n_pad = len(str(len(groups)))
+
+                def idx2str(i):
+                    return logs(f'{i:>{n_pad}}:', c='y')
+                return '\n'.join(f'{idx2str(i)} {" ".join(toks)}' for i, toks in enumerate(groups))
             else:
-                return ' '.join(toks)
+                toks = sum(groups, start=[])
+                if exp in ['str', 'id']:
+                    return toks if exp == 'str' else self.vocab.str2id(toks)
+                else:
+                    return ' '.join(toks)
 
 
 if __name__ == '__main__':
@@ -991,13 +1020,13 @@ if __name__ == '__main__':
             toks = mt(fnm, exp='str')
             ic(len(toks), toks[:20])
 
-        def check_str_color():
-            s = mt(fnm, exp='str_color')
+        def check_visualize():
+            s = mt(fnm, exp='visualize')
             print(s)
 
         # check_mxl_out()
         # check_str()
-        check_str_color()
+        check_visualize()
     toy_example()
 
     def encode_a_few():
@@ -1015,7 +1044,7 @@ if __name__ == '__main__':
             # log(f'{dnm} - {os.path.basename(fnm)}')
             mt(fnm, exp='mxl')
 
-            # s = mt(fnm, exp='str_color')
+            # s = mt(fnm, exp='visualize')
             # print(s)
     # encode_a_few()
 
