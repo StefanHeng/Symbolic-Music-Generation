@@ -104,7 +104,7 @@ class WarnLog:
             # Map Warning to string output
             if nm in [WarnLog.InvTupDur, WarnLog.InvTupDurSv]:
                 msg = '{warn_name}: Tuplet durations don\'t sum up to 8th notes ' \
-                      'at bar#{bar_num}, with offsets {offsets}, durations {durations} ' \
+                      'at bar#{bar_num}, with offsets: {offsets}, durations: {durations} ' \
                       '- note durations distributed, and cropped to bar length if necessary'
             elif nm == WarnLog.InvTupSz:
                 msg = '{warn_name}: Tuplet with invalid number of notes added ' \
@@ -117,7 +117,7 @@ class WarnLog:
                       ' - total note {n_note}, rest count {n_rest}'
             elif nm == WarnLog.UncomTimeSig:
                 msg = '{warn_name}: Time Signature is uncommon' \
-                      ' - Expect one of {time_sig_expect}, got {time_sig_got}'
+                      ' - Expect one of: {time_sig_expect}, got {time_sig_got}'
             elif nm == WarnLog.IncTimeSig:
                 msg = '{warn_name}: ratio of mode time signature below {th}' \
                       ' - #mode {n_mode}, #total {n_bar}'
@@ -136,9 +136,9 @@ class WarnLog:
                 msg = '{warn_name}: Note durations smaller than quantized slot at bar#{bar_num} ' \
                       '- Note durations approximated'
             elif nm == WarnLog.EmptyStrt:
-                msg = '{warn_name}: Empty bars observed at start of song in range {bar_range}'
+                msg = '{warn_name}: Empty bars observed at start of song in range: {bar_range}'
             elif nm == WarnLog.EmptyEnd:
-                msg = '{warn_name}: Empty bars observed at end of song in range {bar_range}'
+                msg = '{warn_name}: Empty bars observed at end of song in range: {bar_range}'
             else:
                 assert nm == WarnLog.TupNoteQuant
                 msg = '{warn_name}: Tuplet notes of equal duration is quantizable at bar#{bar_num}' \
@@ -774,9 +774,9 @@ class MusicTokenizer:
             empty_warns.append(dict(warn_name=WarnLog.EmptyEnd, bar_range=(idx_end_1st_empty, n_bars_ori-1)))
         lst_bar_info = lst_bar_info[idx_strt_last_empty+1:idx_end_1st_empty]
 
-        lst_bars_, time_sigs, tempos = zip(*[
+        lst_bars_, time_sigs, tempos = zip(*(
             (bars, time_sig, tempo) for bars, time_sig, tempo in lst_bar_info
-        ])
+        ))
         # Pick 1st bar arbitrarily
         secs = round(sum(t.durationToSeconds(bars[0].duration) for t, bars in zip(tempos, lst_bars_)))
         mean_tempo = round(np.array([t.number for t in tempos]).mean())  # To the closest integer
@@ -962,39 +962,19 @@ class MusicTokenizer:
             def e2s(elm):  # Syntactic sugar
                 return self.vocab(elm, color=color)
 
-            # groups: List[List[str]] = [e2s(time_sig_mode) + e2s(mean_tempo)]
-            # groups.extend(
-            #     ([self.vocab['start_of_bar']] + sum([e2s(n) for n in notes], start=[])) for notes in lst_notes
-            # )
-            # groups.append([self.vocab['end_of_song']])
-            # ic(e2s(time_sig_mode))
-            # ic([*e2s(time_sig_mode)])
-            # ic([*e2s(time_sig_mode), *e2s(mean_tempo)])
-            # notes = lst_notes[0]
-            # ic(sum([e2s(n) for n in notes], start=[]))
-            # ic(['asd', *(e2s(n) for n in notes)])
-
-            groups: List[List[str]] = [
+            groups_: List[List[str]] = [
                 [*e2s(time_sig_mode), *e2s(mean_tempo)],
                 *(([self.vocab['start_of_bar']] + sum([e2s(n) for n in notes], start=[])) for notes in lst_notes),
                 [self.vocab['end_of_song']]
-            ]
-            # groups.
-            # ic(groups)
-            # exit(1)
-            # toks = e2s(time_sig_mode) + e2s(mean_tempo) + sum(
-            #     (([self.vocab['start_of_bar']] + sum(
-            #         [e2s(n) for n in notes], start=[])) for notes in lst_notes  # TODO: adding Chords as 2nd part?
-            #      ), start=[]
-            # ) + [self.vocab['end_of_song']]
+            ]  # TODO: adding Chords as 2nd part?
             if exp == 'visualize':
-                n_pad = len(str(len(groups)))
+                n_pad = len(str(len(groups_)))
 
                 def idx2str(i):
                     return logs(f'{i:>{n_pad}}:', c='y')
-                return '\n'.join(f'{idx2str(i)} {" ".join(toks)}' for i, toks in enumerate(groups))
+                return '\n'.join(f'{idx2str(i)} {" ".join(toks)}' for i, toks in enumerate(groups_))
             else:
-                toks = sum(groups, start=[])
+                toks = sum(groups_, start=[])
                 if exp in ['str', 'id']:
                     return toks if exp == 'str' else self.vocab.str2id(toks)
                 else:
@@ -1027,7 +1007,7 @@ if __name__ == '__main__':
         # check_mxl_out()
         # check_str()
         check_visualize()
-    toy_example()
+    # toy_example()
 
     def encode_a_few():
         dnm = 'POP909'
@@ -1046,7 +1026,7 @@ if __name__ == '__main__':
 
             # s = mt(fnm, exp='visualize')
             # print(s)
-    # encode_a_few()
+    encode_a_few()
 
     def check_vocabulary():
         vocab = MusicVocabulary()
