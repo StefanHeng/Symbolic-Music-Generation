@@ -10,7 +10,7 @@ import datetime
 import itertools
 import concurrent.futures
 from copy import deepcopy
-from typing import TypeVar, Callable, Union, List, Dict, Iterator
+from typing import TypeVar, Callable, Union, Tuple, List, Dict, Iterator
 from fractions import Fraction
 from functools import reduce
 from collections import OrderedDict
@@ -139,7 +139,7 @@ T = TypeVar('T')
 K = TypeVar('K')
 
 
-def compress(lst: list[T]) -> list[tuple[T, int]]:
+def compress(lst: List[T]) -> List[Tuple[T, int]]:
     """
     :return: A compressed version of `lst`, as 2-tuple containing the occurrence counts
     """
@@ -149,7 +149,7 @@ def compress(lst: list[T]) -> list[tuple[T, int]]:
             + compress(list(itertools.dropwhile(lambda elm: elm == lst[0], lst))))
 
 
-def split(lst: list[T], call: Callable[[T], bool]) -> list[list[T]]:
+def split(lst: List[T], call: Callable[[T], bool]) -> List[List[T]]:
     """
     :return: Split a list by locations of elements satisfying a condition
     """
@@ -223,7 +223,7 @@ def logi(s):
     return logs(s, c='i')
 
 
-def hex2rgb(hx: str) -> Union[tuple[int], tuple[float]]:
+def hex2rgb(hx: str) -> Union[Tuple[int], Tuple[float]]:
     # Modified from https://stackoverflow.com/a/62083599/10732321
     if not hasattr(hex2rgb, 'regex'):
         hex2rgb.regex = re.compile(r'#[a-fA-F0-9]{3}(?:[a-fA-F0-9]{3})?$')
@@ -348,7 +348,13 @@ def assert_list_same_elms(lst: List[T]):
     assert all(l == lst[0] for l in lst)
 
 
-def time_sig2n_slots(time_sig: m21.meter.TimeSignature, precision: int):
+ExtNote = Union[Note, Rest, Tuple[Union[Note, Rest]]]  # Note entity/group as far as music extraction is concerned
+SNote = Union[Note, Rest]  # Single note
+Dur = Union[float, Fraction]
+TsTup = Tuple[int, int]
+
+
+def time_sig2n_slots(time_sig: m21.meter.TimeSignature, precision: int) -> Tuple[int, int]:
     """
     :return: 2 tuple of (#time slots per beat, #time slots in total)
     """
@@ -363,7 +369,7 @@ def time_sig2n_slots(time_sig: m21.meter.TimeSignature, precision: int):
 
 def it_m21_elm(
         stream: Union[m21.stream.Measure, m21.stream.Part, m21.stream.Score, m21.stream.Voice],
-        types=(m21.note.Note, m21.note.Rest)
+        types=(Note, Rest)
 ):
     """
     Iterates elements in a stream, for those that are instances of that of `type`, in the original order
@@ -374,11 +380,7 @@ def it_m21_elm(
         return iter(filter(lambda elm: isinstance(elm, types), stream.flatten()))
 
 
-def group_triplets(bar) -> list[Union[
-    tuple[m21.note.Note],
-    m21.note.Note,
-    m21.note.Rest
-]]:
+def group_triplets(bar) -> List[ExtNote]:
     """
     Identify triplets from a bar from normal notes & group them
 
@@ -402,7 +404,7 @@ def group_triplets(bar) -> list[Union[
 EPS = 1e-6
 
 
-def is_int(num: Union[float, Fraction], check_close: Union[bool, float] = True):
+def is_int(num: Union[float, Fraction], check_close: Union[bool, float] = True) -> bool:
     if isinstance(num, float):
         if check_close:  # Numeric issue summing Fractions with floats
             eps = check_close if isinstance(check_close, float) else 1e-6
@@ -413,29 +415,28 @@ def is_int(num: Union[float, Fraction], check_close: Union[bool, float] = True):
         return num.denominator == 1
 
 
-def is_8th(d: Union[float, Fraction]):
+def is_8th(d: Dur) -> bool:
     """
     :return If Duration `d` in quarterLength, is multiple of 8th note
     """
     return is_int(d*2)
 
 
-COMMON_TIME_SIGS = sorted(
+COMMON_TIME_SIGS: List[TsTup] = sorted(  # Sort first by denominator
     [(4, 4), (2, 4), (2, 2), (3, 4), (6, 8), (5, 4), (12, 8)],
     key=lambda tup_: tuple(reversed(tup_))
 )
 
 
-def is_common_time_sig(ts: Union[TimeSignature, tuple[int, int]]):
+def is_common_time_sig(ts: Union[TimeSignature, Tuple[int, int]]):
     if not hasattr(is_common_time_sig, 'COM_TS'):  # List of common time signatures
         is_common_time_sig.COM_TS = set(COMMON_TIME_SIGS)
-        # is_common_time_sig.COM_TS_OUT = sorted(is_common_time_sig.COM_TS)
     if isinstance(ts, TimeSignature):
         ts = (ts.numerator, ts.denominator)
     return ts in is_common_time_sig.COM_TS
 
 
-def note2pitch(note):
+def note2pitch(note: ExtNote):
     if isinstance(note, tuple):  # Triplet, return average pitch
         # Duration for each note not necessarily same duration, for transcription quality
         fs, durs = zip(*[(note2pitch(n__), n__.duration.quarterLength) for n__ in note])
@@ -447,10 +448,6 @@ def note2pitch(note):
         return 0  # `Rest` given pitch frequency of 0
 
 
-ExtNote = Union[Note, Rest, tuple[Union[Note, Rest]]]  # Note entity/group as far as music extraction is concerned
-Dur = Union[float, Fraction]
-
-
 def note2dur(note: ExtNote) -> Dur:
     if isinstance(note, tuple):
         return sum(note2dur(nt) for nt in note)
@@ -458,19 +455,14 @@ def note2dur(note: ExtNote) -> Dur:
         return note.duration.quarterLength
 
 
-def notes2offset_duration(
-        notes: Union[
-            List[Union[Note, Rest, tuple[Note]]],
-            tuple[Union[Note, Rest]]
-        ]
-) -> tuple[List[float], List[Union[float, Fraction]]]:
+def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[float], List[Dur]]:
     if isinstance(notes, list):  # Else, single tuplet notes
         notes = flatten_notes(unroll_notes(notes))
     offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
     return offsets, durs
 
 
-def flatten_notes(notes: Iterable[Union[Note, Rest, tuple[Note]]]) -> Iterator[Note]:
+def flatten_notes(notes: Iterable[ExtNote]) -> Iterator[SNote]:
     """
     Expand the intermediate grouping of tuplets
     """
@@ -483,8 +475,8 @@ def flatten_notes(notes: Iterable[Union[Note, Rest, tuple[Note]]]) -> Iterator[N
 
 
 def unpack_notes(
-        notes: List[Union[Note, Rest, tuple[Note]]]
-) -> tuple[List[Union[Note, Rest]], object]:
+        notes: List[ExtNote]
+) -> tuple[List[SNote], object]:
     """
     :param notes: Notes representation with tuplets in tuples
     :return: 2-tuple of flattened notes, and a cache for reconstructing the packed tuple representation
@@ -498,7 +490,7 @@ def unpack_notes(
     )
 
 
-def pack_notes(notes: List[Union[Note, Rest]], cache: object) -> List[Union[Note, Rest, tuple[Note]]]:
+def pack_notes(notes: List[SNote], cache: object) -> List[ExtNote]:
     """
     Reconstructs original note with tuplets in tuples from cache
     """
@@ -506,8 +498,6 @@ def pack_notes(notes: List[Union[Note, Rest]], cache: object) -> List[Union[Note
     cache: Dict[int, int]
     if cache:
         it = iter(notes)
-        from icecream import ic
-        ic(notes, cache)
         idx = 0
         n_notes = len(notes)
         while idx < n_notes:
@@ -525,7 +515,7 @@ def pack_notes(notes: List[Union[Note, Rest]], cache: object) -> List[Union[Note
         return notes
 
 
-def unroll_notes(notes: List[Union[Note, Rest, tuple[Note]]]) -> List[Union[Note, Rest, tuple[Note]]]:
+def unroll_notes(notes: List[ExtNote]) -> List[ExtNote]:
     """
     :param notes: individual notes with offsets not back-to-back
     :return: Notes as if jointed in time together
@@ -538,19 +528,17 @@ def unroll_notes(notes: List[Union[Note, Rest, tuple[Note]]]) -> List[Union[Note
     if is_notes_no_overlap(notes):
         return notes
     else:
-        # notes = [deepcopy(n) for n in notes]
         notes_ = list(flatten_notes(notes))
         notes_ = [deepcopy(n) for n in notes_]
         offsets = [0]
         strt = notes_[0].duration.quarterLength
         for note in notes_[1:]:
-            # notes[i+1].offset = strt  # Since omitted 1st note
             offsets.append(strt)
             strt += note.duration.quarterLength
         offsets = iter(offsets)
         for i, note in enumerate(notes):
             if isinstance(note, tuple):
-                notes_tup = list(note)
+                notes_tup: List[SNote] = list(note)
                 for idx, n in enumerate(notes_tup):
                     # If `Chord`, notes inside with offset of 0 always, leave unchanged
                     notes_tup[idx].offset = next(offsets)
@@ -560,57 +548,36 @@ def unroll_notes(notes: List[Union[Note, Rest, tuple[Note]]]) -> List[Union[Note
         return notes
 
 
-def quarter_len2fraction(q_len: Union[float, Fraction]) -> Fraction:
+def quarter_len2fraction(q_len: Dur) -> Fraction:
     """
     :param q_len: A quarterLength value to convert
         Requires one of power of 2
     """
     if isinstance(q_len, float):
-        def get_2_decompose(num):
-            p = math.ceil(math.log2(num))
-            ic(p)
-
-        # ic(get_2_decompose(q_len))
-        # pow_ = math.ceil(math.log2(q_len))
         numer, denom = q_len, 1.
-        # i = 0
         while not (numer.is_integer() and denom.is_integer()):  # Should terminate quick for the expected use case
             numer *= 2
             denom *= 2
-        # assert numer.is_integer() and denom.is_integer()
-        # assert pow_.is_integer()
-        # if pow_ < 0:
-        #     return Fraction(int(q_len / 2**pow_), int(2**-pow_))
-        # else:
-        #     return Fraction(int(q_len), 1)
         return Fraction(int(numer), int(denom))
     else:
         return q_len
 
 
-def note2note_cleaned(
-        note: Union[Rest, Note, Chord, tuple[Note]], q_len=None, offset=None
-) -> Union[Rest, Note, Chord, tuple[Note]]:
+def note2note_cleaned(note: ExtNote, q_len=None, offset=None) -> ExtNote:
     """
     :return: A cleaned version of Note or tuplets with only duration, offset and pitch set
         Notes in tuplets are set with-equal duration given by (`q_len` if `q_len` given, else tuplet total length)
     """
-    # if isinstance(note, tuple):
-    #     # ic('tuple', note)
-    #     return tuple([note2note_cleaned(n, q_len=note2dur(note)/len(note)) for n in note])
-    # # if tuple_note or q_len is None:
     if q_len is None:
         q_len = note2dur(note)
     if isinstance(note, tuple):
         offset = offset if offset is not None else note[0].offset
         dur_ea = quarter_len2fraction(q_len)/len(note)
-        notes = [note2note_cleaned(n, q_len=dur_ea) for n in note]
+        notes: List[SNote] = [note2note_cleaned(n, q_len=dur_ea) for n in note]
         for i, nt_tup in enumerate(notes):
             notes[i].offset = offset + dur_ea * i
         return tuple(notes)
     dur = m21.duration.Duration(quarterLength=q_len)
-    from icecream import ic
-    # ic('in clearning', note.offset)
     if isinstance(note, Note):  # Removes e.g. `tie`s
         nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), duration=dur)
         # Setting offset in constructor doesn't seem to work per `music21
@@ -626,7 +593,7 @@ def note2note_cleaned(
         exit(1)
 
 
-def is_notes_no_overlap(notes: Iterable[Union[Note, Chord, Rest, tuple[Note]]]) -> bool:
+def is_notes_no_overlap(notes: Iterable[ExtNote]) -> bool:
     """
     :return True if notes don't overlap, given the start time and duration
     """
@@ -645,7 +612,7 @@ def is_notes_no_overlap(notes: Iterable[Union[Note, Chord, Rest, tuple[Note]]]) 
     return True
 
 
-def is_valid_bar_notes(notes: Iterable[Union[Note, Chord, Rest, tuple[Note]]], time_sig: TimeSignature) -> bool:
+def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature) -> bool:
     dur_bar = time_sig.numerator / time_sig.denominator * 4
     # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
     return is_notes_no_overlap(notes) \
