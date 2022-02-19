@@ -30,6 +30,7 @@ class WarnLog:
     InvTupDur, InvTupDurSv = 'Invalid Tuplet Durations', 'Invalid Tuplet Durations, Severe'
     RestInTup = 'Rest in Tuplet'
     HighPchOvl, HighPchOvlTup = 'Higher Pitch Overlap', 'Higher Pitch Overlap with Triplet'
+    LowPchMakeup, LowPchMakeupRmv = 'Lower Pitch Makeup', 'Lower Pitch Makeup Removed'
     IncTimeSig, UncomTimeSig = 'Inconsistent Time Signatures', 'Uncommon Time Signature'
     NoteNotQuant, TupNoteQuant = 'Notes Beyond Quantization', 'Tuplet Notes Quantizable'
     InvBarDur = 'Invalid Bar Notes Duration'
@@ -40,6 +41,7 @@ class WarnLog:
         # InvTupNt,
         RestInTup,
         HighPchOvl, HighPchOvlTup,
+        LowPchMakeup, LowPchMakeupRmv,
         IncTimeSig, UncomTimeSig,
         NoteNotQuant, TupNoteQuant,
         InvBarDur,
@@ -88,7 +90,7 @@ class WarnLog:
         elif nm == WarnLog.RestInTup:
             assert all(k in args for k in ['bar_num', 'n_rest', 'n_note'])
 
-        elif nm in [WarnLog.HighPchOvl, WarnLog.HighPchOvlTup]:
+        elif nm in [WarnLog.HighPchOvl, WarnLog.HighPchOvlTup, WarnLog.LowPchMakeup, WarnLog.LowPchMakeupRmv]:
             assert 'bar_num' in args
         elif nm == WarnLog.UncomTimeSig:
             assert 'time_sig_expect' in args and 'time_sig_got' in args
@@ -127,6 +129,12 @@ class WarnLog:
             elif nm == WarnLog.HighPchOvl:
                 msg = '{warn_name}: Later overlapping note with higher pitch observed ' \
                       'at bar#{bar_num} - prior note truncated'
+            elif nm == WarnLog.LowPchMakeup:
+                msg = '{warn_name}: Later overlapping note with lower pitch but longer ending time observed ' \
+                      'at bar#{bar_num} - truncated note appended'
+            elif nm == WarnLog.LowPchMakeupRmv:
+                msg = '{warn_name}: Previously-added, truncated, lower-pitch makeup note overridden ' \
+                      'by higher pitch note at bar#{bar_num} - makeup note removed'
             elif nm == WarnLog.InvBarDur:
                 msg = '{warn_name}: Note duration don\'t add up to bar max duration at bar#{bar_num}'
             elif nm == WarnLog.TupNoteOvl:
@@ -473,7 +481,7 @@ class MusicTokenizer:
         assert n_slots.is_integer()
         n_slots = int(n_slots)
         bin_edges = [(i*dur_slot, (i+1)*dur_slot) for i in range(n_slots)]  # All info indexed by note order
-        notes = unroll_notes(notes)
+        # notes = unroll_notes(notes)
 
         def note2range(note):
             if isinstance(note, tuple):
@@ -496,7 +504,29 @@ class MusicTokenizer:
             """
             return max(options, key=lambda i: get_overlap(low, high, i))
         idxs_note = [assign_max_note_idx(*edge, range(n_notes)) for edge in bin_edges]
-        notes_out = [note2note_cleaned(notes[i], q_len=n*dur_slot) for i, n in compress(idxs_note)]
+        # notes_out = [note2note_cleaned(notes[i], q_len=n*dur_slot) for i, n in compress(idxs_note)]
+        offset = 0
+        notes_out = []
+        for i, n in compress(idxs_note):
+            # If tuplet case, total duration must've been within quantization before this `notes2quantized_notes` call,
+            # see `expand_bar`
+            nt = note2note_cleaned(notes[i], q_len=n*dur_slot)
+            if isinstance(nt, tuple):
+                # ic('inside cleaning quantizing tup', note2dur(nt))
+                # for n in nt:
+                #     ic(n, n.fullName, n.offset, n.duration.quarterLength)
+                # offset_diff = nt[0].offset - offset
+                # ic(offset, nt[0].offset, nt[0].offset - offset)
+                dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
+                note_tups_out = []
+                for i_, nt_tup in enumerate(nt):
+                    nt_tup.offset = offset + dur_ea * i_
+                    note_tups_out.append(nt_tup)
+                notes_out.append(tuple(note_tups_out))
+            else:
+                nt.offset = offset  # Unroll the offsets
+                notes_out.append(nt)
+            offset += note2dur(nt)
 
         # def sanity_check():
         #     for n in notes:
@@ -510,7 +540,15 @@ class MusicTokenizer:
         #     bar_ori.show()
         #     bar_quant.show()
 
-        assert is_notes_no_overlap(unroll_notes(notes_out))  # Sanity check
+        if number == 88:
+            ic(notes)
+            for n in flatten_notes(notes):
+                ic(n, n.fullName, n.offset, n.duration.quarterLength)
+            ic(notes_out)
+            for n in flatten_notes(notes_out):
+                ic(n, n.fullName, n.offset, n.duration.quarterLength)
+        # assert is_notes_no_overlap(unroll_notes(notes_out))  # Sanity check
+        assert is_notes_no_overlap(notes_out)  # Sanity check
         assert sum(note2dur(n) for n in notes_out) == dur_bar
         if number == 109:
             ic(bin_edges, notes)
@@ -533,6 +571,12 @@ class MusicTokenizer:
 
         .. note:: Triplets (potentially any n-plets) are grouped; `Voice`s are expanded
         """
+        if number == 109:
+            ic('in expand bar')
+            for n in bar:
+                if not isinstance(n, (Voice, m21.layout.LayoutBase, m21.clef.Clef)):
+                    ic(n, n.fullName, n.offset, n.duration.quarterLength)
+
         if not hasattr(MusicTokenizer, 'post'):
             MusicTokenizer.post = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
         if not hasattr(MusicTokenizer, 'post2tup'):
@@ -570,8 +614,10 @@ class MusicTokenizer:
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
                         break
-                if number == 109:
+                if number == 88:
                     ic('in found tuplet', elm.fullName, n_tup, elms_tup, elm_, elm_.fullName)
+                    for n in elms_tup:
+                        ic(n, n.fullName, n.offset, n.duration.quarterLength)
 
                 # Consecutive tuplet notes => (potentially multiple) groups
                 it_tup = iter(elms_tup)
@@ -624,6 +670,7 @@ class MusicTokenizer:
                                 def round_by_factor(num, fact):
                                     return round(num / fact) * fact
                                 # Round to quantization duration; Crop by bar max duration
+                                ic('adding non prec tuplet notes', dur)
                                 dur = min(
                                     round_by_factor(dur, 2**-self.prec), time_sig.numerator/time_sig.denominator*4
                                 )
@@ -639,6 +686,10 @@ class MusicTokenizer:
                                         for i_n in range(len(cd.notes)):  # Broadcast duration to notes inside
                                             elms_tup[i].notes[i_n].duration = dur_
                                     strt += dur_ea
+                                if number == 109:
+                                    ic('adding non prec tuplet notes', elms_tup[idx_next_strt:])
+                                    for tup_n in elms_tup[idx_next_strt:]:
+                                        ic(tup_n, tup_n.offset, tup_n.duration.quarterLength)
                             lst.append(tuple(elms_tup[idx_next_strt:]))
                             tup_added = True
                             self.my_log_warn(dict(warn_name=warn_nm, bar_num=number, offsets=offsets, durations=durs))
@@ -716,11 +767,6 @@ class MusicTokenizer:
                     print('unexpected type')
                     exit(1)
             elm = next(it, None)
-        if number == 109:
-            ic('in expand bar')
-            for n in bar:
-                if not isinstance(n, (Voice, m21.layout.LayoutBase, m21.clef.Clef)):
-                    ic(n, n.fullName, n.offset, n.duration.quarterLength)
         if bar.hasVoices():  # Join all voices to notes
             lst.extend(join_its(self.expand_bar(v, time_sig, number=number) for v in bar.voices))
         return lst
@@ -820,47 +866,97 @@ class MusicTokenizer:
                 n_ = n[0] if isinstance(n, tuple) else n
                 groups[n_.offset].append(n)
             # Sort by pitch then by duration
-            groups = {
-                offset: sorted(ns, key=lambda nt: (note2pitch(nt), note2dur(nt)))
-                for offset, ns in groups.items()
-            }
-            if number == 109:
+
+            def sort_groups(g):
+                return {
+                    offset: sorted(ns, key=lambda nt: (note2pitch(nt), note2dur(nt)))
+                    for offset, ns in g.items()
+                }
+            groups = sort_groups(groups)
+            if number == 48:
                 ic(groups)
 
-            def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
+            def get_notes_out(grps) -> List[Union[Note, Chord, tuple[Note]]]:
+                if number == 109:
+                    ic('in new get_notes_out')
                 ns_out = []
                 offset_next = 0
-                for offset in sorted(groups.keys()):  # Pass through notes in order
-                    notes_ = groups[offset]
+                # i_offset, offsets_ = 0, sorted(groups.keys())  # New offsets may be inserted
+                #
+                # while i_offset < len(offsets_):  # Pass through notes in order
+                #     offset = offsets_[i_offset]
+                for offset in sorted(grps.keys()):  # Pass through notes in order
+                    notes_ = grps[offset]
                     if len(notes_) == 0:  # As a result of removing triplets
                         continue
-                    nt = notes_[-1]
+                    nt = notes_[-1]  # Note with the highest pitch
+                    nt_ = nt[-1] if isinstance(nt, tuple) else nt
+                    nt_end_offset = nt_.offset + nt_.duration.quarterLength
+                    if number == 48:
+                        ic(nt, ns_out)
+                        # if ns_out:
+                        #     ic(note2pitch(ns_out[-1]))
+                        if isinstance(nt, tuple):
+                            ic('adding tuplet')
+                            for nt_ in nt:
+                                ic(nt_, nt_.offset, nt_.duration.quarterLength)
+                    if number == 109 and offset == 0.5:
+                        ic('in note A, why not added', nt, offset, offset_next)
                     if offset < offset_next:
                         # Tuplet notes not normalized at this point, remain faithful to the weighted average pitch
                         if note2pitch(nt) > note2pitch(ns_out[-1]):
                             # Offset would closely line up across tracks, expect this to be less frequent
                             if isinstance(ns_out[-1], tuple):  # triplet being truncated => Remove triplet, start over
                                 # The triplet must've been the last note added, and it's joint offset is known
-                                del groups[ns_out[-1][0].offset][-1]
+                                del grps[ns_out[-1][0].offset][-1]
                                 self.my_log_warn(dict(warn_name=WarnLog.HighPchOvlTup, bar_num=number))
-                                return get_notes_out()
-                            else:  # Triplet replaces prior note, which is definitely non triplet
+                                return get_notes_out(grps)
+                            else:  # Triplet replaces prior note
                                 self.my_log_warn(dict(warn_name=WarnLog.HighPchOvl, bar_num=number))
 
                                 nt_ = nt[0] if isinstance(nt, tuple) else nt
-                                # Resulting duration definitely non-0, for offset grouping
-                                ns_out[-1].duration = Duration(quarterLength=nt_.offset - ns_out[-1].offset)
-                        else:  # Skip if later note is lower in pitch
+                                # Resulting duration usually non-0, for offset grouping
+                                ns_out[-1].duration = dur_last = Duration(quarterLength=nt_.offset - ns_out[-1].offset)
+                                if number == 48:
+                                    ic(dur_last.quarterLength)
+                                assert dur_last.quarterLength >= 0
+                                # If it's 0, it's cos a **truncated** note was appended, as makeup
+                                if dur_last.quarterLength == 0:
+                                    self.my_log_warn(dict(warn_name=WarnLog.LowPchMakeupRmv, bar_num=number))
+                            ns_out.append(nt)
+                        # Later note has smaller pitch, but ends later than the last note
+                        # Truncate the note, add it into later group for consideration
+                        elif nt_end_offset > offset_next:
+                            # if number == 48:
+                            #     ic(nt, nt_end_offset, offset_next)
+                            #     exit(1)
+                            # assert not isinstance(nt, tuple)
+                            # Move the truncated note to later group, restart
+                            del grps[offset][-1]
+                            nt_ = note2note_cleaned(nt)
+                            nt_.offset = offset_next
+                            nt_.duration = Duration(quarterLength=nt_end_offset-offset_next)
+                            # ns_out.append(nt_)
+                            if offset_next in grps:
+                                grps[offset_next].append(nt_)
+                            else:
+                                grps[offset_next] = [nt_]
+                            grps = sort_groups(grps)
+                            self.my_log_warn(dict(warn_name=WarnLog.LowPchMakeup, bar_num=number))
+                            return get_notes_out(grps)
+                        else:  # Skip if later note is lower in pitch and is covered by the prior note duration
                             continue
-                    ns_out.append(nt)  # Note with the highest pitch
-                    nt_ = nt[-1] if isinstance(nt, tuple) else nt
-                    offset_next = nt_.offset + nt_.duration.quarterLength
+                    else:
+                        ns_out.append(nt)
+                    offset_next = nt_end_offset
                 return ns_out
-            notes_out = get_notes_out()
-            if number == 109:
+            notes_out = get_notes_out(groups)
+            if number == 88:
                 ic(notes_out)
                 for n in flatten_notes(notes_out):
                     ic(n, n.fullName, n.offset, n.duration.quarterLength)
+                # exit(1)
+                # exit(1)
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
             #   e.g. tiny-duration notes shifts all subsequent notes
@@ -890,6 +986,17 @@ class MusicTokenizer:
                         self.my_log_warn(dict(
                             warn_name=WarnLog.TupNoteOvl, bar_num=number, offsets=offsets, durations=durs
                         ))
+            if number == 6:
+                ic(notes_out)
+                ic('oriignal notes')
+                for n in flatten_notes(notes_out):
+                    ic(n, n.fullName, n.offset, n.duration.quarterLength)
+                ic('cleaned notes')
+                note_eg = note2note_cleaned(notes_out[1])
+                ic(note_eg.offset)
+                for n_ in [note2note_cleaned(n) for n in notes_out]:
+                    ic(n_, n_.fullName, n_.offset, n_.duration.quarterLength)
+                # exit(1)
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
 
         # Enforce quantization
@@ -897,9 +1004,13 @@ class MusicTokenizer:
 
         def note_within_prec(note):
             return (note2dur(note) / dur_slot).is_integer()
+
+        def notes_within_prec(notes_):
+            return all(note_within_prec(n__) for n__ in notes_)
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
-            if not all(note_within_prec(n) for n in notes):
+            if not notes_within_prec(notes):
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
+                assert notes_within_prec(lst_notes[i_bar])  # Sanity check implementation
                 offsets, durs = notes2offset_duration(notes)
                 self.my_log_warn(dict(warn_name=WarnLog.NoteNotQuant, bar_num=i_bar, offsets=offsets, durations=durs))
         # Now, triplets fixed to equal duration by `notes2quantized_notes`
@@ -923,6 +1034,9 @@ class MusicTokenizer:
             is_valid_bar_notes(notes, time_sig)
         if self.verbose and self.logger is not None:
             log(f'Encoding {logi(self.title)} completed - Observed warnings {{{self.logger.tracked()}}}')
+        notes = lst_notes[48]
+        for n in notes:
+            ic(n, n.fullName, n.offset, n.duration.quarterLength)
 
         if exp == 'mxl':
             scr_out = Score()
@@ -1019,7 +1133,7 @@ if __name__ == '__main__':
         # exit(1)
         logger = WarnLog()
         mt = MusicTokenizer(logger=logger, verbose=True)
-        for i_fl, fnm in enumerate(fnms[275:300]):
+        for i_fl, fnm in enumerate(fnms[275:276]):
             ic(i_fl)
             # log(f'{dnm} - {os.path.basename(fnm)}')
             mt(fnm, exp='mxl')

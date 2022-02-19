@@ -447,7 +447,11 @@ def note2pitch(note):
         return 0  # `Rest` given pitch frequency of 0
 
 
-def note2dur(note) -> Union[float, Fraction]:
+ExtNote = Union[Note, Rest, tuple[Union[Note, Rest]]]  # Note entity/group as far as music extraction is concerned
+Dur = Union[float, Fraction]
+
+
+def note2dur(note: ExtNote) -> Dur:
     if isinstance(note, tuple):
         return sum(note2dur(nt) for nt in note)
     else:
@@ -585,11 +589,10 @@ def quarter_len2fraction(q_len: Union[float, Fraction]) -> Fraction:
 
 
 def note2note_cleaned(
-        note: Union[Rest, Note, Chord, tuple[Note]], q_len=None,
-        tuple_note=False  # For inner recursion
+        note: Union[Rest, Note, Chord, tuple[Note]], q_len=None, offset=None
 ) -> Union[Rest, Note, Chord, tuple[Note]]:
     """
-    :return: A cleaned version of Note or tuplets with only duration and pitch set
+    :return: A cleaned version of Note or tuplets with only duration, offset and pitch set
         Notes in tuplets are set with-equal duration given by (`q_len` if `q_len` given, else tuplet total length)
     """
     # if isinstance(note, tuple):
@@ -599,14 +602,24 @@ def note2note_cleaned(
     if q_len is None:
         q_len = note2dur(note)
     if isinstance(note, tuple):
-        # from icecream import ic
-        # ic(q_len, len(note), quarter_len2fraction(q_len)/len(note))
-        return tuple([note2note_cleaned(n, q_len=quarter_len2fraction(q_len)/len(note)) for n in note])
+        offset = offset if offset is not None else note[0].offset
+        dur_ea = quarter_len2fraction(q_len)/len(note)
+        notes = [note2note_cleaned(n, q_len=dur_ea) for n in note]
+        for i, nt_tup in enumerate(notes):
+            notes[i].offset = offset + dur_ea * i
+        return tuple(notes)
     dur = m21.duration.Duration(quarterLength=q_len)
+    from icecream import ic
+    # ic('in clearning', note.offset)
     if isinstance(note, Note):  # Removes e.g. `tie`s
-        return Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), duration=dur)
+        nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), duration=dur)
+        # Setting offset in constructor doesn't seem to work per `music21
+        nt.offset = offset if offset is not None else note.offset
+        return nt
     elif isinstance(note, Rest):
-        return Rest(duration=dur)
+        nt = Rest(duration=dur, offset=note.offset)
+        nt.offset = offset if offset is not None else note.offset
+        return nt
     else:
         assert isinstance(note, Chord)  # TODO
         print('clean chord')
