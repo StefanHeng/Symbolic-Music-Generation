@@ -173,13 +173,54 @@ class WarnLog:
         self.idx_track = len(self.warnings)
         self.args_func = args_func
 
-    def tracked(self, summary=True) -> Union[str, List[Dict]]:
+    def end_tracking(self):
+        """
+        Removes prior internal warnings
+        """
+        self.warnings = []
+        self.idx_track = len(self.warnings)
+        # ic('in end tracking, warnings', self.warnings)
+
+    @staticmethod
+    def serialize_time_sig(ts: Union[TimeSignature, TsTup]):
+        if isinstance(ts, tuple):
+            return ts
+        else:
+            # from icecream import ic
+            # ic(ts)
+            return ts.numerator, ts.denominator
+
+    @staticmethod
+    def serialize_durs(lst: List[Dur]):
+        # e.g. `Fraction(1, 3)` => `(1, 3)`
+        return [(e.numerator, e.denominator) if isinstance(e, Fraction) else e for e in lst]
+
+    @staticmethod
+    def serialize_warning(d: Dict):
+        if 'offsets' in d:
+            d['offsets'] = WarnLog.serialize_durs(d['offsets'])
+        if 'durations' in d:
+            d['durations'] = WarnLog.serialize_durs(d['durations'])
+        if 'time_sig' in d:
+            d['time_sig'] = WarnLog.serialize_time_sig(d['time_sig'])
+        if 'time_sig_expect' in d:
+            d['time_sig_expect'] = [WarnLog.serialize_time_sig(ts) for ts in d['time_sig_expect']]
+        if 'time_sig_got' in d:
+            d['time_sig_got'] = WarnLog.serialize_time_sig(d['time_sig_got'])
+        return d
+
+    def tracked(self, exp: str = 'summary', ) -> Union[str, List[Dict]]:
         """
         Statistics of warnings since tracking started
+
+        :param exp: Export mode, one of [`summary`, `raw`, `serialize`]
         """
-        if summary:
+
+        if exp == 'summary':
             counts = Counter(w['warn_name'] for w in self.warnings[self.idx_track:])
             return ', '.join((f'{logi(k)}: {logi(v)}' for k, v in counts.items()))
+        elif exp == 'serialize':
+            return [WarnLog.serialize_warning(wn) for wn in self.warnings[self.idx_track:]]
         else:
             return self.warnings[self.idx_track:]
 
@@ -382,7 +423,10 @@ class MusicTokenizer:
     """
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation
     """
-    def __init__(self, precision: int = 5, mode: str = 'melody', logger: Union[WarnLog, bool] = None, verbose=True):
+    def __init__(
+            self, precision: int = 5, mode: str = 'melody',
+            logger: Union[WarnLog, bool] = None, save_memory=True, verbose=True
+    ):
         """
         :param precision: Bar duration quantization, see `melody_extractor.MxlMelodyExtractor`
         :param mode: Extraction mode, one of [`melody`, `full`]
@@ -390,6 +434,8 @@ class MusicTokenizer:
             `full`: Melody and Chord as 2 separate channels extracted TODO
         :param logger: A logger for storing warnings
             If True, a logger is instantiated
+        :param save_memory: If true, prior logging warning messages are removed after new encode call
+            See `Warning.end_tracking`
         :param verbose: If true, process is logged, including statistics of score and warnings
         """
         self.title = None  # Current score title
@@ -403,6 +449,7 @@ class MusicTokenizer:
             self.logger.verbose = verbose
         else:
             self.logger = None
+        self.save_memory = save_memory
         self.verbose = verbose
 
         self.vocab = MusicVocabulary(precision)
@@ -468,7 +515,7 @@ class MusicTokenizer:
 
         Expect tuplets to be fully quantized before call - intended for triplets to be untouched after call
         """
-        ic('in quantize', number)
+        # ic('in quantize', number)
         dur_slot = 4 * 2**-self.prec  # In quarter length
         dur_bar = (time_sig.numerator/time_sig.denominator*4)
         n_slots = dur_bar / dur_slot
@@ -529,11 +576,11 @@ class MusicTokenizer:
 
         assert is_notes_no_overlap(notes_out)  # Sanity check
         assert sum(note2dur(n) for n in notes_out) == dur_bar
-        if number == 50:
-            ic(notes)
-            for n in flatten_notes(notes):
-                ic(n, n.fullName, n.offset, n.duration.quarterLength)
-            ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
+        # if number == 50:
+        #     ic(notes)
+        #     for n in flatten_notes(notes):
+        #         ic(n, n.fullName, n.offset, n.duration.quarterLength)
+        #     ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
         assert all((get_overlap(*edge, i) > 0) for edge, i in zip(bin_edges, idxs_note))
         return notes_out
 
@@ -755,6 +802,9 @@ class MusicTokenizer:
             If `str_join`, the tokens are jointed together
             If `visualize`, a grouped, colorized string is returned, intended for console output
         """
+        if self.logger is not None and self.save_memory:
+            self.logger.end_tracking()
+
         if isinstance(scr, str):
             scr = m21.converter.parse(scr)
         scr: Score
@@ -824,11 +874,11 @@ class MusicTokenizer:
 
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
-        ic(i_bar_strt)
+        # ic(i_bar_strt)
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
-            ic(number)
+            # ic(number)
             # if number == 50:
             #     for b in bars:
             #         b.show()
@@ -850,8 +900,8 @@ class MusicTokenizer:
             #     ic(groups)
 
             def get_notes_out(grps) -> List[Union[Note, Chord, tuple[Note]]]:
-                if number == 50:
-                    ic('in new get_notes_out', groups)
+                # if number == 50:
+                #     ic('in new get_notes_out', groups)
                 ns_out = []
                 offset_next = 0
                 for offset in sorted(grps.keys()):  # Pass through notes in order
@@ -861,8 +911,8 @@ class MusicTokenizer:
                     nt = notes_[-1]  # Note with the highest pitch
                     nt_ = nt[-1] if isinstance(nt, tuple) else nt
                     nt_end_offset = nt_.offset + nt_.duration.quarterLength
-                    if number == 50:
-                        ic(ns_out, nt, offset, offset_next)
+                    # if number == 50:
+                    #     ic(ns_out, nt, offset, offset_next)
                     eps = 1e-3
                     # For difference between floating point and Fraction on real small duration edge cases
                     # See below for another instance
@@ -896,7 +946,6 @@ class MusicTokenizer:
                                 nt_ = note2note_cleaned(nt)
                                 nt_.offset = offset_next
                                 nt_.duration = d = Duration(quarterLength=nt_end_offset-offset_next)
-                                ic(nt.duration.quarterLength, nt_end_offset, offset_next, d.quarterLength)
                                 assert d.quarterLength > 0
                                 if offset_next in grps:
                                     grps[offset_next].append(nt_)
@@ -934,13 +983,6 @@ class MusicTokenizer:
                     note.duration = Duration(quarterLength=q_len_max)
                     return note
                 notes_out_ = [tup2note(n) if isinstance(n, tuple) else n for n in notes_out]  # Temporary, for checking
-                # if number == 23:
-                #     ic('original notes', notes_out)
-                #     for n in flatten_notes(notes_out):
-                #         ic(n, n.fullName, n.offset, n.duration.quarterLength)
-                #     ic('tuplet converted notes', notes_out_)
-                #     for n in notes_out_:
-                #         ic(n, n.fullName, n.offset, n.duration.quarterLength)
                 assert is_notes_no_overlap(notes_out_)  # The source of overlapping should be inside tuplet
                 for tup__ in notes_out:
                     if isinstance(tup__, tuple) and not is_notes_no_overlap(tup__):
@@ -1081,7 +1123,7 @@ if __name__ == '__main__':
         # exit(1)
         logger = WarnLog()
         mt = MusicTokenizer(logger=logger, verbose=True)
-        for i_fl, fnm in enumerate(fnms[637:]):
+        for i_fl, fnm in enumerate(fnms[:50]):
             ic(i_fl)
             mt(fnm, exp='mxl')
 
