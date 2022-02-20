@@ -6,11 +6,12 @@ import music21 as m21
 import numpy as np
 from icecream import ic
 
+
 def get_durations(s):
     """
     s: a music21.Stream object that stores the piece without drums
     return: a np list of total durations for each pitch class in quarterLength.
-    P.S. So kind of a normalized version?
+    P.S. So kind of normalized version?
     """
     # flatten, then filter all the notes
     result = np.zeros(12)
@@ -27,7 +28,7 @@ def get_durations(s):
 
 class KeyFinder:
     """
-    Given a musicxmlfile, find the key of those pieces.
+    Given a MusicXML file, find the key of those pieces.
     TODO: Do I need to find all modulated keys?
     """
 
