@@ -1144,7 +1144,7 @@ if __name__ == '__main__':
 
             # s = mt(fnm, exp='visualize')
             # print(s)
-    # encode_a_few()
+    encode_a_few()
 
     def check_vocabulary():
         vocab = MusicVocabulary()
@@ -1154,5 +1154,5 @@ if __name__ == '__main__':
         # mt = MusicTokenizer()
         # toks = mt(fnm, exp='str')
         # ic(vocab.encode(toks[:20]))
-    check_vocabulary()
+    # check_vocabulary()
 
