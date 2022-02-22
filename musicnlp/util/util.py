@@ -428,7 +428,7 @@ COMMON_TIME_SIGS: List[TsTup] = sorted(  # Sort first by denominator
 )
 
 
-def is_common_time_sig(ts: Union[TimeSignature, Tuple[int, int]]):
+def is_common_time_sig(ts: Union[TimeSignature, TsTup]):
     if not hasattr(is_common_time_sig, 'COM_TS'):  # List of common time signatures
         is_common_time_sig.COM_TS = set(COMMON_TIME_SIGS)
     if isinstance(ts, TimeSignature):
