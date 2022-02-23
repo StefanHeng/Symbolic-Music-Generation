@@ -1,3 +1,9 @@
+"""
+Exploring word2vec on time-slot melody representation
+
+*obsolete*
+"""
+
 from gensim.models import Word2Vec
 from gensim.models.callbacks import CallbackAny2Vec
 import torch.nn as nn

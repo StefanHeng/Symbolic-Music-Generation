@@ -23,3 +23,5 @@ A folder named as `DIR_DSET` should be kept at the same level as
 this repository, with dataset folder names specified as 
 in [`config.json`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/musicnlp/util/config.json).
 
+Add datasets to `DIR_DSET`, then see [`music_export.py`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/musicnlp/preprocess/music_export.py) for encoding Music MXL files. 
+

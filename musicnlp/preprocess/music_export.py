@@ -1,16 +1,12 @@
-import pandas as pd
 from tqdm import tqdm
 import datasets
 
 from musicnlp.util import *
-from music_extractor import MusicTokenizer
+from music_extractor import MusicExtractor
 
 
 pd.set_option('expand_frame_repr', False)
 pd.set_option('display.precision', 2)
-# pd.set_option('display.max_colwidth', 50)
-# pd.set_option('display.max_columns', 50)
-# pd.set_option('display.max_info_columns', 50)
 
 
 class MusicExport:
@@ -47,14 +43,14 @@ class MusicExport:
             dnm_ = fnms
             fnms = fl_nms(fnms, k='song_fmt_exp')
         lst_out = []
-        mt = MusicTokenizer(mode=self.mode, logger=True, verbose=self.verbose)
+        me_ = MusicExtractor(mode=self.mode, logger=True, verbose=self.verbose)
         for i_fl, fnm in tqdm(enumerate(fnms), total=len(fnms)):
             if self.verbose:
                 log(f'Extracting file {logi(stem(fnm))}... ')
-            txt = mt(fnm, exp=exp)
+            txt = me_(fnm, exp=exp)
             lst_out.append(dict(
-                title=mt.title,  # No parallelism, title of current processed music file
-                text=txt, warnings=mt.logger.tracked(exp='serialize')
+                title=me_.title,  # No parallelism, title of current processed music file
+                text=txt, warnings=me_.logger.tracked(exp='serialize')
             ))
         if dnm_ is not None:
             fnm_out += f', dnm={dnm_}'
@@ -68,21 +64,24 @@ class MusicExport:
         """
         Save extracted `.json` dataset by `__call__`, as HuggingFace Dataset to disk
         """
-        with open(os.path.join(path_out, fnm)) as f:
+        with open(os.path.join(path_out, f'{fnm}.json')) as f:
             dset_: Dict = json.load(f)
         train = dset_['music']  # All data as training?
 
         def prep_entry(d: Dict) -> Dict:
-            d['text'], _ = d.pop('out', None), d.pop('warnings', None)  # Strip warnings
+            d.pop('warnings')  # Strip warnings
             return d
-        return datasets.Dataset.from_pandas(pd.DataFrame([prep_entry(d) for d in train]))
+        dset = datasets.Dataset.from_pandas(pd.DataFrame([prep_entry(d) for d in train]))
+
+        dset.save_to_disk(os.path.join(path_out, 'huggingface_datasets', fnm))
+        return dset
 
     @staticmethod
     def json2warn_df(fnm: str, path_out=config('path-export')) -> pd.DataFrame:
         """
         Aggregate warnings as a pandas Dataframe
         """
-        with open(os.path.join(path_out, fnm)) as f:
+        with open(os.path.join(path_out, f'{fnm}.json')) as f:
             dset_: Dict = json.load(f)
         entries = dset_['music']
 
@@ -107,18 +106,11 @@ def warn_df2stats(df: pd.DataFrame) -> Tuple[int, pd.DataFrame]:
 
     Average warning, per song
     """
-    # ic(df.nunique())
-    # df = df.groupby('type')['type'].nunique()
-    # ic(df)
     n_song = df.src.nunique()
-    # ic(n_song)
     counts = df.type.value_counts()
-    # ic(counts, type(counts), counts.to_dict())
-    df = counts.to_frame(name='total_count').reset_index()
+    df = counts.to_frame(name='total_count').reset_index()  # Have `index` as a column
     df.rename(columns={'index': 'type'}, inplace=True)
-    # ic(df, df.columns)
     df['average_count'] = df.apply(lambda x: x.total_count / n_song, axis=1)
-    # ic(df)
     return n_song, df
 
 
@@ -133,16 +125,16 @@ if __name__ == '__main__':
     # export2json()
 
     def json2dset():
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody,  2022-02-20 12-17-05.json'
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody,  2022-02-22 19-00-40'
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
     # json2dset()
 
     def json2warn():
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody,  2022-02-20 12-17-05.json'
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody,  2022-02-22 19-00-40'
         df = me.json2warn_df(fnm)
         ic(df)
 
-        warn_df2stats(df)
+        ic(warn_df2stats(df))
     json2warn()
 

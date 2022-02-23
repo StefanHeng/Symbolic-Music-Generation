@@ -428,7 +428,7 @@ class MusicVocabulary:
             return self.dec[id_]
 
 
-class MusicTokenizer:
+class MusicExtractor:
     """
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation
     """
@@ -612,15 +612,15 @@ class MusicTokenizer:
         #         if not isinstance(n, (Voice, m21.layout.LayoutBase, m21.clef.Clef)):
         #             ic(n, n.fullName, n.offset, n.duration.quarterLength)
 
-        if not hasattr(MusicTokenizer, 'post'):
-            MusicTokenizer.post = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
-        if not hasattr(MusicTokenizer, 'post2tup'):
-            MusicTokenizer.pref2n = dict(  # Tuplet prefix => expected number of notes
+        if not hasattr(MusicExtractor, 'post'):
+            MusicExtractor.post = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
+        if not hasattr(MusicExtractor, 'post2tup'):
+            MusicExtractor.pref2n = dict(  # Tuplet prefix => expected number of notes
                 Tri=3,
                 Quintu=5,
                 Nonu=9
             )
-        post = MusicTokenizer.post
+        post = MusicExtractor.post
 
         lst = []
         it = iter(bar)
@@ -629,8 +629,8 @@ class MusicTokenizer:
             if hasattr(elm, 'fullName') and post in elm.fullName:
                 pref = elm.fullName[:elm.fullName.find(post)].split()[-1]
                 tup_str: str = f'{pref}{post}'
-                if pref in MusicTokenizer.pref2n:
-                    n_tup = MusicTokenizer.pref2n[pref]
+                if pref in MusicExtractor.pref2n:
+                    n_tup = MusicExtractor.pref2n[pref]
                 else:
                     assert pref == 'Tu'  # A generic case, music21 processing, different from that of MuseScore
                     # e.g. 'C in octave 1 Dotted 32nd Tuplet of 9/8ths (1/6 QL) Note' makes 9 notes in tuplet
@@ -823,7 +823,7 @@ class MusicTokenizer:
             title = title[:-4]
         self.title = title
 
-        lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(MusicTokenizer.it_bars(scr))
+        lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(MusicExtractor.it_bars(scr))
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
 
         # Crop out empty bars at both ends to reduce token length
@@ -1109,7 +1109,7 @@ if __name__ == '__main__':
         # fnm = eg_songs('Shape of You', fmt='MXL')
         # fnm = eg_songs('平凡之路', fmt='MXL')
         ic(fnm)
-        mt = MusicTokenizer(logger=logger, verbose=True)
+        mt = MusicExtractor(logger=logger, verbose=True)
 
         def check_mxl_out():
             mt(fnm, exp='mxl')
@@ -1137,10 +1137,10 @@ if __name__ == '__main__':
         # ic(idx)
         # exit(1)
         logger = WarnLog()
-        mt = MusicTokenizer(logger=logger, verbose=True)
+        me = MusicExtractor(logger=logger, verbose=True)
         for i_fl, fnm in enumerate(fnms[:50]):
             ic(i_fl)
-            mt(fnm, exp='mxl')
+            me(fnm, exp='mxl')
 
             # s = mt(fnm, exp='visualize')
             # print(s)
