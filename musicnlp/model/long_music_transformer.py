@@ -278,7 +278,6 @@ if __name__ == '__main__':
     import transformers
     from icecream import ic
 
-    # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-22 19-00-40'
     fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
 
     def implementation_check():

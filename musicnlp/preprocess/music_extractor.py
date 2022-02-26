@@ -5,7 +5,6 @@ See `melody_extractor` for the old version.
 """
 
 import sys
-import functools
 from collections import defaultdict, Counter
 
 from music21.stream import Score, Measure, Voice
@@ -13,7 +12,7 @@ from music21.tempo import MetronomeMark
 from music21.duration import Duration
 from music21.pitch import Pitch
 
-from musicnlp.util import *
+from musicnlp.util.music_preprocess import *
 
 
 pd.set_option('display.max_columns', None)  # TODO

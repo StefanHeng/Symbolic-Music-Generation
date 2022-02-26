@@ -1,4 +1,5 @@
 import sys
+import math
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -127,7 +128,7 @@ class ColoredPrinterCallback(TrainerCallback):
         self.writer = None
         self.report2tb = report2tb
         if report2tb:
-            self.writer = SummaryWriter(os.path.join(PATH_BASE, DIR_PROJ, 'runs', self.trainer.name))
+            self.writer = SummaryWriter(os.path.join(PATH_BASE, DIR_PROJ, 'tb_log', self.trainer.name))
 
     def on_train_begin(self, args: TrainingArguments, state, control, **kwargs):
         self.mode = 'train'

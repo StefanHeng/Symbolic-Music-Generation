@@ -1,14 +1,6 @@
-import math
-from copy import deepcopy
 from warnings import warn
-from fractions import Fraction
 
-from musicnlp.util import *
-
-import numpy as np
-from mido import MidiFile
-from pretty_midi import PrettyMIDI
-import music21 as m21
+from musicnlp.util.music_preprocess import *
 
 
 def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSignature]]:

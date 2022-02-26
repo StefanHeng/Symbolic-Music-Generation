@@ -6,6 +6,7 @@ test_lang*
 inspiration/
 models/
 runs/
+tb_log/
 
 
 # Byte-compiled / optimized / DLL files
