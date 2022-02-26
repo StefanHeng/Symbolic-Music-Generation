@@ -323,6 +323,6 @@
             "BPM": 120
         }
     },
-    "random_seed": 77,
+    "random-seed": 77,
     "path-export": "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MNLP-Combined"
 }

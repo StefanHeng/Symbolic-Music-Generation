@@ -304,15 +304,13 @@ class MusicVocabulary:
             pitch=pitches,
             duration=get_durations()
         )
-        # slot_offsets = [0] + list(itertools.accumulate(self.n_slots.values()))
-        self.enc: Dict[str, int] = {
+        self.enc: Dict[str, int] = {  # Back2back index as ids
             tok: id_ for id_, tok in enumerate(join_its(toks for toks in self.toks.values()))
         }
         self.dec = {v: k for k, v in self.enc.items()}
         assert len(self.enc) == len(self.dec)  # Sanity check: no id collision
 
-    @property
-    def size(self):
+    def __len__(self):
         return len(self.enc)
 
     def _colorize_spec(self, s: str, color: bool = None) -> str:
@@ -405,9 +403,15 @@ class MusicVocabulary:
             s = f'{self.cache["pref_pch"]}{pch2step(pitch)}/{pitch.octave}'
         return logs(s, c='b') if self.color else s
 
+    def t2i(self, tok):
+        return self.enc[tok]
+
+    def i2t(self, id_):
+        return self.dec[id_]
+
     def encode(self, s: Union[str, List[str], List[List[str]]]) -> Union[int, List[int], List[List[int]]]:
         """
-        Convert string token to integer id
+        Convert string token or tokens to integer id
         """
         if isinstance(s, List) and isinstance(s[0], List):
             return list(conc_map(self.encode, s))
@@ -1148,7 +1152,7 @@ if __name__ == '__main__':
 
     def check_vocabulary():
         vocab = MusicVocabulary()
-        ic(vocab.enc, vocab.dec, vocab.size)
+        ic(vocab.enc, vocab.dec, len(vocab))
 
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # mt = MusicTokenizer()

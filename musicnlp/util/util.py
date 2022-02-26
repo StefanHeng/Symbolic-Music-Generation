@@ -34,7 +34,7 @@ from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from musicnlp.util.data_path import DIR_DSET, PATH_BASE, DIR_PROJ
+from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, DIR_DSET, DIR_MDL
 
 
 rcParams['figure.constrained_layout.use'] = True
@@ -221,6 +221,18 @@ def logi(s):
     Syntactic sugar for logging `info` as string
     """
     return logs(s, c='i')
+
+
+def log_dict(d: Dict = None, with_color=True, **kwargs) -> str:
+    """
+    Syntactic sugar for logging dict with coloring for console output
+    """
+    if d is None:
+        d = kwargs
+    pairs = (f'{k}: {logi(v) if with_color else v}' for k, v in d.items())
+    pref = logs('{', c='m') if with_color else '{'
+    post = logs('}', c='m') if with_color else '}'
+    return pref + ', '.join(pairs) + post
 
 
 def hex2rgb(hx: str) -> Union[Tuple[int], Tuple[float]]:

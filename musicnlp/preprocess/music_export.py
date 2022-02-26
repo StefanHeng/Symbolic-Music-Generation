@@ -25,6 +25,7 @@ class MusicExport:
     def __call__(
             self,
             fnms: Union[List[str], str],
+            prec: int = 5,
             fnm_out=f'{PKG_NM} music extraction', path_out=config('path-export'),
             mode='melody',
             exp='str_join'
@@ -43,7 +44,7 @@ class MusicExport:
             dnm_ = fnms
             fnms = fl_nms(fnms, k='song_fmt_exp')
         lst_out = []
-        me_ = MusicExtractor(mode=self.mode, logger=True, verbose=self.verbose)
+        me_ = MusicExtractor(precision=prec, mode=self.mode, logger=True, verbose=self.verbose)
         for i_fl, fnm in tqdm(enumerate(fnms), total=len(fnms)):
             if self.verbose:
                 log(f'Extracting file {logi(stem(fnm))}... ')
@@ -54,10 +55,10 @@ class MusicExport:
             ))
         if dnm_ is not None:
             fnm_out += f', dnm={dnm_}'
-        fnm_out += f', n={len(fnms)}, mode={mode},  {now(sep="-")}'
+        fnm_out += f', n={len(fnms)}, mode={mode}, {now(sep="-")}'
         with open(os.path.join(path_out, f'{fnm_out}.json'), 'w') as f:
             # TODO: Knowing the extracted dict, expand only the first few levels??
-            json.dump(dict(encoding_type=exp, music=lst_out), f, indent=4)
+            json.dump(dict(precision=prec, encoding_type=exp, music=lst_out), f, indent=4)
 
     @staticmethod
     def json2dataset(fnm: str, path_out=config('path-export')) -> datasets.Dataset:
@@ -66,14 +67,17 @@ class MusicExport:
         """
         with open(os.path.join(path_out, f'{fnm}.json')) as f:
             dset_: Dict = json.load(f)
-        train = dset_['music']  # All data as training?
+        train = dset_['music']  # TODO: All data as training?
 
         def prep_entry(d: Dict) -> Dict:
-            d.pop('warnings')  # Strip warnings
+            del d['warnings']
             return d
-        dset = datasets.Dataset.from_pandas(pd.DataFrame([prep_entry(d) for d in train]))
+        dset = datasets.Dataset.from_pandas(
+            pd.DataFrame([prep_entry(d) for d in train]),
+            info=datasets.DatasetInfo(description=json.dumps(dict(precision=dset_['precision'])))
+        )
 
-        dset.save_to_disk(os.path.join(path_out, 'huggingface_datasets', fnm))
+        dset.save_to_disk(os.path.join(path_out, 'hf_datasets', fnm))
         return dset
 
     @staticmethod
@@ -86,17 +90,13 @@ class MusicExport:
         entries = dset_['music']
 
         def entry2df(d: Dict) -> pd.DataFrame:
-            # Flatten for compatible with 2d dataset
-            # TODO: __call__ API change
-            warns, title = d['warnings'], d['title']
-
             def prep_warn(d_warn: Dict) -> Dict:
                 d_out = dict()
-                d_out['src'] = title
+                d_out['src'] = d['title']
                 d_out['type'] = d_warn.pop('warn_name', None)
                 d_out['args'] = json.dumps(d_warn)
                 return d_out
-            return pd.DataFrame([prep_warn(d) for d in warns])
+            return pd.DataFrame([prep_warn(d) for d in d['warnings']])
         return pd.concat([entry2df(e) for e in entries])
 
 
@@ -125,16 +125,17 @@ if __name__ == '__main__':
     # export2json()
 
     def json2dset():
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody,  2022-02-22 19-00-40'
+        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody,  2022-02-22 19-00-40'
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
-    # json2dset()
+    json2dset()
 
     def json2warn():
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody,  2022-02-22 19-00-40'
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-22 19-00-40'
         df = me.json2warn_df(fnm)
         ic(df)
 
         ic(warn_df2stats(df))
-    json2warn()
+    # json2warn()
 

@@ -10,7 +10,6 @@ d_allie = dict(
     nm='Allie-Chord-Embedding',
     nm_data='full_song_objects.pickle'
 )
-# fnm = f'../datasets/{d_allie["dir_nm"]}/{d_allie["nm_data"]}'
 fnm = os.path.join('..', '..', '..', DIR_DSET, d_allie['dir_nm'], d_allie['nm_data'])
 d_allie['n_entry'] = len(read_pickle(fnm)[0])
 
@@ -81,7 +80,7 @@ config = {
             BPM=120
         )
     ),
-    'random_seed': 77,
+    'random-seed': 77,
 }
 
 d_my = config['datasets']['my']
@@ -103,7 +102,6 @@ if __name__ == '__main__':
     ic(config)
     print(config)
     open(fl_nm, 'a').close()  # Create file in OS
-    # with open(f'{PATH_BASE}/{DIR_PROJ}/{fl_nm}', 'w') as f:
     with open(os.path.join(PATH_BASE, DIR_PROJ, 'util', fl_nm), 'w') as f:
         json.dump(config, f, indent=4)
 

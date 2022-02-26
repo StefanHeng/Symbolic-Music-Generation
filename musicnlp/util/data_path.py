@@ -1,6 +1,7 @@
 import os
 
 DIR_DSET = 'datasets'  # Dataset root folder name
+DIR_MDL = 'models'
 
 paths = __file__.split(os.sep)
 paths = paths[:paths.index('util')]
