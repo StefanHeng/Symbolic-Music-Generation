@@ -1,6 +1,7 @@
 import sys
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
 
 from .util import *
@@ -9,134 +10,7 @@ from .util import *
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
 
 
-class ColoredPrinterCallback(TrainerCallback):
-    def __init__(self, name='LMTTransformer training', parent_trainer: Trainer = None):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
-        had_handler = False
-        hd_attr_nm = 'name_for_my_logging'
-        for hd in self.logger.handlers:
-            if hasattr(hd, hd_attr_nm) and getattr(hd, hd_attr_nm) == name:
-                had_handler = True
-        if not had_handler:  # For ipython compatibility
-            handler = logging.StreamHandler(stream=sys.stdout)  # For my own coloring
-            handler.setLevel(logging.DEBUG)
-            handler.setFormatter(MyFormatter())
-            setattr(handler, hd_attr_nm, name)
-            self.logger.addHandler(handler)
-
-        self.mode = 'eval'
-        self.t_strt, self.t_end = None, None
-
-        self.trainer = parent_trainer
-        args, dset_tr_, md_, tokzer = (
-            getattr(parent_trainer, k) for k in ['args', 'train_dataset', 'model', 'tokenizer']
-        )
-        lr, n_ep = args.learning_rate, args.num_train_epochs
-        self.bsz = args.per_device_train_batch_size * args.gradient_accumulation_steps
-        seq_max_len = len(dset_tr_[0]['input_ids'])
-        n_data, md_sz = len(dset_tr_), md_.config.d_model
-        self.n_step = max(math.ceil(len(dset_tr_) // self.bsz), 1) * n_ep  # #step/epoch at least 1
-        self.train_meta = OrderedDict([
-            ('#data', n_data), ('model size', md_sz),
-            ('learning rate', lr), ('batch shape', (self.bsz, seq_max_len)), ('#epochs', n_ep), ('#steps', self.n_step)
-        ])
-
-    def on_train_begin(self, args: TrainingArguments, state, control, **kwargs):
-        self.mode = 'train'
-        self.logger.info(f'Training started with {log_dict(self.train_meta)}')
-        self.t_strt = datetime.datetime.now()
-
-    def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
-        self.t_end = datetime.datetime.now()
-        t = fmt_dt(self.t_end - self.t_strt)
-        self.logger.info(f'Training completed in {logi(t)} ')
-        self.mode = 'eval'
-
-    def out_dict2str(self, d: Dict, return_wo_color: bool = False):
-        keys_ = [
-            'step', 'epoch', 'train_loss', 'eval_loss', 'train_acc', 'eval_acc', 'learning_rate'
-        ]
-        fmt = [
-            f':>{len(str(self.n_step))}', ':6.2f', ':7.4f', ':7.4f', ':6.2f', ':6.2f', ':.2e'
-        ]
-        s_fmts = [f'{{{k}{fmt_}}}' for k, fmt_ in zip(keys_, fmt)]  # Enforce ordering
-
-        d = {k: (
-                ('loss' in k and round(v, 4)) or
-                ('acc' in k and round(v * 100, 4)) or
-                ('learning_rate' in k and round(v, 6)) or
-                v
-        ) for k, v in d.items()
-        }
-        s_outs = [(k, fmt_.format(**{k: d[k]})) for fmt_, k in zip(s_fmts, keys_) if k in d]
-        out_ = ', '.join(f'{k}={logi(s)}' for (k, s) in s_outs)
-        if return_wo_color:
-            out_ = out_, ', '.join(f'{k}={s}' for (k, s) in s_outs)
-        return out_
-
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        if state.is_local_process_zero:
-            if isinstance(logs, dict):
-                if self.mode == 'train':
-                    logs['step'] = state.global_step
-                    logs['train_loss'] = logs.pop('loss', None)  # Trainer internal uses `loss`, instead of `train_loss`
-                    logs = self.out_dict2str(logs)
-                else:
-                    logs = log_dict(logs)
-            self.logger.info(logs)
-
-
-class ClmAccCallback(ColoredPrinterCallback):
-    """
-    Logs training batch accuracy during CLM training
-
-    Needs the **prediction logits** returned
-    """
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.out_dict_tr = None
-        self.k_acc = 'acc_meta'
-
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        def acc_stats2dict(out_dict: Dict, prefix: str) -> Dict:
-            """
-            Convert `acc_meta`, `classification_acc_meta` dict to stats for logging
-            """
-            stats_acc: pd.Series = pd.DataFrame(out_dict[self.k_acc]).sum(axis=0)
-            return {f'{prefix}_acc': stats_acc.n_acc / stats_acc.n_total}
-
-        if self.mode == 'train':
-            step = state.global_step
-            assert not self.trainer.do_eval  # TODO: Not supported
-            if 'src' in logs and logs['src'] == 'compute_loss':
-                # For gradient_accumulation, many batches of `compute_loss` may be called
-                # before going into train logging
-                if self.out_dict_tr is None:
-                    n_ep = logs['epoch']
-                    self.out_dict_tr = {'step': step, 'epoch': n_ep, self.k_acc: [logs[self.k_acc]]}
-                else:  # Later batch in the same gradient accumulation
-                    step_, n_ep = self.out_dict_tr['step'], self.out_dict_tr['epoch']
-                    n_ep_ = logs['epoch']
-                    assert step_ == step and n_ep_ == n_ep
-                    self.out_dict_tr[self.k_acc].append(logs[self.k_acc])
-            elif 'loss' in logs:  # The Trainer default training loss logging
-                # Take the averaging by parent `Trainer` for granted
-                self.out_dict_tr.update(acc_stats2dict(self.out_dict_tr, prefix='train'))
-                del self.out_dict_tr[self.k_acc]
-                self.out_dict_tr['learning_rate'] = logs['learning_rate']
-                self.out_dict_tr['train_loss'] = logs['loss']
-                self.logger.info(self.out_dict2str(self.out_dict_tr))
-                self.out_dict_tr = None  # Rest for next global step
-            elif any('runtime' in k for k in logs.keys()):
-                self.logger.info(log_dict(logs) if isinstance(logs, dict) else logs)
-            else:
-                print('unhandled case', logs)
-                exit(1)
-        else:
-            if 'src' not in logs:  # Skip custom compute_loss logging
-                super().on_log(args, state, control, logs, **kwargs)
+from icecream import ic
 
 
 class MyTrainer(Trainer):
@@ -144,6 +18,12 @@ class MyTrainer(Trainer):
         super().__init__(**kwargs)
 
         self.clm_acc_logging = clm_acc_logging
+
+        out_dir = self.args.output_dir
+        # Enforce formatting of output directory, directory after `DIR_MDL`; see `long_music_transformer.py` for e.g.
+        paths = out_dir.split(os.sep)
+        idx_strt = paths.index(DIR_MDL)
+        self.name = '/'.join(paths[idx_strt+1:])  # Compatibility with tensorboard
         self.post_init()
 
     def post_init(self):
@@ -200,3 +80,144 @@ class MyTrainer(Trainer):
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         return (loss, outputs) if return_outputs else loss
+
+
+class ColoredPrinterCallback(TrainerCallback):
+    def __init__(self, name='LMTTransformer training', parent_trainer: MyTrainer = None, report2tb: bool = True):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.DEBUG)
+        had_handler = False
+        hd_attr_nm = 'name_for_my_logging'
+        for hd in self.logger.handlers:
+            if hasattr(hd, hd_attr_nm) and getattr(hd, hd_attr_nm) == name:
+                had_handler = True
+        if not had_handler:  # For ipython compatibility
+            handler = logging.StreamHandler(stream=sys.stdout)  # For my own coloring
+            handler.setLevel(logging.DEBUG)
+            handler.setFormatter(MyFormatter())
+            setattr(handler, hd_attr_nm, name)
+            self.logger.addHandler(handler)
+
+        self.mode = 'eval'
+        self.t_strt, self.t_end = None, None
+
+        self.trainer = parent_trainer
+        args, dset_tr_, md_, tokzer = (
+            getattr(parent_trainer, k) for k in ['args', 'train_dataset', 'model', 'tokenizer']
+        )
+        lr, n_ep = args.learning_rate, args.num_train_epochs
+        self.bsz = args.per_device_train_batch_size * args.gradient_accumulation_steps
+        seq_max_len = len(dset_tr_[0]['input_ids'])
+        n_data, md_sz = len(dset_tr_), md_.config.d_model
+        self.n_step = max(math.ceil(len(dset_tr_) // self.bsz), 1) * n_ep  # #step/epoch at least 1
+        self.train_meta = OrderedDict([
+            ('#data', n_data), ('model size', md_sz),
+            ('learning rate', lr), ('batch shape', (self.bsz, seq_max_len)), ('#epochs', n_ep), ('#steps', self.n_step)
+        ])
+
+        self.writer = None
+        self.report2tb = report2tb
+        if report2tb:
+            self.writer = SummaryWriter(os.path.join(PATH_BASE, DIR_PROJ, 'runs', self.trainer.name))
+
+    def on_train_begin(self, args: TrainingArguments, state, control, **kwargs):
+        self.mode = 'train'
+        self.logger.info(f'Training started with {log_dict(self.train_meta)}')
+        self.t_strt = datetime.datetime.now()
+
+    def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
+        self.t_end = datetime.datetime.now()
+        t = fmt_dt(self.t_end - self.t_strt)
+        self.logger.info(f'Training completed in {logi(t)} ')
+        self.mode = 'eval'
+
+    def out_dict2str(self, d: Dict, return_wo_color: bool = False):
+        keys_ = [
+            'step', 'epoch', 'train_loss', 'eval_loss', 'train_acc', 'eval_acc', 'learning_rate'
+        ]
+        fmt = [
+            f':>{len(str(self.n_step))}', ':6.2f', ':7.4f', ':7.4f', ':6.2f', ':6.2f', ':.2e'
+        ]
+        s_fmts = [f'{{{k}{fmt_}}}' for k, fmt_ in zip(keys_, fmt)]  # Enforce ordering
+
+        d = {k: (
+                ('loss' in k and round(v, 4)) or
+                ('acc' in k and round(v * 100, 4)) or
+                ('learning_rate' in k and round(v, 6)) or
+                v
+        ) for k, v in d.items()
+        }
+        s_outs = [(k, fmt_.format(**{k: d[k]})) for fmt_, k in zip(s_fmts, keys_) if k in d]
+        out_ = ', '.join(f'{k}={logi(s)}' for (k, s) in s_outs)
+        if return_wo_color:
+            out_ = out_, ', '.join(f'{k}={s}' for (k, s) in s_outs)
+        return out_
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if state.is_local_process_zero:
+            if isinstance(logs, dict):
+                # Heuristics on the training step updates, see `Trainer._maybe_log_save_evaluate`
+                if self.mode == 'train' and all('runtime' not in k for k in logs):
+                    logs['step'] = step = state.global_step
+                    # Trainer internal uses `loss`, instead of `train_loss`
+                    logs['train_loss'] = loss = logs.pop('loss', None)
+                    assert loss is not None
+                    lr = logs['learning_rate']
+                    self.writer.add_scalar('Train/loss', loss, step)
+                    self.writer.add_scalar('Train/learning_rate', lr, step)
+                    logs = self.out_dict2str(logs)
+                else:
+                    logs = log_dict(logs)
+            self.logger.info(logs)
+
+
+class ClmAccCallback(ColoredPrinterCallback):
+    """
+    Logs training batch accuracy during CLM training
+
+    Needs the **prediction logits** returned
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.out_dict_tr = None
+        self.k_acc = 'acc_meta'
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        def acc_stats2dict(out_dict: Dict, prefix: str) -> Dict:
+            """
+            Convert `acc_meta`, `classification_acc_meta` dict to stats for logging
+            """
+            stats_acc: pd.Series = pd.DataFrame(out_dict[self.k_acc]).sum(axis=0)
+            return {f'{prefix}_acc': stats_acc.n_acc / stats_acc.n_total}
+
+        if self.mode == 'train':
+            step = state.global_step
+            assert not self.trainer.do_eval  # TODO: Not supported
+            if 'src' in logs and logs['src'] == 'compute_loss':
+                # For gradient_accumulation, many batches of `compute_loss` may be called
+                # before going into train logging
+                if self.out_dict_tr is None:
+                    n_ep = logs['epoch']
+                    self.out_dict_tr = {'step': step, 'epoch': n_ep, self.k_acc: [logs[self.k_acc]]}
+                else:  # Later batch in the same gradient accumulation
+                    step_, n_ep = self.out_dict_tr['step'], self.out_dict_tr['epoch']
+                    n_ep_ = logs['epoch']
+                    assert step_ == step and n_ep_ == n_ep
+                    self.out_dict_tr[self.k_acc].append(logs[self.k_acc])
+            elif 'loss' in logs:  # The Trainer default training loss logging
+                # Take the averaging by parent `Trainer` for granted
+                self.out_dict_tr.update(acc_stats2dict(self.out_dict_tr, prefix='train'))
+                del self.out_dict_tr[self.k_acc]
+                self.out_dict_tr['learning_rate'] = logs['learning_rate']
+                self.out_dict_tr['train_loss'] = logs['loss']
+                self.logger.info(self.out_dict2str(self.out_dict_tr))
+                self.out_dict_tr = None  # Rest for next global step
+            elif any('runtime' in k for k in logs.keys()):
+                self.logger.info(log_dict(logs) if isinstance(logs, dict) else logs)
+            else:
+                print('unhandled case', logs)
+                exit(1)
+        else:
+            if 'src' not in logs:  # Skip custom compute_loss logging
+                super().on_log(args, state, control, logs, **kwargs)

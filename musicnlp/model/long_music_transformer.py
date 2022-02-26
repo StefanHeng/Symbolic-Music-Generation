@@ -165,31 +165,34 @@ def get_train_args(model_name: str) -> TrainingArguments:
     train_args = {
         'debug': dict(
             batch_size=4,
+            learning_rate=5e-4,
             weight_decay=1e-2,
             lr_scheduler_type=SchedulerType.CONSTANT,
-            num_train_epochs=1,
+            num_train_epochs=8,
         ),
         'debug-large': dict(
             batch_size=32,
+            learning_rate=5e-5,
             weight_decay=1e-2,
             lr_scheduler_type=SchedulerType.CONSTANT,
             num_train_epochs=3
         ),
         'small': dict(
             batch_size=32,
+            learning_rate=4e-5,
             weight_decay=1e-2,
             lr_scheduler_type=SchedulerType.COSINE,
             num_train_epochs=32
         )
     }
-    bsz, decay, sch, n_ep = (train_args[model_name][k] for k in (
-        'batch_size', 'weight_decay', 'lr_scheduler_type', 'num_train_epochs'
+    bsz, lr, decay, sch, n_ep = (train_args[model_name][k] for k in (
+        'batch_size', 'learning_rate', 'weight_decay', 'lr_scheduler_type', 'num_train_epochs'
     ))
     args = dict(
         output_dir=os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, now(sep='-')),
         do_train=True, do_eval=False,
         per_device_train_batch_size=bsz, per_gpu_eval_batch_size=bsz,
-        learning_rate=5e-5,  # TODO: what to set?
+        learning_rate=lr,  # TODO: what to set?
         weight_decay=decay,
         adam_beta1=0.9,
         adam_beta2=0.999,
@@ -297,9 +300,12 @@ if __name__ == '__main__':
     transformers.set_seed(seed)
 
     md_nm = 'debug'
-    n = None
+    # md_nm = 'debug-large'
+
+    n = 4
+    # n = None
+
     mdl, tokenizer, dset_tr, trainer = get_all_setup(model_name=md_nm, dataset_name=fnm, n_sample=n, random_seed=seed)
-    ic(trainer.args.output_dir)
     trainer.train()
-    trainer.save_model(trainer.args.output_dir)
+    trainer.save_model(os.path.join(trainer.args.output_dir, 'final-trained'))
 

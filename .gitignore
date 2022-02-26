@@ -4,6 +4,8 @@ assets/
 .vscode/
 test_lang*
 inspiration/
+models/
+runs/
 
 
 # Byte-compiled / optimized / DLL files
