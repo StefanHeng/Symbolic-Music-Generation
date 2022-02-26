@@ -34,7 +34,7 @@ from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, DIR_DSET, DIR_MDL
+from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM, DIR_DSET, DIR_MDL
 
 
 rcParams['figure.constrained_layout.use'] = True
@@ -344,7 +344,7 @@ def config(attr):
     Loads the config file on first call.
     """
     if not hasattr(config, 'config'):
-        with open(os.path.join(PATH_BASE, DIR_PROJ, 'util', 'config.json'), 'r') as f:
+        with open(os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util', 'config.json'), 'r') as f:
             config.config = json.load(f)
             # str -> int
             for k, v in config.config['Melody-Extraction']['tokenizer'].items():
