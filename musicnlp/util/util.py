@@ -212,7 +212,7 @@ def log(s, c: str = 'log', c_time='green', as_str=False):
         print(f'{c}{log(now(), c=c_time, as_str=True)}| {s}{log.reset}')
 
 
-def logs(s, c):
+def log_s(s, c):
     return log(s, c=c, as_str=True)
 
 
@@ -220,7 +220,7 @@ def logi(s):
     """
     Syntactic sugar for logging `info` as string
     """
-    return logs(s, c='i')
+    return log_s(s, c='i')
 
 
 def log_dict(d: Dict = None, with_color=True, **kwargs) -> str:
@@ -230,8 +230,8 @@ def log_dict(d: Dict = None, with_color=True, **kwargs) -> str:
     if d is None:
         d = kwargs
     pairs = (f'{k}: {logi(v) if with_color else v}' for k, v in d.items())
-    pref = logs('{', c='m') if with_color else '{'
-    post = logs('}', c='m') if with_color else '}'
+    pref = log_s('{', c='m') if with_color else '{'
+    post = log_s('}', c='m') if with_color else '}'
     return pref + ', '.join(pairs) + post
 
 

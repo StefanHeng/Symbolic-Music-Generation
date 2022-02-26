@@ -315,7 +315,7 @@ class MusicVocabulary:
 
     def _colorize_spec(self, s: str, color: bool = None) -> str:
         c = self.color if color is None else color
-        return logs(s, c='m') if c else s
+        return log_s(s, c='m') if c else s
 
     def __getitem__(self, k: str) -> str:
         """
@@ -357,7 +357,7 @@ class MusicVocabulary:
             return [colorize(self.cache['pref_tempo']+str(elm))]
         elif isinstance(elm, Rest):
             r = self.cache['rest']
-            return [logs(r, c='b') if color else r, self._note2dur_str(elm)]
+            return [log_s(r, c='b') if color else r, self._note2dur_str(elm)]
         elif isinstance(elm, Note):
             return [self._note2pch_str(elm), self._note2dur_str(elm)]
         elif isinstance(elm, tuple):
@@ -384,7 +384,7 @@ class MusicVocabulary:
             s = f'{self.cache["pref_dur"]}{dur.numerator}'
         else:
             s = f'{self.cache["pref_dur"]}{dur.numerator}/{dur.denominator}'
-        return logs(s, c='g') if self.color else s
+        return log_s(s, c='g') if self.color else s
 
     def _note2pch_str(self, note: Union[Note, Rest, Pitch]) -> str:
         """
@@ -401,7 +401,7 @@ class MusicVocabulary:
             pitch = note.pitch if isinstance(note, Note) else note
             # `pitch.name` follows certain scale by music21 default, may cause confusion
             s = f'{self.cache["pref_pch"]}{pch2step(pitch)}/{pitch.octave}'
-        return logs(s, c='b') if self.color else s
+        return log_s(s, c='b') if self.color else s
 
     def t2i(self, tok):
         return self.enc[tok]
@@ -1094,7 +1094,7 @@ class MusicExtractor:
                 n_pad = len(str(len(groups_)))
 
                 def idx2str(i):
-                    return logs(f'{i:>{n_pad}}:', c='y')
+                    return log_s(f'{i:>{n_pad}}:', c='y')
                 return '\n'.join(f'{idx2str(i)} {" ".join(toks)}' for i, toks in enumerate(groups_))
             else:
                 toks = sum(groups_, start=[])
