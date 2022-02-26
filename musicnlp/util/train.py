@@ -10,9 +10,6 @@ from .util import *
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
 
 
-from icecream import ic
-
-
 class MyTrainer(Trainer):
     def __init__(self, clm_acc_logging=True, **kwargs):
         super().__init__(**kwargs)
@@ -83,6 +80,11 @@ class MyTrainer(Trainer):
 
 
 class ColoredPrinterCallback(TrainerCallback):
+    """
+    Supports colored terminal output, logging file write, data sent to tensorboard for plotting
+
+    Evaluation during training **not supported**
+    """
     def __init__(self, name='LMTTransformer training', parent_trainer: MyTrainer = None, report2tb: bool = True):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.DEBUG)
@@ -97,6 +99,9 @@ class ColoredPrinterCallback(TrainerCallback):
             handler.setFormatter(MyFormatter())
             setattr(handler, hd_attr_nm, name)
             self.logger.addHandler(handler)
+        self.logger_fl = logging.getLogger('trainer-file-write')  # Write out to file
+        self.logger_fl.setLevel(logging.DEBUG)
+        self.fl_handler = None
 
         self.mode = 'eval'
         self.t_strt, self.t_end = None, None
@@ -115,6 +120,10 @@ class ColoredPrinterCallback(TrainerCallback):
             ('learning rate', lr), ('batch shape', (self.bsz, seq_max_len)), ('#epochs', n_ep), ('#steps', self.n_step)
         ])
 
+        self.log_fnm_tpl = f'{name}, n={n_data}, l={md_sz}, a={lr}, bsz={self.bsz}, n_ep={n_ep}, {{}}'
+        self.log_fnm = None  # Current logging file name template & file instance during training
+        self.out_dir = self.trainer.args.output_dir
+
         self.writer = None
         self.report2tb = report2tb
         if report2tb:
@@ -122,13 +131,28 @@ class ColoredPrinterCallback(TrainerCallback):
 
     def on_train_begin(self, args: TrainingArguments, state, control, **kwargs):
         self.mode = 'train'
+
+        self.logger_fl.removeHandler(self.fl_handler)  # Remove prior `FileHandler`, prep for next potential run
+        self.fl_handler = None
+
+        self.log_fnm = self.log_fnm_tpl.format(now(sep="-"))
+        # Set file write logging
+        os.makedirs(self.out_dir, exist_ok=True)
+        self.fl_handler = logging.FileHandler(os.path.join(self.out_dir, f'{self.log_fnm}.log'))
+        self.fl_handler.setLevel(logging.DEBUG)
+        self.fl_handler.setFormatter(MyFormatter(with_color=False))
+        self.logger_fl.addHandler(self.fl_handler)
+
         self.logger.info(f'Training started with {log_dict(self.train_meta)}')
+        self.logger_fl.info(f'Training started with {log_dict(self.train_meta, with_color=False)}')
+
         self.t_strt = datetime.datetime.now()
 
     def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
         self.t_end = datetime.datetime.now()
         t = fmt_dt(self.t_end - self.t_strt)
         self.logger.info(f'Training completed in {logi(t)} ')
+        self.logger_fl.info(f'Training completed in {t} ')
         self.mode = 'eval'
 
     def out_dict2str(self, d: Dict, return_wo_color: bool = False):
@@ -165,10 +189,16 @@ class ColoredPrinterCallback(TrainerCallback):
                     lr = logs['learning_rate']
                     self.writer.add_scalar('Train/loss', loss, step)
                     self.writer.add_scalar('Train/learning_rate', lr, step)
-                    logs = self.out_dict2str(logs)
+
+                    out_console, out_write = self.out_dict2str(logs, return_wo_color=True)
+                    self.logger.info(out_console)
+                    self.logger_fl.info(out_write)
                 else:
-                    logs = log_dict(logs)
-            self.logger.info(logs)
+                    self.logger.info(log_dict(logs))
+                    self.logger_fl.info(log_dict(logs, with_color=False))
+            else:
+                self.logger.info(logs)
+                self.logger_fl.info(logs)
 
 
 class ClmAccCallback(ColoredPrinterCallback):
