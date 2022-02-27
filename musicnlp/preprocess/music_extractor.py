@@ -323,11 +323,7 @@ class MusicVocabulary:
         return self._colorize_spec(MusicVocabulary.SPEC_TOKS[k])
 
     def __call__(
-            self, elm: Union[
-                Note, Rest, tuple[Note],
-                Union[TimeSignature, tuple[int, int]],
-                Union[MetronomeMark, int]
-            ],
+            self, elm: Union[ExtNote, Union[TimeSignature, TsTup], Union[MetronomeMark, int]],
             color: bool = None,
             return_int: bool = False  # TODO
     ) -> Union[List[str], List[int]]:  # TODO: Support chords?
@@ -370,15 +366,12 @@ class MusicVocabulary:
             exit(1)
 
     def _note2dur_str(
-            self, e: Union[
-                Rest, Note, tuple[Note],
-                Fraction, float, int
-            ]) -> str:
+            self, e: Union[ExtNote, Dur]) -> str:
         """
         :param e: A note, tuplet, or a numeric representing duration
         """
         # If a float, expect multiple of powers of 2
-        dur = Fraction(e if isinstance(e, (Fraction, float, int)) else note2dur(e))
+        dur = Fraction(e if isinstance(e, (float, Fraction)) else note2dur(e))
         if dur.denominator == 1:
             s = f'{self.cache["pref_dur"]}{dur.numerator}'
         else:
@@ -510,9 +503,9 @@ class MusicExtractor:
                 tempo = MetronomeMark(number=bpms[0])
             yield bars, time_sig, tempo
 
-    def log_warn(self, log_dict: Dict):
+    def log_warn(self, log_d: Dict):
         if self.logger is not None:
-            self.logger.update(log_dict)
+            self.logger.update(log_d)
 
     def dur_within_prec(self, dur: Union[float, Fraction]) -> bool:
         return is_int(dur / 4 / (2**-self.prec))
@@ -1158,4 +1151,3 @@ if __name__ == '__main__':
         # toks = mt(fnm, exp='str')
         # ic(vocab.encode(toks[:20]))
     # check_vocabulary()
-

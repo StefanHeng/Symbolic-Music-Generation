@@ -1,9 +1,10 @@
+from typing import Any
 from warnings import warn
 
 from musicnlp.util.music_preprocess import *
 
 
-def bars2lst_bar_n_ts(bars) -> list[tuple[m21.stream.Measure, m21.meter.TimeSignature]]:
+def bars2lst_bar_n_ts(bars) -> List[Tuple[m21.stream.Measure, m21.meter.TimeSignature]]:
     """
     :return: List of tuple of corresponding time signature for each bar
     """
@@ -144,6 +145,28 @@ class MidiMelodyExtractor:
         self.pmu.plot_piano_roll(self.pm, fqs=self.fqs_ts)
 
 
+def get_tokenizer() -> Dict:
+    n_special = 2 ** 7
+    half = n_special / 2
+    encoder = {
+        '[SEP]': 0,  # Bar separation
+        '[TRIP]': 1,  # Last quarter encoding for triplets
+        '[PAD]': 2,  # Will not occur in melody
+        '[REST]': int(half)
+    }
+    vocab_special = list(encoder.keys())
+    # pitch midi follows after `n_special`
+    encoder.update({pitch: pitch + n_special for pitch in range(2 ** 7)})  # Per MIDI spec
+    decoder = {v: k_ for k_, v in encoder.items()}
+    assert len(encoder) == len(decoder)  # should be a one-to-one map
+    return dict(
+        n_special_token=n_special,
+        vocab_special=vocab_special,
+        encoder=encoder,
+        decoder=decoder
+    )
+
+
 class MxlMelodyExtractor:
     """
     Given MXL file, export single-track melody representations,
@@ -230,7 +253,7 @@ class MxlMelodyExtractor:
         """
         Contains all the bars for each channel in the score, at the same time
         """
-        def __init__(self, bars: dict[str, m21.stream.Measure]):
+        def __init__(self, bars: Dict[str, m21.stream.Measure]):
             self.bars = bars
             nums = [bar.number == 0 for bar in bars.values()]
             assert_list_same_elms(nums)
@@ -362,10 +385,10 @@ class MxlMelodyExtractor:
                 assert not bar.hasVoices()
                 notes = bar.notes  # TODO: include rest
                 assert notes.isSorted
-                assert_notes_no_overlap(notes)
+                assert is_notes_no_overlap(notes)
 
                 def chord2note(c):
-                    return max(c.notes, key=lambda n: n.pitch.frequency)
+                    return max(c.notes, key=lambda n_: n_.pitch.frequency)
                 for note in notes:
                     if isinstance(note, m21.chord.Chord):
                         obj.bars[pnm].replace(note, chord2note(note))
@@ -408,7 +431,7 @@ class MxlMelodyExtractor:
             pchs = self.avg_pitch(method=method, val_rest=val_rest)
             return max(self.bars, key=lambda p: pchs[p])
 
-    def vertical_bars(self, scr) -> list['MxlMelodyExtractor.VerticalBar']:
+    def vertical_bars(self, scr) -> List['MxlMelodyExtractor.VerticalBar']:
         """
         :return: List of `VerticalBar`s
         """
@@ -491,13 +514,15 @@ class MxlMelodyExtractor:
 
             Expects single `Note` or `Rest`
             """
-            D_CONF = config('Melody-Extraction.tokenizer')
+
+            D_CONF = get_tokenizer()
 
             def __init__(self):
-                self.n_spec = self.D_CONF['n_special_token']
-                self.spec = self.D_CONF['vocab_special']
-                self.enc = self.D_CONF['encoder']
-                self.dec = self.D_CONF['decoder']
+                D_CONF = MxlMelodyExtractor.Tokenizer._Tokenizer.D_CONF
+                self.n_spec = D_CONF['n_special_token']
+                self.spec = D_CONF['vocab_special']
+                self.enc = D_CONF['encoder']
+                self.dec = D_CONF['decoder']
 
             def __call__(self, obj):
                 if isinstance(obj, m21.note.Note):
@@ -545,8 +570,8 @@ class MxlMelodyExtractor:
                 bars: Union[
                     Union[
                         m21.stream.Measure,
-                        list[m21.stream.Measure],
-                        list[tuple[m21.stream.Measure, m21.meter.TimeSignature]]
+                        List[m21.stream.Measure],
+                        List[Tuple[m21.stream.Measure, m21.meter.TimeSignature]]
                     ],
                     Union[
                         m21.note.Note,
@@ -554,7 +579,7 @@ class MxlMelodyExtractor:
                         str
                     ]
                 ],
-                time_sigs: Union[m21.meter.TimeSignature, list[m21.meter.TimeSignature]] = None
+                time_sigs: Union[m21.meter.TimeSignature, List[m21.meter.TimeSignature]] = None
         ):
             """
             :param bars: Bar, List of bars, or single element (see `_Tokenizer`)
@@ -613,9 +638,9 @@ class MxlMelodyExtractor:
 
         def decode(
                 self,
-                ids: list[int],
-                time_sigs: Union[list[m21.meter.TimeSignature], str] = None
-        ) -> list[m21.stream.Measure]:
+                ids: List[int],
+                time_sigs: Union[List[m21.meter.TimeSignature], str] = None
+        ) -> List[m21.stream.Measure]:
             """
             :param ids: A list of token ids
             :param time_sigs: Time Signatures of each bar
@@ -632,7 +657,7 @@ class MxlMelodyExtractor:
 
             if time_sigs == 'infer':
                 denom = 4  # Assumption without loss of generality
-                n_slots_per_beat = time_sigs = (1/denom / (2 ** -self.prec))
+                n_slots_per_beat = (1/denom / (2 ** -self.prec))
                 numers = [len(ids_) / n_slots_per_beat for ids_ in lst_ids]
                 assert all(n.is_integer() for n in numers)
                 time_sigs = [m21.meter.TimeSignature(f'{int(n)}/{denom}') for n in numers]
@@ -659,7 +684,7 @@ class MxlMelodyExtractor:
 
         def _decode(
                 self,
-                ids_n_cnt: tuple[tuple[int], tuple[int]],
+                ids_n_cnt: Tuple[Tuple[int], Tuple[int]],
                 time_sig: m21.meter.TimeSignature,
                 number=None
         ):
@@ -771,7 +796,7 @@ class MxlMelodyExtractor:
 
         # Pick a `Part` to replace elements one by one, the 1st part selected as it contains all metadata
         idx_part = 0
-        scr.remove(list(filter(lambda p: p is not scr.parts[idx_part], scr.parts)))
+        scr.remove(list(filter(lambda p_: p_ is not scr.parts[idx_part], scr.parts)))
         assert len(scr.parts) == 1
         part = scr.parts[0]
         pnm = part.partName
@@ -856,7 +881,7 @@ class MelodyTokenizer:
     Wrapper for `MxlMelodyExtractor` (TODO)
     """
 
-    D_CONF = config('Melody-Extraction.tokenizer')
+    D_CONF = get_tokenizer()
 
     MAP_DF = {
         '[SEP]': '<s>',
@@ -892,9 +917,9 @@ class MelodyTokenizer:
 
     def decode(
             self,
-            ids: Union[int, list[int], list[list[int]], np.ndarray, list[np.ndarray]],
+            ids: Union[int, List[int], List[List[int]], np.ndarray, List[np.ndarray]],
             return_joined=True
-    ) -> Union[str, list[str], list[list[str]]]:
+    ) -> Union[str, List[str], List[List[str]]]:
         """
         :param ids: Pitch ids
         :param return_joined: If True and iterable ids passed in, the melody is joined into a single string
@@ -912,7 +937,7 @@ class MelodyTokenizer:
             return _decode(ids)
 
 
-def extract(dnms: list[str], exp='json') -> list[dict[str]]:
+def extract(dnms: List[str], exp='json') -> List[Dict[str, Any]]:
     """
     :param dnms: Dataset names
     :param exp: Encoded songs export format
@@ -998,8 +1023,8 @@ if __name__ == '__main__':
         # n = 2**6
         dnm = 'POP909'
         fnms = fl_nms(dnm, k='song_fmt_exp')
-        for idx, fnm in enumerate(fnms[66+136+289:]):
         # for idx, fnm in enumerate(fnms):
+        for idx, fnm in enumerate(fnms[66+136+289:]):
             ic(idx, stem(fnm))
             me = MxlMelodyExtractor(fnm)
             if has_quintuplet(me.scr):
@@ -1040,5 +1065,3 @@ if __name__ == '__main__':
     # check_melody_tokenizer()
 
     # ic(__name__, __file__)
-
-

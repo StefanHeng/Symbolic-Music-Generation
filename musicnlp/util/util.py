@@ -8,11 +8,11 @@ import logging
 import datetime
 import itertools
 import concurrent.futures
-from typing import TypeVar, Callable, Union, Tuple, List, Dict
+from typing import Tuple, List, Dict
+from typing import Iterable, Callable, TypeVar, Union
 
 from functools import reduce
 from collections import OrderedDict
-from collections.abc import Iterable
 
 import sty
 import colorama
@@ -96,6 +96,27 @@ def keys(dic, prefix=''):
                 yield k__
         else:
             yield _full(k)
+
+
+PATH_CONF = os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util', 'config.json')
+
+
+def config(attr, force_update=False):
+    """
+    Retrieves the queried attribute value from the config file.
+
+    Loads the config file on first call.
+    """
+    if not hasattr(config, 'config'):
+        with open(PATH_CONF, 'r') as f:
+            config.config = json.load(f)
+    if force_update:
+        # For colab re-running; TODO: pretty ugly
+        d_my = config.config['datasets']['my']
+        config.config['path-export'] = os.path.join(PATH_BASE, DIR_DSET, d_my['dir_nm'])
+        with open(PATH_CONF, 'w') as f_:
+            json.dump(config.config, f_, indent=4)
+    return get(config.config, attr)
 
 
 def now(as_str=True, sep=':'):
@@ -333,25 +354,6 @@ class MyFormatter(logging.Formatter):
         return self.formatter[entry.levelno].format(entry)
 
 
-def config(attr):
-    """
-    Retrieves the queried attribute value from the config file.
-
-    Loads the config file on first call.
-    """
-    if not hasattr(config, 'config'):
-        with open(os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util', 'config.json'), 'r') as f:
-            config.config = json.load(f)
-            # str -> int
-            for k, v in config.config['Melody-Extraction']['tokenizer'].items():
-                if isinstance(v, dict):
-                    config.config['Melody-Extraction']['tokenizer'][k] = {
-                        (int(k_) if k_.isnumeric() else k_): v_
-                        for k_, v_ in v.items()
-                    }
-    return get(config.config, attr)
-
-
 def assert_list_same_elms(lst: List[T]):
     assert all(l == lst[0] for l in lst)
 
@@ -374,7 +376,7 @@ def eg_songs(k=None, pretty=False, fmt='MIDI'):
         return [p[p.find(dir_nm):] for p in mids] if pretty else mids
 
 
-def fl_nms(dnm, k='song_fmt') -> list[str]:
+def fl_nms(dnm, k='song_fmt') -> List[str]:
     """
     :return: List of music file paths
     """

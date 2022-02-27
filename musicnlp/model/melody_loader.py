@@ -3,9 +3,10 @@ Data Loader for pytorch
 """
 
 from musicnlp.util import *
+from musicnlp.preprocess.melody_extractor import get_tokenizer
 
-
-ID_PAD = config('Melody-Extraction.tokenizer.encoder')['[PAD]']
+tokenizer = get_tokenizer()
+ID_PAD = tokenizer['encoder']['[PAD]']
 
 
 class MelodyLoader:

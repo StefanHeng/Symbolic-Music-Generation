@@ -93,6 +93,8 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # ic(self.config)
+        # exit(1)
 
     def forward(
             self, input_ids=None, mems=None, head_mask=None, inputs_embeds=None, labels=None,
@@ -147,22 +149,26 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
         )
 
 
-def get_model_n_tokenizer(model_name: str, prec: int = 5) -> Tuple[LMTTokenizer, TransfoXLLMHeadModel]:
+def get_model_n_tokenizer(
+        model_name: str, prec: int = 5, model_config: Dict = None
+) -> Tuple[LMTTokenizer, TransfoXLLMHeadModel]:
     conf = TransfoXLConfig()
 
     if 'debug' in model_name:
-        n_tok = 1024 if 'large' in model_name else 8
+        n_tok = 512 if 'large' in model_name else 8
     else:
         assert 'small' in model_name
-        n_tok = 2048
+        n_tok = 1024
     conf.update(dict(d_model=n_tok))
+    if model_config is not None:
+        conf.update(model_config)
     model_ = MyTransfoXLLMHeadModel(conf)  # Initialize weights from scratch
-    tokenizer_ = LMTTokenizer(prec=prec, model_max_length=n_tok)
+    tokenizer_ = LMTTokenizer(prec=prec, model_max_length=model_.config.d_model)
     return tokenizer_, model_
 
 
-def get_train_args(model_name: str) -> TrainingArguments:
-    train_args = {
+def get_train_args(model_name: str, train_args: Dict = None) -> TrainingArguments:
+    train_args_ = {
         'debug': dict(
             batch_size=4,
             learning_rate=5e-4,
@@ -171,7 +177,8 @@ def get_train_args(model_name: str) -> TrainingArguments:
             num_train_epochs=8,
         ),
         'debug-large': dict(
-            batch_size=32,
+            batch_size=8,  # To fit in colab
+            gradient_accumulation_steps=4,
             learning_rate=5e-5,
             weight_decay=1e-2,
             lr_scheduler_type=SchedulerType.CONSTANT,
@@ -185,13 +192,15 @@ def get_train_args(model_name: str) -> TrainingArguments:
             num_train_epochs=32
         )
     }
-    bsz, lr, decay, sch, n_ep = (train_args[model_name][k] for k in (
-        'batch_size', 'learning_rate', 'weight_decay', 'lr_scheduler_type', 'num_train_epochs'
+    bsz, lr, decay, sch, n_ep, gas = (train_args_[model_name].get(k, None) for k in (
+        'batch_size', 'learning_rate', 'weight_decay',
+        'lr_scheduler_type', 'num_train_epochs', 'gradient_accumulation_steps'
     ))
     args = dict(
         output_dir=os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, now(sep='-')),
         do_train=True, do_eval=False,
         per_device_train_batch_size=bsz, per_gpu_eval_batch_size=bsz,
+        gradient_accumulation_steps=gas,
         learning_rate=lr,  # TODO: what to set?
         weight_decay=decay,
         adam_beta1=0.9,
@@ -205,13 +214,18 @@ def get_train_args(model_name: str) -> TrainingArguments:
         logging_strategy='steps',
         logging_steps=1,
         save_strategy='epoch',
-        fp16=torch.cuda.is_available(),
-        fp16_full_eval=torch.cuda.is_available(),
+        # fp16=torch.cuda.is_available(),
+        # Doesn't work per `TransfoXL.forward`:
+        # `index_copy_(): self and source expected to have the same dtype, but got (self) Float and (source) Half`
+        fp16=False,
         optim=OptimizerNames.ADAMW_TORCH,
         disable_tqdm=True,
         report_to='none',
-        gradient_checkpointing=torch.cuda.is_available()
+        # gradient_checkpointing=torch.cuda.is_available()
+        gradient_checkpointing=False  # Doesn't work for `TransfoXL`
     )
+    if train_args is not None:
+        args.update(train_args)
     args = {k: v for k, v in args.items() if v is not None}
     return TrainingArguments(**args)
 
@@ -255,10 +269,11 @@ def compute_metrics(eval_pred):
 
 
 def get_all_setup(
-        model_name: str, dataset_name: str, prec: int = 5, n_sample=None, random_seed=None
+        model_name: str, dataset_name: str, prec: int = 5, n_sample=None, random_seed=None,
+        model_config: Dict = None, train_args: Dict = None
 ) -> Tuple[TransfoXLLMHeadModel, LMTTokenizer, datasets.Dataset, Trainer]:
-    tokenizer_, model_ = get_model_n_tokenizer(model_name, prec=prec)
-    args = get_train_args(model_name)
+    tokenizer_, model_ = get_model_n_tokenizer(model_name, prec=prec, model_config=model_config)
+    args = get_train_args(model_name, train_args)
     tr = get_dataset(
         dataset_name, map_func=lambda d: tokenizer_(d['text'], padding='max_length', truncation=True),
         remove_columns=['title', 'text'], n_sample=n_sample, random_seed=random_seed

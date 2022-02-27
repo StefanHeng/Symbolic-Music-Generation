@@ -1,7 +1,3 @@
-import os
-
-from icecream import ic
-
 from util import *
 
 
@@ -10,33 +6,11 @@ d_allie = dict(
     nm='Allie-Chord-Embedding',
     nm_data='full_song_objects.pickle'
 )
-fnm = os.path.join('..', '..', '..', DIR_DSET, d_allie['dir_nm'], d_allie['nm_data'])
+fnm = os.path.join(PATH_BASE, DIR_DSET, d_allie['dir_nm'], d_allie['nm_data'])
 d_allie['n_entry'] = len(read_pickle(fnm)[0])
 
 
-def get_tokenizer():
-    n_special = 2 ** 7
-    half = n_special / 2
-    encoder = {
-        '[SEP]': 0,  # Bar separation
-        '[TRIP]': 1,  # Last quarter encoding for triplets
-        '[PAD]': 2,  # Will not occur in melody
-        '[REST]': int(half)
-    }
-    vocab_special = list(encoder.keys())
-    # pitch midi follows after `n_special`
-    encoder.update({pitch: pitch+n_special for pitch in range(2**7)})  # Per MIDI spec
-    decoder = {v: k_ for k_, v in encoder.items()}
-    assert len(encoder) == len(decoder)  # should be a one-to-one map
-    return dict(
-        n_special_token=n_special,
-        vocab_special=vocab_special,
-        encoder=encoder,
-        decoder=decoder
-    )
-
-
-config = {
+config: dict = {
     DIR_DSET: dict(
         Allie_Chords=d_allie,
         LMD_matched=dict(
@@ -74,12 +48,6 @@ config = {
             dir_nm='MNLP-Combined'
         )
     ),
-    'Melody-Extraction': dict(
-        tokenizer=get_tokenizer(),
-        output=dict(
-            BPM=120
-        )
-    ),
     'random-seed': 77,
 }
 
@@ -98,10 +66,11 @@ if __name__ == '__main__':
     import json
     from data_path import *
 
+    from icecream import ic
+
     fl_nm = 'config.json'
     ic(config)
     print(config)
     open(fl_nm, 'a').close()  # Create file in OS
-    with open(os.path.join(PATH_BASE, DIR_PROJ, 'util', fl_nm), 'w') as f:
+    with open(os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util', fl_nm), 'w') as f:
         json.dump(config, f, indent=4)
-

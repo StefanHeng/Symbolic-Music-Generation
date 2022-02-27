@@ -154,7 +154,7 @@ def flatten_notes(notes: Iterable[ExtNote]) -> Iterator[SNote]:
 
 def unpack_notes(
         notes: List[ExtNote]
-) -> tuple[List[SNote], object]:
+) -> Tuple[List[SNote], object]:
     """
     :param notes: Notes representation with tuplets in tuples
     :return: 2-tuple of flattened notes, and a cache for reconstructing the packed tuple representation

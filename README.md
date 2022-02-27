@@ -16,7 +16,7 @@ as instructed.
 
 Run 
 ```bash
-$ python config.py
+python musicnlp/util/config.py
 ```
 
 A folder named as `DIR_DSET` should be kept at the same level as 
