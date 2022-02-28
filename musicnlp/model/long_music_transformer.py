@@ -18,6 +18,8 @@ from musicnlp.util.train import PT_LOSS_PAD, MyTrainer
 from musicnlp.preprocess import MusicVocabulary
 
 
+# PreTrainedTokenizer._convert_token_to_id
+# PreTrainedTokenizer.prepare_for_model
 class LMTTokenizer(PreTrainedTokenizer):
     """
     Conversion between music tokens & int ids
@@ -300,9 +302,10 @@ if __name__ == '__main__':
         # ic(dset, dset[:2])
 
         tkzer = LMTTokenizer(model_max_length=12)
-        ic(tkzer)
-        txt = dset[0]['text']
+        ic(tkzer, tkzer.model_max_length)
+        txt = dset[1]['text']
         # txt = dset[:3]['text']
+        # Turning off both `padding` & `truncation`, and the token ids too long warning appears
         input_ = tkzer(txt, padding='max_length', truncation=True)
         ic(input_)
         # ic(len(input_['input_ids']))
@@ -316,8 +319,8 @@ if __name__ == '__main__':
     md_nm = 'debug'
     # md_nm = 'debug-large'
 
-    n = 4
-    # n = None
+    # n = 4
+    n = None
 
     mdl, tokenizer, dset_tr, trainer = get_all_setup(model_name=md_nm, dataset_name=fnm, n_sample=n, random_seed=seed)
     trainer.train()

@@ -52,6 +52,7 @@ class MyTrainer(Trainer):
         # ========================== Begin of added ==========================
         inputs: Dict[str, torch.Tensor]
         if self.clm_acc_logging and 'labels' in inputs:
+            from icecream import ic
             # ic(outputs)
             ic(outputs.logits)  # TODO
             preds = outputs.logits.detach().argmax(axis=-1)
@@ -161,7 +162,8 @@ class ColoredPrinterCallback(TrainerCallback):
             'step', 'epoch', 'train_loss', 'eval_loss', 'train_acc', 'eval_acc', 'learning_rate'
         ]
         fmt = [
-            f':>{len(str(self.n_step))}', ':6.2f', ':7.4f', ':7.4f', ':6.2f', ':6.2f', ':.2e'
+            f':>{len(str(self.n_step))}', f':{len(str(self.trainer.args.num_train_epochs))+4}.3f',
+            ':7.4f', ':7.4f', ':6.2f', ':6.2f', ':.2e'
         ]
         s_fmts = [f'{{{k}{fmt_}}}' for k, fmt_ in zip(keys_, fmt)]  # Enforce ordering
 

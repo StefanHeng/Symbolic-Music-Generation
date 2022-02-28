@@ -67,51 +67,17 @@ class MusicExport:
         """
         with open(os.path.join(path_out, f'{fnm}.json')) as f:
             dset_: Dict = json.load(f)
-        train = dset_['music']  # TODO: All data as training?
+        tr = dset_['music']  # TODO: All data as training?
 
         def prep_entry(d: Dict) -> Dict:
             del d['warnings']
             return d
         dset = datasets.Dataset.from_pandas(
-            pd.DataFrame([prep_entry(d) for d in train]),
+            pd.DataFrame([prep_entry(d) for d in tr]),
             info=datasets.DatasetInfo(description=json.dumps(dict(precision=dset_['precision'])))
         )
-
         dset.save_to_disk(os.path.join(path_out, 'hf_datasets', fnm))
         return dset
-
-    @staticmethod
-    def json2warn_df(fnm: str, path_out=config('path-export')) -> pd.DataFrame:
-        """
-        Aggregate warnings as a pandas Dataframe
-        """
-        with open(os.path.join(path_out, f'{fnm}.json')) as f:
-            dset_: Dict = json.load(f)
-        entries = dset_['music']
-
-        def entry2df(d: Dict) -> pd.DataFrame:
-            def prep_warn(d_warn: Dict) -> Dict:
-                d_out = dict()
-                d_out['src'] = d['title']
-                d_out['type'] = d_warn.pop('warn_name', None)
-                d_out['args'] = json.dumps(d_warn)
-                return d_out
-            return pd.DataFrame([prep_warn(d) for d in d['warnings']])
-        return pd.concat([entry2df(e) for e in entries])
-
-
-def warn_df2stats(df: pd.DataFrame) -> Tuple[int, pd.DataFrame]:
-    """
-    Get statistics about warnings logged
-
-    Average warning, per song
-    """
-    n_song = df.src.nunique()
-    counts = df.type.value_counts()
-    df = counts.to_frame(name='total_count').reset_index()  # Have `index` as a column
-    df.rename(columns={'index': 'type'}, inplace=True)
-    df['average_count'] = df.apply(lambda x: x.total_count / n_song, axis=1)
-    return n_song, df
 
 
 if __name__ == '__main__':
@@ -130,12 +96,4 @@ if __name__ == '__main__':
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
     json2dset()
-
-    def json2warn():
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-22 19-00-40'
-        df = me.json2warn_df(fnm)
-        ic(df)
-
-        ic(warn_df2stats(df))
-    # json2warn()
 

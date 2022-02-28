@@ -5,6 +5,7 @@ See `melody_extractor` for the old version.
 """
 
 import sys
+from enum import Enum
 from collections import defaultdict, Counter
 
 from music21.stream import Score, Measure, Voice
@@ -233,6 +234,18 @@ class WarnLog:
             return self.warnings[self.idx_track:]
 
 
+class TokenType(Enum):
+    time_sig, tempo, duration, pitch, special = list(range(5))
+
+    @classmethod
+    def compact(cls) -> Iterator['TokenType']:
+        """
+        :return: Iterator of all token types with compact representation
+        """
+        for i in range(4):
+            yield cls(i)
+
+
 class MusicVocabulary:
     """
     Stores mapping between string tokens and integer ids
@@ -252,6 +265,10 @@ class MusicVocabulary:
     )
     # Uncommon Time Signatures in music theory, but empirically seen in MIDI data
     UNCOM_TSS: List[TsTup] = [(1, 4)]
+
+    RE_INT = r'[1-9]\d*'
+    RE1 = rf'(?P<num>{RE_INT})'
+    RE2 = rf'(?P<numer>{RE_INT})/(?P<denom>{RE_INT})'
 
     def __init__(self, prec: int = 5, color: bool = False):
         """
@@ -273,6 +290,16 @@ class MusicVocabulary:
             eot=self.__getitem__('end_of_tuplet')
         )
         self.cache['rest'] = self.cache['pref_pch'] + specs['rest']
+
+        self.type2compact_re = {
+            TokenType.duration: dict(
+                int=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE1}$'),
+                frac=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE2}$'),
+            ),
+            TokenType.pitch: re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$'),
+            TokenType.time_sig: re.compile(rf'^{self.cache["pref_time_sig"]}{MusicVocabulary.RE2}$'),
+            TokenType.tempo: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE1}$')
+        }
 
         def elm2str(elm):
             return self.__call__(elm, color=False, return_int=False)
@@ -311,6 +338,65 @@ class MusicVocabulary:
 
     def __len__(self):
         return len(self.enc)
+
+    def has_compact(self, tok: str) -> bool:
+        return self.type(tok) != TokenType.special
+
+    def type(self, tok: str) -> TokenType:
+        if self.cache['pref_dur'] in tok:
+            return TokenType.duration
+        elif self.cache['pref_pch'] in tok:
+            return TokenType.pitch
+        elif self.cache['pref_time_sig'] in tok:
+            return TokenType.time_sig
+        elif self.cache['pref_tempo'] in tok:
+            return TokenType.tempo
+        else:
+            return TokenType.special
+
+    @staticmethod
+    def _get_group1(tok, tpl) -> int:
+        return int(tpl.match(tok).group('num'))
+
+    @staticmethod
+    def _get_group2(tok, tpl) -> Tuple[int, int]:
+        m = tpl.match(tok)
+        return int(m.group('numer')), int(m.group('denom'))
+
+    def compact(self, tok: str) -> Union[TsTup, int, float]:
+        """
+        Convert tokens to the numeric format
+
+        More compact, intended for statistics
+
+        Raise error is special tokens passed
+
+        :return: If time signature, returns 2-tuple of (int, int),
+            If tempo, returns integer of tempo number
+            If pitch, returns the pitch MIDI number
+            If duration, returns the duration quarterLength
+        """
+        if self.has_compact(tok):
+            typ = self.type(tok)
+            tpl = self.type2compact_re[typ]
+            if typ == TokenType.duration:
+                if '/' in tok:
+                    return MusicVocabulary._get_group2(tok, tpl['frac'])
+                else:
+                    return MusicVocabulary._get_group1(tok, tpl['int'])
+            elif typ == TokenType.pitch:
+                if tok == self.cache['rest']:
+                    return 0
+                else:
+                    pch, octave = MusicVocabulary._get_group2(tok, tpl)
+                    return pch-1 + octave*12  # See `pch2step`
+            elif typ == TokenType.time_sig:
+                return MusicVocabulary._get_group2(tok, tpl)
+            else:
+                assert typ == TokenType.tempo
+                return MusicVocabulary._get_group1(tok, tpl)
+        else:
+            raise ValueError(f'{tok} does not have a compact representation')
 
     def _colorize_spec(self, s: str, color: bool = None) -> str:
         c = self.color if color is None else color
@@ -1140,7 +1226,7 @@ if __name__ == '__main__':
 
             # s = mt(fnm, exp='visualize')
             # print(s)
-    encode_a_few()
+    # encode_a_few()
 
     def check_vocabulary():
         vocab = MusicVocabulary()
@@ -1151,3 +1237,17 @@ if __name__ == '__main__':
         # toks = mt(fnm, exp='str')
         # ic(vocab.encode(toks[:20]))
     # check_vocabulary()
+
+    def check_vocab_compact():
+        from collections import defaultdict
+        vocab = MusicVocabulary()
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
+        with open(os.path.join(config('path-export'), f'{fnm}.json')) as f:
+            text = json.load(f)['music'][0]['text']
+        toks = sorted(text.split())  # Required for `itertools.groupby()`
+        # ic(toks[:20], len(toks))
+        compacts = set(TokenType.compact())
+        type2toks = {k: list(v) for k, v in itertools.groupby(toks, key=lambda tok: vocab.type(tok))}
+        type2toks = {k: list(vocab.compact(t) for t in v) for k, v in type2toks.items() if k in compacts}
+        ic(type2toks)
+    check_vocab_compact()
