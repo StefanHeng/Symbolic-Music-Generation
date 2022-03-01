@@ -1,7 +1,7 @@
 from typing import Any
 from warnings import warn
 
-from musicnlp.util.music_preprocess import *
+from musicnlp.util.music import *
 
 
 def bars2lst_bar_n_ts(bars) -> List[Tuple[m21.stream.Measure, m21.meter.TimeSignature]]:

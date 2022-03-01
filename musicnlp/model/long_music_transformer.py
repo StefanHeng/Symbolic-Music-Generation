@@ -3,15 +3,15 @@ Proposed method: Transformer-XL on compact melody & bass representation for musi
 """
 from typing import Optional
 
+import torch
+import datasets
+from tokenizers import AddedToken
 from transformers import TransfoXLConfig, TransfoXLLMHeadModel
 from transformers.file_utils import ModelOutput
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
 from transformers import Trainer
 from transformers.training_args import OptimizerNames
-import datasets
-from tokenizers import AddedToken
-import torch
 
 from musicnlp.util import *
 from musicnlp.util.train import PT_LOSS_PAD, MyTrainer
@@ -313,16 +313,17 @@ if __name__ == '__main__':
         ic(tkzer.decode(ids_))
     # implementation_check()
 
-    seed = config('random-seed')
-    transformers.set_seed(seed)
+    def train():
+        seed = config('random-seed')
+        transformers.set_seed(seed)
 
-    md_nm = 'debug'
-    # md_nm = 'debug-large'
+        md_nm = 'debug'
+        # md_nm = 'debug-large'
 
-    # n = 4
-    n = None
+        # n = 4
+        n = None
 
-    mdl, tokenizer, dset_tr, trainer = get_all_setup(model_name=md_nm, dataset_name=fnm, n_sample=n, random_seed=seed)
-    trainer.train()
-    trainer.save_model(os.path.join(trainer.args.output_dir, 'final-trained'))
-
+        mdl, tokenizer, dset_tr, trainer = get_all_setup(model_name=md_nm, dataset_name=fnm, n_sample=n, random_seed=seed)
+        trainer.train()
+        trainer.save_model(os.path.join(trainer.args.output_dir, 'final-trained'))
+    # train()

@@ -18,14 +18,19 @@ import sty
 import colorama
 import numpy as np
 import pandas as pd
-from matplotlib import rcParams
+import matplotlib.pyplot as plt
 import seaborn as sns
 
 
 from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM, DIR_DSET, DIR_MDL
 
 
-rcParams['figure.constrained_layout.use'] = True
+pd.set_option('expand_frame_repr', False)
+pd.set_option('display.precision', 2)
+pd.set_option('max_colwidth', 40)
+
+plt.rcParams['figure.constrained_layout.use'] = True
+plt.rcParams['figure.figsize'] = (16, 9)
 sns.set_style('darkgrid')
 
 nan = float('nan')

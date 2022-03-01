@@ -7,7 +7,6 @@ from copy import deepcopy
 from typing import Iterator
 from fractions import Fraction
 
-import matplotlib.pyplot as plt
 import music21 as m21
 from music21.meter import TimeSignature
 from music21.note import Note, Rest

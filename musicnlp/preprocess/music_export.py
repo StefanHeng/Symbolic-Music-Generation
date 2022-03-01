@@ -5,10 +5,6 @@ from musicnlp.util import *
 from music_extractor import MusicExtractor
 
 
-pd.set_option('expand_frame_repr', False)
-pd.set_option('display.precision', 2)
-
-
 class MusicExport:
     """
     Batch export extracted/tokenized music from `MusicTokenizer` in a more accessible format
@@ -48,10 +44,11 @@ class MusicExport:
         for i_fl, fnm in tqdm(enumerate(fnms), total=len(fnms)):
             if self.verbose:
                 log(f'Extracting file {logi(stem(fnm))}... ')
-            txt = me_(fnm, exp=exp)
+            txt, secs = me_(fnm, exp=exp, return_duration=True)
             lst_out.append(dict(
                 title=me_.title,  # No parallelism, title of current processed music file
-                text=txt, warnings=me_.logger.tracked(exp='serialize')
+                text=txt, warnings=me_.logger.tracked(exp='serialize'),
+                duration=secs
             ))
         if dnm_ is not None:
             fnm_out += f', dnm={dnm_}'
@@ -88,12 +85,12 @@ if __name__ == '__main__':
     def export2json():
         dnm = 'POP909'
         me(dnm)
-    # export2json()
+    export2json()
 
     def json2dset():
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody,  2022-02-22 19-00-40'
         fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
-    json2dset()
+    # json2dset()
 
