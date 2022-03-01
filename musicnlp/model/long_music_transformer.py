@@ -15,11 +15,8 @@ from transformers.training_args import OptimizerNames
 
 from musicnlp.util import *
 from musicnlp.util.train import PT_LOSS_PAD, MyTrainer
-from musicnlp.preprocess import MusicVocabulary
 
 
-# PreTrainedTokenizer._convert_token_to_id
-# PreTrainedTokenizer.prepare_for_model
 class LMTTokenizer(PreTrainedTokenizer):
     """
     Conversion between music tokens & int ids

@@ -11,8 +11,8 @@ from music21.stream import Score, Measure, Voice
 from music21.tempo import MetronomeMark
 from music21.duration import Duration
 
-from musicnlp.util.music import *
-from musicnlp.util.music_vocab import MusicVocabulary
+from musicnlp.util import *
+from musicnlp.util.music_lib import *
 
 
 pd.set_option('display.max_columns', None)  # TODO

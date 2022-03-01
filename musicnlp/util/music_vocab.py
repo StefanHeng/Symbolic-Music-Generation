@@ -4,14 +4,14 @@ from typing import Set
 from music21.pitch import Pitch
 from music21.tempo import MetronomeMark
 
-from musicnlp.util.music import *
+from musicnlp.util.music_lib import *
 
 
-class TokenType(Enum):
+class VocabType(Enum):
     time_sig, tempo, duration, pitch, special = list(range(5))
 
     @classmethod
-    def compact(cls) -> Iterator['TokenType']:
+    def compact(cls) -> Iterator['VocabType']:
         """
         :return: Iterator of all token types with compact representation
         """
@@ -24,15 +24,20 @@ class MusicVocabulary:
     Stores mapping between string tokens and integer ids
     & support the conversion, from relevant `music21` objects to [`str`, `int] conversion
     """
+    start_of_tuplet = '<tup>'
+    end_of_tuplet = '</tup>'
+    start_of_bar = '<bar>'
+    end_of_song = '</s>'
+
     SPEC_TOKS = dict(
         sep='_',  # Separation
         rest='r',
         prefix_pitch='p',
         prefix_duration='d',
-        start_of_tuplet='<tup>',
-        end_of_tuplet='</tup>',
-        start_of_bar='<bar>',
-        end_of_song='</s>',
+        start_of_tuplet=start_of_tuplet,
+        end_of_tuplet=end_of_tuplet,
+        start_of_bar=start_of_bar,
+        end_of_song=end_of_song,
         prefix_time_sig='TimeSig',
         prefix_tempo='Tempo'
     )
@@ -62,19 +67,19 @@ class MusicVocabulary:
             bot=self.__getitem__('start_of_tuplet'),
             eot=self.__getitem__('end_of_tuplet')
         )
-        self.cache['rest'] = self.cache['pref_pch'] + specs['rest']
+        self.rest = self.cache['rest'] = self.cache['pref_pch'] + specs['rest']
 
         self.type2compact_re = {
-            TokenType.duration: dict(
+            VocabType.duration: dict(
                 int=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE1}$'),
                 frac=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE2}$'),
             ),
-            TokenType.pitch: re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$'),
-            TokenType.time_sig: re.compile(rf'^{self.cache["pref_time_sig"]}{MusicVocabulary.RE2}$'),
-            TokenType.tempo: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE1}$')
+            VocabType.pitch: re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$'),
+            VocabType.time_sig: re.compile(rf'^{self.cache["pref_time_sig"]}{MusicVocabulary.RE2}$'),
+            VocabType.tempo: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE1}$')
         }
 
-        self.compacts: Set[TokenType] = set(TokenType.compact())
+        self.compacts: Set[VocabType] = set(VocabType.compact())
 
         def elm2str(elm):
             return self.__call__(elm, color=False, return_int=False)
@@ -115,19 +120,19 @@ class MusicVocabulary:
         return len(self.enc)
 
     def has_compact(self, tok: str) -> bool:
-        return self.type(tok) != TokenType.special
+        return self.type(tok) != VocabType.special
 
-    def type(self, tok: str) -> TokenType:
+    def type(self, tok: str) -> VocabType:
         if self.cache['pref_dur'] in tok:
-            return TokenType.duration
+            return VocabType.duration
         elif self.cache['pref_pch'] in tok:
-            return TokenType.pitch
+            return VocabType.pitch
         elif self.cache['pref_time_sig'] in tok:
-            return TokenType.time_sig
+            return VocabType.time_sig
         elif self.cache['pref_tempo'] in tok:
-            return TokenType.tempo
+            return VocabType.tempo
         else:
-            return TokenType.special
+            return VocabType.special
 
     @staticmethod
     def _get_group1(tok, tpl) -> int:
@@ -138,7 +143,7 @@ class MusicVocabulary:
         m = tpl.match(tok)
         return int(m.group('numer')), int(m.group('denom'))
 
-    def compact(self, tok: str) -> Union[TsTup, int, float]:
+    def compact(self, tok: str) -> Union[TsTup, int, Dur]:
         """
         Convert tokens to the numeric format
 
@@ -154,21 +159,24 @@ class MusicVocabulary:
         if self.has_compact(tok):
             typ = self.type(tok)
             tpl = self.type2compact_re[typ]
-            if typ == TokenType.duration:
+            if typ == VocabType.duration:
                 if '/' in tok:
-                    return MusicVocabulary._get_group2(tok, tpl['frac'])
+                    numer, denom = MusicVocabulary._get_group2(tok, tpl['frac'])
+                    assert math.log2(denom).is_integer()
+                    # Quantized so definitely an exact float, but keep Fraction for exact additions
+                    return Fraction(numer, denom)
                 else:
                     return MusicVocabulary._get_group1(tok, tpl['int'])
-            elif typ == TokenType.pitch:
+            elif typ == VocabType.pitch:
                 if tok == self.cache['rest']:
                     return -1
                 else:
                     pch, octave = MusicVocabulary._get_group2(tok, tpl)
                     return pch-1 + octave*12  # See `pch2step`
-            elif typ == TokenType.time_sig:
+            elif typ == VocabType.time_sig:
                 return MusicVocabulary._get_group2(tok, tpl)
             else:
-                assert typ == TokenType.tempo
+                assert typ == VocabType.tempo
                 return MusicVocabulary._get_group1(tok, tpl)
         else:
             raise ValueError(f'{tok} does not have a compact representation')

@@ -4,6 +4,7 @@ from musicnlp.util import *
 from musicnlp.model import LMTTokenizer
 from musicnlp.postprocess import MusicStats
 
+
 class MusicVisualize:
     """
     Visualize dataset info given json as extracted input representation
@@ -16,6 +17,7 @@ class MusicVisualize:
 
         prec = self.dset['precision']
         self.tokenizer = LMTTokenizer(prec=prec)
+        self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=prec)
         self.df = self._get_song_info()
 
@@ -31,6 +33,7 @@ class MusicVisualize:
             (numer, denom), d['tempo'] = list(ttc['time_sig'].keys())[0], list(ttc['tempo'].keys())[0]
             d['time_sig'] = f'{numer}/{denom}'
             d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
+            d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
             return d
         return pd.DataFrame([extract_info(e) for e in entries[:128]])  # TODO: debugging
 
@@ -64,13 +67,14 @@ class MusicVisualize:
             plt.ylabel('count')
         MusicVisualize._plot_wrapper(callback)
 
-    def note_pitch_dist(self):
+    def note_pitch_dist(self, weighted=True):
         counts = Counter()
-        for d in self.df.pitch_count:
+        for d in (self.df.weighted_pitch_count if weighted else self.df.pitch_count):
             counts.update(d)
+        ic(counts)
         df = pd.DataFrame([(k, v) for k, v in counts.items()], columns=['pitch', 'count'])
         ma, mi = df.pitch.max(), df.pitch.min()
-        assert mi == -1
+        assert mi == self.vocab.compact(self.vocab.rest)
         ax = sns.histplot(
             data=df, x='pitch', weights='count', kde=True,
             bins=ma-mi+1, kde_kws=dict(bw_adjust=0.5)
@@ -79,7 +83,7 @@ class MusicVisualize:
         ax.set_xticks(pch_ints, labels=[self.tokenizer.vocab.pitch_midi2name(p) for p in pch_ints])
         plt.title('Histogram of pitch across all songs')
         plt.xlabel('Pitch')
-        plt.ylabel('count')
+        plt.ylabel('count, weighted' if weighted else 'count')
         plt.show()
 
     @property

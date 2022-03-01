@@ -402,6 +402,15 @@ def stem(path, ext=False):
     return os.path.basename(path) if ext else pathlib.Path(path).stem
 
 
+def get_extracted_song_eg(
+        fnm='musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06',
+        dir_=config('path-export')
+) -> str:
+    with open(os.path.join(dir_, f'{fnm}.json')) as f:
+        text = json.load(f)['music'][0]['text']
+    return text
+
+
 if __name__ == '__main__':
     from icecream import ic
 

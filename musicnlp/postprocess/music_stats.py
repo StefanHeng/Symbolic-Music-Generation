@@ -1,14 +1,18 @@
+from fractions import Fraction
 from collections import Counter
 
 from musicnlp.util import *
-from musicnlp.util.music import Dur
-from musicnlp.preprocess import MusicVocabulary
+from musicnlp.util.music_lib import Dur
+from musicnlp.postprocess import ElmType, MusicConverter
 
 
 class MusicStats:
-    def __init__(self, prec: int = 5):
+    def __init__(self, prec: int = 5, converter_kw: Dict = None):
         self.prec = prec
-        self.vocab = MusicVocabulary(prec=prec, color=False)
+        if converter_kw is None:
+            converter_kw = dict()
+        self.converter = MusicConverter(prec=prec, **converter_kw)
+        self.vocab: MusicVocabulary = self.converter.vocab
 
     def vocab_type_counts(self, toks: Iterable[str]) -> Dict[str, Counter]:
         """
@@ -26,18 +30,32 @@ class MusicStats:
         """
         :return: counts for pitch, weighed by the duration in quarter length
         """
+        if not isinstance(toks, list):
+            toks = list(toks)
+        notes = [elm for elm in self.converter.str2notes(toks) if elm[0] in [ElmType.note, ElmType.tuplets]]
+
+        def elm2notes(elm: Tuple[ElmType, Tuple]):
+            typ, compacts = elm
+            if typ == ElmType.note:
+                return [compacts]
+            else:
+                comps_p, comp_d = compacts
+                comp_d = Fraction(comp_d, len(comps_p))
+                return [(comp_p, comp_d) for comp_p in comps_p]
+
+        note_n_dur = sorted(sum((elm2notes(elm) for elm in notes), start=[]))
+        pch2dur = {
+            pch: [pair[1] for pair in pairs] for pch, pairs in itertools.groupby(note_n_dur, key=lambda pair: pair[0])
+        }
+        return {pch: sum(durs) for pch, durs in pch2dur.items()}
 
 
 if __name__ == '__main__':
     from icecream import ic
 
-    fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
     ms = MusicStats()
+    text = get_extracted_song_eg()
+    toks_ = text.split()
 
-    def check_vocab_type():
-        with open(os.path.join(config('path-export'), f'{fnm}.json')) as f:
-            text = json.load(f)['music'][0]['text']
-        toks = text.split()
-
-        ic(ms.vocab_type_counts(toks))
-    check_vocab_type()
+    # ic(ms.vocab_type_counts(toks))
+    ic(ms.weighted_pitch_counts(toks_))
