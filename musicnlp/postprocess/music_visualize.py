@@ -1,4 +1,3 @@
-import math
 from copy import deepcopy
 from fractions import Fraction
 from collections import Counter
@@ -52,42 +51,46 @@ class MusicVisualize:
             return d
         return pd.DataFrame([extract_info(e) for e in entries])
 
-    def _simple_hist(self, col_name: str, title: str, xlabel: str, **kwargs):
+    def hist_wrapper(self, col_name: str, title: str, xlabel: str, callback: Callable = None, **kwargs):
         self._load_df()
-        sns.histplot(data=self.df, x=col_name, **kwargs)
+        kwargs = dict(kde=True) | kwargs
+        ax = sns.histplot(data=self.df, x=col_name, **kwargs)
         plt.title(title)
         plt.xlabel(xlabel)
         plt.ylabel('count')
+        if callback is not None:
+            callback(ax)
         plt.show()
 
     def token_length_dist(self):
-        self._simple_hist(col_name='n_token', title='Histogram of #encoded tokens per song', xlabel='#encoded tokens')
+        self.hist_wrapper(col_name='n_token', title='Histogram of #encoded tokens per song', xlabel='#encoded tokens')
 
     def bar_count_dist(self):
-        self._simple_hist(col_name='n_bar', title='Histogram of #bars per song', xlabel='#bars')
+        self.hist_wrapper(col_name='n_bar', title='Histogram of #bars per song', xlabel='#bars')
 
     def tuplet_count_dist(self):
-        self._simple_hist(col_name='n_tup', title='Histogram of #tuplets per song', xlabel='#tuplets')
+        self.hist_wrapper(col_name='n_tup', title='Histogram of #tuplets per song', xlabel='#tuplets')
 
     def song_duration_dist(self):
+        def callback(ax):
+            x_tick_vals = plt.xticks()[0]
+            ax.set_xticks(x_tick_vals, labels=[sec2mmss(v) for v in x_tick_vals])
         self._load_df()
-        ax = sns.histplot(data=self.df, x='duration', kde=True)
-        x_tick_vals = plt.xticks()[0]
-        ax.set_xticks(x_tick_vals, labels=[sec2mmss(v) for v in x_tick_vals])
-        plt.title('Histogram of song duration')
-        plt.xlabel('duration (mm:ss)')
-        plt.ylabel('count')
-        plt.show()
+        self.hist_wrapper(
+            col_name='duration', title='Histogram of song duration', xlabel='duration (mm:ss)', callback=callback
+        )
 
     def time_sig_dist(self):
-        self._simple_hist(
+        self.hist_wrapper(
             col_name='time_sig', title='Histogram of time signature per song', xlabel='Time Signature', kde=False
         )
 
     def tempo_dist(self):
-        self._simple_hist(
+        def callback(ax):
+            ax.set_yscale('log')
+        self.hist_wrapper(
             col_name='tempo', title='Histogram of tempo per song', xlabel='Tempo/BPM',
-            kde=True, kde_kws=dict(bw_adjust=0.5)
+            kde=False, callback=callback
         )
 
     def note_pitch_dist(self, weighted=True):
@@ -182,9 +185,6 @@ class MusicVisualize:
         plt.title('Bar plot of warning type, ordered by severity, across all songs')
         plt.ylabel('Warning type ' + 'per song' if average else 'in total')
         plt.xlabel('count')
-        arr = df.average_count if average else df.total_count
-        # mi, ma = arr.min(), arr.max()
-        # plt.xlim([10**math.floor(math.log10(mi)), round_up_1digit(ma)])
         plt.show()
 
 
@@ -205,8 +205,8 @@ if __name__ == '__main__':
         # mv.bar_count_dist()
         # mv.tuplet_count_dist()
         # mv.song_duration_dist()
-        mv.time_sig_dist()
-        # mv.tempo_dist()
+        # mv.time_sig_dist()
+        mv.tempo_dist()
         # mv.note_pitch_dist()
         # mv.note_duration_dist()
         # mv.warning_type_dist()
