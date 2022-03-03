@@ -186,6 +186,8 @@ class ColoredPrinterCallback(TrainerCallback):
                 # Heuristics on the training step updates, see `Trainer._maybe_log_save_evaluate`
                 if self.mode == 'train' and all('runtime' not in k for k in logs):
                     logs['step'] = step = state.global_step
+                    assert logs['epoch'] == round(state.epoch, 2)
+                    logs['epoch'] = state.epoch  # The one originally is rounded, see `Trainer.log`
                     # Trainer internal uses `loss`, instead of `train_loss`
                     logs['train_loss'] = loss = logs.pop('loss', None)
                     assert loss is not None

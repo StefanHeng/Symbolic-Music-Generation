@@ -98,23 +98,42 @@ class MusicVocabulary:
         tempos = [elm2str(tp)[0] for tp in range(20, 220)]  # Expected normal song ranges
         pitches = [self.cache['rest']] + [self._note2pch_str(Pitch(midi=i)) for i in range(128)]
 
-        def get_durations():
-            bound = 6  # Support duration up to **6** in terms of `quarterLength`
-            dur_slot = 4 / 2**self.prec  # for durations in quarterLength; TODO: support for longer duration needed?
-            return [self._note2dur_str((i + 1) * dur_slot) for i in range(math.ceil(bound / dur_slot))]
-
         self.toks: Dict[str, List[str]] = dict(
             special=[specs[k] for k in ('end_of_song', 'start_of_bar', 'start_of_tuplet', 'end_of_tuplet')],
             time_sig=tss,
             tempo=tempos,
             pitch=pitches,
-            duration=get_durations()
+            duration=self.get_durations(exp='str')
         )
         self.enc: Dict[str, int] = {  # Back2back index as ids
             tok: id_ for id_, tok in enumerate(join_its(toks for toks in self.toks.values()))
         }
         self.dec = {v: k for k, v in self.enc.items()}
         assert len(self.enc) == len(self.dec)  # Sanity check: no id collision
+
+    def get_durations(self, bound: int = None, exp: str = 'str') -> Union[List[str], List[Dur]]:
+        """
+        :param bound: The upper bound for duration within a bar, in terms of `quarterLength`
+            By default, support duration up to **6**
+        :param exp: return type, one of ['str`, `dur`]
+            If str, returns duration token
+            If dur, returns `Dur`
+        :return: List of durations
+        """
+        if bound is None:
+            # TODO: support for longer duration needed?
+            bound = max(ts[0]/ts[1] for ts in COMMON_TIME_SIGS + MusicVocabulary.UNCOM_TSS) * 4
+            assert bound.is_integer()
+        dur_slot, denom = 4/2**self.prec, 2**self.prec/4
+        assert denom.is_integer()
+        denom = int(denom)
+        gen_numers = range(math.ceil(bound / dur_slot))
+        if exp == 'str':
+            return [self._note2dur_str((i+1) * dur_slot) for i in gen_numers]
+        else:
+            assert exp == 'dur'
+            ret = [Fraction(i+1, denom) for i in gen_numers]
+            return [int(f) if f.denominator == 1 else f for f in ret]
 
     def __len__(self):
         return len(self.enc)
@@ -300,3 +319,9 @@ class MusicVocabulary:
         else:
             return self.dec[id_]
 
+
+if __name__ == '__main__':
+    from icecream import ic
+
+    mv = MusicVocabulary()
+    ic(mv.get_durations(exp='dur'))

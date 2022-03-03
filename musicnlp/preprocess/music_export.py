@@ -93,4 +93,3 @@ if __name__ == '__main__':
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
     # json2dset()
-

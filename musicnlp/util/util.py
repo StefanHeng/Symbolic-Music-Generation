@@ -2,6 +2,7 @@ import os
 import re
 import glob
 import json
+import math
 import pickle
 import pathlib
 import logging
@@ -147,6 +148,12 @@ def fmt_dt(secs: Union[int, float, datetime.timedelta]):
 
 def sec2mmss(sec: int) -> str:
     return str(datetime.timedelta(seconds=sec))[2:]
+
+
+def round_up_1digit(num: int):
+    d = math.floor(math.log10(num))
+    fact = 10**d
+    return math.ceil(num/fact) * fact
 
 
 T = TypeVar('T')
