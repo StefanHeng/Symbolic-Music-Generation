@@ -125,9 +125,16 @@ def config(attr, force_update=False):
     return get(config.config, attr)
 
 
-def now(as_str=True, sep=':'):
+def now(as_str=True, for_path=False):
+    """
+    # Considering file output path
+    :param as_str: If true, returns string; otherwise, returns datetime object
+    :param for_path: If true, the string returned is formatted as intended for file system path
+    """
     d = datetime.datetime.now()
-    return d.strftime(f'%Y-%m-%d %H{sep}%M{sep}%S') if as_str else d  # Considering file output path
+    ic(d)
+    fmt = '%Y-%m-%d_%H-%M-%S' if for_path else '%Y-%m-%d %H:%M:%S'
+    return d.strftime(fmt) if as_str else d
 
 
 def fmt_dt(secs: Union[int, float, datetime.timedelta]):
