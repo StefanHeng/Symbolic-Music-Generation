@@ -1,10 +1,9 @@
-import sys
-
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
 
 from .util import *
+from .model import config2model_size
 
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
@@ -16,11 +15,9 @@ class MyTrainer(Trainer):
 
         self.clm_acc_logging = clm_acc_logging
 
-        out_dir = self.args.output_dir
-        # Enforce formatting of output directory, directory after `DIR_MDL`; see `long_music_transformer.py` for e.g.
-        paths = out_dir.split(os.sep)
-        idx_strt = paths.index(DIR_MDL)
-        self.name = '/'.join(paths[idx_strt+1:])  # Compatibility with tensorboard
+        from icecream import ic
+        self.name = self.model.__class__.__qualname__
+        ic('my trainer name', self.name)
         self.post_init()
 
     def post_init(self):
@@ -86,24 +83,7 @@ class ColoredPrinterCallback(TrainerCallback):
 
     Evaluation during training **not supported**
     """
-    def __init__(self, name='LMTTransformer training', parent_trainer: MyTrainer = None, report2tb: bool = True):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
-        had_handler = False
-        hd_attr_nm = 'name_for_my_logging'
-        for hd in self.logger.handlers:
-            if hasattr(hd, hd_attr_nm) and getattr(hd, hd_attr_nm) == name:
-                had_handler = True
-        if not had_handler:  # For ipython compatibility
-            handler = logging.StreamHandler(stream=sys.stdout)  # For my own coloring
-            handler.setLevel(logging.DEBUG)
-            handler.setFormatter(MyFormatter())
-            setattr(handler, hd_attr_nm, name)
-            self.logger.addHandler(handler)
-        self.logger_fl = logging.getLogger('trainer-file-write')  # Write out to file
-        self.logger_fl.setLevel(logging.DEBUG)
-        self.fl_handler = None
-
+    def __init__(self, name: str = None, parent_trainer: MyTrainer = None, report2tb: bool = True):
         self.mode = 'eval'
         self.t_strt, self.t_end = None, None
 
@@ -114,38 +94,40 @@ class ColoredPrinterCallback(TrainerCallback):
         lr, n_ep = args.learning_rate, args.num_train_epochs
         self.bsz = args.per_device_train_batch_size * args.gradient_accumulation_steps
         seq_max_len = len(dset_tr_[0]['input_ids'])
-        n_data, md_sz = len(dset_tr_), md_.config.d_model
+        n_data, md_sz = len(dset_tr_), config2model_size(md_.config)
         self.n_step = max(math.ceil(len(dset_tr_) // self.bsz), 1) * n_ep  # #step/epoch at least 1
         self.train_meta = OrderedDict([
             ('#data', n_data), ('model size', md_sz),
             ('learning rate', lr), ('batch shape', (self.bsz, seq_max_len)), ('#epochs', n_ep), ('#steps', self.n_step)
         ])
 
-        self.log_fnm_tpl = f'{name}, n={n_data}, l={md_sz}, a={lr}, bsz={self.bsz}, n_ep={n_ep}, {{}}'
-        self.log_fnm = None  # Current logging file name template & file instance during training
-        self.out_dir = self.trainer.args.output_dir
+        # self.save_time = now(for_path=True)
+        self.output_dir = self.trainer.args.output_dir
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.save_time = self.output_dir.split(os.sep)[-1]  # expect last dir name as time stamp
+        self.log_fnm = f'{name}, n={n_data}, l={md_sz}, a={lr}, bsz={self.bsz}, n_ep={n_ep}'
 
-        self.writer = None
+        if name is None:
+            name = 'MyTrainer'
+        self.name = f'{name} Training'
+        self.logger, self.logger_fl, self.writer = None, None, None
         self.report2tb = report2tb
-        if report2tb:
-            self.writer = SummaryWriter(os.path.join(PATH_BASE, DIR_PROJ, 'tb_log', self.trainer.name))
 
     def on_train_begin(self, args: TrainingArguments, state, control, **kwargs):
         self.mode = 'train'
 
-        self.logger_fl.removeHandler(self.fl_handler)  # Remove prior `FileHandler`, prep for next potential run
-        self.fl_handler = None
+        self.logger = get_logger(self.name)
+        self.logger_fl = get_logger(
+            name=self.name, typ='file-write', file_path=os.path.join(self.output_dir, f'{self.log_fnm}.log')
+        )
+        if self.report2tb:
+            # self.writer = SummaryWriter(os.path.join(self.out_dir, 'tb_log', self.trainer.name))
+            self.writer = SummaryWriter(os.path.join(self.output_dir, 'tb_log', self.trainer.name))
 
-        self.log_fnm = self.log_fnm_tpl.format(now(sep="-"))
-        # Set file write logging
-        os.makedirs(self.out_dir, exist_ok=True)
-        self.fl_handler = logging.FileHandler(os.path.join(self.out_dir, f'{self.log_fnm}.log'))
-        self.fl_handler.setLevel(logging.DEBUG)
-        self.fl_handler.setFormatter(MyFormatter(with_color=False))
-        self.logger_fl.addHandler(self.fl_handler)
-
-        self.logger.info(f'Training started with {log_dict(self.train_meta)}')
-        self.logger_fl.info(f'Training started with {log_dict(self.train_meta, with_color=False)}')
+        conf = self.trainer.model.config.to_dict()
+        self.logger.info(f'Training started with model {log_dict_pg(conf)} and args {log_dict_pg(self.train_meta)}... ')
+        self.logger_fl.info(f'Training started with with model {log_dict_id(conf)} and '
+                            f'args {log_dict_nc(self.train_meta)}... ')
 
         self.t_strt = datetime.datetime.now()
 

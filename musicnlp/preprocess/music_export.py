@@ -52,7 +52,7 @@ class MusicExport:
             ))
         if dnm_ is not None:
             fnm_out += f', dnm={dnm_}'
-        fnm_out += f', n={len(fnms)}, mode={mode}, {now(sep="-")}'
+        fnm_out += f', n={len(fnms)}, mode={mode}, {now(for_path=True)}'
         with open(os.path.join(path_out, f'{fnm_out}.json'), 'w') as f:
             # TODO: Knowing the extracted dict, expand only the first few levels??
             json.dump(dict(precision=prec, encoding_type=exp, music=lst_out), f, indent=4)
@@ -85,11 +85,12 @@ if __name__ == '__main__':
     def export2json():
         dnm = 'POP909'
         me(dnm)
-    export2json()
+    # export2json()
 
     def json2dset():
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody,  2022-02-22 19-00-40'
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
+        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
-    # json2dset()
+    json2dset()

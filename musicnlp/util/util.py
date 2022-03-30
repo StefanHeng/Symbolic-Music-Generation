@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import glob
 import json
 import math
@@ -10,7 +11,8 @@ import datetime
 import itertools
 import concurrent.futures
 from typing import Tuple, List, Dict
-from typing import Iterable, Callable, TypeVar, Union
+from typing import Any, Iterable, Callable, TypeVar, Union
+from pygments import highlight, lexers, formatters
 
 from functools import reduce
 from collections import OrderedDict
@@ -132,7 +134,6 @@ def now(as_str=True, for_path=False):
     :param for_path: If true, the string returned is formatted as intended for file system path
     """
     d = datetime.datetime.now()
-    ic(d)
     fmt = '%Y-%m-%d_%H-%M-%S' if for_path else '%Y-%m-%d %H:%M:%S'
     return d.strftime(fmt) if as_str else d
 
@@ -203,7 +204,7 @@ def conc_map(fn: Callable[[T], K], it: Iterable[T]) -> Iterable[K]:
         return executor.map(fn, it)
 
 
-def log(s, c: str = 'log', c_time='green', as_str=False):
+def log(s, c: str = 'log', c_time='green', as_str=False, pad: int = None):
     """
     Prints `s` to console with color `c`
     """
@@ -235,7 +236,7 @@ def log(s, c: str = 'log', c_time='green', as_str=False):
     if c in log.d:
         c = log.d[c]
     if as_str:
-        return f'{c}{s}{log.reset}'
+        return f'{c}{s:>{pad}}{log.reset}' if pad is not None else f'{c}{s}{log.reset}'
     else:
         print(f'{c}{log(now(), c=c_time, as_str=True)}| {s}{log.reset}')
 
@@ -251,16 +252,58 @@ def logi(s):
     return log_s(s, c='i')
 
 
-def log_dict(d: Dict = None, with_color=True, **kwargs) -> str:
+def is_float(x: Any, no_int=False, no_sci=False) -> bool:
+    try:
+        is_sci = isinstance(x, str) and 'e' in x.lower()
+        f = float(x)
+        is_int = f.is_integer()
+        out = True
+        if no_int:
+            out = out and (not is_int)
+        if no_sci:
+            out = out and (not is_sci)
+        return out
+    except (ValueError, TypeError):
+        return False
+
+
+def log_dict(d: Dict, with_color=True, pad_float: int = 5) -> str:
     """
     Syntactic sugar for logging dict with coloring for console output
     """
+    def _log_val(v):
+        if isinstance(v, dict):
+            return log_dict(v, with_color=with_color)
+        else:
+            if is_float(v):  # Pad only normal, expected floats, intended for metric logging
+                if is_float(v, no_int=True, no_sci=True):
+                    v = float(v)
+                    return log(v, c='i', as_str=True, pad=pad_float) if with_color else f'{v:>{pad_float}}'
+                else:
+                    return logi(v) if with_color else v
+            else:
+                return logi(v) if with_color else v
     if d is None:
-        d = kwargs
-    pairs = (f'{k}: {logi(v) if with_color else v}' for k, v in d.items())
+        d = dict()
+    pairs = (f'{k}: {_log_val(v)}' for k, v in d.items())
     pref = log_s('{', c='m') if with_color else '{'
     post = log_s('}', c='m') if with_color else '}'
     return pref + ', '.join(pairs) + post
+
+
+def log_dict_id(d: Dict) -> str:
+    """
+    Indented dict
+    """
+    return json.dumps(d, indent=4)
+
+
+def log_dict_pg(d: Dict) -> str:
+    return highlight(log_dict_id(d), lexers.JsonLexer(), formatters.TerminalFormatter())
+
+
+def log_dict_nc(d: Dict, **kwargs) -> str:
+    return log_dict(d, with_color=False, **kwargs)
 
 
 def hex2rgb(hx: str) -> Union[Tuple[int], Tuple[float]]:
@@ -345,7 +388,7 @@ class MyFormatter(logging.Formatter):
         self.with_color = with_color
 
         sty_kw, reset = MyFormatter.blue, MyFormatter.RESET
-        color_time = f'{color_time}{MyFormatter.KW_TIME}{sty_kw}| {reset}'
+        color_time = f'{color_time}{MyFormatter.KW_TIME}{sty_kw}|{reset}'
 
         def args2fmt(args_):
             if self.with_color:
@@ -371,6 +414,27 @@ class MyFormatter(logging.Formatter):
 
     def format(self, entry):
         return self.formatter[entry.levelno].format(entry)
+
+
+def get_logger(name: str, typ: str = 'stdout', file_path: str = None) -> logging.Logger:
+    """
+    :param name: Name of the logger
+    :param typ: Logger type, one of [`stdout`, `file-write`]
+    :param file_path: File path for file-write logging
+    """
+    assert typ in ['stdout', 'file-write']
+    logger = logging.getLogger(f'{name} file write' if typ == 'file-write' else name)
+    logger.handlers = []  # A crude way to remove prior handlers, ensure only 1 handler per logger
+    logger.setLevel(logging.DEBUG)
+    if typ == 'stdout':
+        handler = logging.StreamHandler(stream=sys.stdout)  # stdout for my own coloring
+    else:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        handler = logging.FileHandler(file_path)
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(MyFormatter(with_color=typ == 'stdout'))
+    logger.addHandler(handler)
+    return logger
 
 
 def assert_list_same_elms(lst: List[T]):

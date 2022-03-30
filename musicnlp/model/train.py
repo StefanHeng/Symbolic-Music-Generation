@@ -3,8 +3,7 @@ Proposed method: on compact melody & bass representation for autoregressive musi
     Trying Transformer-XL, Reformer
 """
 
-from transformers import TransfoXLConfig
-from transformers import PreTrainedModel
+from transformers import TransfoXLConfig, ReformerConfig, ReformerModelWithLMHead
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
 from transformers import Trainer
 from transformers.training_args import OptimizerNames
@@ -12,55 +11,106 @@ import datasets
 
 from musicnlp.util import *
 import musicnlp.util.train as train_util
+import musicnlp.util.model as model_util
 from musicnlp.preprocess import get_dataset
-from musicnlp.model import MusicTokenizer
-from musicnlp.model import models
+from musicnlp.model import MusicTokenizer, models
 
 
 def get_model_n_tokenizer(
-        model_name: str, prec: int = 5, model_config: Dict = None
-) -> Tuple[MusicTokenizer, PreTrainedModel]:
-    conf = TransfoXLConfig()
+        model_name: str, model_size: str, prec: int = 5, model_config: Dict = None
+) -> Tuple[MusicTokenizer, model_util.MusicTransformerMixin]:
+    assert model_name in ['xl', 'reformer'], f'Unknown model_name: {model_name}'
 
-    if 'debug' in model_name:
-        n_tok = 512 if 'large' in model_name else 8
-    else:
-        assert 'small' in model_name
-        n_tok = 1024
-    conf.update(dict(d_model=n_tok))
-    if model_config is not None:
-        conf.update(model_config)
-    model_ = models.MyTransfoXLLMHeadModel(conf)  # Initialize weights from scratch
-    tokenizer_ = MusicTokenizer(prec=prec, model_max_length=model_.config.d_model)
-    return tokenizer_, model_
-
-
-def get_train_args(model_name: str, train_args: Dict = None) -> TrainingArguments:
-    train_args_ = {
-        'debug': dict(
-            batch_size=4,
-            learning_rate=5e-4,
-            # weight_decay=1e-2,
-            lr_scheduler_type=SchedulerType.CONSTANT,
-            num_train_epochs=8,
-        ),
-        'debug-large': dict(
-            batch_size=8,  # To fit in colab
-            gradient_accumulation_steps=4,
-            learning_rate=5e-5,
-            # weight_decay=1e-2,
-            lr_scheduler_type=SchedulerType.CONSTANT,
-            num_train_epochs=3
-        ),
-        'small': dict(
-            batch_size=32,
-            learning_rate=4e-5,
-            weight_decay=1e-2,
-            lr_scheduler_type=SchedulerType.COSINE,
-            num_train_epochs=32
+    tokenizer_ = MusicTokenizer(prec=prec)  # needed for reformer config
+    if not hasattr(get_model_n_tokenizer, 'd_config'):
+        get_model_n_tokenizer.d_config = dict(
+            xl={
+                'debug': dict(d_model=8),
+                'debug-large': dict(d_model=512),
+                'small': dict(d_model=1024)
+            },
+            reformer={
+                'debug': dict(max_position_embeddings=1024, axial_pos_shape=(32, 32)),
+                'base': dict(max_position_embeddings=4096, axial_pos_shape=(64, 64))
+            }
         )
-    }
-    bsz, lr, decay, sch, n_ep, gas = (train_args_[model_name].get(k, None) for k in (
+        d_ref = get_model_n_tokenizer.d_config['reformer']
+        for k in d_ref.keys():
+            aps, mpe = d_ref[k]['axial_pos_shape'], d_ref[k]['max_position_embeddings']
+            assert len(aps) == 2 and math.prod(aps) == mpe, \
+                'the product of `axial_pos_shape` must be `max_position_embeddings`'
+            d_ref[k] |= dict(  # default config for all reformer config
+                is_decoder=True,
+                num_buckets=None,
+                eos_token_id=tokenizer_.eos_token_id,
+                pad_token_id=tokenizer_.pad_token_id,
+                vocab_size=tokenizer_.vocab_size
+            )
+    if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
+        get_model_n_tokenizer.d_nm2cls = {
+            'xl': (TransfoXLConfig, models.MyTransfoXLLMHeadModel),
+            'reformer': (ReformerConfig, ReformerModelWithLMHead)
+        }
+    cls_config, cls_model = get_model_n_tokenizer.d_nm2cls[model_name]
+    config_ = cls_config()
+    config_.update(get_model_n_tokenizer.d_config[model_name][model_size])
+    if model_config is not None:
+        config_.update(model_config)
+
+    d_ref = get_model_n_tokenizer.d_config['reformer']
+    for k in d_ref.keys():
+        aps, mpe = d_ref[k]['axial_pos_shape'], d_ref[k]['max_position_embeddings']
+        assert len(aps) == 2 and math.prod(aps) == mpe, \
+            'the product of `axial_pos_shape` must be `max_position_embeddings`'
+    # to set the correct model config for reformer, now take care of `max_length` for tokenizer
+    tokenizer_.model_max_length = model_util.config2model_size(config_)
+    return tokenizer_, cls_model(config_)  # Initialize all weights from scratch
+
+
+def get_train_args(model_name: str, model_size: str, train_args: Dict = None) -> TrainingArguments:
+    train_args_ = dict(
+        xl={
+            'debug': dict(
+                batch_size=4,
+                learning_rate=5e-4,
+                weight_decay=0,
+                lr_scheduler_type=SchedulerType.CONSTANT,
+                num_train_epochs=8,
+            ),
+            'debug-large': dict(
+                batch_size=8,  # To fit in colab
+                gradient_accumulation_steps=4,
+                learning_rate=5e-5,
+                weight_decay=0,
+                lr_scheduler_type=SchedulerType.CONSTANT,
+                num_train_epochs=3
+            ),
+            'small': dict(
+                batch_size=32,
+                learning_rate=4e-5,
+                weight_decay=1e-2,
+                lr_scheduler_type=SchedulerType.COSINE,
+                num_train_epochs=32
+            )
+        },
+        reformer={
+            'debug': dict(
+                batch_size=4,
+                learning_rate=3e-4,
+                weight_decay=0,
+                lr_scheduler_type=SchedulerType.CONSTANT,
+                num_train_epochs=32,
+            ),
+            'base': dict(
+                batch_size=128,
+                learning_rate=3e-5,
+                weight_decay=1e-2,
+                lr_scheduler_type=SchedulerType.COSINE,
+                warmup_ratio=0.1
+            )
+        }
+    )
+    bsz, lr, decay, sch, n_ep, gas = (train_args_[model_name][model_size].get(k, None) for k in (
         'batch_size', 'learning_rate', 'weight_decay',
         'lr_scheduler_type', 'num_train_epochs', 'gradient_accumulation_steps'
     ))
@@ -115,14 +165,14 @@ def compute_metrics(eval_pred):
 
 
 def get_all_setup(
-        model_name: str, dataset_name: str, prec: int = 5, n_sample=None, random_seed=None,
+        model_name: str, model_size: str, dataset_name: str, prec: int = 5, n_sample=None, dataset_seed=None,
         model_config: Dict = None, train_args: Dict = None
-) -> Tuple[PreTrainedModel, MusicTokenizer, datasets.Dataset, Trainer]:
-    tokenizer_, model_ = get_model_n_tokenizer(model_name, prec=prec, model_config=model_config)
-    args = get_train_args(model_name, train_args)
+) -> Tuple[model_util.MusicTransformerMixin, MusicTokenizer, datasets.Dataset, Trainer]:
+    tokenizer_, model_ = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
+    args = get_train_args(model_name, model_size, train_args)
     tr = get_dataset(
         dataset_name, map_func=lambda d: tokenizer_(d['text'], padding='max_length', truncation=True),
-        remove_columns=['title', 'text'], n_sample=n_sample, random_seed=random_seed
+        remove_columns=['title', 'text'], n_sample=n_sample, random_seed=dataset_seed
     )
     # Ensure compatibility of dataset & tokenizer, see `music_export`
     assert json.loads(tr.info.description)['precision'] == tokenizer_.prec
@@ -143,17 +193,20 @@ if __name__ == '__main__':
 
     def train():
         seed = config('random-seed')
-        transformers.set_seed(seed)
 
-        md_nm = 'debug'
-        # md_nm = 'debug-large'
+        md_nm = 'reformer'
+        md_sz = 'debug'
 
         # n = 4
         n = None
 
+        if md_nm != 'reformer':
+            transformers.set_seed(seed)
+        # not set seed if reformer for LSH attention,
+        # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
         mdl, tokenizer, dset_tr, trainer = get_all_setup(
-            model_name=md_nm, dataset_name=fnm, n_sample=n, random_seed=seed
+            model_name=md_nm, model_size=md_sz, dataset_name=fnm, n_sample=n, dataset_seed=seed
         )
         trainer.train()
         trainer.save_model(os.path.join(trainer.args.output_dir, 'final-trained'))
-    # train()
+    train()

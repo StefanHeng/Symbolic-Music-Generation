@@ -14,6 +14,7 @@ class MusicTokenizer(PreTrainedTokenizer):
 
     Note that there are **no special tokens**
     """
+    # TOK_PAD, TOK_EOS = '[PAD]', '[EOS]'
     TOK_PAD = '[PAD]'
 
     model_input_names = ['input_ids']  # Per `TransfoXLTokenizer`
@@ -22,13 +23,16 @@ class MusicTokenizer(PreTrainedTokenizer):
         super().__init__(**kwargs)
         # Model max length undefined, for infinite input length; See `tokenization_utils_base`
         if self.model_max_length == int(1e30):
-            self.model_max_length = 1024  # TODO: subject to change?
+            self.model_max_length = 4096  # TODO: subject to change?
 
         self.prec = prec
         self.vocab = MusicVocabulary(prec=prec, color=False)
         self.spec_toks_enc, self.spec_toks_dec = dict(), dict()
+        # for tok in MusicTokenizer.TOK_PAD, MusicTokenizer.TOK_EOS:
+        #     self._add_special_token(tok)
         self._add_special_token(MusicTokenizer.TOK_PAD)
-        self.pad_token = MusicTokenizer.TOK_PAD
+        # self.pad_token, self.eos_token = MusicTokenizer.TOK_PAD, MusicTokenizer.TOK_EOS
+        self.pad_token, self.eos_token = MusicTokenizer.TOK_PAD, self.vocab.end_of_song
 
     def _add_special_token(self, tok):
         assert tok not in self.spec_toks_enc
@@ -64,20 +68,29 @@ if __name__ == '__main__':
 
     from musicnlp.preprocess import get_dataset
 
-    fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
+    # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
+    fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
+    dset = get_dataset(fnm)
 
     def implementation_check():
-        dset = get_dataset(fnm)
         # ic(dset, dset[:2])
 
         tkzer = MusicTokenizer(model_max_length=12)
-        ic(tkzer, tkzer.model_max_length)
+        # tkzer = MusicTokenizer()
+        ic(tkzer, tkzer.model_max_length, len(tkzer))
         txt = dset[1]['text']
         # txt = dset[:3]['text']
         # Turning off both `padding` & `truncation`, and the token ids too long warning appears
         input_ = tkzer(txt, padding='max_length', truncation=True)
-        ic(input_)
+        # ic(input_)
         # ic(len(input_['input_ids']))
         ids_ = input_['input_ids']
-        ic(tkzer.decode(ids_))
+        ic(ids_, tkzer.decode(ids_))
     implementation_check()
+
+    def check_pad_n_eos():
+        tkzer = MusicTokenizer(model_max_length=12)
+        ic(tkzer.eos_token_id, tkzer.pad_token_id, tkzer.eos_token, tkzer.pad_token)
+        vocab = tkzer.vocab
+        ic(vocab.t2i(vocab.end_of_song))
+    # check_pad_n_eos()
