@@ -57,3 +57,27 @@ class MusicTokenizer(PreTrainedTokenizer):
 
     def _convert_id_to_token(self, index: int) -> str:
         return self.spec_toks_dec[index] if index in self.spec_toks_dec else self.vocab.i2t(index)
+
+
+if __name__ == '__main__':
+    from icecream import ic
+
+    from musicnlp.preprocess import get_dataset
+
+    fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
+
+    def implementation_check():
+        dset = get_dataset(fnm)
+        # ic(dset, dset[:2])
+
+        tkzer = MusicTokenizer(model_max_length=12)
+        ic(tkzer, tkzer.model_max_length)
+        txt = dset[1]['text']
+        # txt = dset[:3]['text']
+        # Turning off both `padding` & `truncation`, and the token ids too long warning appears
+        input_ = tkzer(txt, padding='max_length', truncation=True)
+        ic(input_)
+        # ic(len(input_['input_ids']))
+        ids_ = input_['input_ids']
+        ic(tkzer.decode(ids_))
+    implementation_check()

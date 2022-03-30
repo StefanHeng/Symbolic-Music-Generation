@@ -1,16 +1,18 @@
 """
-Proposed method: Transformer-XL on compact melody & bass representation for music generation
+Proposed method: on compact melody & bass representation for autoregressive music generation
+    Trying Transformer-XL, Reformer
 """
 
-from transformers import TransfoXLConfig, TransfoXLLMHeadModel
-from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
+from transformers import TransfoXLConfig
 from transformers import PreTrainedModel
+from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
 from transformers import Trainer
 from transformers.training_args import OptimizerNames
 import datasets
 
 from musicnlp.util import *
 import musicnlp.util.train as train_util
+from musicnlp.preprocess import get_dataset
 from musicnlp.model import MusicTokenizer
 from musicnlp.model import models
 
@@ -96,28 +98,6 @@ def get_train_args(model_name: str, train_args: Dict = None) -> TrainingArgument
     return TrainingArguments(**args)
 
 
-def get_dataset(
-        dataset_name: str,
-        map_func: Callable = None, remove_columns: Union[str, List[str]] = None,
-        n_sample: int = None, random_seed: int = None, fast=True
-) -> datasets.Dataset:
-    # TODO: only training split?
-    dset = datasets.load_from_disk(os.path.join(config('path-export'), 'hf_datasets', dataset_name))
-    if n_sample is not None:
-        dset = dset.select(range(n_sample))
-    if map_func is not None:
-        num_proc = None
-        n_cpu = os.cpu_count()
-        if fast and n_cpu >= 2:
-            num_proc = n_cpu // 2
-            datasets.set_progress_bar_enabled(False)
-
-        dset = dset.map(map_func, batched=True, remove_columns=remove_columns, num_proc=num_proc)
-        datasets.set_progress_bar_enabled(True)
-    dset = dset.shuffle(seed=random_seed) if random_seed is not None else dset.shuffle()
-    return dset
-
-
 def compute_metrics(eval_pred):
     """
     :param eval_pred: 2-tuple of (greedy prediction **ids**, labels)
@@ -160,22 +140,6 @@ if __name__ == '__main__':
     from icecream import ic
 
     fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
-
-    def implementation_check():
-        dset = get_dataset(fnm)
-        # ic(dset, dset[:2])
-
-        tkzer = MusicTokenizer(model_max_length=12)
-        ic(tkzer, tkzer.model_max_length)
-        txt = dset[1]['text']
-        # txt = dset[:3]['text']
-        # Turning off both `padding` & `truncation`, and the token ids too long warning appears
-        input_ = tkzer(txt, padding='max_length', truncation=True)
-        ic(input_)
-        # ic(len(input_['input_ids']))
-        ids_ = input_['input_ids']
-        ic(tkzer.decode(ids_))
-    # implementation_check()
 
     def train():
         seed = config('random-seed')
