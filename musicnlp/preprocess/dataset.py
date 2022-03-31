@@ -9,7 +9,7 @@ def get_dataset(
         n_sample: int = None, random_seed: int = None, fast=True
 ) -> datasets.Dataset:
     # TODO: only training split?
-    dset = datasets.load_from_disk(os.path.join(config('path-export'), 'hf_datasets', dataset_name))
+    dset = datasets.load_from_disk(os.path.join(get_processed_path(), 'hf_datasets', dataset_name))
     if n_sample is not None:
         dset = dset.select(range(n_sample))
     if map_func is not None:

@@ -36,16 +36,13 @@ def get_model_n_tokenizer(
         )
         d_ref = get_model_n_tokenizer.d_config['reformer']
         for k in d_ref.keys():
-            aps, mpe = d_ref[k]['axial_pos_shape'], d_ref[k]['max_position_embeddings']
-            assert len(aps) == 2 and math.prod(aps) == mpe, \
-                'the product of `axial_pos_shape` must be `max_position_embeddings`'
-            d_ref[k] |= dict(  # default config for all reformer config
+            d_ref[k].update(dict(  # default config for all reformer config
                 is_decoder=True,
                 num_buckets=None,
                 eos_token_id=tokenizer_.eos_token_id,
                 pad_token_id=tokenizer_.pad_token_id,
                 vocab_size=tokenizer_.vocab_size
-            )
+            ))
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
             'xl': (TransfoXLConfig, models.MyTransfoXLLMHeadModel),
@@ -60,7 +57,7 @@ def get_model_n_tokenizer(
     d_ref = get_model_n_tokenizer.d_config['reformer']
     for k in d_ref.keys():
         aps, mpe = d_ref[k]['axial_pos_shape'], d_ref[k]['max_position_embeddings']
-        assert len(aps) == 2 and math.prod(aps) == mpe, \
+        assert len(aps) == 2 and np.prod(aps) == mpe, \
             'the product of `axial_pos_shape` must be `max_position_embeddings`'
     # to set the correct model config for reformer, now take care of `max_length` for tokenizer
     tokenizer_.model_max_length = model_util.config2model_size(config_)
@@ -68,80 +65,85 @@ def get_model_n_tokenizer(
 
 
 def get_train_args(model_name: str, model_size: str, train_args: Dict = None) -> TrainingArguments:
-    train_args_ = dict(
-        xl={
-            'debug': dict(
-                batch_size=4,
-                learning_rate=5e-4,
-                weight_decay=0,
-                lr_scheduler_type=SchedulerType.CONSTANT,
-                num_train_epochs=8,
-            ),
-            'debug-large': dict(
-                batch_size=8,  # To fit in colab
-                gradient_accumulation_steps=4,
-                learning_rate=5e-5,
-                weight_decay=0,
-                lr_scheduler_type=SchedulerType.CONSTANT,
-                num_train_epochs=3
-            ),
-            'small': dict(
-                batch_size=32,
-                learning_rate=4e-5,
-                weight_decay=1e-2,
-                lr_scheduler_type=SchedulerType.COSINE,
-                num_train_epochs=32
-            )
-        },
-        reformer={
-            'debug': dict(
-                batch_size=4,
-                learning_rate=3e-4,
-                weight_decay=0,
-                lr_scheduler_type=SchedulerType.CONSTANT,
-                num_train_epochs=32,
-            ),
-            'base': dict(
-                batch_size=128,
-                learning_rate=3e-5,
-                weight_decay=1e-2,
-                lr_scheduler_type=SchedulerType.COSINE,
-                warmup_ratio=0.1
-            )
-        }
-    )
-    bsz, lr, decay, sch, n_ep, gas = (train_args_[model_name][model_size].get(k, None) for k in (
-        'batch_size', 'learning_rate', 'weight_decay',
-        'lr_scheduler_type', 'num_train_epochs', 'gradient_accumulation_steps'
-    ))
-    args = dict(
-        output_dir=os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, now(for_path=True)),
-        do_train=True, do_eval=False,
-        per_device_train_batch_size=bsz, per_gpu_eval_batch_size=bsz,
-        gradient_accumulation_steps=gas,
-        learning_rate=lr,  # TODO: what to set?
-        weight_decay=decay,
-        adam_beta1=0.9,
-        adam_beta2=0.999,
-        adam_epsilon=1e-08,
-        max_grad_norm=1,
-        num_train_epochs=n_ep,
-        lr_scheduler_type=sch,
-        warmup_ratio=1e-2,
-        log_level='warning',
-        logging_strategy='steps',
-        logging_steps=1,
-        save_strategy='epoch',
-        # fp16=torch.cuda.is_available(),
-        # Doesn't work per `TransfoXL.forward`:
-        # `index_copy_(): self and source expected to have the same dtype, but got (self) Float and (source) Half`
-        fp16=False,
-        optim=OptimizerNames.ADAMW_TORCH,
-        disable_tqdm=True,
-        report_to='none',
-        # gradient_checkpointing=torch.cuda.is_available()
-        gradient_checkpointing=False  # Doesn't work for `TransfoXL`
-    )
+    if not hasattr(get_train_args, 'default_args'):
+        get_train_args.default_args = dict(
+            output_dir=os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, now(for_path=True)),
+            do_train=True, do_eval=False,
+            adam_beta1=0.9,
+            adam_beta2=0.999,
+            adam_epsilon=1e-08,
+            max_grad_norm=1,
+            warmup_ratio=1e-2,
+            log_level='warning',
+            logging_strategy='steps',
+            logging_steps=1,
+            save_strategy='epoch',
+            # fp16=torch.cuda.is_available(),
+            optim=OptimizerNames.ADAMW_TORCH,
+            disable_tqdm=True,
+            report_to='none',
+            # gradient_checkpointing=torch.cuda.is_available()
+        )
+    if not hasattr(get_train_args, 'd_train_args'):
+        get_train_args.d_train_args = dict(
+            xl={
+                'debug': dict(
+                    batch_size=4,
+                    learning_rate=5e-4,
+                    weight_decay=0,
+                    lr_scheduler_type=SchedulerType.CONSTANT,
+                    num_train_epochs=8,
+                ),
+                'debug-large': dict(
+                    batch_size=8,  # To fit in colab
+                    gradient_accumulation_steps=4,
+                    learning_rate=5e-5,
+                    weight_decay=0,
+                    lr_scheduler_type=SchedulerType.CONSTANT,
+                    num_train_epochs=3
+                ),
+                'small': dict(
+                    batch_size=32,
+                    learning_rate=4e-5,
+                    weight_decay=1e-2,
+                    lr_scheduler_type=SchedulerType.COSINE,
+                    num_train_epochs=32
+                )
+            },
+            reformer={
+                'debug': dict(
+                    batch_size=4,
+                    learning_rate=3e-4,
+                    weight_decay=0,
+                    lr_scheduler_type=SchedulerType.CONSTANT,
+                    num_train_epochs=32,
+                ),
+                'base': dict(
+                    batch_size=128,
+                    learning_rate=3e-5,
+                    weight_decay=1e-2,
+                    lr_scheduler_type=SchedulerType.COSINE,
+                    num_train_epochs=32,
+                    warmup_ratio=0.1
+                )
+            }
+        )
+        d_xl = get_train_args.d_train_args['xl']
+        for k in d_xl.keys():
+            d_xl[k].update(dict(
+                # Doesn't work per `TransfoXL.forward`:
+                # `index_copy_(): self and source expected to have the same dtype,
+                # but got (self) Float and (source) Half`
+                fp16=False,
+                gradient_checkpointing=False  # Doesn't work for `TransfoXL`
+            ))
+    train_args_ = get_train_args.d_train_args[model_name][model_size]
+    if 'batch_size' in train_args_:
+        assert 'per_device_train_batch_size' not in train_args_ and 'per_device_eval_batch_size' not in train_args_
+        bsz = train_args_.pop('batch_size')
+        train_args_['per_device_train_batch_size'] = train_args_['per_device_eval_batch_size'] = bsz
+    args = get_train_args.default_args
+    args.update(train_args_)
     if train_args is not None:
         args.update(train_args)
     args = {k: v for k, v in args.items() if v is not None}
@@ -189,7 +191,7 @@ if __name__ == '__main__':
     import transformers
     from icecream import ic
 
-    fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
+    fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
 
     def train():
         seed = config('random-seed')

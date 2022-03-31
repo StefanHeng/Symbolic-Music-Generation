@@ -11,7 +11,7 @@ ID_PAD = tokenizer['encoder']['[PAD]']
 
 class MelodyLoader:
     # File path for decoded song ids
-    SONG_FP = os.path.join(config('path-export'), 'Song-ids.json')
+    SONG_FP = os.path.join(get_processed_path(), 'Song-ids.json')
 
     def __init__(self, pad=True):
         """

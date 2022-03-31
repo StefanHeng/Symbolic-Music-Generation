@@ -51,9 +51,6 @@ config: dict = {
     'random-seed': 77,
 }
 
-d_my = config['datasets']['my']
-config['path-export'] = os.path.join(PATH_BASE, DIR_DSET, d_my['dir_nm'])
-
 
 for k in keys(config[DIR_DSET]):    # Accommodate other OS
     k = f'{DIR_DSET}.{k}'

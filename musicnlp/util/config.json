@@ -41,6 +41,5 @@
             "dir_nm": "MNLP-Combined"
         }
     },
-    "random-seed": 77,
-    "path-export": "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MNLP-Combined"
+    "random-seed": 77
 }

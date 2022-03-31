@@ -12,12 +12,8 @@ PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in hugging
 class MyTrainer(Trainer):
     def __init__(self, clm_acc_logging=True, **kwargs):
         super().__init__(**kwargs)
-
         self.clm_acc_logging = clm_acc_logging
-
-        from icecream import ic
         self.name = self.model.__class__.__qualname__
-        ic('my trainer name', self.name)
         self.post_init()
 
     def post_init(self):
@@ -29,7 +25,7 @@ class MyTrainer(Trainer):
         if self.clm_acc_logging:
             self.add_callback(ClmAccCallback(parent_trainer=self))
         else:
-            self.add_callback(ColoredPrinterCallback(parent_trainer=self))
+            self.add_callback(ColoredPrinterCallback(name=self.name, parent_trainer=self))
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -121,13 +117,14 @@ class ColoredPrinterCallback(TrainerCallback):
             name=self.name, typ='file-write', file_path=os.path.join(self.output_dir, f'{self.log_fnm}.log')
         )
         if self.report2tb:
-            # self.writer = SummaryWriter(os.path.join(self.out_dir, 'tb_log', self.trainer.name))
-            self.writer = SummaryWriter(os.path.join(self.output_dir, 'tb_log', self.trainer.name))
+            self.writer = SummaryWriter(os.path.join(self.output_dir, 'tb_log'))
 
         conf = self.trainer.model.config.to_dict()
-        self.logger.info(f'Training started with model {log_dict_pg(conf)} and args {log_dict_pg(self.train_meta)}... ')
-        self.logger_fl.info(f'Training started with with model {log_dict_id(conf)} and '
-                            f'args {log_dict_nc(self.train_meta)}... ')
+        train_args = self.trainer.args.to_dict()
+        self.logger.info(f'Training started with model {log_dict_pg(conf)} on {log_dict_pg(self.train_meta)} '
+                         f'with training args {log_dict_pg(train_args)}... ')
+        self.logger_fl.info(f'Training started with with model {log_dict_id(conf)} on {log_dict_nc(self.train_meta)} '
+                            f'with training args {log_dict_id(train_args)}... ')
 
         self.t_strt = datetime.datetime.now()
 

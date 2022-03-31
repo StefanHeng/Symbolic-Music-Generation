@@ -109,22 +109,20 @@ def keys(dic, prefix=''):
 PATH_CONF = os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util', 'config.json')
 
 
-def config(attr, force_update=False):
+def config(attr):
     """
     Retrieves the queried attribute value from the config file.
 
     Loads the config file on first call.
     """
     if not hasattr(config, 'config'):
-        with open(PATH_CONF, 'r') as f:
+        with open(os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util', 'config.json'), 'r') as f:
             config.config = json.load(f)
-    if force_update:
-        # For colab re-running; TODO: pretty ugly
-        d_my = config.config['datasets']['my']
-        config.config['path-export'] = os.path.join(PATH_BASE, DIR_DSET, d_my['dir_nm'])
-        with open(PATH_CONF, 'w') as f_:
-            json.dump(config.config, f_, indent=4)
     return get(config.config, attr)
+
+
+def get_processed_path():
+    return os.path.join(PATH_BASE, DIR_DSET, config('datasets.my.dir_nm'))
 
 
 def now(as_str=True, for_path=False):
@@ -482,7 +480,7 @@ def stem(path, ext=False):
 
 def get_extracted_song_eg(
         fnm='musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06',
-        dir_=config('path-export')
+        dir_=get_processed_path()
 ) -> str:
     with open(os.path.join(dir_, f'{fnm}.json')) as f:
         text = json.load(f)['music'][0]['text']
