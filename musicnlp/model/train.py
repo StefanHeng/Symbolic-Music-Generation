@@ -3,6 +3,7 @@ Proposed method: on compact melody & bass representation for autoregressive musi
     Trying Transformer-XL, Reformer
 """
 
+import torch
 from transformers import TransfoXLConfig, ReformerConfig, ReformerModelWithLMHead
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
 from transformers import Trainer
@@ -31,6 +32,7 @@ def get_model_n_tokenizer(
             },
             reformer={
                 'debug': dict(max_position_embeddings=1024, axial_pos_shape=(32, 32)),
+                'small': dict(max_position_embeddings=2048, axial_pos_shape=(32, 64)),
                 'base': dict(max_position_embeddings=4096, axial_pos_shape=(64, 64))
             }
         )
@@ -78,7 +80,7 @@ def get_train_args(model_name: str, model_size: str, train_args: Dict = None) ->
             logging_strategy='steps',
             logging_steps=1,
             save_strategy='epoch',
-            # fp16=torch.cuda.is_available(),
+            fp16=torch.cuda.is_available(),
             optim=OptimizerNames.ADAMW_TORCH,
             disable_tqdm=True,
             report_to='none',
@@ -118,9 +120,17 @@ def get_train_args(model_name: str, model_size: str, train_args: Dict = None) ->
                     lr_scheduler_type=SchedulerType.CONSTANT,
                     num_train_epochs=32,
                 ),
+                'small': dict(
+                    batch_size=128,
+                    learning_rate=3e-4,
+                    weight_decay=1e-2,
+                    lr_scheduler_type=SchedulerType.COSINE,
+                    num_train_epochs=32,
+                    warmup_ratio=0.1
+                ),
                 'base': dict(
                     batch_size=128,
-                    learning_rate=3e-5,
+                    learning_rate=3e-4,
                     weight_decay=1e-2,
                     lr_scheduler_type=SchedulerType.COSINE,
                     num_train_epochs=32,
@@ -130,13 +140,13 @@ def get_train_args(model_name: str, model_size: str, train_args: Dict = None) ->
         )
         d_xl = get_train_args.d_train_args['xl']
         for k in d_xl.keys():
-            d_xl[k].update(dict(
-                # Doesn't work per `TransfoXL.forward`:
-                # `index_copy_(): self and source expected to have the same dtype,
-                # but got (self) Float and (source) Half`
-                fp16=False,
-                gradient_checkpointing=False  # Doesn't work for `TransfoXL`
-            ))
+            # `fp16` Doesn't work per `TransfoXL.forward`:
+            # `index_copy_(): self and source expected to have the same dtype,
+            # but got (self) Float and (source) Half`
+            d_xl[k].update(dict(fp16=False, gradient_checkpointing=False))  # Doesn't work for `TransfoXL`
+        d_ref = get_train_args.d_train_args['reformer']
+        for k in d_ref.keys():
+            d_ref[k].update(dict(gradient_checkpointing=False))  # Not supported for `Reformer`
     train_args_ = get_train_args.d_train_args[model_name][model_size]
     if 'batch_size' in train_args_:
         assert 'per_device_train_batch_size' not in train_args_ and 'per_device_eval_batch_size' not in train_args_
@@ -176,11 +186,16 @@ def get_all_setup(
         dataset_name, map_func=lambda d: tokenizer_(d['text'], padding='max_length', truncation=True),
         remove_columns=['title', 'text'], n_sample=n_sample, random_seed=dataset_seed
     )
+    # for i in range(10):
+    #     ids_ = tr[i]['input_ids']
+    #     # ic(ids_[-10:], len(ids_))
+    #     ic(ids_)
     # Ensure compatibility of dataset & tokenizer, see `music_export`
     assert json.loads(tr.info.description)['precision'] == tokenizer_.prec
 
+    clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
     trainer_ = train_util.MyTrainer(
-        clm_acc_logging=False,  # TODO: get logits for transformer-xl?
+        clm_acc_logging=clm_acc_logging,
         model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer_, mlm=False),
         train_dataset=tr, compute_metrics=compute_metrics
     )
@@ -198,6 +213,7 @@ if __name__ == '__main__':
 
         md_nm = 'reformer'
         md_sz = 'debug'
+        # md_sz = 'small'
 
         # n = 4
         n = None
@@ -206,9 +222,12 @@ if __name__ == '__main__':
             transformers.set_seed(seed)
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
+
+        train_args = dict(num_train_epochs=32)
         mdl, tokenizer, dset_tr, trainer = get_all_setup(
-            model_name=md_nm, model_size=md_sz, dataset_name=fnm, n_sample=n, dataset_seed=seed
+            model_name=md_nm, model_size=md_sz, dataset_name=fnm, n_sample=n, dataset_seed=seed,
+            train_args=train_args
         )
         trainer.train()
-        trainer.save_model(os.path.join(trainer.args.output_dir, 'final-trained'))
+        trainer.save_model(os.path.join(trainer.args.output_dir, 'trained'))
     train()

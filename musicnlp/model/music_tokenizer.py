@@ -86,11 +86,11 @@ if __name__ == '__main__':
         # ic(len(input_['input_ids']))
         ids_ = input_['input_ids']
         ic(ids_, tkzer.decode(ids_))
-    implementation_check()
+    # implementation_check()
 
     def check_pad_n_eos():
         tkzer = MusicTokenizer(model_max_length=12)
         ic(tkzer.eos_token_id, tkzer.pad_token_id, tkzer.eos_token, tkzer.pad_token)
         vocab = tkzer.vocab
         ic(vocab.t2i(vocab.end_of_song))
-    # check_pad_n_eos()
+    check_pad_n_eos()
