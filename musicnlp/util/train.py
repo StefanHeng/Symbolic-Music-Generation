@@ -18,9 +18,7 @@ def _pretty_single(key: str, val, ref: Dict = None):
         if isinstance(val, int):
             s_val = f'{val:>{len_lim}}'
         else:
-            # print("%.2f" % z)
             fmt = f'%{len_lim+4}.3f'
-            # s_val = f'{val:6.3f}'
             s_val = fmt % val
         return f'{s_val}/{lim}'  # Pad integer
     elif 'loss' in key:

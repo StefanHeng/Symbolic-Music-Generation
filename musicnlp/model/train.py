@@ -114,14 +114,14 @@ def get_train_args(model_name: str, model_size: str, train_args: Dict = None) ->
             },
             reformer={
                 'debug': dict(
-                    batch_size=4,
+                    batch_size=8,
                     learning_rate=3e-4,
                     weight_decay=0,
                     lr_scheduler_type=SchedulerType.CONSTANT,
                     num_train_epochs=32,
                 ),
                 'small': dict(
-                    batch_size=128,
+                    batch_size=64,
                     learning_rate=3e-4,
                     weight_decay=1e-2,
                     lr_scheduler_type=SchedulerType.COSINE,
@@ -147,13 +147,17 @@ def get_train_args(model_name: str, model_size: str, train_args: Dict = None) ->
         d_ref = get_train_args.d_train_args['reformer']
         for k in d_ref.keys():
             d_ref[k].update(dict(gradient_checkpointing=False))  # Not supported for `Reformer`
+    args = get_train_args.default_args
     train_args_ = get_train_args.d_train_args[model_name][model_size]
     if 'batch_size' in train_args_:
         assert 'per_device_train_batch_size' not in train_args_ and 'per_device_eval_batch_size' not in train_args_
         bsz = train_args_.pop('batch_size')
         train_args_['per_device_train_batch_size'] = train_args_['per_device_eval_batch_size'] = bsz
-    args = get_train_args.default_args
     args.update(train_args_)
+    if model_name == 'xl':
+        assert not args['fp16'] and not args['gradient_checkpointing']
+    elif model_name == 'reformer':
+        assert not args['gradient_checkpointing']
     if train_args is not None:
         args.update(train_args)
     args = {k: v for k, v in args.items() if v is not None}
@@ -215,15 +219,15 @@ if __name__ == '__main__':
         md_sz = 'debug'
         # md_sz = 'small'
 
-        # n = 4
-        n = None
+        n = 16
+        # n = None
 
         if md_nm != 'reformer':
             transformers.set_seed(seed)
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
 
-        train_args = dict(num_train_epochs=32)
+        train_args = dict(num_train_epochs=4)
         mdl, tokenizer, dset_tr, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, dataset_name=fnm, n_sample=n, dataset_seed=seed,
             train_args=train_args
