@@ -43,10 +43,20 @@ def pretty_log_dict(d_log: Dict, ref: Dict = None):
     return {k: _pretty_single(k, v, ref=ref) for k, v in d_log.items()}
 
 
+def meta2fnm_meta(meta: Dict) -> Dict:
+    if not hasattr(meta2fnm_meta, 'd_key'):
+        meta2fnm_meta.d_key = {
+            'model name': 'nm', 'max length': 'l', 'axial_pos_shape': 'ax_pos_sp',
+            'attn_layers': 'attn', 'hidden_size': 'hd_sz', 'ff_size': 'ff_sz'
+        }
+    return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
+
+
 class MyTrainer(Trainer):
-    def __init__(self, clm_acc_logging=True, **kwargs):
+    def __init__(self, clm_acc_logging=True, model_meta: Dict = None, **kwargs):
         super().__init__(**kwargs)
         self.clm_acc_logging = clm_acc_logging
+        self.model_meta = model_meta
         self.name = self.model.__class__.__qualname__
         self.post_init()
 
@@ -122,17 +132,18 @@ class ColoredPrinterCallback(TrainerCallback):
         lr, n_ep = args.learning_rate, args.num_train_epochs
         self.bsz = args.per_device_train_batch_size * args.gradient_accumulation_steps
         seq_max_len = len(dset_tr_[0]['input_ids'])
-        n_data, md_sz = len(dset_tr_), config2model_size(md_.config)
+        n_data = len(dset_tr_)
         self.n_step = max(math.ceil(len(dset_tr_) // self.bsz), 1) * n_ep  # #step/epoch at least 1
         self.train_meta = OrderedDict([
-            ('#data', n_data), ('model size', md_sz),
-            ('learning rate', lr), ('batch shape', (self.bsz, seq_max_len)), ('#epochs', n_ep), ('#steps', self.n_step)
+            ('#data', n_data), ('batch shape', (self.bsz, seq_max_len)),
+            ('#epochs', n_ep), ('#steps', self.n_step), ('learning rate', lr),
         ])
 
         self.output_dir = self.trainer.args.output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         self.save_time = self.output_dir.split(os.sep)[-1]  # expect last dir name as time stamp
-        self.log_fnm = f'{name}, n={n_data}, l={md_sz}, a={lr}, bsz={self.bsz}, n_ep={n_ep}'
+        meta = meta2fnm_meta(self.trainer.model_meta)
+        self.log_fnm = f'md={log_dict_p(meta)}, n={n_data}, a={lr}, bsz={self.bsz}, n_ep={n_ep}'
 
         if name is None:
             name = 'MyTrainer'
@@ -148,14 +159,15 @@ class ColoredPrinterCallback(TrainerCallback):
             name=self.name, typ='file-write', file_path=os.path.join(self.output_dir, f'{self.log_fnm}.log')
         )
         if self.report2tb:
-            self.writer = SummaryWriter(os.path.join(self.output_dir, 'tb_log'))
+            self.writer = SummaryWriter(os.path.join(self.output_dir, 'tb', self.log_fnm))
 
         conf = self.trainer.model.config.to_dict()
         train_args = self.trainer.args.to_dict()
-        self.logger.info(f'Training started with model {log_dict_pg(conf)} on {log_dict_pg(self.train_meta)} '
-                         f'with training args {log_dict_pg(train_args)}... ')
-        self.logger_fl.info(f'Training started with with model {log_dict_id(conf)} on {log_dict_nc(self.train_meta)} '
-                            f'with training args {log_dict_id(train_args)}... ')
+        meta = self.trainer.model_meta
+        self.logger.info(f'Training started with model {log_dict(meta)}, {log_dict_pg(conf)} '
+                         f'on {log_dict_pg(self.train_meta)} with training args {log_dict_pg(train_args)}... ')
+        self.logger_fl.info(f'Training started with with model {log_dict_nc(meta)}, {log_dict_id(conf)} '
+                            f'on {log_dict_nc(self.train_meta)} with training args {log_dict_id(train_args)}... ')
 
         self.t_strt = datetime.datetime.now()
 

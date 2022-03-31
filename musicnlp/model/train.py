@@ -19,7 +19,7 @@ from musicnlp.model import MusicTokenizer, models
 
 def get_model_n_tokenizer(
         model_name: str, model_size: str, prec: int = 5, model_config: Dict = None
-) -> Tuple[MusicTokenizer, model_util.MusicTransformerMixin]:
+) -> Tuple[MusicTokenizer, model_util.MusicTransformerMixin, OrderedDict]:
     assert model_name in ['xl', 'reformer'], f'Unknown model_name: {model_name}'
 
     tokenizer_ = MusicTokenizer(prec=prec)  # needed for reformer config
@@ -55,6 +55,19 @@ def get_model_n_tokenizer(
     config_.update(get_model_n_tokenizer.d_config[model_name][model_size])
     if model_config is not None:
         config_.update(model_config)
+    tokenizer_.model_max_length = max_length = model_util.config2model_size(config_)
+    model_meta = OrderedDict([
+        ('model name', cls_model.__qualname__),
+        ('max length', max_length)
+    ])
+    if isinstance(config_, ReformerConfig):
+        model_meta.update(dict(
+            axial_pos_shape=config_.axial_pos_shape,
+            attn_layers=f'{len(config_.attn_layers)}:{config_.attn_layers}',
+            hidden_size=config_.hidden_size, ff_size=config_.feed_forward_size
+        ))
+    else:
+        raise NotImplementedError(f'xl')
 
     d_ref = get_model_n_tokenizer.d_config['reformer']
     for k in d_ref.keys():
@@ -62,8 +75,7 @@ def get_model_n_tokenizer(
         assert len(aps) == 2 and np.prod(aps) == mpe, \
             'the product of `axial_pos_shape` must be `max_position_embeddings`'
     # to set the correct model config for reformer, now take care of `max_length` for tokenizer
-    tokenizer_.model_max_length = model_util.config2model_size(config_)
-    return tokenizer_, cls_model(config_)  # Initialize all weights from scratch
+    return tokenizer_, cls_model(config_), model_meta  # Initialize all weights from scratch
 
 
 def get_train_args(model_name: str, model_size: str, train_args: Dict = None) -> TrainingArguments:
@@ -184,7 +196,7 @@ def get_all_setup(
         model_name: str, model_size: str, dataset_name: str, prec: int = 5, n_sample=None, dataset_seed=None,
         model_config: Dict = None, train_args: Dict = None
 ) -> Tuple[model_util.MusicTransformerMixin, MusicTokenizer, datasets.Dataset, Trainer]:
-    tokenizer_, model_ = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
+    tokenizer_, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
     args = get_train_args(model_name, model_size, train_args)
     tr = get_dataset(
         dataset_name, map_func=lambda d: tokenizer_(d['text'], padding='max_length', truncation=True),
@@ -199,6 +211,7 @@ def get_all_setup(
 
     clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
     trainer_ = train_util.MyTrainer(
+        model_meta=meta,
         clm_acc_logging=clm_acc_logging,
         model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer_, mlm=False),
         train_dataset=tr, compute_metrics=compute_metrics
