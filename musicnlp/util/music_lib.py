@@ -2,14 +2,15 @@
 Music preprocessing utilities
 """
 
-import math
 from copy import deepcopy
 from typing import Iterator
 from fractions import Fraction
 
 import music21 as m21
 from music21.meter import TimeSignature
+from music21.tempo import MetronomeMark
 from music21.note import Note, Rest
+from music21.stream import Measure, Part, Score
 from music21.chord import Chord
 
 from .util import *
@@ -294,6 +295,58 @@ def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature) -> boo
     # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
     return is_notes_no_overlap(notes) \
         and math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=1e-6)
+
+
+def get_score_skeleton(title: str = None, composer: str = PKG_NM, mode: str = 'melody') -> Score:
+    """
+    :return: A `Score` skeleton with title, composer as metadata and a single piano `Part`
+    """
+    assert mode in ['melody', 'full']
+    if mode != 'melody':
+        raise NotImplementedError('Full mode not implemented yet')
+    scr = Score()
+    scr.insert(m21.metadata.Metadata())
+    post = 'Melody only' if mode == 'melody' else 'Melody & Chord'
+    title = f'{title}, {post}'
+    scr.metadata.title = title
+    scr.metadata.composer = composer
+
+    part_nm = 'Melody, Ch#1'  # TODO: a 2nd chord part
+    part = m21.stream.Part(partName=part_nm)
+    part.partName = part_nm
+    instr = m21.instrument.Piano()
+    part.append(instr)
+    scr.append(part)
+    return scr
+
+
+def insert_ts_n_tp_to_part(part: Part, time_sig: str, tempo: int) -> Part:
+    bar0 = part.measure(0)  # Insert metadata into 1st bar
+    bar0.insert(m21.tempo.MetronomeMark(number=tempo))
+    bar0.insert(TimeSignature(time_sig))
+    return part
+
+
+def make_score(
+        title: str = None, composer: str = PKG_NM, mode: str = 'melody',
+        time_sig: str = '4/4', tempo: int = 120, lst_note: List[List[SNote]] = None
+) -> Score:
+    scr = get_score_skeleton(title=title, composer=composer, mode=mode)
+    parts = list(scr.parts)
+    assert len(parts) == 1, 'should have only one part for melody only'
+    part = parts[0]
+
+    lst_bars = []
+    for i, notes in enumerate(lst_note):
+        bar = Measure(number=i)  # Original bar number may not start from 0
+        bar.append(notes)
+        lst_bars.append(bar)
+    part.append(lst_bars)
+
+    bar0 = part.measure(0)  # Insert metadata into 1st bar
+    bar0.insert(MetronomeMark(number=tempo))
+    bar0.insert(TimeSignature(time_sig))
+    return scr
 
 
 DEF_TPO = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)

@@ -202,10 +202,6 @@ def get_all_setup(
         dataset_name, map_func=lambda d: tokenizer_(d['text'], padding='max_length', truncation=True),
         remove_columns=['title', 'text'], n_sample=n_sample, random_seed=dataset_seed
     )
-    # for i in range(10):
-    #     ids_ = tr[i]['input_ids']
-    #     # ic(ids_[-10:], len(ids_))
-    #     ic(ids_)
     # Ensure compatibility of dataset & tokenizer, see `music_export`
     assert json.loads(tr.info.description)['precision'] == tokenizer_.prec
 
@@ -229,11 +225,12 @@ if __name__ == '__main__':
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        md_sz = 'debug'
-        # md_sz = 'small'
+        # md_sz = 'debug'
+        md_sz = 'small'
+        # md_sz = 'base'
 
-        n = 16
-        # n = None
+        # n = 16
+        n = None
 
         if md_nm != 'reformer':
             transformers.set_seed(seed)

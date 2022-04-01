@@ -6,8 +6,7 @@ See `melody_extractor` for the old version.
 
 from collections import defaultdict, Counter
 
-from music21.stream import Score, Measure, Voice
-from music21.tempo import MetronomeMark
+from music21.stream import Voice
 from music21.duration import Duration
 
 from musicnlp.util import *
@@ -637,34 +636,13 @@ class MusicExtractor:
         if self.verbose and self.logger is not None:
             log(f'Encoding {logi(self.title)} completed - Observed warnings {{{self.logger.tracked()}}}')
 
-        if exp == 'mxl':
-            scr_out = Score()
-            scr_out.insert(m21.metadata.Metadata())
-            post = 'Melody only' if self.mode == 'melody' else 'Melody & Chord'
-            title = f'{self.title}, {post}'
-            scr_out.metadata.title = title
-            scr_out.metadata.composer = PKG_NM
-
-            part_nm = 'Melody, Ch#1'  # TODO: a 2nd chord part
-            part = m21.stream.Part(partName=part_nm)
-            part.partName = part_nm
-            instr = m21.instrument.Piano()
-            part.append(instr)
-
-            lst_bars = []
-            for i, notes in enumerate(lst_notes):
-                bar = Measure(number=i)  # Original bar number may not start from 0
-                bar.append(list(flatten_notes(notes)))
-                lst_bars.append(bar)
-            part.append(lst_bars)
-
-            bar0 = part.measure(0)  # Insert metadata into 1st bar
-            bar0.insert(MetronomeMark(number=mean_tempo))
-            bar0.insert(TimeSignature(ts_mode_str))
-
+        if exp == 'mxl':  # TODO: didn't test
+            scr_out = make_score(
+                title=f'{self.title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
+                lst_note=[list(flatten_notes(notes)) for notes in lst_notes]
+            )
             dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
             dir_nm = f'{dir_nm}_out'
-            scr_out.append(part)
             scr_out.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
             ret = scr_out
         else:

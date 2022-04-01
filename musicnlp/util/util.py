@@ -289,6 +289,10 @@ def log_dict(d: Dict, with_color=True, pad_float: int = 5, sep=': ') -> str:
     return pref + ', '.join(pairs) + post
 
 
+def log_dict_nc(d: Dict, **kwargs) -> str:
+    return log_dict(d, with_color=False, **kwargs)
+
+
 def log_dict_id(d: Dict) -> str:
     """
     Indented dict
@@ -298,10 +302,6 @@ def log_dict_id(d: Dict) -> str:
 
 def log_dict_pg(d: Dict) -> str:
     return highlight(log_dict_id(d), lexers.JsonLexer(), formatters.TerminalFormatter())
-
-
-def log_dict_nc(d: Dict, **kwargs) -> str:
-    return log_dict(d, with_color=False, **kwargs)
 
 
 def log_dict_p(d: Dict, **kwargs) -> str:
@@ -486,12 +486,16 @@ def stem(path, ext=False):
 
 
 def get_extracted_song_eg(
-        fnm='musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06',
-        dir_=get_processed_path()
+        fnm='musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29',
+        dir_=get_processed_path(),
+        k: Union[int, str] = 0
 ) -> str:
     with open(os.path.join(dir_, f'{fnm}.json')) as f:
-        text = json.load(f)['music'][0]['text']
-    return text
+        dset = json.load(f)['music']
+    if isinstance(k, int):
+        return dset[k]['text']
+    else:
+        return next(d['text'] for d in dset if k in d['title'])
 
 
 if __name__ == '__main__':

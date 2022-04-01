@@ -133,7 +133,12 @@ class ColoredPrinterCallback(TrainerCallback):
         self.bsz = args.per_device_train_batch_size * args.gradient_accumulation_steps
         seq_max_len = len(dset_tr_[0]['input_ids'])
         n_data = len(dset_tr_)
-        self.n_step = max(math.ceil(len(dset_tr_) // self.bsz), 1) * n_ep  # #step/epoch at least 1
+        # from icecream import ic
+        # ic(len(dset_tr_), self.bsz)
+        # ic(max(math.ceil(len(dset_tr_) / self.bsz), 1), n_ep)
+        # ic(max(math.ceil(len(dset_tr_) / self.bsz), 1) * n_ep)
+        # exit(1)
+        self.n_step = max(math.ceil(len(dset_tr_) / self.bsz), 1) * n_ep  # #step/epoch at least 1
         self.train_meta = OrderedDict([
             ('#data', n_data), ('batch shape', (self.bsz, seq_max_len)),
             ('#epochs', n_ep), ('#steps', self.n_step), ('learning rate', lr),

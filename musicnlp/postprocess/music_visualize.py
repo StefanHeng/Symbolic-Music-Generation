@@ -5,7 +5,7 @@ from collections import Counter
 from pandas.api.types import CategoricalDtype
 
 from musicnlp.util import *
-from musicnlp.model import LMTTokenizer
+from musicnlp.model import MusicTokenizer
 from musicnlp.preprocess import WarnLog
 from musicnlp.postprocess import MusicStats
 
@@ -22,7 +22,7 @@ class MusicVisualize:
 
         self.prec = self.dset['precision']
         assert self.prec >= 2
-        self.tokenizer = LMTTokenizer(prec=self.prec)
+        self.tokenizer = MusicTokenizer(prec=self.prec)
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec)
         self.df = None
