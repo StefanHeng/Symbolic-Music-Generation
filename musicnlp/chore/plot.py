@@ -1,8 +1,7 @@
 from typing import Sequence
 
-from tensorflow.python.summary.summary_iterator import summary_iterator
+import tensorflow as tf
 from tensorflow.core.util import event_pb2
-from tensorflow.python.lib.io import tf_record
 
 from musicnlp.util import *
 
@@ -14,11 +13,6 @@ def parse_tensorboard(path) -> pd.DataFrame:
     parse a tensor board, only 1 tag supported, each time step should have the same fixed number of values
     """
     def parse_single(evt):
-        # evt =
-        # ic(evt)
-        # ic(vars(evt))
-        # ic(evt.summary.value)
-        # exit(1)
         assert len(evt.summary.value) == 1
         return dict(
             wall_time=evt.wall_time,
@@ -30,29 +24,6 @@ def parse_tensorboard(path) -> pd.DataFrame:
     fnms = list(glob.iglob(os.path.join(path, '**/events.out.tfevents*'), recursive=True))
     assert len(fnms) == 1, f'Expect one events.out.tfevents file, found {len(fnms)}'
     fnm = fnms[0]
-
-    import tensorflow as tf
-    # # dset = tf.data.TFRecordDataset(fnm)
-    # # for e in dset.enumerate():
-    # #     ic(e)
-    # from tensorflow.core.util import event_pb2
-    # from tensorflow.python.lib.io import tf_record
-    #
-    # for r in tf_record.tf_record_iterator(fnm):
-    #     ic(event_pb2.Event.FromString(r))
-    # # ic(tf.data.TFRecordDataset(fnm))
-    #
-    # from tensorflow.core.util import event_pb2
-    #
-    # serialized_examples = tf.data.TFRecordDataset(fnm)
-    # for serialized_example in serialized_examples:
-    #     event = event_pb2.Event.FromString(serialized_example.numpy())
-    #     for value in event.summary.value:
-    #         t = tf.make_ndarray(value.tensor)
-    #         ic(value.tag, event.step, t, type(t))
-    # exit(1)
-
-    # events = [parse_single(e) for e in summary_iterator(fnm) if len(e.summary.value)]
     events = [event_pb2.Event.FromString(rec.numpy()) for rec in tf.data.TFRecordDataset(fnm)]
     events = [parse_single(e) for e in events if len(e.summary.value)]
     events.sort(key=lambda e: (e['step'], e['wall_time']))
@@ -86,13 +57,8 @@ def smooth(vals: Sequence[float], factor: float) -> np.array:
 
 def plot_tb_loss(df: pd.DataFrame, save=False, smooth_factor=0.9):
     fig = plt.figure()
-    # from scipy.interpolate import BSpline, make_interp_spline
     x, y = df.step, df.loss
     c = sns.color_palette(palette='husl', n_colors=7)[-2]
-    # precision = 0.1
-    # mi, ma = x.min(), x.max()
-    # x_s = np.linspace(mi, ma, num=int(round(ma - mi) / precision) + 1)
-    # y_s = make_interp_spline(x, y)(x_s)
     y_s = smooth(y, factor=smooth_factor)
     args_ori = LN_KWARGS | dict(ls=':', c=c, alpha=0.7)
     args_smooth = LN_KWARGS | dict(c=c, lw=0.75)
@@ -104,7 +70,7 @@ def plot_tb_loss(df: pd.DataFrame, save=False, smooth_factor=0.9):
     plt.xlabel('Step')
     plt.ylabel('Loss')
     if save:
-        save_fig(fig, f'{title}, {now(for_path=True)}')
+        save_fig(f'{title}, {now(for_path=True)}')
     else:
         plt.show()
 
@@ -117,4 +83,4 @@ if __name__ == '__main__':
     df_ = parse_tensorboard(path_)
 
     ic(df_)
-    plot_tb_loss(df_)
+    plot_tb_loss(df_, save=True)

@@ -214,26 +214,6 @@ def get_all_setup(
     return model_, tokenizer_, tr, trainer_
 
 
-def load_trained(model_name: str, directory_name: str):
-    path = os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, directory_name, 'trained')
-    # os.listdir(path)
-    return ReformerModelWithLMHead.from_pretrained(path)
-
-
-def generate_music(mdl: ReformerModelWithLMHead):
-    from musicnlp.util.music_vocab import VocabType
-    # ic(mdl)
-    max_len = mdl.config.max_position_embeddings
-    tokenizer = MusicTokenizer(model_max_length=max_len)
-    ic(tokenizer, tokenizer.pad_token_id, tokenizer.eos_token_id)
-    vocab = tokenizer.vocab
-    ts, tp = vocab.uncompact(VocabType.time_sig, (4, 4)), vocab.uncompact(VocabType.tempo, 120)
-    prompt = ' '.join([ts, tp])
-    inputs = tokenizer(prompt, return_tensors='pt')
-    outputs = mdl.generate(**inputs)
-    ic(outputs, tokenizer.decode(outputs[0], skip_special_tokens=False, repetition_penalty=2.0, max_length=max_len))
-
-
 if __name__ == '__main__':
     import transformers
     from icecream import ic
@@ -264,9 +244,3 @@ if __name__ == '__main__':
         trainer.train()
         trainer.save_model(os.path.join(trainer.args.output_dir, 'trained'))
     # train()
-
-    def trained_generate():
-        mdl = load_trained(model_name='reformer', directory_name='2022-04-01_09-40-48')
-        generate_music(mdl)
-    trained_generate()
-

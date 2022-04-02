@@ -139,7 +139,7 @@ def now(as_str=True, for_path=False):
 
 def save_fig(title, save=True):
     if not hasattr(save_fig, 'path'):
-        save_fig.path = os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util')
+        save_fig.path = os.path.join(PATH_BASE, DIR_PROJ, 'plot')
     os.makedirs(save_fig.path, exist_ok=True)
     if save:
         fnm = f'{title}.png'
