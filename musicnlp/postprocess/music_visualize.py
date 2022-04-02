@@ -5,7 +5,7 @@ from collections import Counter
 from pandas.api.types import CategoricalDtype
 
 from musicnlp.util import *
-from musicnlp.model import MusicTokenizer
+from musicnlp.models import MusicTokenizer
 from musicnlp.preprocess import WarnLog
 from musicnlp.postprocess import MusicStats
 

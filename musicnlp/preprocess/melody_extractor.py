@@ -1053,7 +1053,7 @@ if __name__ == '__main__':
     # check_encoding_export()
 
     def check_melody_tokenizer():
-        from musicnlp.model import Loader
+        from musicnlp.models import Loader
 
         mt = MelodyTokenizer()
         ic(len(mt.vocab), mt.vocab[:20])

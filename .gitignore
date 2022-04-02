@@ -5,6 +5,7 @@ assets/
 test_lang*
 inspiration/
 models/
+!musicnlp/models/
 runs/
 tb_log/
 plot/

@@ -3,4 +3,4 @@ from .util import *
 from . import train
 from . import music_lib
 from .music_vocab import VocabType, MusicVocabulary
-from . import model
+from . import models

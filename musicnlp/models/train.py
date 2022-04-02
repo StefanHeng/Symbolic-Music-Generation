@@ -11,9 +11,9 @@ import datasets
 
 from musicnlp.util import *
 import musicnlp.util.train as train_util
-import musicnlp.util.model as model_util
+import musicnlp.util.models as model_util
 from musicnlp.preprocess import get_dataset
-from musicnlp.model import MusicTokenizer, models
+from musicnlp.models import MusicTokenizer, _models
 
 
 def get_model_n_tokenizer(
@@ -46,7 +46,7 @@ def get_model_n_tokenizer(
             ))
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
-            'xl': (TransfoXLConfig, models.MyTransfoXLLMHeadModel),
+            'xl': (TransfoXLConfig, _models.MyTransfoXLLMHeadModel),
             'reformer': (ReformerConfig, ReformerModelWithLMHead)
         }
     cls_config, cls_model = get_model_n_tokenizer.d_nm2cls[model_name]

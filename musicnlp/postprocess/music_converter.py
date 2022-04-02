@@ -1,7 +1,7 @@
 from musicnlp.util import *
 from musicnlp.util.music_lib import *
 from musicnlp.postprocess import ElmType, MusicElement
-from musicnlp.model import MusicTokenizer
+from musicnlp.models import MusicTokenizer
 
 
 class MusicConverter:
