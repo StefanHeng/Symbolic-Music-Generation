@@ -30,8 +30,6 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel, MusicTransformerMixin):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # ic(self.config)
-        # exit(1)
 
     def forward(
             self, input_ids=None, mems=None, head_mask=None, inputs_embeds=None, labels=None,

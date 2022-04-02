@@ -26,10 +26,10 @@ class MusicVocabulary:
     Stores mapping between string tokens and integer ids
     & support the conversion, from relevant `music21` objects to [`str`, `int] conversion
     """
-    start_of_tuplet = '<tup>'
-    end_of_tuplet = '</tup>'
     start_of_bar = '<bar>'
     end_of_song = '</s>'
+    start_of_tuplet = '<tup>'
+    end_of_tuplet = '</tup>'
 
     SPEC_TOKS = dict(
         sep='_',  # Separation
@@ -112,6 +112,25 @@ class MusicVocabulary:
         }
         self.dec = {v: k for k, v in self.enc.items()}
         assert len(self.enc) == len(self.dec)  # Sanity check: no id collision
+
+    def to_dict(self, save=False):
+        d_out = dict(
+            precision=self.prec,
+            special_tokens={
+                'start_of_bar': MusicVocabulary.start_of_bar,
+                'end_of_song': MusicVocabulary.end_of_song,
+                'start_of_tuplet': MusicVocabulary.start_of_tuplet,
+                'end_of_tuplet': MusicVocabulary.end_of_tuplet
+            },
+            vocabulary=self.enc,
+            n_vocabulary=len(self.enc),
+        )
+        if save:
+            fnm = f'{self.__class__.__qualname__}, n={len(self.enc)}, prec={self.prec}, {now(for_path=True)}'
+            path = os.path.join(get_processed_path(), f'{fnm}.json')
+            with open(path, 'w') as f:
+                json.dump(d_out, f, indent=4)
+        return d_out
 
     def get_durations(self, bound: int = None, exp: str = 'str') -> Union[List[str], List[Dur]]:
         """
@@ -221,8 +240,6 @@ class MusicVocabulary:
             assert isinstance(compact, tuple)
             return f'{self.cache["pref_time_sig"]}{compact[0]}/{compact[1]}'
         else:  # VocabType.tempo
-            from icecream import ic
-            ic(type, compact)
             assert isinstance(compact, int)
             return f'{self.cache["pref_tempo"]}{compact}'
 
@@ -350,4 +367,6 @@ if __name__ == '__main__':
     from icecream import ic
 
     mv = MusicVocabulary()
-    ic(mv.get_durations(exp='dur'))
+    # ic(mv.get_durations(exp='dur'))
+
+    ic(mv.to_dict(save=True))

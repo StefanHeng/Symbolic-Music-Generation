@@ -38,7 +38,7 @@ class MusicExport:
         dnm_ = None
         if isinstance(fnms, str):  # Dataset name provided
             dnm_ = fnms
-            fnms = fl_nms(fnms, k='song_fmt_exp')
+            fnms = get_cleaned_song_paths(fnms, fmt='song_fmt_exp')
         lst_out = []
         me_ = MusicExtractor(precision=prec, mode=self.mode, logger=True, verbose=self.verbose)
         for i_fl, fnm in tqdm(enumerate(fnms), total=len(fnms)):

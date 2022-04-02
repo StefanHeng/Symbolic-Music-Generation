@@ -1,7 +1,7 @@
 """
 Music preprocessing utilities
 """
-
+from collections import namedtuple
 from copy import deepcopy
 from typing import Iterator
 from fractions import Fraction
@@ -138,6 +138,30 @@ def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[fl
         notes = flatten_notes(unroll_notes(notes))
     offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
     return offsets, durs
+
+
+TupletNameMeta = namedtuple('TupletNameMeta', field_names=['tuplet_string', 'n_note'])
+TUPLET_POSTFIX = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
+TUPLET_PREFIX2N_NOTE = dict(  # Tuplet prefix => expected number of notes
+    Tri=3,
+    Quintu=5,
+    Nonu=9
+)
+
+
+def fullname2tuplet_meta(fullname: str) -> TupletNameMeta:
+    post, pref2n = TUPLET_POSTFIX, TUPLET_PREFIX2N_NOTE
+    pref = fullname[:fullname.find(post)].split()[-1]
+    tup_str: str = f'{pref}{post}'
+    if pref in pref2n:
+        n_tup = pref2n[pref]
+    else:
+        assert pref == 'Tu'  # A generic case, music21 processing, different from that of MuseScore
+        # e.g. 'C in octave 1 Dotted 32nd Tuplet of 9/8ths (1/6 QL) Note' makes 9 notes in tuplet
+        words = fullname.split()
+        word_n_tup = words[words.index(tup_str) + 2]
+        n_tup = int(word_n_tup[:word_n_tup.find('/')])
+    return TupletNameMeta(tuplet_string=tup_str, n_note=n_tup)
 
 
 def flatten_notes(notes: Iterable[ExtNote]) -> Iterator[SNote]:
@@ -535,7 +559,7 @@ if __name__ == '__main__':
 
     def check_piano_roll():
         # pm = pretty_midi.PrettyMIDI(eg_midis('Shape of You'))
-        pm = pretty_midi.PrettyMIDI(eg_songs('Merry Go Round of Life'))
+        pm = pretty_midi.PrettyMIDI(get_my_example_songs('Merry Go Round of Life'))
 
         # pr = pm.get_piano_roll(100)
         # ic(pr.shape, pr.dtype, pr[75:80, 920:960])
@@ -570,7 +594,7 @@ if __name__ == '__main__':
     # test_show_in_plot()
 
     def test_piano_roll():
-        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        fnm = get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         ic(fnm)
 
         scr = m21.converter.parse(fnm)
@@ -602,9 +626,9 @@ if __name__ == '__main__':
     # test_piano_roll()
 
     def check_show_title():
-        from .util import eg_songs
+        from .util import get_my_example_songs
 
-        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        fnm = get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         ic(fnm)
         scr = m21.converter.parse(fnm)
         ic(scr)

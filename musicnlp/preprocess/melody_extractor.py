@@ -1,4 +1,3 @@
-from typing import Any
 from warnings import warn
 
 from musicnlp.util.music_lib import *
@@ -23,18 +22,10 @@ def bars2lst_bar_n_ts(bars) -> List[Tuple[m21.stream.Measure, m21.meter.TimeSign
 
 def invalid_triplets(scr: m21.stream.Score):
     def _invalid(stream: Union[m21.stream.Measure, m21.stream.Voice]):
-        # ic()
         it = it_m21_elm(stream, types=(m21.note.Note, m21.note.Rest, m21.chord.Chord, m21.stream.Voice))
         elm = next(it, None)
         while elm:
-            # if isinstance(elm, m21.stream.Voice):
-            #     ic(elm, elm.offset, elm.duration)
-            # else:
-            #     # ic(stream.number)
-            #     ic(elm, elm.fullName, elm.offset, elm.duration)
-
             if isinstance(elm, m21.stream.Voice):
-                # ic(stream.number)
                 if _invalid(elm):
                     return True
             elif 'Triplet' in elm.fullName:
@@ -946,7 +937,7 @@ def extract(dnms: List[str], exp='json') -> List[Dict[str, Any]]:
     count = 0
     count_suc = 0
     songs = []
-    fnms = {dnm: fl_nms(dnm, k='song_fmt_exp') for dnm in dnms}
+    fnms = {dnm: get_cleaned_song_paths(dnm, fmt='song_fmt_exp') for dnm in dnms}
     n_songs = sum(len(e) for e in fnms.values())
     n = len(str(n_songs))
     for dnm, fnms in fnms.items():
@@ -983,7 +974,7 @@ if __name__ == '__main__':
     from icecream import ic
 
     def check_midi():
-        fnm = eg_songs('Shape of You')
+        fnm = get_my_example_songs('Shape of You')
         # fnm = eg_songs('My Favorite Things')
         me = MidiMelodyExtractor(fnm)
         ic(me.bpm)
@@ -992,7 +983,7 @@ if __name__ == '__main__':
 
     def check_mxl():
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
-        fnm = eg_songs('Shape of You', fmt='MXL')
+        fnm = get_my_example_songs('Shape of You', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm)
         me.bar_with_max_pitch(exp='mxl')
@@ -1000,7 +991,7 @@ if __name__ == '__main__':
 
     def extract_encoding():
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
-        fnm = eg_songs('Shape of You', fmt='MXL')
+        fnm = get_my_example_songs('Shape of You', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm, n=None)
         me.bar_with_max_pitch(exp='symbol')
@@ -1009,7 +1000,7 @@ if __name__ == '__main__':
     def sanity_check_encoding():
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
-        fnm = eg_songs('平凡之路', fmt='MXL')
+        fnm = get_my_example_songs('平凡之路', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm, n=None)
         ids = me.bar_with_max_pitch(exp='symbol')
@@ -1022,7 +1013,7 @@ if __name__ == '__main__':
     def encode_a_few():
         # n = 2**6
         dnm = 'POP909'
-        fnms = fl_nms(dnm, k='song_fmt_exp')
+        fnms = get_cleaned_song_paths(dnm, fmt='song_fmt_exp')
         # for idx, fnm in enumerate(fnms):
         for idx, fnm in enumerate(fnms[66+136+289:]):
             ic(idx, stem(fnm))

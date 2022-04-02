@@ -36,6 +36,7 @@ config: dict = {
         'mxl-eg': dict(
             nm='Some hand-selected MXL samples',
             dir_nm='MXL-eg',
+            dir_nm_extracted='MXL-eg_out',
             song_fmt='*.mxl'
         ),
         'POP909': dict(

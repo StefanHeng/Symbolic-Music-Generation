@@ -195,37 +195,12 @@ class MusicExtractor:
 
         .. note:: Triplets (potentially any n-plets) are grouped; `Voice`s are expanded
         """
-        # if number == 109:
-        #     ic('in expand bar')
-        #     for n in bar:
-        #         if not isinstance(n, (Voice, m21.layout.LayoutBase, m21.clef.Clef)):
-        #             ic(n, n.fullName, n.offset, n.duration.quarterLength)
-
-        if not hasattr(MusicExtractor, 'post'):
-            MusicExtractor.post = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
-        if not hasattr(MusicExtractor, 'post2tup'):
-            MusicExtractor.pref2n = dict(  # Tuplet prefix => expected number of notes
-                Tri=3,
-                Quintu=5,
-                Nonu=9
-            )
-        post = MusicExtractor.post
-
         lst = []
         it = iter(bar)
         elm = next(it, None)
         while elm is not None:
-            if hasattr(elm, 'fullName') and post in elm.fullName:
-                pref = elm.fullName[:elm.fullName.find(post)].split()[-1]
-                tup_str: str = f'{pref}{post}'
-                if pref in MusicExtractor.pref2n:
-                    n_tup = MusicExtractor.pref2n[pref]
-                else:
-                    assert pref == 'Tu'  # A generic case, music21 processing, different from that of MuseScore
-                    # e.g. 'C in octave 1 Dotted 32nd Tuplet of 9/8ths (1/6 QL) Note' makes 9 notes in tuplet
-                    words = elm.fullName.split()
-                    word_n_tup = words[words.index(tup_str)+2]
-                    n_tup = int(word_n_tup[:word_n_tup.find('/')])
+            if hasattr(elm, 'fullName') and TUPLET_POSTFIX in elm.fullName:
+                tup_str, n_tup = fullname2tuplet_meta(elm.fullName)
 
                 elms_tup: List[Union[Rest, Note, Chord]] = [elm]
                 elm_ = next(it, None)
@@ -390,13 +365,13 @@ class MusicExtractor:
         return lst
 
     def __call__(
-            self, scr: Union[str, Score], exp='mxl', return_duration=False,
+            self, song: Union[str, Score], exp='mxl', return_duration=False,
     ) -> Union[
         Tuple[Union[Score, List[str], List[int], str]],
         Tuple[Union[Score, List[str], List[int], str], int]
     ]:
         """
-        :param scr: A music21 Score object, or file path to an MXL file
+        :param song: A music21 Score object, or file path to an MXL file
         :param exp: Export mode, one of ['mxl', 'str', 'id', 'str_join', 'visualize']
             If `mxl`, a music21 Score is returned and written to file
             If `str` or `int`, the corresponding tokens and integer ids are returned as lists
@@ -407,16 +382,16 @@ class MusicExtractor:
         if self.logger is not None and self.save_memory:
             self.logger.end_tracking()
 
-        if isinstance(scr, str):
-            scr = m21.converter.parse(scr)
-        scr: Score
+        if isinstance(song, str):
+            song = m21.converter.parse(song)
+        song: Score
 
-        title = scr.metadata.title
+        title = song.metadata.title
         if title.endswith('.mxl'):
             title = title[:-4]
         self.title = title
 
-        lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(MusicExtractor.it_bars(scr))
+        lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(MusicExtractor.it_bars(song))
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
 
         # Crop out empty bars at both ends to reduce token length
@@ -679,7 +654,7 @@ if __name__ == '__main__':
 
     def toy_example():
         logger = WarnLog()
-        fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
+        fnm = get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
         # fnm = eg_songs('平凡之路', fmt='MXL')
         ic(fnm)
@@ -704,7 +679,7 @@ if __name__ == '__main__':
 
     def encode_a_few():
         dnm = 'POP909'
-        fnms = fl_nms(dnm, k='song_fmt_exp')
+        fnms = get_cleaned_song_paths(dnm, fmt='song_fmt_exp')
         # ic(fnms[:20])
 
         # idx = [idx for idx, fnm in enumerate(fnms) if '恋爱ing' in fnm][0]

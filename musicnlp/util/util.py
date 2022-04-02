@@ -200,6 +200,16 @@ def join_its(its: Iterable[Iterable[T]]) -> Iterable[T]:
     return out
 
 
+def group_n(it: Iterable[T], n: int) -> Iterable[Tuple[T]]:
+    # Credit: https://stackoverflow.com/a/8991553/10732321
+    it = iter(it)
+    while True:
+        chunk = tuple(itertools.islice(it, n))
+        if not chunk:
+            return
+        yield chunk
+
+
 def conc_map(fn: Callable[[T], K], it: Iterable[T]) -> Iterable[K]:
     """
     Wrapper for `concurrent.futures.map`
@@ -456,34 +466,47 @@ def assert_list_same_elms(lst: List[T]):
     assert all(l == lst[0] for l in lst)
 
 
-def eg_songs(k=None, pretty=False, fmt='MIDI'):
+def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False):
     """
     :return: A list of or single MIDI file path
     """
-    dnm = f'{fmt}_EG'
-    d_dset = config(f'{DIR_DSET}.{dnm}')
-    dir_nm = d_dset['dir_nm']
-    path = f'{PATH_BASE}/{DIR_DSET}/{dir_nm}'
-    mids = sorted(glob.iglob(f'{path}/{d_dset["song_fmt"]}', recursive=True))
-    if k:
+    fmt, formats = fmt.lower(), ['mxl', 'midi']
+    assert fmt in formats, f'Invalid format: expected one of {logi(formats)}, got {logi(fmt)}'
+    if extracted:
+        assert fmt == 'mxl', 'Only support extracted for MXL files'
+    dset_nm = f'{fmt}-eg'
+    d_dset = config(f'{DIR_DSET}.{dset_nm}')
+    key_dir = 'dir_nm'
+    if extracted:
+        key_dir = f'{key_dir}_extracted'
+    dir_nm = d_dset[key_dir]
+    path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, d_dset['song_fmt'])
+    paths = sorted(glob.iglob(path, recursive=True))
+    if k is not None:
+        assert isinstance(k, (int, str)), \
+            f'Expect k to be either a {logi("int")} or {logi("str")}, got {logi(k)} with type {logi(type(k))}'
         if type(k) is int:
-            return mids[k]
+            return paths[k]
         else:  # Expect str
-            return next(filter(lambda p: p.find(k) != -1, mids))
+            return next(p for p in paths if p.find(k) != -1)
     else:
-        return [p[p.find(dir_nm):] for p in mids] if pretty else mids
+        return [stem(p) for p in paths] if pretty else paths
 
 
-def fl_nms(dnm, k='song_fmt') -> List[str]:
+def get_cleaned_song_paths(dataset_name, fmt='song_fmt') -> List[str]:
     """
-    :return: List of music file paths
+    :return: List of music file paths in my cleaned file system structure
     """
-    if not hasattr(fl_nms, 'd_dsets'):
-        fl_nms.d_dsets = config('datasets')
-    d_dset = fl_nms.d_dsets[dnm]
+    if not hasattr(get_cleaned_song_paths, 'd_dsets'):
+        get_cleaned_song_paths.d_dsets = config('datasets')
+    d_dset = get_cleaned_song_paths.d_dsets[dataset_name]
     return sorted(
-        glob.iglob(os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'], d_dset[k]), recursive=True)
+        glob.iglob(os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'], d_dset[fmt]), recursive=True)
     )
+
+
+def get_cleaned_song_eg(dataset_name: str, k: Union[int, str]) -> str:
+    pass
 
 
 def stem(path, ext=False):
@@ -523,9 +546,9 @@ if __name__ == '__main__':
 
     def check_fl_nms():
         dnm = 'POP909'
-        fnms = fl_nms(dnm)
+        fnms = get_cleaned_song_paths(dnm)
         ic(len(fnms), fnms[:20])
-        fnms = fl_nms(dnm, k='song_fmt_exp')
+        fnms = get_cleaned_song_paths(dnm, fmt='song_fmt_exp')
         ic(len(fnms), fnms[:20])
     # check_fl_nms()
 
@@ -557,5 +580,10 @@ if __name__ == '__main__':
         res = colorama.Fore.RESET + colorama.Back.RESET + colorama.Style.RESET_ALL
         msg = colorama.Fore.YELLOW + 'my msg' + res
         logger.critical(msg)
-    check_logging()
+    # check_logging()
+
+    def check_group():
+        lst = list(range(6))
+        ic(lst, list(group_n(lst, 3)))
+    check_group()
 
