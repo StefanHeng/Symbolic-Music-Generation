@@ -34,8 +34,6 @@ def convert_dataset(dataset_name: str = 'POP909'):
             author, title = paths_last
             fnm_ = f'{author} - {stem(title)}'[:255-4]  # the top filename limit
             return f'{fnm_}.mid'
-        # ic(fnms[:20])
-        # ic([path2fnm(p) for p in fnms])
         for p in tqdm(fnms, desc=f'Converting {dataset_name}', unit='song'):
             copyfile(p, os.path.join(path_exp, path2fnm(p)))
 

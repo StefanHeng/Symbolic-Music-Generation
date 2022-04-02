@@ -35,6 +35,7 @@ pd.set_option('max_colwidth', 40)
 plt.rcParams['figure.constrained_layout.use'] = True
 plt.rcParams['figure.figsize'] = (16, 9)
 sns.set_style('darkgrid')
+LN_KWARGS = dict(marker='o', ms=0.3, lw=0.25)
 
 nan = float('nan')
 
@@ -134,6 +135,15 @@ def now(as_str=True, for_path=False):
     d = datetime.datetime.now()
     fmt = '%Y-%m-%d_%H-%M-%S' if for_path else '%Y-%m-%d %H:%M:%S'
     return d.strftime(fmt) if as_str else d
+
+
+def save_fig(title, save=True):
+    if not hasattr(save_fig, 'path'):
+        save_fig.path = os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util')
+    os.makedirs(save_fig.path, exist_ok=True)
+    if save:
+        fnm = f'{title}.png'
+        plt.savefig(os.path.join(save_fig.path, fnm), dpi=300)
 
 
 def fmt_dt(secs: Union[int, float, datetime.timedelta]):
