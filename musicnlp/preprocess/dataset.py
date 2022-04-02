@@ -12,7 +12,7 @@ def convert_dataset(dataset_name: str = 'POP909'):
         A directory of `midi` files, with title and artist as file name
     """
     dnms = ['POP909', 'LMD-cleaned']
-    assert dataset_name in dnms, f'Unexpected dataset name: expect one of {logi(dnms)}, got {logi(dataset_name)}'
+    assert dataset_name in dnms, f'Unsupported dataset name: expect one of {logi(dnms)}, got {logi(dataset_name)}'
 
     path_exp = os.path.join(PATH_BASE, DIR_DSET, dataset_name)
     os.makedirs(path_exp, exist_ok=True)
@@ -28,6 +28,8 @@ def convert_dataset(dataset_name: str = 'POP909'):
         d_dset = config(f'datasets.{dataset_name}')
         path_ori = os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'])
         fnms = sorted(glob.iglob(os.path.join(path_ori, d_dset['song_fmt'])))
+        ic(len(fnms))
+        exit(1)
 
         def path2fnm(p_: str):
             paths_last = p_.split(os.sep)[-2:]
@@ -63,16 +65,16 @@ def get_dataset(
 if __name__ == '__main__':
     from icecream import ic
 
-    # dnm = 'LMD-cleaned'
-    # convert_dataset(dnm)
+    dnm = 'LMD-cleaned'
+    convert_dataset(dnm)
 
-    import music21 as m21
-    path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
-    # broken_fl = 'ABBA - I\'ve Been Waiting For You.mid'
-    # broken_fl = 'Aerosmith - Pink.3.mid'
-    broken_fl = 'Alice in Chains - Sludge Factory.mid'
-    # broken_fl = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/fixed/' \
-    #             'ABBA - I\'ve Been Waiting For You.band.mid'
-    ic(broken_fl)
-    scr = m21.converter.parse(os.path.join(path_broken, broken_fl))
-    ic(scr)
+    # import music21 as m21
+    # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
+    # # broken_fl = 'ABBA - I\'ve Been Waiting For You.mid'
+    # # broken_fl = 'Aerosmith - Pink.3.mid'
+    # broken_fl = 'Alice in Chains - Sludge Factory.mid'
+    # # broken_fl = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/fixed/' \
+    # #             'ABBA - I\'ve Been Waiting For You.band.mid'
+    # ic(broken_fl)
+    # scr = m21.converter.parse(os.path.join(path_broken, broken_fl))
+    # ic(scr)
