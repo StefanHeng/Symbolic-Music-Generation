@@ -519,23 +519,6 @@ if __name__ == '__main__':
         ic(len(fnms), fnms[:20])
     # check_fl_nms()
 
-    def setup_pop909():
-        from shutil import copyfile
-        from tqdm import trange
-        dnm = 'POP909'
-        path = os.path.join(PATH_BASE, DIR_DSET, 'POP909-Dataset', dnm)
-        path_exp = os.path.join(PATH_BASE, DIR_DSET, dnm)
-        os.makedirs(path_exp, exist_ok=True)
-
-        df = pd.read_excel(os.path.join(path, 'index.xlsx'))
-        paths = sorted(glob.iglob(os.path.join(path, '*/*.mid'), recursive=True))
-        for i in trange(len(paths)):
-            p = paths[i]
-            rec = df.iloc[i, :]
-            fnm = f'{rec["artist"]} - {rec["name"]}.mid'
-            copyfile(p, os.path.join(path_exp, fnm))
-    # setup_pop909()
-
     # ic(quarter_len2fraction(1.25), quarter_len2fraction(0.875))
 
     # ic(hex2rgb('#E5C0FB'))

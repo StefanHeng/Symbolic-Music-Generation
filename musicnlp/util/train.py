@@ -1,9 +1,11 @@
+import os
+
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
+from tensorflow.python.summary.summary_iterator import summary_iterator
 
-from .util import *
-from .model import config2model_size
+from musicnlp.util import *
 
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
@@ -50,6 +52,36 @@ def meta2fnm_meta(meta: Dict) -> Dict:
             'attn_layers': 'attn', 'hidden_size': 'hd_sz', 'ff_size': 'ff_sz'
         }
     return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
+
+
+def parse_tensorboard(path) -> pd.DataFrame:
+    """
+    Modified from https://laszukdawid.com/blog/2021/01/26/parsing-tensorboard-data-locally/
+
+    parse a tensor board, only 1 tag supported, each time step should have the same fixed number of values
+    """
+    def parse_single(tfevent):
+        # ic(tfevent)
+        assert len(tfevent.summary.value) == 1
+        return dict(
+            wall_time=tfevent.wall_time,
+            name=tfevent.summary.value[0].tag,
+            step=tfevent.step,
+            value=float(tfevent.summary.value[0].simple_value),
+        )
+
+    fnms = list(glob.iglob(os.path.join(path, '**/events.out.tfevents*'), recursive=True))
+    assert len(fnms) == 1, f'Expect one events.out.tfevents file, found {len(fnms)}'
+    fnm = fnms[0]
+
+    # for e in summary_iterator(fnm):
+    #     ic(e)
+    #     ic(e.summary)
+    #     ic(e.summary.value)
+    #     exit(1)
+    df = pd.DataFrame([parse_single(e) for e in summary_iterator(fnm) if len(e.summary.value)])
+
+    return df[['wall_time', 'name', 'step', 'value']]  # reorder the columns
 
 
 class MyTrainer(Trainer):
@@ -133,11 +165,6 @@ class ColoredPrinterCallback(TrainerCallback):
         self.bsz = args.per_device_train_batch_size * args.gradient_accumulation_steps
         seq_max_len = len(dset_tr_[0]['input_ids'])
         n_data = len(dset_tr_)
-        # from icecream import ic
-        # ic(len(dset_tr_), self.bsz)
-        # ic(max(math.ceil(len(dset_tr_) / self.bsz), 1), n_ep)
-        # ic(max(math.ceil(len(dset_tr_) / self.bsz), 1) * n_ep)
-        # exit(1)
         self.n_step = max(math.ceil(len(dset_tr_) / self.bsz), 1) * n_ep  # #step/epoch at least 1
         self.train_meta = OrderedDict([
             ('#data', n_data), ('batch shape', (self.bsz, seq_max_len)),
@@ -164,7 +191,7 @@ class ColoredPrinterCallback(TrainerCallback):
             name=self.name, typ='file-write', file_path=os.path.join(self.output_dir, f'{self.log_fnm}.log')
         )
         if self.report2tb:
-            self.writer = SummaryWriter(os.path.join(self.output_dir, 'tb', self.log_fnm))
+            self.writer = SummaryWriter(os.path.join(self.output_dir, f'tb - {self.log_fnm}'))
 
         conf = self.trainer.model.config.to_dict()
         train_args = self.trainer.args.to_dict()
@@ -296,3 +323,13 @@ class ClmAccCallback(ColoredPrinterCallback):
         else:
             if 'src' not in logs:  # Skip custom compute_loss logging
                 super().on_log(args, state, control, logs, **kwargs)
+
+
+if __name__ == '__main__':
+    from icecream import ic
+    # path_ = '/Users/stefanh/Documents/UMich/Research/Music with NLP/Symbolic-Music-Generation/models'
+    model_name, directory_name = 'reformer', '2022-04-01_09-40-48'
+    path_ = os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, directory_name)
+    df_ = parse_tensorboard(path_)
+
+    ic(df_)

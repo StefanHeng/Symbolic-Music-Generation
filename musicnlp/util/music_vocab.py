@@ -1,8 +1,7 @@
 from enum import Enum
-from typing import Set
+from typing import Set, Optional
 
 from music21.pitch import Pitch
-from music21.tempo import MetronomeMark
 
 from musicnlp.util.music_lib import *
 
@@ -17,6 +16,9 @@ class VocabType(Enum):
         """
         for i in range(4):
             yield cls(i)
+
+
+Compact = Union[TsTup, int, Dur]
 
 
 class MusicVocabulary:
@@ -162,7 +164,7 @@ class MusicVocabulary:
         m = tpl.match(tok)
         return int(m.group('numer')), int(m.group('denom'))
 
-    def compact(self, tok: str) -> Union[TsTup, int, Dur]:
+    def compact(self, tok: str) -> Compact:
         """
         Convert tokens to the numeric format
 
@@ -175,30 +177,54 @@ class MusicVocabulary:
             If pitch, returns the pitch MIDI number
             If duration, returns the duration quarterLength
         """
-        if self.has_compact(tok):
-            typ = self.type(tok)
-            tpl = self.type2compact_re[typ]
-            if typ == VocabType.duration:
-                if '/' in tok:
-                    numer, denom = MusicVocabulary._get_group2(tok, tpl['frac'])
-                    assert math.log2(denom).is_integer()
-                    # Quantized so definitely an exact float, but keep Fraction for exact additions
-                    return Fraction(numer, denom)
-                else:
-                    return MusicVocabulary._get_group1(tok, tpl['int'])
-            elif typ == VocabType.pitch:
-                if tok == self.cache['rest']:
-                    return -1
-                else:
-                    pch, octave = MusicVocabulary._get_group2(tok, tpl)
-                    return pch-1 + octave*12  # See `pch2step`
-            elif typ == VocabType.time_sig:
-                return MusicVocabulary._get_group2(tok, tpl)
+        assert self.has_compact(tok), ValueError(f'{logi(tok)} does not have a compact representation')
+        typ = self.type(tok)
+        tpl = self.type2compact_re[typ]
+        if typ == VocabType.duration:
+            if '/' in tok:
+                numer, denom = MusicVocabulary._get_group2(tok, tpl['frac'])
+                assert math.log2(denom).is_integer()
+                # Quantized so definitely an exact float, but keep Fraction for exact additions
+                return Fraction(numer, denom)
             else:
-                assert typ == VocabType.tempo
-                return MusicVocabulary._get_group1(tok, tpl)
-        else:
-            raise ValueError(f'{tok} does not have a compact representation')
+                return MusicVocabulary._get_group1(tok, tpl['int'])
+        elif typ == VocabType.pitch:
+            if tok == self.cache['rest']:
+                return -1
+            else:
+                pch, octave = MusicVocabulary._get_group2(tok, tpl)
+                return pch-1 + octave*12  # See `pch2step`
+        elif typ == VocabType.time_sig:
+            return MusicVocabulary._get_group2(tok, tpl)
+        else:  # VocabType.tempo
+            return MusicVocabulary._get_group1(tok, tpl)
+
+    def uncompact(self, type: VocabType, compact: Optional[Compact] = None) -> str:
+        """
+        Reverse operation of `compact`, returns the music "decoded" string
+        """
+        assert type != VocabType.special, ValueError(f'Compact representation for special types not supported')
+        if type == VocabType.duration:
+            assert isinstance(compact, (int, Tuple[int, int]))
+            if isinstance(compact, int):
+                return f'{self.cache["pref_dur"]}{compact}'
+            else:
+                return f'{self.cache["pref_dur"]}{compact[0]}/{compact[1]}'
+        elif type == VocabType.pitch:
+            assert isinstance(compact, int)
+            if compact == -1:
+                return self.cache['rest']
+            else:
+                pch, octave = compact % 12, compact // 12
+                return f'{self.cache["pref_pch"]}{pch}/{octave}'
+        elif type == VocabType.time_sig:
+            assert isinstance(compact, tuple)
+            return f'{self.cache["pref_time_sig"]}{compact[0]}/{compact[1]}'
+        else:  # VocabType.tempo
+            from icecream import ic
+            ic(type, compact)
+            assert isinstance(compact, int)
+            return f'{self.cache["pref_tempo"]}{compact}'
 
     @staticmethod
     def pitch_midi2name(midi: int) -> str:

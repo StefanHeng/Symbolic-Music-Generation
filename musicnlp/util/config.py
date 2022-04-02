@@ -11,43 +11,44 @@ d_allie['n_entry'] = len(read_pickle(fnm)[0])
 
 
 config: dict = {
-    DIR_DSET: dict(
-        Allie_Chords=d_allie,
-        LMD_matched=dict(
+    'datasets': {
+        'Allie-Chords': d_allie,
+        # for LMD datasets, see https://colinraffel.com/projects/lmd/
+        'LMD-matched': dict(
             nm='The Lakh MIDI Dataset, Matched',
-            dir_nm='Lakh-MIDI-Dataset/LMD-Matched',
+            dir_nm='Lakh-MIDI-Dataset/LMD-Matched'
         ),
-        LMD_Aligned=dict(
+        'LMD-aligned': dict(
             nm='The Lakh MIDI Dataset, Aligned',
-            dir_nm='Lakh-MIDI-Dataset/LMD-Aligned',
+            dir_nm='Lakh-MIDI-Dataset/LMD-Aligned'
         ),
-        LMD_Cleaned=dict(
+        'LMD-cleaned': dict(
             nm='The Lakh MIDI Dataset, Cleaned',
             dir_nm='Lakh-MIDI-Dataset/LMD-Cleaned',
             song_fmt='**/*.mid',
             song_fmt_exp='**/*.mxl'
         ),
-        MIDI_EG=dict(
+        'midi-eg': dict(
             nm='Some hand-selected MIDI samples',
             dir_nm='MIDI-eg',
             song_fmt='*.mid'
         ),
-        MXL_EG=dict(
+        'mxl-eg': dict(
             nm='Some hand-selected MXL samples',
             dir_nm='MXL-eg',
-            song_fmt='*.mxl',
+            song_fmt='*.mxl'
         ),
-        POP909=dict(
+        'POP909': dict(
             nm='POP909 Dataset for Music Arrangement Generation',
             dir_nm='POP909',
             song_fmt='*.mid',
             song_fmt_exp='*.mxl'
         ),
-        my=dict(
+        'my': dict(
             nm='Music with NLP, Project output',
             dir_nm='MNLP-Combined'
         )
-    ),
+    },
     'random-seed': 77,
 }
 
