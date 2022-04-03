@@ -1,4 +1,5 @@
 from shutil import copyfile
+from collections import defaultdict
 
 from tqdm import tqdm
 import datasets
@@ -29,15 +30,52 @@ def convert_dataset(dataset_name: str = 'POP909'):
         path_ori = os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'])
         fnms = sorted(glob.iglob(os.path.join(path_ori, d_dset['song_fmt'])))
         ic(len(fnms))
-        exit(1)
+
+        # empirically seen as a problem: some files are essentially the same title, ending in different numbers
+        # See `ValueError` below
+        version_counter = defaultdict(int)
 
         def path2fnm(p_: str):
             paths_last = p_.split(os.sep)[-2:]
             author, title = paths_last
-            fnm_ = f'{author} - {stem(title)}'[:255-4]  # the top filename limit
-            return f'{fnm_}.mid'
+            my_lim, os_lim = 256-32, 255
+            title = stem(title)
+            if len(title) > my_lim:
+                k_title = title[:my_lim]
+                t_ = title = f'{k_title}... - v{version_counter[k_title]}'  # ensures no duplicates
+                ic(title, t_)
+                version_counter[k_title] += 1
+                # exit(1)
+            fnm_ = f'{author} - {title}'[:255-4]  # the top filename limit
+            fnm_ = f'{fnm_}.mid'
+            assert len(fnm_) <= os_lim
+            return fnm_
+
+        # find the missing midi that wasn't converted
+        # path_exp_ = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned'
+        # fnms_exp = sorted(glob.iglob(os.path.join(path_exp_, '*.mid')))
+        # path_exp_ = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned'
+        # fnms_exp += sorted(glob.iglob(os.path.join(path_exp_, '*.mid')))
+        # ic(len(fnms_exp))
+        # fnms, fnms_exp = [path2fnm(f) for f in fnms], [stem(f, keep_ext=True) for f in fnms_exp]
+        # ic(fnms[:10], fnms_exp[:10])
+        # ic(len(set(fnms)), len(set(fnms_exp)))
+        # ic(set(fnms) - set(fnms_exp))
+        #
+        # from collections import Counter
+        # c = Counter(fnms)
+        # ic(next(k for k, n in c.items() if n > 1))
+        # exit(1)
+
+        fnms_written = set()
         for p in tqdm(fnms, desc=f'Converting {dataset_name}', unit='song'):
-            copyfile(p, os.path.join(path_exp, path2fnm(p)))
+            fnm = path2fnm(p)
+            if dnm in fnms_written:
+                raise ValueError(f'Duplicate file name because of truncation: path {logi(p)} modified to {logi(fnm)}')
+            fnms_written.add(fnm)
+            copyfile(p, os.path.join(path_exp, fnm))
+        ic(len(fnms_written))
+        assert len(fnms_written) == len(fnms)
 
 
 def get_dataset(
@@ -66,7 +104,7 @@ if __name__ == '__main__':
     from icecream import ic
 
     dnm = 'LMD-cleaned'
-    convert_dataset(dnm)
+    # convert_dataset(dnm)
 
     # import music21 as m21
     # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
@@ -78,3 +116,14 @@ if __name__ == '__main__':
     # ic(broken_fl)
     # scr = m21.converter.parse(os.path.join(path_broken, broken_fl))
     # ic(scr)
+
+    def fix_delete_broken_files():
+        path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/*.mid'
+        set_broken = set(stem(fnm) for fnm in glob.iglob(path_broken))
+        ic(set_broken)
+        path_lmd_c = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned/*.mid'
+        for fnm in glob.iglob(path_lmd_c):
+            if stem(fnm) in set_broken:
+                os.remove(fnm)
+                print('Deleted', fnm)
+    fix_delete_broken_files()

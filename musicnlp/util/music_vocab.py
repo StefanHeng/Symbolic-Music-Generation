@@ -287,7 +287,7 @@ class MusicVocabulary:
             return [colorize(self.cache['pref_time_sig']+f'{top}/{bot}')]
         elif isinstance(elm, (int, MetronomeMark)):  # Tempo
             if isinstance(elm, MetronomeMark):
-                elm = elm.number
+                elm = round(elm.number)  # should be integer
             return [colorize(self.cache['pref_tempo']+str(elm))]
         elif isinstance(elm, Rest):
             r = self.cache['rest']

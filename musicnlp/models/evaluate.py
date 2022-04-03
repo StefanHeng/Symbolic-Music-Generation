@@ -27,7 +27,7 @@ class MusicGenerator:
         self.vocab = self.tokenizer.vocab
         self.converter = MusicConverter()
 
-    def __call__(self, mode: str, to_score: bool = False, generate_args: dict = None):
+    def __call__(self, mode: str, to_score: bool = False, generate_args: dict = None, condition_args: dict = None):
         """
         :param mode: If conditional, expect `topk`, `temperature`, `top_p` in `generate_args`
             If unconditional, expect either `prompt` as string or path to a `musicnlp` extracted MXL file
@@ -35,7 +35,10 @@ class MusicGenerator:
         modes = ['conditional', 'unconditional-greedy', 'unconditional-sample']
         assert mode in modes, f'Invalid mode: expect one of {logi(modes)}, got ({logi(mode)})'
 
-        outputs = None
+        if generate_args is None:
+            generate_args = dict()
+        if condition_args is None:
+            condition_args = dict()
         if 'unconditional' in mode:
             ts, tp = self.vocab.uncompact(VocabType.time_sig, (4, 4)), self.vocab.uncompact(VocabType.tempo, 120)
             # prompt = ' '.join([ts, tp])
@@ -52,15 +55,19 @@ class MusicGenerator:
                     assert generate_args['do_sample'], f'{logi("do_sample")} must be True for sample generation'
             args |= generate_args
             outputs = self.model.generate(**inputs, **args)
-        elif 'conditional' in mode:
-            prompt, path = generate_args.get('prompt', None), generate_args.get('path', None)
+        else:
+            assert 'conditional' in mode
+            prompt, path = condition_args.get('prompt', None), condition_args.get('path', None)
             assert prompt is not None or path is not None, f'Expect either {logi("prompt")} or {logi("path")}'
             if prompt is None:
-                prompt = self.converter.mxl2str(path)
+                n_bar = condition_args.get('n_bar', 4)
+                prompt = self.converter.mxl2str(path, n_bar=n_bar)
             inputs = self.tokenizer(prompt, return_tensors='pt')
+            # greedy decoding
             outputs = self.model.generate(
                 **inputs, max_length=self.max_len
             )
+        ic(prompt)
         ic(outputs.shape)
         decoded = self.tokenizer.decode(
             outputs[0], skip_special_tokens=False,
@@ -82,8 +89,11 @@ if __name__ == '__main__':
         # gen_args = dict(repetition_penalty=1.2)
         # how to set hyperparameters?; smaller k for smaller vocab size
         # gen_args = dict(temperature=1, top_k=16)
-        gen_args = dict(top_k=0, top_p=0.9)
-        mg(mode='unconditional-sample', generate_args=gen_args)
-        # mg(mode='conditional')
-    trained_generate()
+        # gen_args = dict(top_k=0, top_p=0.9)
+        # mg(mode='unconditional-sample', generate_args=gen_args)
 
+        fnm = 'Merry Go Round'
+        path = get_my_example_songs(k=fnm, extracted=True)
+        gen_args = dict(path=path)
+        mg(mode='conditional', generate_args=gen_args)
+    trained_generate()

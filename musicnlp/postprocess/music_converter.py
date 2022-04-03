@@ -19,14 +19,11 @@ class MusicConverter:
         """
         Group triplet notes in the extracted music21 bar as tuples
         """
-        # ic(bar.number)
         it = iter(bar)
         elm = next(it, None)
         lst = []
         while elm is not None:  # similar logic as in `MusicExtractor.expand_bar`
             if hasattr(elm, 'fullName') and TUPLET_POSTFIX in elm.fullName:
-                # tuplet_added = False
-                # ic(bar.number, 'found tuplet', elm, elm.fullName)
                 tup_str, n_tup = fullname2tuplet_meta(elm.fullName)
                 lst_tup = [elm]
                 elm_ = next(it, None)
@@ -36,24 +33,11 @@ class MusicConverter:
                         elm_ = next(it, None)
                     else:
                         break
-                # if not tuplet_added:  # if the tuplet notes ends the bar, `elm_` must be None
-                #     assert elm_ is None
-                #     lst.extend([tuple(lst_tup_) for lst_tup_ in group_n(lst_tup, n_tup)])
-
                 # Deal with consecutive and same-n tuplet groups in a row
-                if len(lst_tup) % n_tup != 0:  # TODO: debugging
-                    ic(list(bar))
-                    for e in bar:
-                        ic(e, e.fullName, e.duration.quarterLength, e.offset)
                 assert len(lst_tup) % n_tup == 0, \
                     f'Invalid Tuplet note count: {logi(tup_str)} with {logi(lst_tup)} should have ' \
                     f'multiples of {logi(n_tup)} notes'
-                # if bar.number == 81:
-                # ic(bar.number)
-                # ic(lst_tup)
-                # ic([tuple(lst_tup_) for lst_tup_ in group_n(lst_tup, n_tup)])
                 lst.extend([tuple(lst_tup_) for lst_tup_ in group_n(lst_tup, n_tup)])
-                # tuplet_added = True
                 elm = elm_
                 continue
             elif isinstance(elm, (Note, Rest)):
@@ -65,9 +49,16 @@ class MusicConverter:
             elm = next(it, None)
         return lst
 
-    def mxl2str(self, song: Union[str, Score], join: bool = True) -> Union[str, List[str]]:
+    def mxl2str(self, song: Union[str, Score], join: bool = True, n_bar: int = None) -> Union[str, List[str]]:
         """
         Convert a MusicExtractor output song into the music token representation
+
+        :param song: a music 21 Score or path to an MXL file
+            Should be MusicExtractor output
+        :param join: If true, individual tokens are jointed
+        :param n_bar: If given, only return the decoded first n bars, star of bar is appended
+                Intended for conditional generation
+            Otherwise, the entire song is converted and end of song token is appended
         """
         if isinstance(song, str):
             song = m21.converter.parse(song)
@@ -81,31 +72,25 @@ class MusicConverter:
         bar_nums = np.array([bar.number for bar in bars])
         assert np.array_equal(bar_nums, np.arange(0, len(bars))), \
             f'Invalid Bar numbers: Bar numbers should be consecutive integers starting from 0 - {warn}'
-        # ic(bars)
         bar0 = bars[0]
         time_sigs, tempos = bar0[TimeSignature], bar0[MetronomeMark]
         assert len(time_sigs) == 1, f'Invalid #Time Signatures: Expect only 1 time signature - {warn}'
         assert len(tempos) == 1, f'Invalid #Tempo: Expect only 1 tempo - {warn}'
         time_sig, tempo = time_sigs[0], tempos[0]
-
         toks = [self.vocab(time_sig), self.vocab(tempo)]
-        ic(toks)
 
+        for_gen = n_bar is not None
+        if for_gen:
+            assert n_bar > 0, f'Invalid {logi("n_bar")}: Expects positive integer'
+            bars = bars[:min(n_bar, len(bars))]
         for bar in bars:
             assert all(not isinstance(e, m21.stream.Voice) for e in bar), f'Invalid Bar: Expect no voice - {warn}'
-            # ic(bar, list(bar))
-            # ic(toks_)
-            ic(self._bar2grouped_bar(bar))
-            toks.extend(self._bar2grouped_bar(bar))
-        toks = sum(toks, start=[]) + [self.vocab.end_of_song]  # as `vocab` converts each music element to a list
-        ic(toks)
-
-        groups_: List[List[str]] = [
-            [*e2s(time_sig_mode), *e2s(mean_tempo)],
-            *(([self.vocab['start_of_bar']] + sum([e2s(n) for n in notes], start=[])) for notes in lst_notes),
-            [self.vocab['end_of_song']]
-        ]  # TODO: adding Chords as 2nd part?
-
+            toks.extend([self.vocab(e) for e in self._bar2grouped_bar(bar)])
+        # ic(toks)
+        toks = sum(toks, start=[])  # as `vocab` converts each music element to a list
+        toks += [self.vocab.start_of_bar if for_gen else self.vocab.end_of_song]
+        # ic(toks)
+        return ' '.join(toks) if join else toks
 
     def str2notes(self, decoded: Union[str, List[str]]) -> List[MusicElement]:
         """
@@ -155,7 +140,7 @@ class MusicConverter:
                     assert typ == VocabType.pitch
                     tok_d = next(it, None)
                     pbar.update(1)
-                    assert self.vocab.type(tok_d) == VocabType.duration, \
+                    assert tok_d is not None and self.vocab.type(tok_d) == VocabType.duration, \
                         f'Pitch token {logi(tok)} should be followed by a duration token but got {logi(tok_d)}'
                     lst_out.append(
                         MusicElement(type=ElmType.note, meta=(self.vocab.compact(tok), self.vocab.compact(tok_d)))
@@ -219,5 +204,6 @@ if __name__ == '__main__':
         fnm = 'Merry Go Round'
         path = get_my_example_songs(k=fnm, extracted=True)
         ic(path)
-        mc.mxl2str(path)
+        # ic(mc.mxl2str(path))
+        ic(mc.mxl2str(path, n_bar=4))
     check_decode()

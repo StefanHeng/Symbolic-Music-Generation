@@ -509,13 +509,13 @@ def get_cleaned_song_eg(dataset_name: str, k: Union[int, str]) -> str:
     pass
 
 
-def stem(path, ext=False):
+def stem(path, keep_ext=False):
     """
     :param path: A potentially full path to a file
-    :param ext: If True, file extensions is preserved
+    :param keep_ext: If True, file extensions is preserved
     :return: The file name, without parent directories
     """
-    return os.path.basename(path) if ext else pathlib.Path(path).stem
+    return os.path.basename(path) if keep_ext else pathlib.Path(path).stem
 
 
 def get_extracted_song_eg(
