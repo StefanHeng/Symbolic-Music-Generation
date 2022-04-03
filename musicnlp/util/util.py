@@ -506,7 +506,8 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
         if type(k) is int:
             return paths[k]
         else:  # Expect str
-            return next(p for p in paths if p.find(k) != -1)
+            k = k.lower()
+            return next(p for p in paths if p.lower().find(k) != -1)
     else:
         return [stem(p) for p in paths] if pretty else paths
 

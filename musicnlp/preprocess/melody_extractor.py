@@ -825,7 +825,7 @@ class MxlMelodyExtractor:
         if exp == 'mxl':
             dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
             dir_nm = f'{dir_nm}_out'
-            scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
+            scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'), makeNotation=False)
         elif exp == 'symbol':
             # Get time signature for each bar
             lst_bar_n_ts = bars2lst_bar_n_ts(part[m21.stream.Measure])
@@ -859,7 +859,9 @@ class MxlMelodyExtractor:
         if save:
             dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
             dir_nm = f'{dir_nm}_out'
-            scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{scr.metadata.title}.mxl'))
+            scr.write(
+                fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{scr.metadata.title}.mxl'), makeNotation=False
+            )
         else:
             scr.show()
         return scr

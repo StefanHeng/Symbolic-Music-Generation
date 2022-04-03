@@ -150,25 +150,23 @@ class MusicConverter:
         dur = m21.duration.Duration(quarterLength=q_len)
         if note.type == ElmType.note:
             if pitch == -1:  # rest, see MusicVocabulary.compact
-                n = Rest(duration=dur)
-                n.tie = None
-                return [n]
-                # return [Rest(duration=dur)]
+                return [Rest(duration=dur)]
             else:
-                # return [Note(pitch=m21.pitch.Pitch(midi=pitch), duration=dur)]
-                n = Note(pitch=m21.pitch.Pitch(midi=pitch), duration=dur)
-                n.tie = None
-                return [n]
+                return [Note(pitch=m21.pitch.Pitch(midi=pitch), duration=dur)]
         else:  # tuplet
             dur_ea = quarter_len2fraction(q_len) / len(pitch)
             return sum([MusicConverter.note_elm2m21(MusicElement(ElmType.note, (p, dur_ea))) for p in pitch], start=[])
 
-    def str2score(self, decoded: Union[str, List[str]], mode: str = 'melody', omit_eos: bool = False) -> Score:
+    def str2score(
+            self, decoded: Union[str, List[str]], mode: str = 'melody', omit_eos: bool = False,
+            title: str = None
+    ) -> Score:
         """
         :param decoded: A string of list of tokens to convert to a music21 score
         :param mode: On of [`melody`, `chord`]
         :param omit_eos: If true, eos token at the end is not required for conversion
             All occurrences of eos in the sequence are ignored
+        :param title: Title of the music
         """
         lst = self.str2notes(decoded)
         e1, e2, lst = lst[0], lst[1], lst[2:]
@@ -184,14 +182,8 @@ class MusicConverter:
               [lst[idxs_bar_start[-1]:]]
         assert all((len(bar) > 1) for bar in lst), 'Bar should contain at least one note'
         lst = [sum([MusicConverter.note_elm2m21(n) for n in notes[1:]], start=[]) for notes in lst]
-        # lst = [[note2note_cleaned(n) for n in group] for group in lst]  # TODO: why ties for decoded songs??
-        # from icecream import ic
-        # for grp in lst:
-        #     for e in grp:
-        #         ic(e, e.offset)
-        return make_score(
-            title='Generated', mode=mode, time_sig=f'{e1.meta[0]}/{e1.meta[1]}', tempo=e2.meta, lst_note=lst
-        )
+        time_sig = f'{e1.meta[0]}/{e1.meta[1]}'
+        return make_score(title=title, mode=mode, time_sig=time_sig, tempo=e2.meta, lst_note=lst)
 
 
 if __name__ == '__main__':

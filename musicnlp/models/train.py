@@ -23,6 +23,7 @@ def get_model_n_tokenizer(
 
     tokenizer_ = MusicTokenizer(prec=prec)  # needed for reformer config
     if not hasattr(get_model_n_tokenizer, 'd_config'):
+        layer_pair = ['local', 'lsh']
         get_model_n_tokenizer.d_config = dict(
             xl={
                 'debug': dict(d_model=8),
@@ -31,16 +32,34 @@ def get_model_n_tokenizer(
             },
             reformer={
                 'debug': dict(max_position_embeddings=1024, axial_pos_shape=(32, 32)),
-                # default attention head size is 64, doesn't make sense since doesn't align with hidden size of 256
-                'tiny': dict(max_position_embeddings=2048, axial_pos_shape=(32, 64)),
-                'small': dict(  # overall hidden size of 512
+                # overall, given hidden size, keep
+                #   feed_forward_size = 4 x hidden size
+                #   attention_head_size = hidden_size
+                'tiny': dict(
                     max_position_embeddings=2048, axial_pos_shape=(32, 64),
-                    attention_head_size=512, axial_pos_embds_dim=(128, )
+                    hidden_size=256, feed_forward_size=256*4, axial_pos_embds_dim=(64, 192),
+                    num_attention_heads=8, attention_head_size=int(512/8),  # note attention head size is per head
+                    attn_layers=layer_pair*3  # effectively 6 layers as default config
                 ),
-                # 'base': dict(max_position_embeddings=4096, axial_pos_shape=(64, 64))
+                'small': dict(
+                    max_position_embeddings=2048, axial_pos_shape=(32, 64),
+                    hidden_size=512, feed_forward_size=512*4, axial_pos_embds_dim=(128, 512-128),
+                    num_attention_heads=8, attention_head_size=int(512/8),
+                    attn_layers=layer_pair*3
+                ),
                 'base': dict(
                     max_position_embeddings=2048, axial_pos_shape=(32, 64),
-                    num_hashes=2,  # for better accuracy
+                    hidden_size=768, feed_forward_size=768*4, axial_pos_embds_dim=(192, 768-192),
+                    num_attention_heads=12, attention_head_size=int(768/12),
+                    attn_layers=layer_pair*6,
+                    num_hashes=2  # for better accuracy
+                ),
+                'large': dict(
+                    max_position_embeddings=2048, axial_pos_shape=(32, 64),  # TODO: support token length 4096?
+                    hidden_size=1024, feed_forward_size=1024*4, axial_pos_embds_dim=(256, 1024-256),
+                    num_attention_heads=16, attention_head_size=int(1024/16),
+                    attn_layers=layer_pair*12,
+                    num_hashes=2
                 )
             }
         )
@@ -71,8 +90,9 @@ def get_model_n_tokenizer(
     if isinstance(config_, ReformerConfig):
         model_meta.update(dict(
             axial_pos_shape=config_.axial_pos_shape,
-            attn_layers=f'{len(config_.attn_layers)}:{config_.attn_layers}',
-            hidden_size=config_.hidden_size, ff_size=config_.feed_forward_size
+            n_layer=len(config_.attn_layers),
+            hidden_size=config_.hidden_size, ff_size=config_.feed_forward_size,
+            attention_shape=f'{config_.num_attention_heads}x{config_.attention_head_size}',
         ))
     else:
         raise NotImplementedError(f'xl')
@@ -242,8 +262,8 @@ if __name__ == '__main__':
 
         md_nm = 'reformer'
         # md_sz = 'debug'
-        md_sz = 'small'
-        # md_sz = 'base'
+        # md_sz = 'small'
+        md_sz = 'base'
 
         # n = 16
         n = None
@@ -260,4 +280,4 @@ if __name__ == '__main__':
         )
         trainer.train()
         trainer.save_model(os.path.join(trainer.args.output_dir, 'trained'))
-    # train()
+    train()

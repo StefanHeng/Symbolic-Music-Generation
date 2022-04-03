@@ -328,20 +328,20 @@ def get_score_skeleton(title: str = None, composer: str = PKG_NM, mode: str = 'm
     assert mode in ['melody', 'full']
     if mode != 'melody':
         raise NotImplementedError('Full mode not implemented yet')
-    scr = Score()
-    scr.insert(m21.metadata.Metadata())
+    score = Score()
+    score.insert(m21.metadata.Metadata())
     post = 'Melody only' if mode == 'melody' else 'Melody & Chord'
     title = f'{title}, {post}'
-    scr.metadata.title = title
-    scr.metadata.composer = composer
+    score.metadata.title = title
+    score.metadata.composer = composer
 
     part_nm = 'Melody, Ch#1'  # TODO: a 2nd chord part
     part = m21.stream.Part(partName=part_nm)
     part.partName = part_nm
     instr = m21.instrument.Piano()
     part.append(instr)
-    scr.append(part)
-    return scr
+    score.append(part)
+    return score
 
 
 def insert_ts_n_tp_to_part(part: Part, time_sig: str, tempo: int) -> Part:
@@ -352,11 +352,11 @@ def insert_ts_n_tp_to_part(part: Part, time_sig: str, tempo: int) -> Part:
 
 
 def make_score(
-        title: str = None, composer: str = PKG_NM, mode: str = 'melody',
+        title: str = f'{PKG_NM} Song', composer: str = PKG_NM, mode: str = 'melody',
         time_sig: str = '4/4', tempo: int = 120, lst_note: List[List[SNote]] = None
 ) -> Score:
-    scr = get_score_skeleton(title=title, composer=composer, mode=mode)
-    parts = list(scr.parts)
+    score = get_score_skeleton(title=title, composer=composer, mode=mode)
+    parts = list(score.parts)
     assert len(parts) == 1, 'should have only one part for melody only'
     part = parts[0]
 
@@ -370,13 +370,7 @@ def make_score(
     bar0 = part.measure(0)  # Insert metadata into 1st bar
     bar0.insert(MetronomeMark(number=tempo))
     bar0.insert(TimeSignature(time_sig))
-
-    # from icecream import ic
-    # for bar in part[Measure]:
-    #     for e in bar:
-    #         if isinstance(e, (Note, Rest)):
-    #             ic(e, e.tie)
-    return scr
+    return score
 
 
 DEF_TPO = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)

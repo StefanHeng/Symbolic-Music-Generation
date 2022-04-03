@@ -46,7 +46,9 @@ def meta2fnm_meta(meta: Dict) -> Dict:
     if not hasattr(meta2fnm_meta, 'd_key'):
         meta2fnm_meta.d_key = {
             'model name': 'nm', 'max length': 'l', 'axial_pos_shape': 'ax_pos_sp',
-            'attn_layers': 'attn', 'hidden_size': 'hd_sz', 'ff_size': 'ff_sz'
+            'hidden_size': 'hd_sz', 'ff_size': 'ff_sz',
+            'n_layer': 'n_l', 'attn_layers': 'attn', 'attention_shape': 'attn_sh',
+            'parameter_count': 'n_param'
         }
     return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
 
@@ -56,6 +58,7 @@ class MyTrainer(Trainer):
         super().__init__(**kwargs)
         self.clm_acc_logging = clm_acc_logging
         self.model_meta = model_meta
+        self.model_meta['parameter_count'] = model_num_trainable_parameter(self.model)
         self.name = self.model.__class__.__qualname__
         self.post_init()
 
@@ -164,7 +167,7 @@ class ColoredPrinterCallback(TrainerCallback):
         train_args = self.trainer.args.to_dict()
         meta = self.trainer.model_meta
         self.logger.info(f'Training started with model {log_dict(meta)}, {log_dict_pg(conf)} '
-                         f'on {log_dict_pg(self.train_meta)} with training args {log_dict_pg(train_args)}... ')
+                         f'on {log_dict(self.train_meta)} with training args {log_dict_pg(train_args)}... ')
         self.logger_fl.info(f'Training started with with model {log_dict_nc(meta)}, {log_dict_id(conf)} '
                             f'on {log_dict_nc(self.train_meta)} with training args {log_dict_id(train_args)}... ')
 

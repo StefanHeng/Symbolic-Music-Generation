@@ -616,9 +616,8 @@ class MusicExtractor:
                 title=f'{self.title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
                 lst_note=[list(flatten_notes(notes)) for notes in lst_notes]
             )
-            dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
-            dir_nm = f'{dir_nm}_out'
-            scr_out.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'))
+            dir_nm = config(f'{DIR_DSET}.mxl-eg.dir_nm_extracted')
+            scr_out.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'), makeNotation=False)
             ret = scr_out
         else:
             assert exp in ['str', 'id', 'visualize', 'str_join']
@@ -654,9 +653,10 @@ if __name__ == '__main__':
 
     def toy_example():
         logger = WarnLog()
-        fnm = get_my_example_songs('Merry Go Round of Life', fmt='MXL')
-        # fnm = eg_songs('Shape of You', fmt='MXL')
-        # fnm = eg_songs('平凡之路', fmt='MXL')
+        # fnm = get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        # fnm = get_my_example_songs('Shape of You', fmt='MXL')
+        # fnm = get_my_example_songs('平凡之路', fmt='MXL')
+        fnm = get_my_example_songs('Canon')
         ic(fnm)
         mt = MusicExtractor(logger=logger, verbose=True)
 
@@ -672,10 +672,10 @@ if __name__ == '__main__':
             s = mt(fnm, exp='visualize')
             print(s)
 
-        # check_mxl_out()
+        check_mxl_out()
         # check_str()
-        check_visualize()
-    # toy_example()
+        # check_visualize()
+    toy_example()
 
     def encode_a_few():
         dnm = 'POP909'
