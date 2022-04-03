@@ -54,12 +54,14 @@ def meta2fnm_meta(meta: Dict) -> Dict:
 
 
 class MyTrainer(Trainer):
-    def __init__(self, clm_acc_logging=True, model_meta: Dict = None, **kwargs):
+    def __init__(self, clm_acc_logging=True, model_meta: Dict = None, my_args: Dict = None, **kwargs):
         super().__init__(**kwargs)
         self.clm_acc_logging = clm_acc_logging
         self.model_meta = model_meta
         self.model_meta['parameter_count'] = model_num_trainable_parameter(self.model)
         self.name = self.model.__class__.__qualname__
+
+        self.my_args = my_args
         self.post_init()
 
     def post_init(self):
@@ -68,8 +70,13 @@ class MyTrainer(Trainer):
         self.callback_handler.callbacks = [
             c for c in callbacks if str(c.__class__) != "<class 'transformers.trainer_callback.PrinterCallback'>"
         ]
+        # from icecream import ic
+        # ic(self.callback_handler.callbacks)
         callback_cls = ColoredPrinterCallbackForClm if self.clm_acc_logging else ColoredPrinterCallback
+        if not self.clm_acc_logging:
+            raise NotImplementedError('on-CLM task logging not updated')
         self.add_callback(callback_cls(name=self.name, parent_trainer=self))
+        # ic(self.callback_handler.callbacks)
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -97,8 +104,6 @@ class MyTrainer(Trainer):
             matches: torch.Tensor = (preds_non_pad == labels_non_pad)
             # next-token-prediction task
             d_log = dict(src='compute_loss', ntp_acc=matches.sum().item()/preds_non_pad.numel())
-            # from icecream import ic
-            # ic(d_log)
             self.log(d_log)
         # ========================== End of added ==========================
 
@@ -167,10 +172,11 @@ class ColoredPrinterCallback(TrainerCallback):
         train_args = self.trainer.args.to_dict()
         meta = self.trainer.model_meta
         self.logger.info(f'Training started with model {log_dict(meta)}, {log_dict_pg(conf)} '
-                         f'on {log_dict(self.train_meta)} with training args {log_dict_pg(train_args)}... ')
+                         f'on {log_dict(self.train_meta)} with training args {log_dict_pg(train_args)} '
+                         f'and my training args {log_dict(self.trainer.my_args)}... ')
         self.logger_fl.info(f'Training started with with model {log_dict_nc(meta)}, {log_dict_id(conf)} '
-                            f'on {log_dict_nc(self.train_meta)} with training args {log_dict_id(train_args)}... ')
-
+                            f'on {log_dict_nc(self.train_meta)} with training args {log_dict_id(train_args)} '
+                            f'and my training args {log_dict_nc(self.trainer.my_args)}... ')
         self.t_strt = datetime.datetime.now()
 
     def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
@@ -215,6 +221,9 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
         self.out_dict = None
 
     def on_log(self, args, state, control, logs=None, **kwargs):
+        # from icecream import ic
+        # ic('in my callback', control.should_log)
+        # ic(control.should_log, 'src' in logs)
         if state.is_local_process_zero:
             if 'src' in logs and logs['src'] == 'compute_loss':
                 del logs['src']
@@ -233,7 +242,14 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                         ('train_loss', loss), ('ntp_acc', ntp_acc)
                     ])
                     self.out_dict = pretty_log_dict(self.out_dict, ref=self.train_meta)
-                    self.logger.info(log_dict(self.out_dict))
+                    # `should_log` just prevents this call, I only filter console logging
+                    # from icecream import ic
+                    # ic(self.trainer.args.logging_strategy, self.trainer.my_args['steps_per_epoch'], step)
+                    if self.trainer.my_args['logging_strategy'] == 'steps':
+                        self.logger.info(log_dict(self.out_dict))
+                    elif self.trainer.my_args['logging_strategy'] == 'epoch' and \
+                            step % self.trainer.my_args['steps_per_epoch'] == 0:
+                        self.logger.info(log_dict(self.out_dict))
                     self.logger_fl.info(log_dict_nc(self.out_dict))
                     self.writer.add_scalar('Train/loss', loss, step)
                     self.writer.add_scalar('Train/ntp_acc', ntp_acc, step)
