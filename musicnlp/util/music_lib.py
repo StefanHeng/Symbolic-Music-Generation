@@ -370,6 +370,12 @@ def make_score(
     bar0 = part.measure(0)  # Insert metadata into 1st bar
     bar0.insert(MetronomeMark(number=tempo))
     bar0.insert(TimeSignature(time_sig))
+
+    # from icecream import ic
+    # for bar in part[Measure]:
+    #     for e in bar:
+    #         if isinstance(e, (Note, Rest)):
+    #             ic(e, e.tie)
     return scr
 
 

@@ -43,30 +43,11 @@ def convert_dataset(dataset_name: str = 'POP909'):
             if len(title) > my_lim:
                 k_title = title[:my_lim]
                 t_ = title = f'{k_title}... - v{version_counter[k_title]}'  # ensures no duplicates
-                ic(title, t_)
                 version_counter[k_title] += 1
-                # exit(1)
             fnm_ = f'{author} - {title}'[:255-4]  # the top filename limit
             fnm_ = f'{fnm_}.mid'
             assert len(fnm_) <= os_lim
             return fnm_
-
-        # find the missing midi that wasn't converted
-        # path_exp_ = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned'
-        # fnms_exp = sorted(glob.iglob(os.path.join(path_exp_, '*.mid')))
-        # path_exp_ = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned'
-        # fnms_exp += sorted(glob.iglob(os.path.join(path_exp_, '*.mid')))
-        # ic(len(fnms_exp))
-        # fnms, fnms_exp = [path2fnm(f) for f in fnms], [stem(f, keep_ext=True) for f in fnms_exp]
-        # ic(fnms[:10], fnms_exp[:10])
-        # ic(len(set(fnms)), len(set(fnms_exp)))
-        # ic(set(fnms) - set(fnms_exp))
-        #
-        # from collections import Counter
-        # c = Counter(fnms)
-        # ic(next(k for k, n in c.items() if n > 1))
-        # exit(1)
-
         fnms_written = set()
         for p in tqdm(fnms, desc=f'Converting {dataset_name}', unit='song'):
             fnm = path2fnm(p)
@@ -74,7 +55,6 @@ def convert_dataset(dataset_name: str = 'POP909'):
                 raise ValueError(f'Duplicate file name because of truncation: path {logi(p)} modified to {logi(fnm)}')
             fnms_written.add(fnm)
             copyfile(p, os.path.join(path_exp, fnm))
-        ic(len(fnms_written))
         assert len(fnms_written) == len(fnms)
 
 

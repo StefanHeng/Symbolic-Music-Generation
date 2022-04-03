@@ -31,8 +31,17 @@ def get_model_n_tokenizer(
             },
             reformer={
                 'debug': dict(max_position_embeddings=1024, axial_pos_shape=(32, 32)),
-                'small': dict(max_position_embeddings=2048, axial_pos_shape=(32, 64)),
-                'base': dict(max_position_embeddings=4096, axial_pos_shape=(64, 64))
+                # default attention head size is 64, doesn't make sense since doesn't align with hidden size of 256
+                'tiny': dict(max_position_embeddings=2048, axial_pos_shape=(32, 64)),
+                'small': dict(  # overall hidden size of 512
+                    max_position_embeddings=2048, axial_pos_shape=(32, 64),
+                    attention_head_size=512, axial_pos_embds_dim=(128, )
+                ),
+                # 'base': dict(max_position_embeddings=4096, axial_pos_shape=(64, 64))
+                'base': dict(
+                    max_position_embeddings=2048, axial_pos_shape=(32, 64),
+                    num_hashes=2,  # for better accuracy
+                )
             }
         )
         d_ref = get_model_n_tokenizer.d_config['reformer']
@@ -130,6 +139,14 @@ def get_train_args(model_name: str, model_size: str, train_args: Dict = None) ->
                     weight_decay=0,
                     lr_scheduler_type=SchedulerType.CONSTANT,
                     num_train_epochs=32,
+                ),
+                'tiny': dict(
+                    batch_size=64,
+                    learning_rate=3e-4,
+                    weight_decay=1e-2,
+                    lr_scheduler_type=SchedulerType.COSINE,
+                    num_train_epochs=32,
+                    warmup_ratio=0.1
                 ),
                 'small': dict(
                     batch_size=64,

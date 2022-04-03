@@ -33,6 +33,8 @@ class MusicTokenizer(PreTrainedTokenizer):
         self._add_special_token(MusicTokenizer.TOK_PAD)
         # self.pad_token, self.eos_token = MusicTokenizer.TOK_PAD, MusicTokenizer.TOK_EOS
         self.pad_token, self.eos_token = MusicTokenizer.TOK_PAD, self.vocab.end_of_song
+        self.sob_token = self.vocab.start_of_bar
+        self.sob_token_id = self._convert_token_to_id(self.sob_token)
 
     def _add_special_token(self, tok):
         assert tok not in self.spec_toks_enc

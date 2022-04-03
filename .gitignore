@@ -9,6 +9,7 @@ models/
 runs/
 tb_log/
 plot/
+evaluations/
 
 
 # Byte-compiled / optimized / DLL files

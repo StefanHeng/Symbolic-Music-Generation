@@ -12,6 +12,8 @@ import itertools
 import concurrent.futures
 from typing import Tuple, List, Dict
 from typing import Any, Iterable, Callable, TypeVar, Union
+
+import torch
 from pygments import highlight, lexers, formatters
 
 from functools import reduce
@@ -329,6 +331,22 @@ def log_dict_p(d: Dict, **kwargs) -> str:
     for path
     """
     return log_dict(d, with_color=False, sep='=', **kwargs)
+
+
+def readable_int(num: int, suffix: str = '') -> str:
+    """
+    Converts (potentially large) integer to human-readable format
+    """
+    for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Y', suffix)
+
+
+def model_num_trainable_parameter(model: torch.nn.Module, readable: bool = True) -> Union[int, str]:
+    n = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return readable_int(n) if readable else n
 
 
 def hex2rgb(hx: str) -> Union[Tuple[int], Tuple[float]]:
