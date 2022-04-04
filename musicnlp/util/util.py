@@ -344,7 +344,7 @@ def readable_int(num: int, suffix: str = '') -> str:
     return "%.1f%s%s" % (num, 'Y', suffix)
 
 
-def model_num_trainable_parameter(model: torch.nn.Module, readable: bool = True) -> Union[int, str]:
+def get_model_num_trainable_parameter(model: torch.nn.Module, readable: bool = True) -> Union[int, str]:
     n = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return readable_int(n) if readable else n
 

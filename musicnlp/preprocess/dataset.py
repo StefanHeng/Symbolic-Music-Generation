@@ -42,7 +42,7 @@ def convert_dataset(dataset_name: str = 'POP909'):
             title = stem(title)
             if len(title) > my_lim:
                 k_title = title[:my_lim]
-                t_ = title = f'{k_title}... - v{version_counter[k_title]}'  # ensures no duplicates
+                title = f'{k_title}... - v{version_counter[k_title]}'  # ensures no duplicates
                 version_counter[k_title] += 1
             fnm_ = f'{author} - {title}'[:255-4]  # the top filename limit
             fnm_ = f'{fnm_}.mid'

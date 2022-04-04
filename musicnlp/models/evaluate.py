@@ -98,7 +98,7 @@ if __name__ == '__main__':
     from icecream import ic
 
     mdl = load_trained(model_name='reformer', directory_name='2022-04-01_09-40-48')
-    ic(model_num_trainable_parameter(mdl))
+    ic(get_model_num_trainable_parameter(mdl))
     mg = MusicGenerator(mdl)
 
     def explore_generate_unconditional():

@@ -58,7 +58,7 @@ class MyTrainer(Trainer):
         super().__init__(**kwargs)
         self.clm_acc_logging = clm_acc_logging
         self.model_meta = model_meta
-        self.model_meta['parameter_count'] = model_num_trainable_parameter(self.model)
+        self.model_meta['parameter_count'] = get_model_num_trainable_parameter(self.model)
         self.name = self.model.__class__.__qualname__
 
         self.my_args = my_args
@@ -70,13 +70,10 @@ class MyTrainer(Trainer):
         self.callback_handler.callbacks = [
             c for c in callbacks if str(c.__class__) != "<class 'transformers.trainer_callback.PrinterCallback'>"
         ]
-        # from icecream import ic
-        # ic(self.callback_handler.callbacks)
         callback_cls = ColoredPrinterCallbackForClm if self.clm_acc_logging else ColoredPrinterCallback
         if not self.clm_acc_logging:
             raise NotImplementedError('on-CLM task logging not updated')
         self.add_callback(callback_cls(name=self.name, parent_trainer=self))
-        # ic(self.callback_handler.callbacks)
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -221,9 +218,6 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
         self.out_dict = None
 
     def on_log(self, args, state, control, logs=None, **kwargs):
-        # from icecream import ic
-        # ic('in my callback', control.should_log)
-        # ic(control.should_log, 'src' in logs)
         if state.is_local_process_zero:
             if 'src' in logs and logs['src'] == 'compute_loss':
                 del logs['src']
@@ -243,8 +237,6 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     ])
                     self.out_dict = pretty_log_dict(self.out_dict, ref=self.train_meta)
                     # `should_log` just prevents this call, I only filter console logging
-                    # from icecream import ic
-                    # ic(self.trainer.args.logging_strategy, self.trainer.my_args['steps_per_epoch'], step)
                     if self.trainer.my_args['logging_strategy'] == 'steps':
                         self.logger.info(log_dict(self.out_dict))
                     elif self.trainer.my_args['logging_strategy'] == 'epoch' and \

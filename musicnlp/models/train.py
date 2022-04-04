@@ -107,7 +107,7 @@ def get_model_n_tokenizer(
         assert len(aps) == 2 and np.prod(aps) == mpe, \
             'the product of `axial_pos_shape` must be `max_position_embeddings`'
     # to set the correct model config for reformer, now take care of `max_length` for tokenizer
-    return tokenizer_, cls_model(config_), model_meta  # Initialize all weights from scratch
+    return tokenizer_, cls_model(config=config_), model_meta  # Initialize all weights from scratch
 
 
 def get_train_and_my_train_args(
@@ -287,6 +287,15 @@ if __name__ == '__main__':
 
     fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
 
+    def check_model_size():
+        md_nm = 'reformer'
+        # md_sz = 'small'
+        # md_sz = 'base'
+        md_sz = 'large'
+        mdl: torch.nn.Module = get_model_n_tokenizer(model_name=md_nm, model_size=md_sz)[1]
+        ic(get_model_num_trainable_parameter(mdl))
+    check_model_size()
+
     def train(resume_from_checkpoint: str = None):
         seed = config('random-seed')
 
@@ -322,7 +331,7 @@ if __name__ == '__main__':
         else:
             trainer.train()
         trainer.save_model(os.path.join(trainer.args.output_dir, 'trained'))
-    train()
+    # train()
 
     # checkpoint_path = os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
     # train(resume_from_checkpoint=checkpoint_path)
