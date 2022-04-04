@@ -51,19 +51,31 @@ class MusicVisualize:
             return d
         return pd.DataFrame([extract_info(e) for e in entries])
 
-    def hist_wrapper(self, col_name: str, title: str, xlabel: str, callback: Callable = None, **kwargs):
+    def hist_wrapper(
+            self, col_name: str, title: str, xlabel: str, callback: Callable = None, new_figure=True, **kwargs
+    ):
         self._load_df()
         kwargs = dict(kde=True) | kwargs
+        if new_figure:
+            assert 'ax' in kwargs, f'If not {logi("new_figure")}, {logi("ax")} must be passed in'
         ax = sns.histplot(data=self.df, x=col_name, **kwargs)
-        plt.title(title)
         plt.xlabel(xlabel)
         plt.ylabel('count')
+        if title is not None:
+            plt.title(title)
         if callback is not None:
             callback(ax)
-        plt.show()
+        # from icecream import ic
+        # ic(new_figure)
+        if not new_figure:
+            ic('should not reach here')
+            plt.show()
 
-    def token_length_dist(self):
-        self.hist_wrapper(col_name='n_token', title='Histogram of #encoded tokens per song', xlabel='#encoded tokens')
+    def token_length_dist(self, **kwargs):
+        args = dict(col_name='n_token', title='Histogram of token length', xlabel='token length')
+        if kwargs is not None:
+            args.update(kwargs)
+        self.hist_wrapper(**args)
 
     def bar_count_dist(self):
         self.hist_wrapper(col_name='n_bar', title='Histogram of #bars per song', xlabel='#bars')
@@ -71,14 +83,17 @@ class MusicVisualize:
     def tuplet_count_dist(self):
         self.hist_wrapper(col_name='n_tup', title='Histogram of #tuplets per song', xlabel='#tuplets')
 
-    def song_duration_dist(self):
+    def song_duration_dist(self, **kwargs):
         def callback(ax):
             x_tick_vals = plt.xticks()[0]
             ax.set_xticks(x_tick_vals, labels=[sec2mmss(v) for v in x_tick_vals])
         self._load_df()
-        self.hist_wrapper(
+        args = dict(
             col_name='duration', title='Histogram of song duration', xlabel='duration (mm:ss)', callback=callback
         )
+        if kwargs is not None:
+            args.update(kwargs)
+        self.hist_wrapper(**args)
 
     def time_sig_dist(self):
         self.hist_wrapper(
@@ -175,24 +190,31 @@ class MusicVisualize:
             df['average_count'] = df.apply(lambda x: x.total_count/self.n_song, axis=1)
         return df
 
-    def warning_type_dist(self, average=True):
+    def warning_type_dist(self, average=True, title: str = None, show=True, bar_kwargs: Dict = None):
         df = self.warn_info()
         cat = CategoricalDtype(categories=WarnLog.TYPES, ordered=True)
         assert not df.type.isnull().values.any()
         df.type = df.type.astype(cat, copy=False)
-        ax = sns.barplot(data=df, y='type', x='average_count' if average else 'total_count')
+        if bar_kwargs is None:
+            bar_kwargs = dict()
+        ax = sns.barplot(data=df, y='type', x='average_count' if average else 'total_count', **bar_kwargs)
         ax.set_xscale('log')
-        plt.title('Bar plot of warning type, ordered by severity, across all songs')
-        plt.ylabel('Warning type ' + 'per song' if average else 'in total')
-        plt.xlabel('count')
-        plt.show()
+        plt.ylabel('Warning type')
+        typ = 'per song' if average else 'in total'
+        plt.xlabel(f'count {typ}')
+        if title is None:
+            title = 'Bar plot of warning type, ordered by severity, across all songs'
+        if title != 'None':
+            plt.title(title)
+        if show:
+            plt.show()
 
 
 if __name__ == '__main__':
     from icecream import ic
 
     fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29.json'
-    fnm = os.path.join(config('path-export'), fnm)
+    fnm = os.path.join(get_processed_path(), fnm)
     mv = MusicVisualize(fnm)
 
     def check_warn():
@@ -210,4 +232,30 @@ if __name__ == '__main__':
         # mv.note_pitch_dist()
         # mv.note_duration_dist()
         # mv.warning_type_dist()
-    plots()
+    # plots()
+    fig_sz = (9, 5)
+
+    def save_plots_for_report():
+        plt.figure(figsize=fig_sz)
+        ax = plt.gca()
+        args = dict(new_figure=True, ax=ax, title=None)
+
+        def token_len():
+            mv.token_length_dist(**args)
+            return 'Distribution of token length for each song'
+        # title = token_len()
+
+        def song_duration():
+            mv.song_duration_dist(**args)
+            return 'Distribution of song duration'
+        # plt.show()
+        title = song_duration()
+        save_fig(f'{title}, {now(for_path=True)}')
+    # save_plots_for_report()
+
+    def save_for_report_warn():
+        # plt.figure(figsize=(9, 5))
+        mv.warning_type_dist(title='None', show=False, bar_kwargs=dict(figure=plt.figure(figsize=fig_sz)))
+        title = 'Average #Warnings for each song'
+        save_fig(f'{title}, {now(for_path=True)}')
+    save_for_report_warn()

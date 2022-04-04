@@ -105,7 +105,6 @@ def plot_tb(
             args_ori = LN_KWARGS | dict(ls=':', c=c, alpha=0.7)
             args_smooth = LN_KWARGS | dict(c=c, lw=0.75)
         ax.plot(x, y__, **args_ori)
-        # ic(label[idx])
         return ax.plot(x, y_s, **args_smooth, label=label[idx])
     plt.xlabel('Step')
     if len(y) == 2:
