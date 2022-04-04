@@ -145,12 +145,6 @@ def save_fig(title, save=True):
     os.makedirs(save_fig.path, exist_ok=True)
     if save:
         fnm = f'{title}.png'
-        # fig = plt.gcf()
-        # from icecream import ic
-        # ic('why didn\'t show??')
-        # fig.show()
-        # ic('why didn\'t show??')
-        # plt.show()
         plt.savefig(os.path.join(save_fig.path, fnm), dpi=300)
 
 

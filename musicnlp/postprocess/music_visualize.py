@@ -65,10 +65,7 @@ class MusicVisualize:
             plt.title(title)
         if callback is not None:
             callback(ax)
-        # from icecream import ic
-        # ic(new_figure)
         if not new_figure:
-            ic('should not reach here')
             plt.show()
 
     def token_length_dist(self, **kwargs):

@@ -11,8 +11,9 @@ from musicnlp.postprocess import MusicConverter
 
 
 def load_trained(model_name: str, directory_name: str):
-    path = os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, directory_name, 'trained')
+    path = os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, directory_name)
     return ReformerModelWithLMHead.from_pretrained(path)
+
 
 
 class MusicGenerator:
@@ -28,6 +29,17 @@ class MusicGenerator:
 
         self.eval_path = os.path.join(PATH_BASE, DIR_PROJ, 'evaluations')
         os.makedirs(self.eval_path, exist_ok=True)
+
+    @staticmethod
+    def args2fnm(args: dict):
+        sample = args['do_sample']
+        out = 'sample' if sample else 'greedy'
+        topp, topk = args.get('top_p', None), args.get('top_k', None)
+        if topp is not None:
+            out = f'{out}, topp={topp}'
+        if topk is not None:
+            out = f'{out}, topk={topk}'
+        return out
 
     def __call__(
             self, mode: str, strategy: str, to_score: bool = False,
@@ -79,6 +91,7 @@ class MusicGenerator:
                 generate_args['do_sample'] = True
         args |= generate_args
         outputs = self.model.generate(**inputs, **args)[0]  # for now, generate one at a time
+
         if truncate_to_sob:
             idxs_eob = torch.nonzero(outputs == self.tokenizer.sob_token_id).flatten().tolist()
             assert len(idxs_eob) > 0, f'No start of bar token found when {logi("truncate_to_sob")} enabled'
@@ -88,7 +101,7 @@ class MusicGenerator:
         score = self.converter.str2score(decoded, omit_eos=True, title=title)  # incase model can't finish generation
         if save:
             # `makeNotations` disabled any clean-up by music21, intended to remove `tie`s added
-            path = os.path.join(self.eval_path, f'{title}, {now(for_path=True)}.mxl')
+            path = os.path.join(self.eval_path, f'{title}, {MusicGenerator.args2fnm(args)}, {now(for_path=True)}.mxl')
             score.write(fmt='mxl', fp=path, makeNotation=False)
         else:
             score.show()
@@ -97,7 +110,9 @@ class MusicGenerator:
 if __name__ == '__main__':
     from icecream import ic
 
-    mdl = load_trained(model_name='reformer', directory_name='2022-04-01_09-40-48')
+    # dir_nm = os.path.join('2022-04-01_09-40-48', 'trained')
+    dir_nm = os.path.join('2022-04-03_11-01-04', 'checkpoint-3712')
+    mdl = load_trained(model_name='reformer', directory_name=dir_nm)
     ic(get_model_num_trainable_parameter(mdl))
     mg = MusicGenerator(mdl)
 
@@ -109,14 +124,16 @@ if __name__ == '__main__':
         # gen_args = dict(temperature=1, top_k=16)
         gen_args = dict(top_k=0, top_p=0.9)
         mg(mode='unconditional', strategy='sample', generate_args=gen_args)
-    explore_generate_unconditional()
+    # explore_generate_unconditional()
 
     def explore_generate_conditional():
         fnm = 'Merry Go Round'
         path = get_my_example_songs(k=fnm, extracted=True)
-        gen_args = dict(topk=16, top_p=0.75)
+        gen_args = None
+        # gen_args = dict(topk=16, top_p=0.75)
         prompt = dict(path=path)
-        mg(mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt, save=fnm)
+        mg(mode='conditional', strategy='greedy', generate_args=gen_args, prompt_args=prompt, save=fnm)
+        # mg(mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt, save=fnm)
     # explore_generate_conditional()
 
     def check_why_tie_in_output():
@@ -135,4 +152,4 @@ if __name__ == '__main__':
             path = get_my_example_songs(k=fnm, extracted=True)
             prompt = dict(path=path)
             mg(mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt, save=fnm)
-    # export_generated()
+    export_generated()
