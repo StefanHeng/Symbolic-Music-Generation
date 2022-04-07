@@ -46,6 +46,8 @@ if __name__ == '__main__':
     # ic(scr)
 
     def fix_delete_broken_files():
+        import glob
+
         path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/*.mid'
         set_broken = set(stem(fnm) for fnm in glob.iglob(path_broken))
         ic(set_broken)

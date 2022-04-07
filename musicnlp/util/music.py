@@ -1,3 +1,4 @@
+import glob
 from shutil import copyfile
 from collections import defaultdict
 
@@ -32,18 +33,6 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
             return next(p for p in paths if p.lower().find(k) != -1)
     else:
         return [stem(p) for p in paths] if pretty else paths
-
-
-def get_cleaned_song_paths(dataset_name: str, fmt='song_fmt') -> List[str]:
-    """
-    :return: List of music file paths in my cleaned file system structure
-    """
-    if not hasattr(get_cleaned_song_paths, 'd_dsets'):
-        get_cleaned_song_paths.d_dsets = config('datasets')
-    d_dset = get_cleaned_song_paths.d_dsets[dataset_name]
-    return sorted(
-        glob.iglob(os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'], d_dset[fmt]), recursive=True)
-    )
 
 
 def get_extracted_song_eg(
@@ -109,7 +98,7 @@ def convert_dataset(dataset_name: str = 'POP909'):
         assert len(fnms_written) == len(fnms)
 
 
-def get_lmd_cleaned_subset_fnms() -> List[str]:
+def get_lmd_cleaned_subset_fnms(with_base_path: bool = True) -> List[str]:
     """
     My subset of LMD-cleaned dataset
         MIDI files that can't be converted to MXL via MuseScore are excluded
@@ -142,6 +131,37 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
         assert version not in d
         d[version] = fnm
     return [d[min(d)] for d in d_song2fnms.values()]
+
+
+def get_cleaned_song_paths(dataset_name: str, fmt='mid') -> List[str]:
+    """
+    :return: List of music file paths in my cleaned file system structure
+    """
+    lmd_c_s = 'LMD-cleaned-subset'
+    dataset_names = list(config('datasets').keys()) + [lmd_c_s]
+    assert dataset_name in dataset_names, \
+        f'Invalid dataset name: {logi(dataset_name)}, expected one of {logi(dataset_names)}'
+    fmts = ['mid', 'mxl']
+    assert fmt in fmts, f'Invalid format: {logi(fmt)}, expected one of {logi(fmts)}'
+
+    path = os.path.join(PATH_BASE, DIR_DSET)
+
+    if dataset_name == lmd_c_s:
+        fnms = get_lmd_cleaned_subset_fnms()
+        dir_nm = 'LMD-cleaned_valid'
+
+        if fmt == 'mid':
+            def map_fnm(fnm: str) -> str:
+                return os.path.join(path, dir_nm, fnm)
+        else:  # 'mxl'
+            def map_fnm(fnm: str) -> str:
+                return os.path.join(path, dir_nm, f'{stem(fnm)}.{fmt}')
+        return [map_fnm(fnm) for fnm in fnms]
+    else:
+        d_dset = config(f'datasets.{dataset_name}')
+        dir_nm = d_dset['dir_nm']
+        path = os.path.join(path, dir_nm, d_dset[fmt])
+        return sorted(glob.iglob(path, recursive=True))
 
 
 if __name__ == '__main__':

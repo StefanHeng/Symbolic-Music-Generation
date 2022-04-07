@@ -651,12 +651,14 @@ class MusicExtractor:
 if __name__ == '__main__':
     from icecream import ic
 
+    import musicnlp.util.music as music_util
+
     def toy_example():
         logger = WarnLog()
         # fnm = get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = get_my_example_songs('Shape of You', fmt='MXL')
         # fnm = get_my_example_songs('平凡之路', fmt='MXL')
-        fnm = get_my_example_songs('Canon')
+        fnm = music_util.get_my_example_songs('Canon')
         ic(fnm)
         mt = MusicExtractor(logger=logger, verbose=True)
 
@@ -675,12 +677,13 @@ if __name__ == '__main__':
         check_mxl_out()
         # check_str()
         # check_visualize()
-    toy_example()
+    # toy_example()
 
     def encode_a_few():
-        dnm = 'POP909'
-        fnms = get_cleaned_song_paths(dnm, fmt='song_fmt_exp')
-        # ic(fnms[:20])
+        # dnm = 'POP909'
+        dnm = 'LMD-cleaned-subset'
+        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')
+        ic(len(fnms), fnms[:5])
 
         # idx = [idx for idx, fnm in enumerate(fnms) if '恋爱ing' in fnm][0]
         # ic(idx)
@@ -693,7 +696,7 @@ if __name__ == '__main__':
 
             # s = mt(fnm, exp='visualize')
             # print(s)
-    # encode_a_few()
+    encode_a_few()
 
     def check_vocabulary():
         vocab = MusicVocabulary()

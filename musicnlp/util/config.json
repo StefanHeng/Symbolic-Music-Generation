@@ -17,8 +17,8 @@
         "LMD-cleaned": {
             "nm": "The Lakh MIDI Dataset, Cleaned",
             "dir_nm": "Lakh-MIDI-Dataset/LMD-Cleaned",
-            "song_fmt": "**/*.mid",
-            "song_fmt_exp": "**/*.mxl",
+            "song_fmt_mid": "**/*.mid",
+            "song_fmt_mxl": "**/*.mxl",
             "meta": {
                 "songs": [
                     {
@@ -75974,19 +75974,19 @@
         "midi-eg": {
             "nm": "Some hand-selected MIDI samples",
             "dir_nm": "MIDI-eg",
-            "song_fmt": "*.mid"
+            "song_fmt_mid": "*.mid"
         },
         "mxl-eg": {
             "nm": "Some hand-selected MXL samples",
             "dir_nm": "MXL-eg",
             "dir_nm_extracted": "MXL-eg_out",
-            "song_fmt": "*.mxl"
+            "song_fmt_mid": "*.mxl"
         },
         "POP909": {
             "nm": "POP909 Dataset for Music Arrangement Generation",
             "dir_nm": "POP909",
-            "song_fmt": "*.mid",
-            "song_fmt_exp": "*.mxl",
+            "song_fmt_mid": "*.mid",
+            "song_fmt_mxl": "*.mxl",
             "meta": {
                 "songs": [
                     {

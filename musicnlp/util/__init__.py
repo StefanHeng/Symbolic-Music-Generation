@@ -1,4 +1,4 @@
-from .data_path import DIR_DSET, PATH_BASE, DIR_PROJ, PKG_NM
+from .data_path import DIR_DSET, PATH_BASE, DIR_PROJ, PKG_NM, DIR_MDL
 from .util import *
 from . import train
 from . import music_lib

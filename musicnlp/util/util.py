@@ -1,7 +1,6 @@
 import os
 import re
 import sys
-import glob
 import json
 import math
 import pickle
@@ -27,7 +26,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM, DIR_DSET, DIR_MDL
+from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM, DIR_DSET
 
 
 pd.set_option('expand_frame_repr', False)

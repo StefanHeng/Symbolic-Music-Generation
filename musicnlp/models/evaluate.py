@@ -109,6 +109,8 @@ class MusicGenerator:
 if __name__ == '__main__':
     from icecream import ic
 
+    import musicnlp.util.music as music_util
+
     # dir_nm = os.path.join('2022-04-01_09-40-48', 'trained')
     dir_nm = os.path.join('2022-04-03_11-01-04', 'checkpoint-3712')
     mdl = load_trained(model_name='reformer', directory_name=dir_nm)
@@ -127,7 +129,7 @@ if __name__ == '__main__':
 
     def explore_generate_conditional():
         fnm = 'Merry Go Round of Life'
-        path = get_my_example_songs(k=fnm, extracted=True)
+        path = music_util.get_my_example_songs(k=fnm, extracted=True)
         gen_args = None
         # gen_args = dict(topk=16, top_p=0.75)
         prompt = dict(path=path)
@@ -149,7 +151,7 @@ if __name__ == '__main__':
         fnms = ['Merry Go Round of Life', 'Shape of You']
         gen_args = dict(topk=16, top_p=0.75)
         for fnm in fnms:
-            path = get_my_example_songs(k=fnm, extracted=True)
+            path = music_util.get_my_example_songs(k=fnm, extracted=True)
             prompt = dict(path=path)
             mg(mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt, save=fnm)
     export_generated()

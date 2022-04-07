@@ -1,4 +1,4 @@
-import re
+import glob
 
 from util import *
 
@@ -27,25 +27,25 @@ config: dict = {
         'LMD-cleaned': dict(
             nm='The Lakh MIDI Dataset, Cleaned',
             dir_nm='Lakh-MIDI-Dataset/LMD-Cleaned',
-            song_fmt='**/*.mid',
-            song_fmt_exp='**/*.mxl'
+            song_fmt_mid='**/*.mid',
+            song_fmt_mxl='**/*.mxl'
         ),
         'midi-eg': dict(
             nm='Some hand-selected MIDI samples',
             dir_nm='MIDI-eg',
-            song_fmt='*.mid'
+            song_fmt_mid='*.mid'
         ),
         'mxl-eg': dict(
             nm='Some hand-selected MXL samples',
             dir_nm='MXL-eg',
             dir_nm_extracted='MXL-eg_out',
-            song_fmt='*.mxl'
+            song_fmt_mid='*.mxl'
         ),
         'POP909': dict(
             nm='POP909 Dataset for Music Arrangement Generation',
             dir_nm='POP909',
-            song_fmt='*.mid',
-            song_fmt_exp='*.mxl'
+            song_fmt_mid='*.mid',
+            song_fmt_mxl='*.mxl'
         ),
         'my': dict(
             nm='Music with NLP, Project output',
@@ -104,7 +104,7 @@ def get_dataset_meta(dataset_name: str):
                 return dict(artist=artist, title=title_cleaned, original_title=title)
             else:
                 return dict(artist=artist, title=title)
-        songs = [path2song(p_) for p_ in glob.glob(os.path.join(path_ori, d_dset['song_fmt']))]
+        songs = [path2song(p_) for p_ in glob.glob(os.path.join(path_ori, d_dset['song_fmt_mid']))]
     songs = sorted(songs, key=lambda s: (s['artist'], s['title']))  # sort by artist, then title
     return dict(songs=songs) | get_stats(songs)
 
