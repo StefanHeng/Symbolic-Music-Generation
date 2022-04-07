@@ -1,3 +1,4 @@
+import os.path
 from shutil import copyfile
 from collections import defaultdict
 
@@ -9,7 +10,7 @@ from musicnlp.util import *
 
 def convert_dataset(dataset_name: str = 'POP909'):
     """
-    Convert original dataset to my own format
+    Convert datasets in their original sources to my own file system hierarchy & names
         A directory of `midi` files, with title and artist as file name
     """
     dnms = ['POP909', 'LMD-cleaned']
@@ -29,7 +30,6 @@ def convert_dataset(dataset_name: str = 'POP909'):
         d_dset = config(f'datasets.{dataset_name}')
         path_ori = os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'])
         fnms = sorted(glob.iglob(os.path.join(path_ori, d_dset['song_fmt'])))
-        ic(len(fnms))
 
         # empirically seen as a problem: some files are essentially the same title, ending in different numbers
         # See `ValueError` below
@@ -58,11 +58,63 @@ def convert_dataset(dataset_name: str = 'POP909'):
         assert len(fnms_written) == len(fnms)
 
 
+def get_lmd_cleaned_subset_fnms() -> List[str]:  # TODO: move to util
+    """
+    My subset of LMD-cleaned dataset
+        MIDI files that can't be converted to MXL via MuseScore are excluded
+        Only one unique artist-song is picked among the many versions
+            Resolve by just taking the first one
+
+    Expects `convert_dataset` called first
+    """
+    # TODO: this applies to deprecated version of dataset path & filename, update
+    # this folder contains all MIDI files that can be converted to MXL, on my machine
+    path = os.path.join(PATH_BASE, DIR_DSET, 'LMD-cleaned_valid')
+    # <artist> - <title>(.<version>)?.mid
+    pattern = re.compile(r'^(?P<artist>.*) - (?P<title>.*)(\.(?P<version>[1-9]\d*))?\.mid$')
+    pattern_title = re.compile(r'((?P<title>.*)\.(?P<version>[1-9]\d*))?')
+    d_song2fnms: Dict[Tuple[str, str], Dict[int, str]] = defaultdict(dict)
+    # ic(path, os.path.join(path, config('datasets.LMD-cleaned.song_fmt')))
+    # fnms = sorted(glob.iglob(os.path.join(path, config('datasets.LMD-cleaned.song_fmt'))))
+    fnms = sorted(glob.iglob(os.path.join(path, '*.mid')))
+    # ic(len(fnms))
+    for fnm in tqdm(fnms, desc='Getting LMD-cleaned subset', unit='song'):
+        fnm = stem(fnm, keep_ext=True)
+        # ic(fnm)
+        m = pattern.match(fnm)
+        artist, title = m.group('artist'), m.group('title')
+        assert artist is not None and title is not None
+        m = pattern_title.match(title)
+        title_, version = m.group('title'), m.group('version')
+        if title_ is None:
+            assert version is None
+        else:
+            title, version = title_, int(version)
+        # version = 0 if version is None else int(version.group('version'))
+        version = version or 0
+        # ic(artist, title, version)
+        d = d_song2fnms[(artist, title)]
+        if version in d:
+            ic(d, fnm)
+            exit(1)
+        assert version not in d
+        d[version] = fnm
+        # ic(artist, title, version, d)
+        # ic(d)
+        # exit(1)
+    # exit(1)
+    # ic(d_song2fnms)
+    return [d[min(d)] for d in d_song2fnms.values()]
+
+
 def get_dataset(
         dataset_name: str,
         map_func: Callable = None, remove_columns: Union[str, List[str]] = None,
         n_sample: int = None, random_seed: int = None, fast=True
 ) -> datasets.Dataset:
+    """
+    Get dataset preprocessed for training
+    """
     # TODO: only training split?
     dset = datasets.load_from_disk(os.path.join(get_processed_path(), 'hf_datasets', dataset_name))
     if n_sample is not None:
@@ -106,4 +158,7 @@ if __name__ == '__main__':
             if stem(fnm) in set_broken:
                 os.remove(fnm)
                 print('Deleted', fnm)
-    fix_delete_broken_files()
+    # fix_delete_broken_files()
+
+    fl_nms = get_lmd_cleaned_subset_fnms()
+    ic(len(fl_nms), fl_nms[:20])

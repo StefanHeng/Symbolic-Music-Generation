@@ -105,14 +105,8 @@ def get_dataset_meta(dataset_name: str):
             else:
                 return dict(artist=artist, title=title)
         songs = [path2song(p_) for p_ in glob.glob(os.path.join(path_ori, d_dset['song_fmt']))]
-        # from icecream import ic
-        # ic(len(songs))
-        # exit(1)
     songs = sorted(songs, key=lambda s: (s['artist'], s['title']))  # sort by artist, then title
     return dict(songs=songs) | get_stats(songs)
-    # from icecream import ic
-    # ic(songs[:2], len(songs))
-    # exit(1)
 
 
 for dnm in ['POP909', 'LMD-cleaned']:

@@ -15,7 +15,6 @@ def load_trained(model_name: str, directory_name: str):
     return ReformerModelWithLMHead.from_pretrained(path)
 
 
-
 class MusicGenerator:
     """
     Wraps a model for music generation
@@ -127,7 +126,7 @@ if __name__ == '__main__':
     # explore_generate_unconditional()
 
     def explore_generate_conditional():
-        fnm = 'Merry Go Round'
+        fnm = 'Merry Go Round of Life'
         path = get_my_example_songs(k=fnm, extracted=True)
         gen_args = None
         # gen_args = dict(topk=16, top_p=0.75)
@@ -137,11 +136,12 @@ if __name__ == '__main__':
     # explore_generate_conditional()
 
     def check_why_tie_in_output():
+        import music21 as m21
         incorrect_tie_fl = '/Users/stefanh/Desktop/incorrect tie.mxl'
         score = m21.converter.parse(incorrect_tie_fl)
-        for bar in list(score.parts)[0][Measure]:
+        for bar in list(score.parts)[0][m21.stream.Measure]:
             for e in bar:
-                if isinstance(e, (Note, Rest)):
+                if isinstance(e, (m21.note.Note, m21.note.Rest)):
                     ic(e, e.tie)
     # check_why_tie_in_output()
 
