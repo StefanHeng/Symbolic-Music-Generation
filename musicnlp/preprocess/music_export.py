@@ -2,6 +2,7 @@ from tqdm import tqdm
 import datasets
 
 from musicnlp.util import *
+import musicnlp.util.music as music_util
 from music_extractor import MusicExtractor
 
 
@@ -38,7 +39,7 @@ class MusicExport:
         dnm_ = None
         if isinstance(fnms, str):  # Dataset name provided
             dnm_ = fnms
-            fnms = get_cleaned_song_paths(fnms, fmt='song_fmt_exp')
+            fnms = music_util.get_cleaned_song_paths(fnms, fmt='song_fmt_exp')
         lst_out = []
         me_ = MusicExtractor(precision=prec, mode=self.mode, logger=True, verbose=self.verbose)
         for i_fl, fnm in tqdm(enumerate(fnms), total=len(fnms)):

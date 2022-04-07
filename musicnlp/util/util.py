@@ -344,6 +344,19 @@ def readable_int(num: int, suffix: str = '') -> str:
     return "%.1f%s%s" % (num, 'Y', suffix)
 
 
+def assert_list_same_elms(lst: List[T]):
+    assert all(l == lst[0] for l in lst)
+
+
+def stem(path, keep_ext=False):
+    """
+    :param path: A potentially full path to a file
+    :param keep_ext: If True, file extensions is preserved
+    :return: The file name, without parent directories
+    """
+    return os.path.basename(path) if keep_ext else pathlib.Path(path).stem
+
+
 def get_model_num_trainable_parameter(model: torch.nn.Module, readable: bool = True) -> Union[int, str]:
     n = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return readable_int(n) if readable else n
@@ -480,76 +493,6 @@ def get_logger(name: str, typ: str = 'stdout', file_path: str = None) -> logging
     return logger
 
 
-def assert_list_same_elms(lst: List[T]):
-    assert all(l == lst[0] for l in lst)
-
-
-def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False):
-    """
-    :return: A list of or single MIDI file path
-    """
-    fmt, formats = fmt.lower(), ['mxl', 'midi']
-    assert fmt in formats, f'Invalid format: expected one of {logi(formats)}, got {logi(fmt)}'
-    if extracted:
-        assert fmt == 'mxl', 'Only support extracted for MXL files'
-    dset_nm = f'{fmt}-eg'
-    d_dset = config(f'{DIR_DSET}.{dset_nm}')
-    key_dir = 'dir_nm'
-    if extracted:
-        key_dir = f'{key_dir}_extracted'
-    dir_nm = d_dset[key_dir]
-    path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, d_dset['song_fmt'])
-    paths = sorted(glob.iglob(path, recursive=True))
-    if k is not None:
-        assert isinstance(k, (int, str)), \
-            f'Expect k to be either a {logi("int")} or {logi("str")}, got {logi(k)} with type {logi(type(k))}'
-        if type(k) is int:
-            return paths[k]
-        else:  # Expect str
-            k = k.lower()
-            return next(p for p in paths if p.lower().find(k) != -1)
-    else:
-        return [stem(p) for p in paths] if pretty else paths
-
-
-def get_cleaned_song_paths(dataset_name, fmt='song_fmt') -> List[str]:
-    """
-    :return: List of music file paths in my cleaned file system structure
-    """
-    if not hasattr(get_cleaned_song_paths, 'd_dsets'):
-        get_cleaned_song_paths.d_dsets = config('datasets')
-    d_dset = get_cleaned_song_paths.d_dsets[dataset_name]
-    return sorted(
-        glob.iglob(os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'], d_dset[fmt]), recursive=True)
-    )
-
-
-def get_cleaned_song_eg(dataset_name: str, k: Union[int, str]) -> str:
-    pass
-
-
-def stem(path, keep_ext=False):
-    """
-    :param path: A potentially full path to a file
-    :param keep_ext: If True, file extensions is preserved
-    :return: The file name, without parent directories
-    """
-    return os.path.basename(path) if keep_ext else pathlib.Path(path).stem
-
-
-def get_extracted_song_eg(
-        fnm='musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29',
-        dir_=get_processed_path(),
-        k: Union[int, str] = 0
-) -> str:
-    with open(os.path.join(dir_, f'{fnm}.json')) as f:
-        dset = json.load(f)['music']
-    if isinstance(k, int):
-        return dset[k]['text']
-    else:
-        return next(d['text'] for d in dset if k in d['title'])
-
-
 if __name__ == '__main__':
     from icecream import ic
 
@@ -562,14 +505,6 @@ if __name__ == '__main__':
         ]
         ic(compress(arr))
     # check_compress()
-
-    def check_fl_nms():
-        dnm = 'POP909'
-        fnms = get_cleaned_song_paths(dnm)
-        ic(len(fnms), fnms[:20])
-        fnms = get_cleaned_song_paths(dnm, fmt='song_fmt_exp')
-        ic(len(fnms), fnms[:20])
-    # check_fl_nms()
 
     # ic(quarter_len2fraction(1.25), quarter_len2fraction(0.875))
 
