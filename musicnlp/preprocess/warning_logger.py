@@ -93,8 +93,8 @@ class WarnLog:
             msg = '{warn_name}: Time Signature is uncommon' \
                   ' - Expect one of: {time_sig_expect}, got {time_sig_got}'
         elif warn_nm == WarnLog.IncTimeSig:
-            msg = '{warn_name}: ratio of mode time signature below {th}' \
-                  ' - #mode {n_mode}, #total {n_bar}'
+            msg = '{warn_name}: ratio of mode time signature below {threshold}' \
+                  ' - #mode {n_bar_mode}, #total {n_bar_total}'
         elif warn_nm == WarnLog.HighPchOvlTup:
             msg = '{warn_name}: Higher pitch observed at bar#{bar_num}' \
                   ' - triplet truncated'
@@ -172,7 +172,7 @@ class WarnLog:
             assert 'note_choices' in args
         else:
             assert nm == WarnLog.IncTimeSig
-            assert all(k in args for k in ['time_sig', 'n_bar_total', 'n_bar_mode'])
+            assert all(k in args for k in ['time_sig', 'threshold', 'n_bar_total', 'n_bar_mode'])
         if self.args_func is not None:
             warn_ = self.args_func() | warn_
 

@@ -155,11 +155,30 @@ class MusicExtractor:
             max_opn = max(options, key=lambda i: get_overlap(low, high, i))
             return max_opn if get_overlap(low, high, max_opn) > 0 else None
         idxs_note = [assign_max_note_idx(*edge, range(n_notes)) for edge in bin_edges]
-        ic(idxs_note)
+        # Having `None`s should rarely happen, really poor quality of transcription
+        # One instance where this warning is raised, see `LMD-cleaned::ABBA - Dancing Queen`
+        # Notes goes beyond offset of 4 in 4/4 time sig,
+        #   whereas music21 wraps them with mod 4 so the notes become 0-offset
+        # those notes are not long enough with the actual 0-offset notes, but are selected as it has higher pitch
+        overlap_flag = [(False if i is None else (get_overlap(*edge, i) > 0)) for edge, i in zip(bin_edges, idxs_note)]
+        if not all(overlap_flag):
+            flag_with_idx = [(i, flag) for i, flag in enumerate(overlap_flag)]
+            missing_idxs = [
+                [i for i, f in pairs]
+                for flag, pairs in itertools.groupby(flag_with_idx, key=lambda x: x[1]) if not flag
+            ]
+            idxs_ends = [(idxs[0], idxs[-1]) for idxs in missing_idxs]
+            starts_n_spans = [(i_strt*dur_slot, (i_end-i_strt+1) * dur_slot) for i_strt, i_end in idxs_ends]
+
+            self.log_warn(dict(
+                warn_name=WarnLog.BarNoteGap, bar_num=number, time_sig=(time_sig.numerator, time_sig.denominator),
+                precision=self.prec, unfilled_ranges=[(start, start+span) for start, span in starts_n_spans]
+            ))
+
         offset = 0
         notes_out = []
         for i, n in compress(idxs_note):
-            if i is None:  # Missing note for the slot
+            if i is None:  # In case note missing, fill with Rest
                 note_dummy = Rest(duration=m21.duration.Duration(quarterLength=n * dur_slot))
                 note_dummy.offset = offset
                 notes_out.append(note_dummy)
@@ -179,59 +198,14 @@ class MusicExtractor:
                     notes_out.append(nt)
                 offset += note2dur(nt)
 
-        # def sanity_check():
-        #     for n in notes:
-        #         ic('ori', n.duration.quarterLength)
-        #     for n in notes_out:
-        #         ic('quant', n.duration.quarterLength)
-        #     bar_ori = Measure()
-        #     bar_ori.append(notes)
-        #     bar_quant = Measure()
-        #     bar_quant.append(notes_out)
-        #     bar_ori.show()
-        #     bar_quant.show()
-
-        if number == 0:
-            ic(notes)
+        if number == 61:
+            # ic(notes)
             ic(notes_out)
             # for n in flatten_notes(notes):
             for n in flatten_notes(notes_out):
                 qLen = n.duration.quarterLength
                 ic(n, n.offset, qLen)
             # ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
-        # this should rarely happen, really poor quality of transcription
-        # One instance where this warning is raised, see `LMD-cleaned::ABBA - Dancing Queen`
-        # Notes goes beyond offset of 4 in 4/4 time sig,
-        #   whereas music21 wraps them with mod 4 so the notes become 0-offset
-        # those notes are not long enough with the actual 0-offset notes, but are selected as it has higher pitch
-        overlap_flag = [(False if i is None else (get_overlap(*edge, i) > 0)) for edge, i in zip(bin_edges, idxs_note)]
-        if not all(overlap_flag):
-            # Fill them with rest
-            ic(notes_out)
-            flag_with_idx = [(i, flag) for i, flag in enumerate(overlap_flag)]
-            ic(overlap_flag, flag_with_idx)
-            missing_idxs = [
-                [i for i, f in pairs]
-                for flag, pairs in itertools.groupby(flag_with_idx, key=lambda x: x[1]) if not flag
-            ]
-            idxs_ends = [(idxs[0], idxs[-1]) for idxs in missing_idxs]
-            starts_n_spans = [(i_strt*dur_slot, (i_end-i_strt+1) * dur_slot) for i_strt, i_end in idxs_ends]
-            # for start, span in starts_n_spans:
-            #     note = Rest(duration=m21.duration.Duration(quarterLength=span))
-            #     note.offset = start
-            #     notes_out.append(note)
-            # # make sure order is correct
-            # notes_out.sort(key=lambda n: n[0].offset if isinstance(n, tuple) else n.offset)
-            # # assert is_notes_no_overlap(notes_out)  # Sanity check
-            # for n in flatten_notes(notes_out):
-            #     qLen = n.duration.quarterLength
-            #     ic(n, n.offset, qLen)
-
-            self.log_warn(dict(
-                warn_name=WarnLog.BarNoteGap, bar_num=number, time_sig=(time_sig.numerator, time_sig.denominator),
-                precision=self.prec, unfilled_ranges=[(start, start+span) for start, span in starts_n_spans]
-            ))
-            exit(1)
         assert is_notes_no_overlap(notes_out)  # Sanity check
         assert sum(note2dur(n) for n in notes_out) == dur_bar
         return notes_out
@@ -249,8 +223,6 @@ class MusicExtractor:
 
         .. note:: Triplets (potentially any n-plets) are grouped; `Voice`s are expanded
         """
-        # if number == 1:
-        #     exit(1)
         lst = []
         it = iter(bar)
         elm = next(it, None)
@@ -269,10 +241,11 @@ class MusicExtractor:
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
                         break
-                # if number == 0:
-                #     ic('in found tuplet', len(elms_tup), tup_str, n_tup)
-                #     for n in elms_tup:
-                #         ic(n, n.fullName, n.offset, n.duration.quarterLength)
+                if number == 61 and elm.offset == 0:
+                    ic('in found tuplet', len(elms_tup), tup_str, n_tup)
+                    for n in elms_tup:
+                        name, qLen = n.fullName, n.duration.quarterLength
+                        ic(name, n.offset, qLen)
 
                 # Consecutive tuplet notes => (potentially multiple) groups
                 it_tup = iter(elms_tup)
@@ -357,7 +330,7 @@ class MusicExtractor:
                     for tup in lst[idx_tup_strt:]:  # Enforce no overlap in each triplet group
                         tup: tuple[Union[Note, Rest]]
                         if not is_notes_no_overlap(tup):
-                            pass
+                            raise ValueError(f'Triplet notes overlap: {tup}')
                             # TODO: Left as is since code didn't seem to reach here ever
                             # offsets, durs = notes2offset_duration(tup)
                             # self.my_log_warn(dict(
@@ -534,7 +507,7 @@ class MusicExtractor:
         n_mode, n_bar = counter_ts[time_sig_mode], len(time_sigs)
         if (n_mode / n_bar) < th:  # Arbitrary threshold; Too much invalid time signature
             self.log_warn(dict(
-                warn_name=WarnLog.IncTimeSig, time_sig=time_sig_mode, n_bar_total=n_bar, n_bar_mode=n_mode
+                warn_name=WarnLog.IncTimeSig, time_sig=time_sig_mode, threshold=th, n_bar_total=n_bar, n_bar_mode=n_mode
             ))
 
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
@@ -557,8 +530,8 @@ class MusicExtractor:
                     for offset, ns in g.items()
                 }
             groups = sort_groups(groups)
-            # if number == 0:
-            #     ic(groups)
+            if number == 61:
+                ic(groups)
 
             def get_notes_out(grps) -> List[Union[Note, Chord, tuple[Note]]]:
                 # if number == 50:
@@ -622,8 +595,8 @@ class MusicExtractor:
                         offset_next = nt_end_offset
                 return ns_out
             notes_out = get_notes_out(groups)
-            # if number == 0:
-            #     ic(notes_out)
+            if number == 61:
+                ic(notes_out)
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
             #   e.g. tiny-duration notes shifts all subsequent notes
@@ -665,8 +638,10 @@ class MusicExtractor:
             return all(note_within_prec(n__) for n__ in notes_)
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
             if not notes_within_prec(notes):
-                ic(i_bar)
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
+                if i_bar == 61:
+                    ic(lst_notes[i_bar])
+                    exit(1)
                 assert notes_within_prec(lst_notes[i_bar])  # Sanity check implementation
                 offsets, durs = notes2offset_duration(notes)
                 self.log_warn(dict(warn_name=WarnLog.NoteNotQuant, bar_num=i_bar, offsets=offsets, durations=durs))
@@ -701,6 +676,11 @@ class MusicExtractor:
             fmt = 'mxl'
             # fmt = 'musicxml'
             # sometimes file-writes via `mxl` couldn't be read by MuseScore
+            bar = next(scr_out.parts).measure(61)
+            ic(bar, list(bar))
+            for e in bar:
+                qLen = e.duration.quarterLength
+                ic(e, e.offset, qLen)
             scr_out.write(fmt=fmt, fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.{fmt}'), makeNotation=False)
             ret = scr_out
         else:
@@ -735,6 +715,8 @@ class MusicExtractor:
 if __name__ == '__main__':
     from icecream import ic
 
+    ic.lineWrapWidth = 130
+
     import musicnlp.util.music as music_util
 
     def toy_example():
@@ -768,18 +750,16 @@ if __name__ == '__main__':
     def encode_a_few():
         # dnm = 'POP909'
         dnm = 'LMD-cleaned-subset'
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[80:]
+        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[223:]
         # ic(len(fnms), fnms[:5])
 
         # idx = [idx for idx, fnm in enumerate(fnms) if '恋爱ing' in fnm][0]
         # ic(idx)
-        # exit(1)
         logger = WarnLog()
         me = MusicExtractor(logger=logger, verbose=True)
         for i_fl, fnm in enumerate(fnms):
             ic(i_fl, fnm)
             me(fnm, exp='mxl')
-            # exit(1)
             # s = mt(fnm, exp='visualize')
             # print(s)
     encode_a_few()
