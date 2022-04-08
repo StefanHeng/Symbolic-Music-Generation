@@ -186,11 +186,20 @@ class KeyFinder:
         """
         pass
 
-def main():
-    a = KeyFinder('/Users/carsonzhang/Desktop/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml')
+
+def main(path: str):
+    a = KeyFinder(path)
     k = a.find_key()
     ic(k)
     ic(a.find_scale_degrees(k))
 
+
 if __name__ == '__main__':
-    main()
+    from icecream import ic
+
+    import musicnlp.util.music as music_util
+
+    p = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+    ic(p)
+
+    main(p)
