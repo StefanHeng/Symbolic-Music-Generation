@@ -191,7 +191,7 @@ class MxlMelodyExtractor:
                 p.remove(list(p)[n:])
 
         lens = [len(p[m21.stream.Measure]) for p in self.scr.parts]
-        assert_list_same_elms(lens)
+        list_is_same_elms(lens)
         self.bar_strt_idx = None  # First element in a `Part` can be a non-measure
 
         pnms = [p.partName for p in self.scr.parts]
@@ -247,7 +247,7 @@ class MxlMelodyExtractor:
         def __init__(self, bars: Dict[str, m21.stream.Measure]):
             self.bars = bars
             nums = [bar.number == 0 for bar in bars.values()]
-            assert_list_same_elms(nums)
+            list_is_same_elms(nums)
             self.n = nums[0]
 
             tss = [b[m21.meter.TimeSignature] for b in self.bars.values()]
@@ -256,7 +256,7 @@ class MxlMelodyExtractor:
                 assert all(len(t) == 1 for t in tss)  # At most 1 time signature per bar
                 tss = [next(t) for t in tss]
                 dss = [(ds.numerator, ds.denominator) for ds in tss]  # Time signature across bars should be the same
-                assert_list_same_elms(dss)
+                list_is_same_elms(dss)
 
                 self._time_sig = dss[0]
 
@@ -267,7 +267,7 @@ class MxlMelodyExtractor:
                 # When multiple tempos, take the mean
                 tempos = [m21.tempo.MetronomeMark(number=np.array([t.number for t in ts]).mean()) for ts in tempos]
                 bpms = [t.number for t in tempos]
-                assert_list_same_elms(bpms)
+                list_is_same_elms(bpms)
 
                 self._tempo = m21.tempo.MetronomeMark(number=bpms[0])
 

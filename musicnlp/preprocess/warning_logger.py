@@ -24,6 +24,7 @@ class WarnLog:
     IncTimeSig, UncomTimeSig = 'Inconsistent Time Signatures', 'Uncommon Time Signature'
     NoteNotQuant, TupNoteQuant = 'Notes Beyond Quantization', 'Tuplet Notes Quantizable'
     InvBarDur = 'Invalid Bar Notes Duration'
+    ExcecTupNote = 'Excessive Tuplet Chord Notes'
     EmptyStrt, EmptyEnd = 'Beginning Empty Bars', 'Ending Empty Bars'
     TYPES = [  # Warning types, ordered by severity
         EmptyStrt, EmptyEnd,
@@ -35,6 +36,7 @@ class WarnLog:
         InvTupDur, InvTupDurSv,
         # InvTupNt,
         RestInTup,
+        ExcecTupNote,
         TupNoteQuant,
         NoteNotQuant,
         InvBarDur
@@ -78,6 +80,9 @@ class WarnLog:
         elif warn_nm == WarnLog.RestInTup:
             msg = '{warn_name}: Rest Notes observed in tuplet group at bar#{bar_num}' \
                   ' - total note {n_note}, rest count {n_rest}'
+        elif warn_nm == WarnLog.ExcecTupNote:
+            msg = '{warn_name}: Too much Chord notes in tuplet group at bar#{bar_num}' \
+                  ' - note choices {note_choices}'
         elif warn_nm == WarnLog.UncomTimeSig:
             msg = '{warn_name}: Time Signature is uncommon' \
                   ' - Expect one of: {time_sig_expect}, got {time_sig_got}'
@@ -150,6 +155,8 @@ class WarnLog:
             assert 'time_sig_expect' in args and 'time_sig_got' in args
         elif nm in [WarnLog.EmptyStrt, WarnLog.EmptyEnd]:
             assert 'bar_range' in args
+        elif nm == WarnLog.ExcecTupNote:
+            assert 'note_choices' in args
         else:
             assert nm == WarnLog.IncTimeSig
             assert all(k in args for k in ['time_sig', 'n_bar_total', 'n_bar_mode'])

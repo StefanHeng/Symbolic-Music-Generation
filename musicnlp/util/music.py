@@ -21,7 +21,7 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
     if extracted:
         key_dir = f'{key_dir}_extracted'
     dir_nm = d_dset[key_dir]
-    path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, d_dset['song_fmt'])
+    path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, d_dset[f'song_fmt_{fmt}'])
     paths = sorted(glob.iglob(path, recursive=True))
     if k is not None:
         assert isinstance(k, (int, str)), \
@@ -98,7 +98,7 @@ def convert_dataset(dataset_name: str = 'POP909'):
         assert len(fnms_written) == len(fnms)
 
 
-def get_lmd_cleaned_subset_fnms(with_base_path: bool = True) -> List[str]:
+def get_lmd_cleaned_subset_fnms() -> List[str]:
     """
     My subset of LMD-cleaned dataset
         MIDI files that can't be converted to MXL via MuseScore are excluded

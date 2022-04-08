@@ -343,8 +343,8 @@ def readable_int(num: int, suffix: str = '') -> str:
     return "%.1f%s%s" % (num, 'Y', suffix)
 
 
-def assert_list_same_elms(lst: List[T]):
-    assert all(l == lst[0] for l in lst)
+def list_is_same_elms(lst: List[T]) -> bool:
+    return all(l == lst[0] for l in lst)
 
 
 def stem(path, keep_ext=False):
