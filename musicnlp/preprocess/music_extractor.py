@@ -125,7 +125,7 @@ class MusicExtractor:
 
         Expect tuplets to be fully quantized before call - intended for triplets to be untouched after call
         """
-        # ic('in quantize', number)
+        ic('in quantize', number)
         dur_slot = 4 * 2**-self.prec  # In quarter length
         dur_bar = (time_sig.numerator/time_sig.denominator*4)
         n_slots = dur_bar / dur_slot
@@ -185,9 +185,17 @@ class MusicExtractor:
                 offset += note2dur(note_dummy)
             else:
                 # for tuplets total duration may still not be quantized yet
-                nt = note2note_cleaned(notes[i], q_len=n*dur_slot)
+                nt = note2note_cleaned(notes[i], q_len=n*dur_slot, for_output=True)
+                # if number == 61:
+                #     bar = Measure()
+                #     bar.append(list(flatten_notes(nt)))
+                #     bar.show()
+                #     exit(1)
                 if isinstance(nt, tuple):
                     dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
+                    if number == 61:
+                        ic('in quantize tuplet', nt)
+                        ic(dur_ea)
                     note_tups_out = []
                     for i_, nt_tup in enumerate(nt):
                         nt_tup.offset = offset + dur_ea * i_
@@ -197,8 +205,13 @@ class MusicExtractor:
                     nt.offset = offset  # Unroll the offsets
                     notes_out.append(nt)
                 offset += note2dur(nt)
+            # if number == 61:
+            #     bar = Measure()
+            #     bar.append(list(flatten_notes(notes_out)))
+            #     bar.show()
+            #     exit(1)
 
-        if number == 61:
+        if number in [23, 61]:
             # ic(notes)
             ic(notes_out)
             # for n in flatten_notes(notes):
@@ -366,21 +379,21 @@ class MusicExtractor:
                                 has_chord = True
                                 opns = [chord2notes(n) if isinstance(n, Chord) else (n,) for n in tup]
                                 n_opns = [len(n) for n in opns if n]
-                                # TODO: debugging
-                                notes_max_pitch = tuple([max(notes, key=note2pitch) for notes in opns])
-                                tups_new.append(notes_max_pitch)
-                                # if np.prod(n_opns) > 3 ** 9:
-                                #     # Too much possible cartesian products for later processing to handle
-                                #     # as it involves sorting
-                                #     # Cap at a tuplet of 9 consecutive 3-note Chords, beyond this number,
-                                #     # just treat the bar as wicked
-                                #     self.log_warn(dict(
-                                #         warn_name=WarnLog.ExcecTupNote, bar_num=number, note_choices=n_opns
-                                #     ))
-                                #     notes_max_pitch = tuple([max(notes, key=note2pitch) for notes in opns])
-                                #     tups_new.append(notes_max_pitch)
-                                # else:
-                                #     tups_new.extend(list(itertools.product(*opns)))
+                                # # TODO: debugging
+                                # notes_max_pitch = tuple([max(notes, key=note2pitch) for notes in opns])
+                                # tups_new.append(notes_max_pitch)
+                                if np.prod(n_opns) > 3 ** 9:
+                                    # Too much possible cartesian products for later processing to handle
+                                    # as it involves sorting
+                                    # Cap at a tuplet of 9 consecutive 3-note Chords, beyond this number,
+                                    # just treat the bar as wicked
+                                    self.log_warn(dict(
+                                        warn_name=WarnLog.ExcecTupNote, bar_num=number, note_choices=n_opns
+                                    ))
+                                    notes_max_pitch = tuple([max(notes, key=note2pitch) for notes in opns])
+                                    tups_new.append(notes_max_pitch)
+                                else:
+                                    tups_new.extend(list(itertools.product(*opns)))
                         if has_chord:  # Replace prior triplet groups
                             lst = lst[:idx_tup_strt] + tups_new
                 elm = elm_
@@ -641,7 +654,7 @@ class MusicExtractor:
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
                 if i_bar == 61:
                     ic(lst_notes[i_bar])
-                    exit(1)
+                    # exit(1)
                 assert notes_within_prec(lst_notes[i_bar])  # Sanity check implementation
                 offsets, durs = notes2offset_duration(notes)
                 self.log_warn(dict(warn_name=WarnLog.NoteNotQuant, bar_num=i_bar, offsets=offsets, durations=durs))
@@ -676,11 +689,11 @@ class MusicExtractor:
             fmt = 'mxl'
             # fmt = 'musicxml'
             # sometimes file-writes via `mxl` couldn't be read by MuseScore
-            bar = next(scr_out.parts).measure(61)
-            ic(bar, list(bar))
-            for e in bar:
-                qLen = e.duration.quarterLength
-                ic(e, e.offset, qLen)
+            # bar = next(scr_out.parts).measure(61)
+            # ic(bar, list(bar))
+            # for e in bar:
+            #     qLen = e.duration.quarterLength
+            #     ic(e, e.offset, qLen)
             scr_out.write(fmt=fmt, fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.{fmt}'), makeNotation=False)
             ret = scr_out
         else:
