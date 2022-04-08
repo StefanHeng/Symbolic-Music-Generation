@@ -15,6 +15,7 @@ class WarnLog:
     JSON-serializable
     """
     MultTempo, MultTimeSig = 'Multiple Tempos', 'Multiple Time Signatures'
+    MissTempo = 'Missing Tempo'
     InvTupSz, TupNoteOvl = 'Invalid Tuplet Size', 'Tuplet Notes Overlap'
     # InvTupNt = 'Invalid Tuplet Notes'
     InvTupDur, InvTupDurSv = 'Invalid Tuplet Durations', 'Invalid Tuplet Durations, Severe'
@@ -24,11 +25,13 @@ class WarnLog:
     IncTimeSig, UncomTimeSig = 'Inconsistent Time Signatures', 'Uncommon Time Signature'
     NoteNotQuant, TupNoteQuant = 'Notes Beyond Quantization', 'Tuplet Notes Quantizable'
     InvBarDur = 'Invalid Bar Notes Duration'
+    BarNoteGap = 'Gap in extracted Bar Notes'
     ExcecTupNote = 'Excessive Tuplet Chord Notes'
     EmptyStrt, EmptyEnd = 'Beginning Empty Bars', 'Ending Empty Bars'
     TYPES = [  # Warning types, ordered by severity
         EmptyStrt, EmptyEnd,
         MultTempo, MultTimeSig,
+        MissTempo,
         IncTimeSig, UncomTimeSig,
         HighPchOvl, HighPchOvlTup,
         LowPchMakeup, LowPchMakeupRmv,
@@ -39,7 +42,8 @@ class WarnLog:
         ExcecTupNote,
         TupNoteQuant,
         NoteNotQuant,
-        InvBarDur
+        InvBarDur,
+        BarNoteGap
     ]
 
     def __init__(self, name=f'{PKG_NM} Music Extraction', verbose=True):
@@ -67,6 +71,8 @@ class WarnLog:
             msg = '{warn_name}: More than one tempo observed - tempos: {tempos}'
         elif warn_nm == WarnLog.MultTimeSig:
             msg = '{warn_name}: More than one time signature observed - time_sigs: {time_sigs}'
+        elif warn_nm == WarnLog.MissTempo:
+            msg = '{warn_name}: No tempo found at 1st bar'
         elif warn_nm in [WarnLog.InvTupDur, WarnLog.InvTupDurSv]:
             msg = '{warn_name}: Tuplet durations don\'t sum up to 8th notes ' \
                   'at bar#{bar_num}, with offsets: {offsets}, durations: {durations} ' \
@@ -103,6 +109,9 @@ class WarnLog:
                   'by higher pitch note at bar#{bar_num} - makeup note removed'
         elif warn_nm == WarnLog.InvBarDur:
             msg = '{warn_name}: Note duration don\'t add up to bar max duration at bar#{bar_num}'
+        elif warn_nm == WarnLog.BarNoteGap:
+            msg = '{warn_name}: Slots with no extracted note found in bar#{bar_num}: ' \
+                  'time_sig: {time_sig}, precision {precision}, unfilled ranges {unfilled_ranges}'
         elif warn_nm == WarnLog.TupNoteOvl:
             msg = '{warn_name}: Notes inside tuplet group are overlapping at bar#{bar_num} ' \
                   '- Note durations will be equally distributed'
@@ -135,6 +144,8 @@ class WarnLog:
             assert 'time_sigs' in args
         elif nm == WarnLog.MultTempo:
             assert 'tempos' in args
+        elif nm == WarnLog.MissTempo:
+            pass
         elif nm == WarnLog.InvTupSz:
             assert all(k in args for k in ['bar_num', 'n_expect', 'n_got'])
         elif nm in [
@@ -146,6 +157,8 @@ class WarnLog:
             assert all(k in args for k in ['bar_num', 'offsets', 'durations'])
             if nm == WarnLog.InvBarDur:
                 assert 'time_sig' in args
+        elif nm == WarnLog.BarNoteGap:
+            assert all(k in args for k in ['bar_num', 'time_sig', 'precision', 'unfilled_ranges'])
         elif nm == WarnLog.RestInTup:
             assert all(k in args for k in ['bar_num', 'n_rest', 'n_note'])
 

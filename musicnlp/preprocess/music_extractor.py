@@ -3,7 +3,6 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 
 See `melody_extractor` for the old version.
 """
-
 from collections import defaultdict, Counter
 
 from music21.stream import Voice
@@ -52,8 +51,7 @@ class MusicExtractor:
 
         self.vocab = MusicVocabulary(precision)
 
-    @staticmethod
-    def it_bars(scr: Score) -> Iterator[Tuple[Tuple[Measure], TimeSignature, MetronomeMark]]:
+    def it_bars(self, scr: Score) -> Iterator[Tuple[Tuple[Measure], TimeSignature, MetronomeMark]]:
         """
         Unroll a score by time, with the time signatures of each bar
         """
@@ -62,7 +60,16 @@ class MusicExtractor:
             """
             :return: True if `part` contains *only* `Unpitched`
             """
-            return list(part[m21.note.Unpitched]) and not list(part[m21.note.Note])
+            has_unpitched = bool(list(part[m21.note.Unpitched])) or \
+                all(
+                    all(isinstance(n, m21.note.Unpitched) for n in c.notes)
+                    for c in part[m21.percussion.PercussionChord]
+                )
+            pcs = list(part[m21.percussion.PercussionChord])
+            if len(pcs) > 0:
+                has_unpitched = has_unpitched and \
+                                all(all(isinstance(n, m21.note.Unpitched) for n in pc.notes)for pc in pcs)
+            return has_unpitched and not list(part[m21.note.Note])
         instrs_drum = [
             m21.instrument.BassDrum,
             m21.instrument.BongoDrums,
@@ -72,7 +79,7 @@ class MusicExtractor:
             m21.instrument.TenorDrum,
         ]
         parts = list(scr.parts)
-        ignore = [(any(p_[drum] for drum in instrs_drum) or is_drum(p_)) for p_ in parts]
+        ignore = [bool(any(p_[drum] for drum in instrs_drum) or is_drum(p_)) for p_ in parts]
 
         time_sig, tempo = None, None
         for idx, bars in enumerate(zip(*[list(p[Measure]) for p in parts])):  # Bars for all tracks across time
@@ -88,14 +95,17 @@ class MusicExtractor:
                 time_sig = tss[0]
 
             tempos = [list(b[MetronomeMark]) for b in bars]
-            if idx == 0 or any(tempos):
+            has_tempo = any(tempos)
+            if has_tempo:
                 tempos = [t for t in tempos if len(t) != 0]
                 # When multiple tempos, take the mean
                 tempos = [MetronomeMark(number=np.array([t.number for t in ts]).mean()) for ts in tempos]
                 bpms = [t.number for t in tempos]
                 assert list_is_same_elms(bpms)
-
                 tempo = MetronomeMark(number=bpms[0])
+            elif idx == 0:
+                self.log_warn(dict(warn_name=WarnLog.MissTempo))
+                tempo = MetronomeMark(number=120)  # set as default
             yield [b for ignore, b in zip(ignore, bars) if not ignore], time_sig, tempo
 
     def log_warn(self, log_d: Dict):
@@ -142,25 +152,32 @@ class MusicExtractor:
             :param high: Upperbound bound of bin range
             :param options: Note candidate indices
             """
-            return max(options, key=lambda i: get_overlap(low, high, i))
+            max_opn = max(options, key=lambda i: get_overlap(low, high, i))
+            return max_opn if get_overlap(low, high, max_opn) > 0 else None
         idxs_note = [assign_max_note_idx(*edge, range(n_notes)) for edge in bin_edges]
+        ic(idxs_note)
         offset = 0
         notes_out = []
         for i, n in compress(idxs_note):
-            # If tuplet case, total duration must've been within quantization before this `notes2quantized_notes` call,
-            # see `expand_bar`
-            nt = note2note_cleaned(notes[i], q_len=n*dur_slot)
-            if isinstance(nt, tuple):
-                dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
-                note_tups_out = []
-                for i_, nt_tup in enumerate(nt):
-                    nt_tup.offset = offset + dur_ea * i_
-                    note_tups_out.append(nt_tup)
-                notes_out.append(tuple(note_tups_out))
+            if i is None:  # Missing note for the slot
+                note_dummy = Rest(duration=m21.duration.Duration(quarterLength=n * dur_slot))
+                note_dummy.offset = offset
+                notes_out.append(note_dummy)
+                offset += note2dur(note_dummy)
             else:
-                nt.offset = offset  # Unroll the offsets
-                notes_out.append(nt)
-            offset += note2dur(nt)
+                # for tuplets total duration may still not be quantized yet
+                nt = note2note_cleaned(notes[i], q_len=n*dur_slot)
+                if isinstance(nt, tuple):
+                    dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
+                    note_tups_out = []
+                    for i_, nt_tup in enumerate(nt):
+                        nt_tup.offset = offset + dur_ea * i_
+                        note_tups_out.append(nt_tup)
+                    notes_out.append(tuple(note_tups_out))
+                else:
+                    nt.offset = offset  # Unroll the offsets
+                    notes_out.append(nt)
+                offset += note2dur(nt)
 
         # def sanity_check():
         #     for n in notes:
@@ -174,14 +191,49 @@ class MusicExtractor:
         #     bar_ori.show()
         #     bar_quant.show()
 
+        if number == 0:
+            ic(notes)
+            ic(notes_out)
+            # for n in flatten_notes(notes):
+            for n in flatten_notes(notes_out):
+                qLen = n.duration.quarterLength
+                ic(n, n.offset, qLen)
+            # ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
+        # this should rarely happen, really poor quality of transcription
+        # One instance where this warning is raised, see `LMD-cleaned::ABBA - Dancing Queen`
+        # Notes goes beyond offset of 4 in 4/4 time sig,
+        #   whereas music21 wraps them with mod 4 so the notes become 0-offset
+        # those notes are not long enough with the actual 0-offset notes, but are selected as it has higher pitch
+        overlap_flag = [(False if i is None else (get_overlap(*edge, i) > 0)) for edge, i in zip(bin_edges, idxs_note)]
+        if not all(overlap_flag):
+            # Fill them with rest
+            ic(notes_out)
+            flag_with_idx = [(i, flag) for i, flag in enumerate(overlap_flag)]
+            ic(overlap_flag, flag_with_idx)
+            missing_idxs = [
+                [i for i, f in pairs]
+                for flag, pairs in itertools.groupby(flag_with_idx, key=lambda x: x[1]) if not flag
+            ]
+            idxs_ends = [(idxs[0], idxs[-1]) for idxs in missing_idxs]
+            starts_n_spans = [(i_strt*dur_slot, (i_end-i_strt+1) * dur_slot) for i_strt, i_end in idxs_ends]
+            # for start, span in starts_n_spans:
+            #     note = Rest(duration=m21.duration.Duration(quarterLength=span))
+            #     note.offset = start
+            #     notes_out.append(note)
+            # # make sure order is correct
+            # notes_out.sort(key=lambda n: n[0].offset if isinstance(n, tuple) else n.offset)
+            # # assert is_notes_no_overlap(notes_out)  # Sanity check
+            # for n in flatten_notes(notes_out):
+            #     qLen = n.duration.quarterLength
+            #     ic(n, n.offset, qLen)
+
+            self.log_warn(dict(
+                warn_name=WarnLog.BarNoteGap, bar_num=number, time_sig=(time_sig.numerator, time_sig.denominator),
+                precision=self.prec, unfilled_ranges=[(start, start+span) for start, span in starts_n_spans]
+            ))
+            exit(1)
         assert is_notes_no_overlap(notes_out)  # Sanity check
         assert sum(note2dur(n) for n in notes_out) == dur_bar
-        # if number == 50:
-        #     ic(notes)
-        #     for n in flatten_notes(notes):
-        #         ic(n, n.fullName, n.offset, n.duration.quarterLength)
-        #     ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
-        assert all((get_overlap(*edge, i) > 0) for edge, i in zip(bin_edges, idxs_note))
         return notes_out
 
     def expand_bar(
@@ -197,6 +249,8 @@ class MusicExtractor:
 
         .. note:: Triplets (potentially any n-plets) are grouped; `Voice`s are expanded
         """
+        # if number == 1:
+        #     exit(1)
         lst = []
         it = iter(bar)
         elm = next(it, None)
@@ -215,10 +269,10 @@ class MusicExtractor:
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
                         break
-                if number == 111:
-                    ic('in found tuplet', len(elms_tup), tup_str, n_tup)
-                    for n in elms_tup:
-                        ic(n, n.fullName, n.offset, n.duration.quarterLength)
+                # if number == 0:
+                #     ic('in found tuplet', len(elms_tup), tup_str, n_tup)
+                #     for n in elms_tup:
+                #         ic(n, n.fullName, n.offset, n.duration.quarterLength)
 
                 # Consecutive tuplet notes => (potentially multiple) groups
                 it_tup = iter(elms_tup)
@@ -339,24 +393,21 @@ class MusicExtractor:
                                 has_chord = True
                                 opns = [chord2notes(n) if isinstance(n, Chord) else (n,) for n in tup]
                                 n_opns = [len(n) for n in opns if n]
-                                if np.prod(n_opns) > 3 ** 9:
-                                    # Too much possible cartesian products for later processing to handle
-                                    # as it involves sorting
-                                    # Cap at a tuplet of 9 consecutive 3-note Chords, beyond this number,
-                                    # just treat the bar as wicked
-                                    self.log_warn(dict(
-                                        warn_name=WarnLog.ExcecTupNote, bar_num=number, note_choices=n_opns
-                                    ))
-                                    notes_max_pitch = tuple([max(notes, key=note2pitch) for notes in opns])
-                                    tups_new.append(notes_max_pitch)
-                                else:
-                                # if number == 111 and len(opns) == 25:
-                                #     ic(len(opns), [len(o) for o in opns])
-                                #     ic(tup, len(tup), opns)
-                                #     ic(type(bar))
-                                #     bar.show()
-                                #     exit(1)
-                                    tups_new.extend(list(itertools.product(*opns)))
+                                # TODO: debugging
+                                notes_max_pitch = tuple([max(notes, key=note2pitch) for notes in opns])
+                                tups_new.append(notes_max_pitch)
+                                # if np.prod(n_opns) > 3 ** 9:
+                                #     # Too much possible cartesian products for later processing to handle
+                                #     # as it involves sorting
+                                #     # Cap at a tuplet of 9 consecutive 3-note Chords, beyond this number,
+                                #     # just treat the bar as wicked
+                                #     self.log_warn(dict(
+                                #         warn_name=WarnLog.ExcecTupNote, bar_num=number, note_choices=n_opns
+                                #     ))
+                                #     notes_max_pitch = tuple([max(notes, key=note2pitch) for notes in opns])
+                                #     tups_new.append(notes_max_pitch)
+                                # else:
+                                #     tups_new.extend(list(itertools.product(*opns)))
                         if has_chord:  # Replace prior triplet groups
                             lst = lst[:idx_tup_strt] + tups_new
                 elm = elm_
@@ -380,6 +431,17 @@ class MusicExtractor:
                     print('unexpected type')
                     exit(1)
             elm = next(it, None)
+        # if number == 0:
+        #     ic('in expand_bar', number, bar, list(bar), lst)
+        #     for e in bar:
+        #         if isinstance(e, (Note, Rest, Chord)):
+        #             ql = e.duration.quarterLength
+        #             ic(e, e.offset, ql)
+            # for n in lst:
+            #     if isinstance(n, Note):
+            #         ic(n, n.pitch, n.duration, n.offset)
+            #     elif isinstance(n, Rest):
+            #         ic(n, n.duration, n.offset)
         if bar.hasVoices():  # Join all voices to notes
             lst.extend(join_its(self.expand_bar(v, time_sig, number=number) for v in bar.voices))
         return lst
@@ -411,7 +473,7 @@ class MusicExtractor:
             title = title[:-4]
         self.title = title
 
-        lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(MusicExtractor.it_bars(song))
+        lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(self.it_bars(song))
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
 
         # Crop out empty bars at both ends to reduce token length
@@ -481,23 +543,13 @@ class MusicExtractor:
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
-            ic(number)
-            # if number == 50:
-            #     for b in bars:
-            #         b.show()
-            if number == 111:
-                ic('in bar 111')
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
-            if number == 111:
-                ic('in bar 111, finished expand bar')
 
             groups: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in notes:
                 n_ = n[0] if isinstance(n, tuple) else n
                 groups[n_.offset].append(n)
             # Sort by pitch then by duration
-            if number == 111:
-                ic('in bar 111, finished group creation', [len(g) for g in groups.values()])
 
             def sort_groups(g):
                 return {
@@ -505,23 +557,12 @@ class MusicExtractor:
                     for offset, ns in g.items()
                 }
             groups = sort_groups(groups)
-            if number == 111:
-                ic('in bar 111, finished group sorting')
-            # if number == 1:
+            # if number == 0:
             #     ic(groups)
-            #     for elm in groups[0]:
-            #         if isinstance(elm, tuple):
-            #             ic('tuplet')
-            #             for e in elm:
-            #                 ic(e, e.duration, e.pitch if isinstance(e, Note) else e.name)
-            #         else:
-            #             ic(elm, elm.duration, elm.pitch if isinstance(elm, Note) else elm.name)
 
             def get_notes_out(grps) -> List[Union[Note, Chord, tuple[Note]]]:
                 # if number == 50:
                 #     ic('in new get_notes_out', groups)
-                if number == 111:
-                    ic('in bar 111, get notes out')
                 ns_out = []
                 offset_next = 0
                 for offset in sorted(grps.keys()):  # Pass through notes in order
@@ -581,11 +622,8 @@ class MusicExtractor:
                         offset_next = nt_end_offset
                 return ns_out
             notes_out = get_notes_out(groups)
-            # if number == 2:
+            # if number == 0:
             #     ic(notes_out)
-            #     exit(1)
-            if number == 111:
-                ic('in bar 111, finished get_notes_out')
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
             #   e.g. tiny-duration notes shifts all subsequent notes
@@ -627,6 +665,7 @@ class MusicExtractor:
             return all(note_within_prec(n__) for n__ in notes_)
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
             if not notes_within_prec(notes):
+                ic(i_bar)
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
                 assert notes_within_prec(lst_notes[i_bar])  # Sanity check implementation
                 offsets, durs = notes2offset_duration(notes)
@@ -729,7 +768,7 @@ if __name__ == '__main__':
     def encode_a_few():
         # dnm = 'POP909'
         dnm = 'LMD-cleaned-subset'
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[6:]
+        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[80:]
         # ic(len(fnms), fnms[:5])
 
         # idx = [idx for idx, fnm in enumerate(fnms) if '恋爱ing' in fnm][0]
@@ -738,7 +777,7 @@ if __name__ == '__main__':
         logger = WarnLog()
         me = MusicExtractor(logger=logger, verbose=True)
         for i_fl, fnm in enumerate(fnms):
-            ic(i_fl)
+            ic(i_fl, fnm)
             me(fnm, exp='mxl')
             # exit(1)
             # s = mt(fnm, exp='visualize')

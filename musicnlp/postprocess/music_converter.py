@@ -1,8 +1,5 @@
-from tqdm import tqdm
-
 from musicnlp.util import *
 from musicnlp.util.music_lib import *
-from musicnlp.preprocess import MusicExtractor
 from musicnlp.postprocess import ElmType, MusicElement
 from musicnlp.models import MusicTokenizer
 
@@ -189,11 +186,13 @@ class MusicConverter:
 if __name__ == '__main__':
     from icecream import ic
 
+    import musicnlp.util.music as music_util
+
     mc = MusicConverter()
 
     def check_encode():
         # text = get_extracted_song_eg(k=2)  # this one has tuplets
-        text = get_extracted_song_eg(k='平凡之路')  # this one has tuplets
+        text = music_util.get_extracted_song_eg(k='平凡之路')  # this one has tuplets
         ic(text)
         # toks = mc.str2notes(text)
         # ic(toks)
@@ -205,7 +204,7 @@ if __name__ == '__main__':
     def check_decode():
         # fnm = 'Shape of You'
         fnm = 'Merry Go Round'
-        path = get_my_example_songs(k=fnm, extracted=True)
+        path = music_util.get_my_example_songs(k=fnm, extracted=True)
         ic(path)
         # ic(mc.mxl2str(path))
         ic(mc.mxl2str(path, n_bar=4))
