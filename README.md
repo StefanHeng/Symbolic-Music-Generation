@@ -1,7 +1,7 @@
 # Symbolic Music Generation
 Symbolic music generation taking inspiration from NLP Language Modeling, human composition process and music theory. 
 
-Contributor: [Stefan/Yuzhao Heng](https://stefanheng.github.io), [Carson/Jiachun Zhang](https://github.com/SonyaInSiberia).
+Contributor: [Stefan/Yuzhao Heng](https://stefanheng.github.io), [Carson/Jiachun Zhang](https://github.com/SonyaInSiberia), [Xiaoyang Song](https://github.com/Xiaoyang-Song).
 Mentored by [Artem Abzaliev](http://artem.site44.com), 
 supported by [Prof. Rada Mihalcea](https://web.eecs.umich.edu/~mihalcea/)  
 at [LIT](https://lit.eecs.umich.edu/people.html).
