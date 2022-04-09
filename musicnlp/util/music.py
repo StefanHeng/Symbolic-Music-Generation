@@ -69,22 +69,38 @@ def convert_dataset(dataset_name: str = 'POP909'):
     elif dataset_name == 'LMD-cleaned':
         d_dset = config(f'datasets.{dataset_name}')
         path_ori = os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'])
-        fnms = sorted(glob.iglob(os.path.join(path_ori, d_dset['song_fmt'])))
+        fnms = sorted(glob.iglob(os.path.join(path_ori, d_dset['song_fmt_mid'])))
 
         # empirically seen as a problem: some files are essentially the same title, ending in different numbers
         # See `ValueError` below
-        version_counter = defaultdict(int)
+        my_lim, os_lim = 256-32, 255
 
         def path2fnm(p_: str):
+            if not hasattr(path2fnm, 'count_too_long'):
+                path2fnm.count_too_long = 0
             paths_last = p_.split(os.sep)[-2:]
-            author, title = paths_last
-            my_lim, os_lim = 256-32, 255
-            title = stem(title)
-            if len(title) > my_lim:
-                k_title = title[:my_lim]
-                title = f'{k_title}... - v{version_counter[k_title]}'  # ensures no duplicates
-                version_counter[k_title] += 1
-            fnm_ = f'{author} - {title}'[:255-4]  # the top filename limit
+            artist, title = paths_last
+            title = title[:-4]  # remove `.mid`
+            pattern_title = re.compile(r'(?P<title>.*)\.(?P<version>[1-9]\d*)')
+            m = pattern_title.match(title)
+            if m:
+                title_, version = m.group('title'), m.group('version')
+                assert version is not None
+                title, v = title_, int(version)
+            else:
+                v = 0
+
+            fnm_ = clean_whitespace(f'{artist} - {title}')
+            assert len(clean_whitespace(artist)) - 3 <= my_lim, \
+                f'Artist name {logi(artist)} is too long for OS file write'
+            if len(fnm_) > my_lim:
+                # Modified the name, but still keep to the original way of versioning,
+                #   i.e. `<title>.<version>` if there's a separate version,
+                # so that `get_lmd_cleaned_subset_fnms` can work without changes
+                fnm_ = f'{fnm_[:my_lim]}... '
+                path2fnm.count_too_long += 1
+            v_str = '' if v == 0 else f'.{v}'
+            fnm_ = f'{fnm_}{v_str}'
             fnm_ = f'{fnm_}.mid'
             assert len(fnm_) <= os_lim
             return fnm_
@@ -96,6 +112,7 @@ def convert_dataset(dataset_name: str = 'POP909'):
             fnms_written.add(fnm)
             copyfile(p, os.path.join(path_exp, fnm))
         assert len(fnms_written) == len(fnms)
+        print(f'{logi(path2fnm.count_too_long)} files were truncated to {logi(os_lim)} characters')
 
 
 def get_lmd_cleaned_subset_fnms() -> List[str]:
@@ -107,7 +124,7 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
 
     Expects `convert_dataset` called first
     """
-    # TODO: this applies to deprecated version of dataset path & filename, update
+    # TODO: this applies to the original LMD dataset's way of versioning the same song, which better be changed
     # this folder contains all MIDI files that can be converted to MXL, on my machine
     path = os.path.join(PATH_BASE, DIR_DSET, 'LMD-cleaned_valid')
     # <artist> - <title>(.<version>)?.mid
@@ -167,6 +184,8 @@ def get_cleaned_song_paths(dataset_name: str, fmt='mid') -> List[str]:
 if __name__ == '__main__':
     from icecream import ic
 
+    ic.lineWrapWidth = 150
+
     def check_fl_nms():
         dnm = 'POP909'
         fnms = get_cleaned_song_paths(dnm)
@@ -175,5 +194,47 @@ if __name__ == '__main__':
         ic(len(fnms), fnms[:20])
     # check_fl_nms()
 
-    fl_nms = get_lmd_cleaned_subset_fnms()
-    ic(len(fl_nms), fl_nms[:20])
+    # convert_dataset('LMD-cleaned')
+
+    # import music21 as m21
+    # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
+    # # broken_fl = 'ABBA - I\'ve Been Waiting For You.mid'
+    # # broken_fl = 'Aerosmith - Pink.3.mid'
+    # broken_fl = 'Alice in Chains - Sludge Factory.mid'
+    # # broken_fl = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/fixed/' \
+    # #             'ABBA - I\'ve Been Waiting For You.band.mid'
+    # ic(broken_fl)
+    # scr = m21.converter.parse(os.path.join(path_broken, broken_fl))
+    # ic(scr)
+
+    def fix_delete_broken_files():
+        import glob
+
+        path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken/*.mid'
+        set_broken = set(clean_whitespace(stem(fnm)) for fnm in glob.iglob(path_broken))
+        ic(set_broken)
+        path_lmd_c = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned/*.mid'
+        for fnm in glob.iglob(path_lmd_c):
+            if stem(fnm) in set_broken:
+                os.remove(fnm)
+                set_broken.remove(stem(fnm))
+                print('Deleted', fnm)
+        ic(set_broken)
+        assert len(set_broken) == 0, 'Not all broken files deleted'
+    # fix_delete_broken_files()
+
+    def fix_match_mxl_names_with_new_mid():
+        path_lmd_v = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/*.mxl'
+        ic(len(list(glob.iglob(path_lmd_v))))
+        for fnm in glob.iglob(path_lmd_v):
+            fnm_new = clean_whitespace(fnm)
+            if fnm != fnm_new:
+                os.rename(fnm, fnm_new)
+                print(f'Renamed {logi(fnm)} => {logi(fnm_new)}')
+    fix_match_mxl_names_with_new_mid()
+
+    def get_lmd_subset():
+        # fnms = get_lmd_cleaned_subset_fnms()
+        fnms = get_cleaned_song_paths('LMD-cleaned-subset')
+        ic(len(fnms), fnms[:20])
+    # get_lmd_subset()

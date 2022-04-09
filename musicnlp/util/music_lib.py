@@ -13,7 +13,7 @@ from music21.note import Note, Rest
 from music21.stream import Measure, Part, Score
 from music21.chord import Chord
 
-from .util import *
+from musicnlp.util.util import *
 
 
 KEEP_OBSOLETE = False
@@ -26,7 +26,8 @@ if KEEP_OBSOLETE:
     from librosa import display
 
 
-ExtNote = Union[Note, Rest, Tuple[Union[Note, Rest]]]  # Note entity/group as far as music extraction is concerned
+# Note entity/group as far as music extraction is concerned
+ExtNote = Union[Note, Rest, Chord, Tuple[Union[Note, Rest]]]
 SNote = Union[Note, Rest]  # Single note
 Dur = Union[float, Fraction]
 TsTup = Tuple[int, int]
@@ -265,8 +266,22 @@ def quarter_len2fraction(q_len: Dur) -> Fraction:
         return q_len
 
 
-def note2note_cleaned(note: ExtNote, q_len=None, offset=None) -> ExtNote:
+# support up to certain precision; my power index is off by 2 relative to music21's quarterLength
+ordinal2dur_type = ['whole', 'half', 'quarter', 'eighth', '16th', '32nd', '64th', '128th', '256th', '512th', '1024th']
+
+
+def note2note_cleaned(
+        note: ExtNote, q_len=None, offset=None, for_output: bool = False, from_tuplet: bool = False
+) -> ExtNote:
     """
+    :param note: Note to clean
+    :param q_len: Quarter length to set
+    :param offset: Offset to set
+    :param for_output: If true, set duration for tuplet notes in the proper format,
+        so that music21 export sees tuplets as a group
+        Expects total duration of tuplet to be quantized
+    :param from_tuplet: Flag for note creation for tuplet
+        Internally used for duration setting in case `for_output`
     :return: A cleaned version of Note or tuplets with only duration, offset and pitch set
         Notes in tuplets are set with-equal duration given by (`q_len` if `q_len` given, else tuplet total length)
     """
@@ -274,25 +289,41 @@ def note2note_cleaned(note: ExtNote, q_len=None, offset=None) -> ExtNote:
         q_len = note2dur(note)
     if isinstance(note, tuple):
         offset = offset if offset is not None else note[0].offset
-        dur_ea = quarter_len2fraction(q_len)/len(note)
-        notes: List[SNote] = [note2note_cleaned(n, q_len=dur_ea) for n in note]
+        q_len = quarter_len2fraction(q_len)
+        dur_ea = q_len/len(note)
+        if for_output:
+            # 2 to keep on par with quarterLength, 1 more as it seems how music21 works...
+            my_ordinal = math.log2(q_len.denominator) + 2 + 1
+            assert my_ordinal.is_integer()
+            my_ordinal = int(my_ordinal)
+
+            notes: List[SNote] = [note2note_cleaned(n, from_tuplet=True) for n in note]
+            # cos directly setting a fraction to Duration would result in error in music21 write, if fraction too small
+            dur_ea_tup = m21.duration.Tuplet(
+                numberNotesActual=len(notes), numberNotesNormal=q_len.numerator,
+                # effectively not using the first 2, but it's fine
+                # as multiplying `q_len.numerator` is equivalent as smaller ordinal
+                durationNormal=ordinal2dur_type[my_ordinal]
+            )
+            for n in notes:
+                n.duration.appendTuplet(dur_ea_tup)
+        else:
+            notes: List[SNote] = [note2note_cleaned(n, q_len=dur_ea) for n in note]
         for i, nt_tup in enumerate(notes):
             notes[i].offset = offset + dur_ea * i
         return tuple(notes)
     dur = m21.duration.Duration(quarterLength=q_len)
+    dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
+    assert isinstance(note, (Note, Rest, Chord))
     if isinstance(note, Note):  # Removes e.g. `tie`s
-        nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), duration=dur)
-        # Setting offset in constructor doesn't seem to work per `music21
-        nt.offset = offset if offset is not None else note.offset
-        return nt
+        nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), **dur_args)
     elif isinstance(note, Rest):
-        nt = Rest(duration=dur, offset=note.offset)
-        nt.offset = offset if offset is not None else note.offset
-        return nt
+        nt = Rest(offset=note.offset, **dur_args)
     else:
-        assert isinstance(note, Chord)  # TODO
-        print('clean chord')
-        exit(1)
+        nt = Chord(notes=note.notes, offset=note.offset, **dur_args)
+    # Setting offset in constructor doesn't seem to work per `music21
+    nt.offset = offset if offset is not None else note.offset
+    return nt
 
 
 def is_notes_no_overlap(notes: Iterable[ExtNote]) -> bool:
@@ -550,6 +581,10 @@ if __name__ == '__main__':
     from music21 import graph
     from icecream import ic
 
+    ic.lineWrapWidth = 130
+
+    import musicnlp.util.music as music_util
+
     # ic(tempo2bpm(DEF_TPO))
 
     def check_note2hz():
@@ -559,7 +594,7 @@ if __name__ == '__main__':
 
     def check_piano_roll():
         # pm = pretty_midi.PrettyMIDI(eg_midis('Shape of You'))
-        pm = pretty_midi.PrettyMIDI(get_my_example_songs('Merry Go Round of Life'))
+        pm = pretty_midi.PrettyMIDI(music_util.get_my_example_songs('Merry Go Round of Life'))
 
         # pr = pm.get_piano_roll(100)
         # ic(pr.shape, pr.dtype, pr[75:80, 920:960])
@@ -594,7 +629,7 @@ if __name__ == '__main__':
     # test_show_in_plot()
 
     def test_piano_roll():
-        fnm = get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         ic(fnm)
 
         scr = m21.converter.parse(fnm)
@@ -626,9 +661,7 @@ if __name__ == '__main__':
     # test_piano_roll()
 
     def check_show_title():
-        from .util import get_my_example_songs
-
-        fnm = get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         ic(fnm)
         scr = m21.converter.parse(fnm)
         ic(scr)
@@ -642,3 +675,28 @@ if __name__ == '__main__':
         # ic(vars(part_ch2), vars_(part_ch2))
         ic(part_ch2.activeSite.metadata.title)
     # check_show_title()
+
+    def check_tuplet_duration_creation():
+        """
+        Make sure too small durations in a tuplet can still be shown
+        """
+        lst_note = [Note(pitch=m21.pitch.Pitch(midi=59), duration=m21.duration.Duration(quarterLength=1))]
+        lst_tup = []
+        for i in range(19):
+            dur = m21.duration.Tuplet(numberNotesActual=19, numberNotesNormal=3)
+            note = m21.note.Note()
+            note.duration.appendTuplet(dur)
+            ic(note.duration.quarterLength)
+            lst_tup.append(note)
+        lst_note.append(tuple(lst_tup))
+        lst_note.append(Note(pitch=m21.pitch.Pitch(midi=80), duration=m21.duration.Duration(quarterLength=2)))
+        lst_note = [note2note_cleaned(n, for_output=True) for n in lst_note]
+        ic(lst_note)
+        lst_note = list(flatten_notes(lst_note))
+
+        bar = m21.stream.Measure()
+        bar.append(lst_note)
+        for n in bar[Note]:
+            ic(n, n.duration.quarterLength, n.offset)
+        # bar.show()
+    check_tuplet_duration_creation()

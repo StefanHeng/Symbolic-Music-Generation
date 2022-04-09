@@ -1,4 +1,3 @@
-import sys
 from fractions import Fraction
 from collections import Counter
 
@@ -35,31 +34,25 @@ class WarnLog:
         IncTimeSig, UncomTimeSig,
         HighPchOvl, HighPchOvlTup,
         LowPchMakeup, LowPchMakeupRmv,
-        InvTupSz, TupNoteOvl,
+        InvTupSz,
         InvTupDur, InvTupDurSv,
         # InvTupNt,
         RestInTup,
         ExcecTupNote,
         TupNoteQuant,
+        TupNoteOvl,
         NoteNotQuant,
         InvBarDur,
         BarNoteGap
     ]
 
-    def __init__(self, name=f'{PKG_NM} Music Extraction', verbose=True):
+    def __init__(self, name=f'Music Extraction Warn Log', verbose=True):
         self.warnings: List[Dict] = []
         self.idx_track = None
         self.args_func = None
         self.verbose = verbose
 
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
-        handler = logging.StreamHandler(stream=sys.stdout)  # For my own coloring
-        handler.setLevel(logging.DEBUG)
-        handler.setFormatter(MyFormatter())
-        self.logger.addHandler(handler)
-
-        MyTheme.set_color_type('sty')  # Defaults warning color to `yellow`
+        self.logger = get_logger(name=name)
         self.yellow = MyTheme.yellow
 
     @staticmethod
@@ -228,7 +221,7 @@ class WarnLog:
             d['time_sig_got'] = WarnLog.serialize_time_sig(d['time_sig_got'])
         return d
 
-    def tracked(self, exp: str = 'summary', ) -> Union[str, List[Dict]]:
+    def tracked(self, exp: str = 'summary') -> Union[Dict, List[Dict]]:
         """
         Statistics of warnings since tracking started
 
@@ -236,8 +229,8 @@ class WarnLog:
         """
 
         if exp == 'summary':
-            counts = Counter(w['warn_name'] for w in self.warnings[self.idx_track:])
-            return ', '.join((f'{logi(k)}: {logi(v)}' for k, v in counts.items()))
+            return Counter(w['warn_name'] for w in self.warnings[self.idx_track:])
+            # return ', '.join((f'{logi(k)}: {logi(v)}' for k, v in counts.items()))
         elif exp == 'serialize':
             return [WarnLog.serialize_warning(wn) for wn in self.warnings[self.idx_track:]]
         else:

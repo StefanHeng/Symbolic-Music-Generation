@@ -1,3 +1,7 @@
+"""
+Deprecated, see `music_extractor.py`
+"""
+
 from warnings import warn
 
 from musicnlp.util.music_lib import *

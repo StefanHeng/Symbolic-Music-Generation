@@ -3,6 +3,7 @@ import re
 import sys
 import json
 import math
+import time
 import pickle
 import pathlib
 import logging
@@ -11,10 +12,7 @@ import itertools
 import concurrent.futures
 from typing import Tuple, List, Dict
 from typing import Any, Iterable, Callable, TypeVar, Union
-
-import torch
 from pygments import highlight, lexers, formatters
-
 from functools import reduce
 from collections import OrderedDict
 
@@ -22,8 +20,10 @@ import sty
 import colorama
 import numpy as np
 import pandas as pd
+import torch
 import matplotlib.pyplot as plt
 import seaborn as sns
+from tqdm import tqdm
 
 
 from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM, DIR_DSET
@@ -32,6 +32,7 @@ from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM, DIR_DSET
 pd.set_option('expand_frame_repr', False)
 pd.set_option('display.precision', 2)
 pd.set_option('max_colwidth', 40)
+pd.set_option('display.max_columns', None)
 
 plt.rcParams['figure.constrained_layout.use'] = True
 plt.rcParams['figure.figsize'] = (16, 9)
@@ -173,6 +174,12 @@ def round_up_1digit(num: int):
     return math.ceil(num/fact) * fact
 
 
+def clean_whitespace(s: str):
+    if not hasattr(clean_whitespace, 'pattern_space'):
+        clean_whitespace.pattern_space = re.compile(r'\s+')
+    return clean_whitespace.pattern_space.sub(' ', s).strip()
+
+
 T = TypeVar('T')
 K = TypeVar('K')
 
@@ -211,16 +218,63 @@ def group_n(it: Iterable[T], n: int) -> Iterable[Tuple[T]]:
         yield chunk
 
 
-def conc_map(fn: Callable[[T], K], it: Iterable[T]) -> Iterable[K]:
+def conc_map(fn: Callable[[T], K], it: Iterable[T], with_tqdm = False) -> Iterable[K]:
     """
     Wrapper for `concurrent.futures.map`
 
     :param fn: A function
     :param it: A list of elements
     :return: Iterator of `lst` elements mapped by `fn` with concurrency
+    :param with_tqdm: If true, progress bar is shown
     """
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        return executor.map(fn, it)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+        ret = list(tqdm(executor.map(fn, it), total=len(list(it)))) if with_tqdm else executor.map(fn, it)
+    return ret
+
+
+def batched_conc_map(
+        fn: Callable[[Tuple[List[T], int, int]], K], lst: List[T], n_worker: int = os.cpu_count(),
+        batch_size: int = None,
+        with_tqdm: bool = False
+) -> List[K]:
+    """
+    Batched concurrent mapping, map elements in list in batches
+
+    :param fn: A map function that operates on a batch/subset of `lst` elements,
+        given inclusive begin & exclusive end indices
+    :param lst: A list of elements to map
+    :param n_worker: Number of concurrent workers
+    :param batch_size: Number of elements for each sub-process worker
+        Inferred based on number of workers if not given
+    :param with_tqdm: If true, progress bar is shown
+    """
+    n: int = len(lst)
+    if (n_worker > 1 and n > n_worker * 4) or batch_size:  # factor of 4 is arbitrary, otherwise not worse the overhead
+        preprocess_batch = batch_size or round(n / n_worker / 2)
+        strts: List[int] = list(range(0, n, preprocess_batch))
+        ends: List[int] = strts[1:] + [n]  # inclusive begin, exclusive end
+        lst_out = []
+        # Expand the args
+        map_out = conc_map(lambda args_: fn(*args_), [(lst, s, e) for s, e in zip(strts, ends)], with_tqdm=with_tqdm)
+        for lst_ in map_out:
+            lst_out.extend(lst_)
+        return lst_out
+    else:
+        args = lst, 0, n
+        return fn(*args)
+
+
+def profile_runtime(callback: Callable, sleep: Union[float, int] = None):
+    import cProfile
+    import pstats
+    profiler = cProfile.Profile()
+    profiler.enable()
+    callback()
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('cumtime')
+    if sleep:    # Sometimes, the top rows in `print_states` are now shown properly
+        time.sleep(sleep)
+    stats.print_stats()
 
 
 def log(s, c: str = 'log', c_time='green', as_str=False, pad: int = None):
@@ -492,6 +546,19 @@ def get_logger(name: str, typ: str = 'stdout', file_path: str = None) -> logging
     return logger
 
 
+class RecurseLimit:
+    # credit: https://stackoverflow.com/a/50120316/10732321
+    def __init__(self, limit):
+        self.limit = limit
+
+    def __enter__(self):
+        self.old_limit = sys.getrecursionlimit()
+        sys.setrecursionlimit(self.limit)
+
+    def __exit__(self, type, value, tb):
+        sys.setrecursionlimit(self.old_limit)
+
+
 if __name__ == '__main__':
     from icecream import ic
 
@@ -538,5 +605,11 @@ if __name__ == '__main__':
     def check_group():
         lst = list(range(6))
         ic(lst, list(group_n(lst, 3)))
-    check_group()
+    # check_group()
 
+    st = '/Users/stefanh/Documents/UMich/Research/Music with ' \
+          'NLP/datasets/MXL-eg_out/Alpentrio Tirol - Alpentrio Hitmix: ' \
+          'Alpentrio-Medley   Hast a bisserl Zeit fur mi   Tepperter Bua   Hallo kleine ' \
+          'Traumfrau   Vergiss die Liebe nicht   Ich freu\' mich schon auf dich   Ich ' \
+          'hab was ganz lieb\'s traumt von dir   Geheimnis der Joha... - v0.mxl'
+    ic(clean_whitespace(st))
