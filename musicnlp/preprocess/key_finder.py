@@ -147,15 +147,6 @@ class KeyFinder:
             'A': 5,
             'B': 6,
         }
-        T_1 = {
-            'C': 1,
-            'D': 2,
-            'E': 3,
-            'F': 4,
-            'G': 5,
-            'A': 6,
-            'B': 7,
-        }
         piece = self.piece
         all_k = k[0] + k[1]
         # to store all scale degrees in T0
@@ -172,7 +163,8 @@ class KeyFinder:
         ret_ = {}
         for k_ in all_k:
             step = k_[0]
-            ret_[k_] = [(name, scale+T_1[step]) if name != 'R' else (name, scale) for name, scale in arr_]
+            # mod7 plus 1 just to make it align with our scale degrees value convention (1-7)
+            ret_[k_] = [(name, (scale-T_0[step]) % 7 + 1) if name != 'R' else (name, scale) for name, scale in arr_]
         return ret_
 
     def check_notes(self, k):
