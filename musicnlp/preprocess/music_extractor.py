@@ -12,6 +12,9 @@ from musicnlp.util import *
 from musicnlp.util.music_lib import *
 from musicnlp.preprocess import WarnLog
 
+# Type for extracted music
+ScoreExt = Union[Score, List[str], List[int], str]
+
 
 class MusicExtractor:
     """
@@ -19,30 +22,29 @@ class MusicExtractor:
     """
     def __init__(
             self, precision: int = 5, mode: str = 'melody',
-            logger: Union[WarnLog, bool] = None, save_memory=True, verbose=True
+            warn_logger: Union[WarnLog, bool] = None, save_memory=True, verbose: Union[bool, str] = True
     ):
         """
         :param precision: Bar duration quantization, see `melody_extractor.MxlMelodyExtractor`
         :param mode: Extraction mode, one of [`melody`, `full`]
             `melody`: Only melody is extracted
             `full`: Melody and Chord as 2 separate channels extracted TODO
-        :param logger: A logger for storing warnings
+        :param warn_logger: A logger for storing warnings
             If True, a logger is instantiated
         :param save_memory: If true, prior logging warning messages are removed after new encode call
             See `Warning.end_tracking`
-        :param verbose: If true, process is logged, including statistics of score and warnings
+        :param verbose: If true, extraction process including warnings is logged
+            If `single`, only begin and end of extraction is logged
         """
-        self.title = None  # Current score title
-
         self.prec = precision
         self.mode = mode
 
-        self.logger: WarnLog
-        if logger:
-            self.logger = logger if isinstance(logger, WarnLog) else WarnLog(verbose=verbose)
-            self.logger.verbose = verbose
+        self.logger = get_logger('Music Extraction')
+        assert isinstance(verbose, bool) or verbose == 'single', f'{logi("verbose")} must be bool or {logi("single")}'
+        if warn_logger:
+            self.warn_logger = warn_logger if isinstance(warn_logger, WarnLog) else WarnLog(verbose=verbose is True)
         else:
-            self.logger = None
+            self.warn_logger = None
         self.save_memory = save_memory
         self.verbose = verbose
 
@@ -106,8 +108,8 @@ class MusicExtractor:
             yield [b for ignore, b in zip(ignore, bars) if not ignore], time_sig, tempo
 
     def log_warn(self, log_d: Dict):
-        if self.logger is not None:
-            self.logger.update(log_d)
+        if self.warn_logger is not None:
+            self.warn_logger.update(log_d)
 
     def dur_within_prec(self, dur: Union[float, Fraction]) -> bool:
         return is_int(dur / 4 / (2**-self.prec))
@@ -337,13 +339,6 @@ class MusicExtractor:
                             ))
                             # A really severe case, should rarely happen
                             # TODO: how about just remove this group?
-                            if number == 80:
-                                # bar.show()
-                                for n in tup:
-                                    nm, qLen = n.fullName, n.duration.quarterLength
-                                    ic(nm, n.offset, qLen)
-                            # note_1st, note_last = tup[0], tup[-1]
-                            # ic(note_last.offset + note_last.duration.quarterLength - note_1st.offset)]
                             total_dur = sum(n.duration.quarterLength for n in tup)
                             assert total_dur.is_integer() if isinstance(total_dur, float) \
                                 else total_dur.denominator == 1
@@ -357,12 +352,7 @@ class MusicExtractor:
                                 fixed_tup.append(n)
                                 offset += n.duration.quarterLength
                             assert is_notes_no_overlap(fixed_tup)  # sanity check
-                            ic(lst[idx_tup], tup, lst)
                             lst[idx_tup] = tuple(fixed_tup)  # Override the original tuplet
-                            ic(idx_tup, lst[idx_tup], lst)
-                            for n in lst[idx_tup]:
-                                nm, qLen = n.fullName, n.duration.quarterLength
-                                ic(nm, n.offset, qLen)
                     for tup in lst[idx_tup_strt:]:
                         n_rest = sum(isinstance(n, Rest) for n in tup)
                         if n_rest != 0:
@@ -373,11 +363,8 @@ class MusicExtractor:
                     if not keep_chord:
                         tups_new = []
                         has_chord = False
-                        ic('checking chords present')
                         for i in range(idx_tup_strt, len(lst)):  # Ensure all tuplet groups contain no Chord
                             tup = lst[i]
-                            # if number == 80:
-                            #     ic(tup, any(isinstance(n, Chord) for n in tup))
                             # Bad transcription quality => Keep all possible tuplet combinations
                             # Try to, but all possible search space is huge as we recurse, see `get_notes_out`
                             # Expect to be the same
@@ -405,14 +392,8 @@ class MusicExtractor:
                                     tups_new.append(notes_max_pitch)
                                 else:
                                     tups_new.extend(list(itertools.product(*opns)))
-                        # ic('done replacing chords')
                         if has_chord:  # Replace prior triplet groups
                             lst = lst[:idx_tup_strt] + tups_new
-                        # if number == 80:
-                        #     ic('finished adding chords')
-                        #     for tup in lst[idx_tup_strt:]:
-                        #         ic(tup)
-                        #     ic('finished inspecting chords')
                 elm = elm_
                 continue  # Skip `next` for peeked 1 step ahead
             elif isinstance(elm, (Note, Rest)):
@@ -450,11 +431,8 @@ class MusicExtractor:
         return lst
 
     def __call__(
-            self, song: Union[str, Score], exp='mxl', return_duration=False,
-    ) -> Union[
-        Tuple[Union[Score, List[str], List[int], str]],
-        Tuple[Union[Score, List[str], List[int], str], int]
-    ]:
+            self, song: Union[str, Score], exp='mxl', return_meta: bool = False,
+    ) -> Union[ScoreExt, Dict[str, Union[ScoreExt, Any]]]:
         """
         :param song: A music21 Score object, or file path to an MXL file
         :param exp: Export mode, one of ['mxl', 'str', 'id', 'str_join', 'visualize']
@@ -462,10 +440,14 @@ class MusicExtractor:
             If `str` or `int`, the corresponding tokens and integer ids are returned as lists
             If `str_join`, the tokens are jointed together
             If `visualize`, a grouped, colorized string is returned, intended for console output
-        :param return_duration: If true, the song duration in seconds is also returned
+        :param return_meta: If true, metadata about the music is returned, along with the score as a dictionary
+            Metadata includes 1) the song title, 2) the song duration in seconds, and 3) warnings found
         """
-        if self.logger is not None and self.save_memory:
-            self.logger.end_tracking()
+        exp_opns = ['mxl', 'str', 'id', 'str_join', 'visualize']
+        if exp not in exp_opns:
+            raise ValueError(f'Unexpected export mode - got {logi(exp)}, expect one of {logi(exp_opns)}')
+        if self.warn_logger is not None and self.save_memory:
+            self.warn_logger.end_tracking()
 
         if isinstance(song, str):
             song = m21.converter.parse(song)
@@ -474,7 +456,6 @@ class MusicExtractor:
         title = song.metadata.title
         if title.endswith('.mxl'):
             title = title[:-4]
-        self.title = title
 
         lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(self.it_bars(song))
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
@@ -515,11 +496,10 @@ class MusicExtractor:
         time_sig_mode = max(counter_ts, key=counter_ts.get)
         ts_mode_str = f'{time_sig_mode[0]}/{time_sig_mode[1]}'
         if self.verbose:
-            log(f'Tokenizing music {logi(self.title)}'
-                f' - Time Signature: {logi(ts_mode_str)}, avg Tempo: {logi(mean_tempo)}, '
-                f'{logi(len(lst_bars_))} bars with Duration: {logi(sec2mmss(secs))}...')
-            if self.logger is not None:
-                self.logger.start_tracking(args_func=lambda: dict(id=self.title, timestamp=now()))
+            d_log = {'Time Signature': ts_mode_str, 'Tempo': mean_tempo, '#bars': len(lst_bars_), 'Duration': secs}
+            self.logger.info(f'Extracting {logi(title)} with {log_dict(d_log)}... ')
+            if self.warn_logger is not None:
+                self.warn_logger.start_tracking(args_func=lambda: dict(id=title, timestamp=now()))
         set_ts = set(f'{ts.numerator}/{ts.denominator}' for ts in time_sigs)
         set_tp = set(round(tp.number) for tp in tempos)
         if len(set_ts) > 1:
@@ -544,7 +524,7 @@ class MusicExtractor:
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
         # ic(i_bar_strt)
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
-            ic(i_bar)
+            # ic(i_bar)
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
@@ -558,8 +538,8 @@ class MusicExtractor:
                         exit(1)
                 groups[n_.offset].append(n)
             # Sort by pitch then by duration
-            if number == 80:
-                ic(groups)
+            # if number == 80:
+            #     ic(groups)
 
             def sort_groups(g):
                 return {
@@ -575,11 +555,11 @@ class MusicExtractor:
             def get_notes_out(grps) -> List[Union[Note, Chord, tuple[Note]]]:
                 # if number == 50:
                 #     ic('in new get_notes_out', groups)
-                if not hasattr(get_notes_out, 'recurse_count'):
-                    get_notes_out.recurse_count = 0
-                get_notes_out.recurse_count += 1
-                if get_notes_out.recurse_count % 100 == 0:
-                    ic(get_notes_out.recurse_count)
+                # if not hasattr(get_notes_out, 'recurse_count'):
+                #     get_notes_out.recurse_count = 0
+                # get_notes_out.recurse_count += 1
+                # if get_notes_out.recurse_count % 100 == 0:
+                #     ic(get_notes_out.recurse_count)
 
                 ns_out = []
                 offset_next = 0
@@ -710,12 +690,12 @@ class MusicExtractor:
         lst_notes = [trip_n_quant2notes(notes, num_bar=i) for i, notes in enumerate(lst_notes)]
         for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
             is_valid_bar_notes(notes, time_sig)
-        if self.verbose and self.logger is not None:
-            log(f'Encoding {logi(self.title)} completed - Observed warnings {{{self.logger.tracked()}}}')
+        if self.verbose and self.warn_logger is not None:
+            self.logger.info(f'Completed extracting {logi(title)} with warnings {log_dict(self.warn_logger.tracked())}')
 
         if exp == 'mxl':  # TODO: didn't test
             scr_out = make_score(
-                title=f'{self.title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
+                title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
                 lst_note=[list(flatten_notes(notes)) for notes in lst_notes]
             )
             dir_nm = config(f'{DIR_DSET}.mxl-eg.dir_nm_extracted')
@@ -723,10 +703,7 @@ class MusicExtractor:
             # fmt = 'musicxml'
             # sometimes file-writes via `mxl` couldn't be read by MuseScore
             path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.{fmt}')
-            # ic(path, len(path), self.title, len(self.title))
-            # ic(f'{title}.{fmt}', len(f'{title}.{fmt}'))
             scr_out.write(fmt=fmt, fp=path, makeNotation=False)
-            ret = scr_out
         else:
             assert exp in ['str', 'id', 'visualize', 'str_join']
             color = exp == 'visualize'
@@ -745,15 +722,17 @@ class MusicExtractor:
 
                 def idx2str(i):
                     return log_s(f'{i:>{n_pad}}:', c='y')
-                ret = '\n'.join(f'{idx2str(i)} {" ".join(toks)}' for i, toks in enumerate(groups_))
+                scr_out = '\n'.join(f'{idx2str(i)} {" ".join(toks)}' for i, toks in enumerate(groups_))
             else:
                 toks = sum(groups_, start=[])
                 if exp in ['str', 'id']:
-                    ret = toks if exp == 'str' else self.vocab.encode(toks)
+                    scr_out = toks if exp == 'str' else self.vocab.encode(toks)
                 else:
-                    ret = ' '.join(toks)
-        if return_duration:
-            return ret, secs
+                    scr_out = ' '.join(toks)
+        if return_meta:
+            return dict(score=scr_out, title=title, duration=secs, warnings=self.warn_logger.tracked(exp='serialize'))
+        else:
+            return scr_out
 
 
 if __name__ == '__main__':
@@ -772,7 +751,7 @@ if __name__ == '__main__':
         # fnm = music_util.get_my_example_songs('canonpiano')
         # fnm = music_util.get_my_example_songs('canonroc1')
         ic(fnm)
-        mt = MusicExtractor(logger=logger, verbose=True)
+        mt = MusicExtractor(warn_logger=logger, verbose=True)
 
         def check_mxl_out():
             mt(fnm, exp='mxl')
@@ -789,25 +768,25 @@ if __name__ == '__main__':
         check_mxl_out()
         # check_str()
         # check_visualize()
-    # toy_example()
+    toy_example()
 
     def encode_a_few():
         # dnm = 'POP909'
         dnm = 'LMD-cleaned-subset'
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[387+41:]  # this one too long fnm
+        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[641:]  # this one too long fnm
         # fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')
         # ic(len(fnms), fnms[:5])
 
         # idx = [idx for idx, fnm in enumerate(fnms) if '恋爱ing' in fnm][0]
         # ic(idx)
         logger = WarnLog()
-        me = MusicExtractor(logger=logger, verbose=True)
+        me = MusicExtractor(warn_logger=logger, verbose=True)
         for i_fl, fnm in enumerate(fnms):
             ic(i_fl, fnm)
             me(fnm, exp='mxl')
             # s = mt(fnm, exp='visualize')
             # print(s)
-    encode_a_few()
+    # encode_a_few()
 
     def check_vocabulary():
         vocab = MusicVocabulary()
