@@ -1,8 +1,7 @@
-import torch
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
 
-from musicnlp.util import *
+from musicnlp.util.util import *
 
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens

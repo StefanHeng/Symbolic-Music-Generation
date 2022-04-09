@@ -32,6 +32,7 @@ from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM, DIR_DSET
 pd.set_option('expand_frame_repr', False)
 pd.set_option('display.precision', 2)
 pd.set_option('max_colwidth', 40)
+pd.set_option('display.max_columns', None)
 
 plt.rcParams['figure.constrained_layout.use'] = True
 plt.rcParams['figure.figsize'] = (16, 9)
@@ -171,6 +172,12 @@ def round_up_1digit(num: int):
     d = math.floor(math.log10(num))
     fact = 10**d
     return math.ceil(num/fact) * fact
+
+
+def clean_whitespace(s: str):
+    if not hasattr(clean_whitespace, 'pattern_space'):
+        clean_whitespace.pattern_space = re.compile(r'\s+')
+    return clean_whitespace.pattern_space.sub(' ', s).strip()
 
 
 T = TypeVar('T')
@@ -492,6 +499,19 @@ def get_logger(name: str, typ: str = 'stdout', file_path: str = None) -> logging
     return logger
 
 
+class RecurseLimit:
+    # credit: https://stackoverflow.com/a/50120316/10732321
+    def __init__(self, limit):
+        self.limit = limit
+
+    def __enter__(self):
+        self.old_limit = sys.getrecursionlimit()
+        sys.setrecursionlimit(self.limit)
+
+    def __exit__(self, type, value, tb):
+        sys.setrecursionlimit(self.old_limit)
+
+
 if __name__ == '__main__':
     from icecream import ic
 
@@ -538,5 +558,11 @@ if __name__ == '__main__':
     def check_group():
         lst = list(range(6))
         ic(lst, list(group_n(lst, 3)))
-    check_group()
+    # check_group()
 
+    st = '/Users/stefanh/Documents/UMich/Research/Music with ' \
+          'NLP/datasets/MXL-eg_out/Alpentrio Tirol - Alpentrio Hitmix: ' \
+          'Alpentrio-Medley   Hast a bisserl Zeit fur mi   Tepperter Bua   Hallo kleine ' \
+          'Traumfrau   Vergiss die Liebe nicht   Ich freu\' mich schon auf dich   Ich ' \
+          'hab was ganz lieb\'s traumt von dir   Geheimnis der Joha... - v0.mxl'
+    ic(clean_whitespace(st))

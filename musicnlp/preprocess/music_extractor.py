@@ -13,9 +13,6 @@ from musicnlp.util.music_lib import *
 from musicnlp.preprocess import WarnLog
 
 
-pd.set_option('display.max_columns', None)  # TODO
-
-
 class MusicExtractor:
     """
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation
@@ -125,7 +122,7 @@ class MusicExtractor:
 
         Expect tuplets to be fully quantized before call - intended for triplets to be untouched after call
         """
-        ic('in quantize', number)
+        # ic('in quantize', number)
         dur_slot = 4 * 2**-self.prec  # In quarter length
         dur_bar = (time_sig.numerator/time_sig.denominator*4)
         n_slots = dur_bar / dur_slot
@@ -185,12 +182,7 @@ class MusicExtractor:
                 offset += note2dur(note_dummy)
             else:
                 # for tuplets total duration may still not be quantized yet
-                nt = note2note_cleaned(notes[i], q_len=n*dur_slot, for_output=True)
-                # if number == 61:
-                #     bar = Measure()
-                #     bar.append(list(flatten_notes(nt)))
-                #     bar.show()
-                #     exit(1)
+                nt = note2note_cleaned(notes[i], q_len=n*dur_slot, for_output=True)  # last not processing before output
                 if isinstance(nt, tuple):
                     dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
                     if number == 61:
@@ -205,20 +197,15 @@ class MusicExtractor:
                     nt.offset = offset  # Unroll the offsets
                     notes_out.append(nt)
                 offset += note2dur(nt)
-            # if number == 61:
-            #     bar = Measure()
-            #     bar.append(list(flatten_notes(notes_out)))
-            #     bar.show()
-            #     exit(1)
 
-        if number in [23, 61]:
-            # ic(notes)
-            ic(notes_out)
-            # for n in flatten_notes(notes):
-            for n in flatten_notes(notes_out):
-                qLen = n.duration.quarterLength
-                ic(n, n.offset, qLen)
-            # ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
+        # if number in [23, 61]:
+        #     # ic(notes)
+        #     ic(notes_out)
+        #     # for n in flatten_notes(notes):
+        #     for n in flatten_notes(notes_out):
+        #         qLen = n.duration.quarterLength
+        #         ic(n, n.offset, qLen)
+        #     # ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
         assert is_notes_no_overlap(notes_out)  # Sanity check
         assert sum(note2dur(n) for n in notes_out) == dur_bar
         return notes_out
@@ -254,11 +241,11 @@ class MusicExtractor:
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
                         break
-                if number == 61 and elm.offset == 0:
-                    ic('in found tuplet', len(elms_tup), tup_str, n_tup)
-                    for n in elms_tup:
-                        name, qLen = n.fullName, n.duration.quarterLength
-                        ic(name, n.offset, qLen)
+                # if number == 61 and elm.offset == 0:
+                #     ic('in found tuplet', len(elms_tup), tup_str, n_tup)
+                #     for n in elms_tup:
+                #         name, qLen = n.fullName, n.duration.quarterLength
+                #         ic(name, n.offset, qLen)
 
                 # Consecutive tuplet notes => (potentially multiple) groups
                 it_tup = iter(elms_tup)
@@ -369,6 +356,7 @@ class MusicExtractor:
                         for i in range(idx_tup_strt, len(lst)):  # Ensure all tuplet groups contain no Chord
                             tup = lst[i]
                             # Bad transcription quality => Keep all possible tuplet combinations
+                            # Try to, but all possible search space is huge as we recurse, see `get_notes_out`
                             # Expect to be the same
                             if any(isinstance(n, Chord) for n in tup):
                                 def chord2notes(c):
@@ -527,6 +515,7 @@ class MusicExtractor:
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
         # ic(i_bar_strt)
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
+            # ic(i_bar)
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
@@ -543,12 +532,20 @@ class MusicExtractor:
                     for offset, ns in g.items()
                 }
             groups = sort_groups(groups)
-            if number == 61:
-                ic(groups)
+            # if number == 92:
+            #     # ic(groups)
+            #     for k, v in groups.items():
+            #         ic(k, len(v))
 
             def get_notes_out(grps) -> List[Union[Note, Chord, tuple[Note]]]:
                 # if number == 50:
                 #     ic('in new get_notes_out', groups)
+                if not hasattr(get_notes_out, 'recurse_count'):
+                    get_notes_out.recurse_count = 0
+                get_notes_out.recurse_count += 1
+                if get_notes_out.recurse_count % 100 == 0:
+                    ic(get_notes_out.recurse_count)
+
                 ns_out = []
                 offset_next = 0
                 for offset in sorted(grps.keys()):  # Pass through notes in order
@@ -607,9 +604,11 @@ class MusicExtractor:
                         ns_out.append(nt)
                         offset_next = nt_end_offset
                 return ns_out
-            notes_out = get_notes_out(groups)
-            if number == 61:
-                ic(notes_out)
+
+            with RecurseLimit(2**14):
+                notes_out = get_notes_out(groups)
+            # if number == 61:
+            #     ic(notes_out)
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
             #   e.g. tiny-duration notes shifts all subsequent notes
@@ -652,9 +651,8 @@ class MusicExtractor:
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
             if not notes_within_prec(notes):
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
-                if i_bar == 61:
-                    ic(lst_notes[i_bar])
-                    # exit(1)
+                # if i_bar == 61:
+                #     ic(lst_notes[i_bar])
                 assert notes_within_prec(lst_notes[i_bar])  # Sanity check implementation
                 offsets, durs = notes2offset_duration(notes)
                 self.log_warn(dict(warn_name=WarnLog.NoteNotQuant, bar_num=i_bar, offsets=offsets, durations=durs))
@@ -689,12 +687,10 @@ class MusicExtractor:
             fmt = 'mxl'
             # fmt = 'musicxml'
             # sometimes file-writes via `mxl` couldn't be read by MuseScore
-            # bar = next(scr_out.parts).measure(61)
-            # ic(bar, list(bar))
-            # for e in bar:
-            #     qLen = e.duration.quarterLength
-            #     ic(e, e.offset, qLen)
-            scr_out.write(fmt=fmt, fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.{fmt}'), makeNotation=False)
+            path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.{fmt}')
+            # ic(path, len(path), self.title, len(self.title))
+            # ic(f'{title}.{fmt}', len(f'{title}.{fmt}'))
+            scr_out.write(fmt=fmt, fp=path, makeNotation=False)
             ret = scr_out
         else:
             assert exp in ['str', 'id', 'visualize', 'str_join']
@@ -763,7 +759,8 @@ if __name__ == '__main__':
     def encode_a_few():
         # dnm = 'POP909'
         dnm = 'LMD-cleaned-subset'
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[223:]
+        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[387:]  # this one too long fnm
+        # fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')
         # ic(len(fnms), fnms[:5])
 
         # idx = [idx for idx, fnm in enumerate(fnms) if '恋爱ing' in fnm][0]

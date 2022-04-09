@@ -290,7 +290,6 @@ def note2note_cleaned(
         offset = offset if offset is not None else note[0].offset
         q_len = quarter_len2fraction(q_len)
         dur_ea = q_len/len(note)
-        # ic(dur_ea, q_len)
         if for_output:
             # 2 to keep on par with quarterLength, 1 more as it seems how music21 works...
             my_ordinal = math.log2(q_len.denominator) + 2 + 1
@@ -298,7 +297,6 @@ def note2note_cleaned(
             my_ordinal = int(my_ordinal)
 
             notes: List[SNote] = [note2note_cleaned(n, from_tuplet=True) for n in note]
-            # ic(dur_ea, q_len, my_ordinal, ordinal2dur_type[my_ordinal])
             # cos directly setting a fraction to Duration would result in error in music21 write, if fraction too small
             dur_ea_tup = m21.duration.Tuplet(
                 numberNotesActual=len(notes), numberNotesNormal=q_len.numerator,
@@ -306,8 +304,6 @@ def note2note_cleaned(
                 # as multiplying `q_len.numerator` is equivalent as smaller ordinal
                 durationNormal=ordinal2dur_type[my_ordinal]
             )
-            # for i in range(len(notes)):
-            #     notes[i].duration.appendTuplet(dur_ea_tup)
             for n in notes:
                 n.duration.appendTuplet(dur_ea_tup)
         else:
@@ -317,7 +313,6 @@ def note2note_cleaned(
         return tuple(notes)
     dur = m21.duration.Duration(quarterLength=q_len)
     dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
-    # ic(dur, dur_args)
     if isinstance(note, Note):  # Removes e.g. `tie`s
         nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), **dur_args)
         # Setting offset in constructor doesn't seem to work per `music21
