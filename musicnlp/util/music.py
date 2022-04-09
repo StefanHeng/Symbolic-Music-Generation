@@ -73,7 +73,6 @@ def convert_dataset(dataset_name: str = 'POP909'):
 
         # empirically seen as a problem: some files are essentially the same title, ending in different numbers
         # See `ValueError` below
-        # version_counter = defaultdict(int)
         my_lim, os_lim = 256-32, 255
 
         def path2fnm(p_: str):
@@ -82,37 +81,27 @@ def convert_dataset(dataset_name: str = 'POP909'):
             paths_last = p_.split(os.sep)[-2:]
             artist, title = paths_last
             title = title[:-4]  # remove `.mid`
-            # ic(title)
-            # is_0_ver = True
             pattern_title = re.compile(r'(?P<title>.*)\.(?P<version>[1-9]\d*)')
-            m = pattern_title.match(title)  # should always match
-            # ic(title, m)
+            m = pattern_title.match(title)
             if m:
                 title_, version = m.group('title'), m.group('version')
                 assert version is not None
-                # is_0_ver, title, v = False, title_, int(version)
                 title, v = title_, int(version)
             else:
                 v = 0
 
             fnm_ = clean_whitespace(f'{artist} - {title}')
-            # ic(title, m, v, fnm_, len(fnm_) > my_lim)
             assert len(clean_whitespace(artist)) - 3 <= my_lim, \
                 f'Artist name {logi(artist)} is too long for OS file write'
             if len(fnm_) > my_lim:
-                fnm_ = f'{fnm_[:my_lim]}... '
-                path2fnm.count_too_long += 1
-                # k_title = fnm_[:my_lim]
-                # fnm_ = f'{k_title}... - v{version_counter[k_title]}'
                 # Modified the name, but still keep to the original way of versioning,
                 #   i.e. `<title>.<version>` if there's a separate version,
-                # so that getting subset can work without changes
-                # v = version_counter[k_title]
+                # so that `get_lmd_cleaned_subset_fnms` can work without changes
+                fnm_ = f'{fnm_[:my_lim]}... '
+                path2fnm.count_too_long += 1
             v_str = '' if v == 0 else f'.{v}'
             fnm_ = f'{fnm_}{v_str}'
-                # version_counter[k_title] += 1  # ensures no duplicate file names
             fnm_ = f'{fnm_}.mid'
-            # ic(title, fnm_)
             assert len(fnm_) <= os_lim
             return fnm_
         fnms_written = set()

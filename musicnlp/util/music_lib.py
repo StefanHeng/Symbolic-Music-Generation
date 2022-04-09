@@ -26,7 +26,8 @@ if KEEP_OBSOLETE:
     from librosa import display
 
 
-ExtNote = Union[Note, Rest, Tuple[Union[Note, Rest]]]  # Note entity/group as far as music extraction is concerned
+# Note entity/group as far as music extraction is concerned
+ExtNote = Union[Note, Rest, Chord, Tuple[Union[Note, Rest]]]
 SNote = Union[Note, Rest]  # Single note
 Dur = Union[float, Fraction]
 TsTup = Tuple[int, int]
@@ -122,6 +123,8 @@ def note2pitch(note: ExtNote):
     elif isinstance(note, Note):
         return note.pitch.frequency
     else:
+        # from icecream import ic
+        # ic(note, type(note))
         assert isinstance(note, Rest)
         return 0  # `Rest` given pitch frequency of 0
 
@@ -313,18 +316,16 @@ def note2note_cleaned(
         return tuple(notes)
     dur = m21.duration.Duration(quarterLength=q_len)
     dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
+    assert isinstance(note, (Note, Rest, Chord))
     if isinstance(note, Note):  # Removes e.g. `tie`s
         nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), **dur_args)
-        # Setting offset in constructor doesn't seem to work per `music21
-        nt.offset = offset if offset is not None else note.offset
-        return nt
     elif isinstance(note, Rest):
         nt = Rest(offset=note.offset, **dur_args)
-        nt.offset = offset if offset is not None else note.offset
-        return nt
     else:
-        assert isinstance(note, Chord)  # TODO
-        raise NotImplementedError('Chord not implemented yet')
+        nt = Chord(notes=note.notes, offset=note.offset, **dur_args)
+    # Setting offset in constructor doesn't seem to work per `music21
+    nt.offset = offset if offset is not None else note.offset
+    return nt
 
 
 def is_notes_no_overlap(notes: Iterable[ExtNote]) -> bool:

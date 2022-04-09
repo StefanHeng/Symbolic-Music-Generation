@@ -327,22 +327,42 @@ class MusicExtractor:
                         if ln != n_tup:
                             self.log_warn(dict(warn_name=WarnLog.InvTupSz, bar_num=number, n_expect=n_tup, n_got=ln))
 
-                    for tup in lst[idx_tup_strt:]:  # Enforce no overlap in each triplet group
+                    # Enforce no overlap in each triplet group
+                    for idx_tup, tup in enumerate(lst[idx_tup_strt:], start=idx_tup_strt):
                         tup: tuple[Union[Note, Rest]]
                         if not is_notes_no_overlap(tup):
-                            raise ValueError(f'Triplet notes overlap: {tup}')
-                            # TODO: Left as is since code didn't seem to reach here ever
-                            # offsets, durs = notes2offset_duration(tup)
-                            # self.my_log_warn(dict(
-                            #     warn_name=WarnLog.InvTupNt, bar_num=number, offsets=offsets, durations=durs
-                            # ))
-                            # it_n = iter(tup)
-                            # nt = next(it_n)
-                            # end = nt.offset + nt.duration.quarterLength
-                            # tup_new = [nt]
-                            # bar.show()
-                            exit(1)
-                            # while nt is not None:
+                            offsets, durs = notes2offset_duration(tup)
+                            self.log_warn(dict(
+                                warn_name=WarnLog.TupNoteOvl, bar_num=number, offsets=offsets, durations=durs
+                            ))
+                            # A really severe case, should rarely happen
+                            # TODO: how about just remove this group?
+                            if number == 80:
+                                # bar.show()
+                                for n in tup:
+                                    nm, qLen = n.fullName, n.duration.quarterLength
+                                    ic(nm, n.offset, qLen)
+                            # note_1st, note_last = tup[0], tup[-1]
+                            # ic(note_last.offset + note_last.duration.quarterLength - note_1st.offset)]
+                            total_dur = sum(n.duration.quarterLength for n in tup)
+                            assert total_dur.is_integer() if isinstance(total_dur, float) \
+                                else total_dur.denominator == 1
+                            # Trust the duration more than the offset, and unroll backwards to fix the offset
+                            note1st = note2note_cleaned(tup[0])
+                            offset = note1st.offset + note1st.duration.quarterLength
+                            fixed_tup = [note1st]
+                            for n in tup[1:]:
+                                n = note2note_cleaned(n)
+                                n.offset = offset
+                                fixed_tup.append(n)
+                                offset += n.duration.quarterLength
+                            assert is_notes_no_overlap(fixed_tup)  # sanity check
+                            ic(lst[idx_tup], tup, lst)
+                            lst[idx_tup] = tuple(fixed_tup)  # Override the original tuplet
+                            ic(idx_tup, lst[idx_tup], lst)
+                            for n in lst[idx_tup]:
+                                nm, qLen = n.fullName, n.duration.quarterLength
+                                ic(nm, n.offset, qLen)
                     for tup in lst[idx_tup_strt:]:
                         n_rest = sum(isinstance(n, Rest) for n in tup)
                         if n_rest != 0:
@@ -353,8 +373,11 @@ class MusicExtractor:
                     if not keep_chord:
                         tups_new = []
                         has_chord = False
+                        ic('checking chords present')
                         for i in range(idx_tup_strt, len(lst)):  # Ensure all tuplet groups contain no Chord
                             tup = lst[i]
+                            # if number == 80:
+                            #     ic(tup, any(isinstance(n, Chord) for n in tup))
                             # Bad transcription quality => Keep all possible tuplet combinations
                             # Try to, but all possible search space is huge as we recurse, see `get_notes_out`
                             # Expect to be the same
@@ -382,8 +405,14 @@ class MusicExtractor:
                                     tups_new.append(notes_max_pitch)
                                 else:
                                     tups_new.extend(list(itertools.product(*opns)))
+                        # ic('done replacing chords')
                         if has_chord:  # Replace prior triplet groups
                             lst = lst[:idx_tup_strt] + tups_new
+                        # if number == 80:
+                        #     ic('finished adding chords')
+                        #     for tup in lst[idx_tup_strt:]:
+                        #         ic(tup)
+                        #     ic('finished inspecting chords')
                 elm = elm_
                 continue  # Skip `next` for peeked 1 step ahead
             elif isinstance(elm, (Note, Rest)):
@@ -515,7 +544,7 @@ class MusicExtractor:
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
         # ic(i_bar_strt)
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
-            # ic(i_bar)
+            ic(i_bar)
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
@@ -523,8 +552,14 @@ class MusicExtractor:
             groups: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in notes:
                 n_ = n[0] if isinstance(n, tuple) else n
+                if isinstance(n, tuple):
+                    if any(isinstance(nn, Chord) for nn in n):
+                        ic(n)
+                        exit(1)
                 groups[n_.offset].append(n)
             # Sort by pitch then by duration
+            if number == 80:
+                ic(groups)
 
             def sort_groups(g):
                 return {
@@ -724,7 +759,7 @@ class MusicExtractor:
 if __name__ == '__main__':
     from icecream import ic
 
-    ic.lineWrapWidth = 130
+    ic.lineWrapWidth = 400
 
     import musicnlp.util.music as music_util
 
@@ -759,7 +794,7 @@ if __name__ == '__main__':
     def encode_a_few():
         # dnm = 'POP909'
         dnm = 'LMD-cleaned-subset'
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[387:]  # this one too long fnm
+        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[387+41:]  # this one too long fnm
         # fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')
         # ic(len(fnms), fnms[:5])
 
