@@ -3,6 +3,7 @@ import re
 import sys
 import json
 import math
+import time
 import pickle
 import pathlib
 import logging
@@ -261,6 +262,19 @@ def batched_conc_map(
     else:
         args = lst, 0, n
         return fn(*args)
+
+
+def profile_runtime(callback: Callable, sleep: Union[float, int] = None):
+    import cProfile
+    import pstats
+    profiler = cProfile.Profile()
+    profiler.enable()
+    callback()
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('cumtime')
+    if sleep:    # Sometimes, the top rows in `print_states` are now shown properly
+        time.sleep(sleep)
+    stats.print_stats()
 
 
 def log(s, c: str = 'log', c_time='green', as_str=False, pad: int = None):

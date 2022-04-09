@@ -1,5 +1,3 @@
-import os
-
 import datasets
 
 from musicnlp.util import *
@@ -57,7 +55,7 @@ class MusicExport:
         if isinstance(fnms, str):  # Dataset name provided
             dnm_ = fnms
             # fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[:40]
-            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[5000:]
+            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[4000:]
         self.logger.info(f'Extracting {logi(len(fnms))} songs... ')
 
         def call_single(fl_nm) -> Dict:
@@ -129,7 +127,7 @@ if __name__ == '__main__':
         # dnm = 'POP909'
         dnm = 'LMD-cleaned-subset'
         # me(dnm)
-        me(dnm, parallel=64, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
+        me(dnm, parallel=32, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
     export2json()
 
     def json2dset():
