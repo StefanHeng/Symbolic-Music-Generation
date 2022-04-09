@@ -769,9 +769,11 @@ if __name__ == '__main__':
         # fnm = get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = get_my_example_songs('Shape of You', fmt='MXL')
         # fnm = get_my_example_songs('平凡之路', fmt='MXL')
-        fnm = music_util.get_my_example_songs('Canon')
+        # fnm = music_util.get_my_example_songs('Canon')
         # fnm = music_util.get_my_example_songs('canonpiano')
         # fnm = music_util.get_my_example_songs('canonroc1')
+        fnm = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/Kool & The Gang - ' \
+              'What Would the World Be Without Music Let the Music Take Your Mind Medley.mxl'
         ic(fnm)
         mt = MusicExtractor(warn_logger=logger, verbose=True)
 

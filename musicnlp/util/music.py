@@ -223,8 +223,18 @@ if __name__ == '__main__':
         assert len(set_broken) == 0, 'Not all broken files deleted'
     # fix_delete_broken_files()
 
+    def fix_match_mxl_names_with_new_mid():
+        path_lmd_v = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/*.mxl'
+        ic(len(list(glob.iglob(path_lmd_v))))
+        for fnm in glob.iglob(path_lmd_v):
+            fnm_new = clean_whitespace(fnm)
+            if fnm != fnm_new:
+                os.rename(fnm, fnm_new)
+                print(f'Renamed {logi(fnm)} => {logi(fnm_new)}')
+    fix_match_mxl_names_with_new_mid()
+
     def get_lmd_subset():
         # fnms = get_lmd_cleaned_subset_fnms()
         fnms = get_cleaned_song_paths('LMD-cleaned-subset')
         ic(len(fnms), fnms[:20])
-    get_lmd_subset()
+    # get_lmd_subset()

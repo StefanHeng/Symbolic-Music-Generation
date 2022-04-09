@@ -1,3 +1,5 @@
+import os
+
 import datasets
 
 from musicnlp.util import *
@@ -42,8 +44,9 @@ class MusicExport:
         exp_opns = ['str', 'id', 'str_join']
         if exp not in exp_opns:
             raise ValueError(f'Unexpected export mode - got {logi(exp)}, expect one of {logi(exp_opns)}')
+        os.makedirs(path_out, exist_ok=True)
 
-        ext_args = dict(
+        ext_args = dict(  # `save_memory` so that warnings are for each song
             warn_logger=True, verbose=self.verbose, save_memory=True, precision=5, mode='melody',
             greedy_tuplet_pitch_threshold=3**9
         ) | (extractor_args or dict())
@@ -53,10 +56,8 @@ class MusicExport:
         dnm_ = None
         if isinstance(fnms, str):  # Dataset name provided
             dnm_ = fnms
-            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[:40]
-            ic(len(fnms))
-            # fnms = list(reversed(fnms))[:40]  # TODO: Process in reverse to make sure no errors, for now
-            # so that warnings are for each song
+            # fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[:40]
+            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[5000:]
         self.logger.info(f'Extracting {logi(len(fnms))} songs... ')
 
         def call_single(fl_nm) -> Dict:
@@ -110,9 +111,13 @@ if __name__ == '__main__':
     # me = MusicExport(verbose=True)
     me = MusicExport(verbose='single')
 
+    def check_sequential():
+        me('LMD-cleaned-subset', parallel=False)
+    # check_sequential()
+
     def check_parallel():
         me('LMD-cleaned-subset', parallel=3)
-    check_parallel()
+    # check_parallel()
 
     def check_lower_threshold():
         # th = 4**5  # this number we can fairly justify
@@ -124,8 +129,8 @@ if __name__ == '__main__':
         # dnm = 'POP909'
         dnm = 'LMD-cleaned-subset'
         # me(dnm)
-        me(dnm, parallel=32)
-    # export2json()
+        me(dnm, parallel=64, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
+    export2json()
 
     def json2dset():
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-22 19-00-40'
