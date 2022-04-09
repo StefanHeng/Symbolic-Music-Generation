@@ -3,6 +3,9 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 
 See `melody_extractor` for the old version.
 """
+# TODO: just to make sure the long extraction process don't get trivially interrupted...
+from icecream import ic
+
 from collections import defaultdict, Counter
 
 from music21.stream import Voice
@@ -22,7 +25,9 @@ class MusicExtractor:
     """
     def __init__(
             self, precision: int = 5, mode: str = 'melody',
-            warn_logger: Union[WarnLog, bool] = None, save_memory=True, verbose: Union[bool, str] = True
+            warn_logger: Union[WarnLog, bool] = None, save_memory=True,
+            greedy_tuplet_pitch_threshold: int = 3**9,
+            verbose: Union[bool, str] = True
     ):
         """
         :param precision: Bar duration quantization, see `melody_extractor.MxlMelodyExtractor`
@@ -33,6 +38,12 @@ class MusicExtractor:
             If True, a logger is instantiated
         :param save_memory: If true, prior logging warning messages are removed after new encode call
             See `Warning.end_tracking`
+        :param greedy_tuplet_pitch_threshold: If #possible note cartesian product in the tuplet > threshold,
+                only the note with highest pitch in chords in tuplets is kept
+            Set to a small number to speedup processing, e.g. 1 for always keeping the highest notes
+                Experimental, not sure if the tokens extracted would be different
+            It's not advised to pass too large numbers, as possible Chord notes per tuplet may get prohibitively large
+                due to transcription quality - See `expand_bar`
         :param verbose: If true, extraction process including warnings is logged
             If `single`, only begin and end of extraction is logged
         """
@@ -46,9 +57,18 @@ class MusicExtractor:
         else:
             self.warn_logger = None
         self.save_memory = save_memory
+        self.greedy_tuplet_pitch_threshold = greedy_tuplet_pitch_threshold
         self.verbose = verbose
 
         self.vocab = MusicVocabulary(precision)
+
+        self.meta = OrderedDict([
+            ('mode', mode), ('precision', precision), ('greedy_tuplet_pitch_threshold', greedy_tuplet_pitch_threshold)
+        ])
+
+    def meta2fnm_meta(self) -> str:
+        m, p, t = self.meta['mode'], self.meta['precision'], self.meta['greedy_tuplet_pitch_threshold']
+        return log_dict_p({'mode': m, 'prec': p, 'th': t})
 
     def it_bars(self, scr: Score) -> Iterator[Tuple[Tuple[Measure], TimeSignature, MetronomeMark]]:
         """
@@ -187,9 +207,9 @@ class MusicExtractor:
                 nt = note2note_cleaned(notes[i], q_len=n*dur_slot, for_output=True)  # last not processing before output
                 if isinstance(nt, tuple):
                     dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
-                    if number == 61:
-                        ic('in quantize tuplet', nt)
-                        ic(dur_ea)
+                    # if number == 61:
+                    #     ic('in quantize tuplet', nt)
+                    #     ic(dur_ea)
                     note_tups_out = []
                     for i_, nt_tup in enumerate(nt):
                         nt_tup.offset = offset + dur_ea * i_
@@ -376,11 +396,11 @@ class MusicExtractor:
                                     return notes_
                                 has_chord = True
                                 opns = [chord2notes(n) if isinstance(n, Chord) else (n,) for n in tup]
+                                notes_max_pitch = tuple([max(notes, key=note2pitch) for notes in opns])
+                                tups_new.append(notes_max_pitch)
+                                # Adding all possible tuplet notes may be the bottleneck during extraction
                                 n_opns = [len(n) for n in opns if n]
-                                # # TODO: debugging
-                                # notes_max_pitch = tuple([max(notes, key=note2pitch) for notes in opns])
-                                # tups_new.append(notes_max_pitch)
-                                if np.prod(n_opns) > 3 ** 9:
+                                if np.prod(n_opns) > self.greedy_tuplet_pitch_threshold:
                                     # Too much possible cartesian products for later processing to handle
                                     # as it involves sorting
                                     # Cap at a tuplet of 9 consecutive 3-note Chords, beyond this number,
@@ -443,6 +463,7 @@ class MusicExtractor:
         :param return_meta: If true, metadata about the music is returned, along with the score as a dictionary
             Metadata includes 1) the song title, 2) the song duration in seconds, and 3) warnings found
         """
+        t_strt = datetime.datetime.now()
         exp_opns = ['mxl', 'str', 'id', 'str_join', 'visualize']
         if exp not in exp_opns:
             raise ValueError(f'Unexpected export mode - got {logi(exp)}, expect one of {logi(exp_opns)}')
@@ -690,9 +711,6 @@ class MusicExtractor:
         lst_notes = [trip_n_quant2notes(notes, num_bar=i) for i, notes in enumerate(lst_notes)]
         for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
             is_valid_bar_notes(notes, time_sig)
-        if self.verbose and self.warn_logger is not None:
-            self.logger.info(f'Completed extracting {logi(title)} with warnings {log_dict(self.warn_logger.tracked())}')
-
         if exp == 'mxl':  # TODO: didn't test
             scr_out = make_score(
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
@@ -729,6 +747,10 @@ class MusicExtractor:
                     scr_out = toks if exp == 'str' else self.vocab.encode(toks)
                 else:
                     scr_out = ' '.join(toks)
+        if self.verbose and self.warn_logger is not None:
+            t = fmt_dt(datetime.datetime.now() - t_strt)
+            self.logger.info(f'{logi(title)} extraction completed in {log_s(t, c="y")} '
+                             f'with warnings {log_dict(self.warn_logger.tracked())}')
         if return_meta:
             return dict(score=scr_out, title=title, duration=secs, warnings=self.warn_logger.tracked(exp='serialize'))
         else:
