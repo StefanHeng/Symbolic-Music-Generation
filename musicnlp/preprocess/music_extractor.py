@@ -882,7 +882,8 @@ if __name__ == '__main__':
 
     def check_edge_case():
         # broken_files = ['Grandi - Dolcissimo amore', 'John Elton - Burn Down the Mission']
-        broken_files = ['Battiato - Segnali di vita', 'Billy Joel - The River of Dreams']
+        # broken_files = ['Battiato - Segnali di vita', 'Billy Joel - The River of Dreams']
+        broken_files = ['Pooh - Anni senza fiato', 'Nirvana - Been a Son']
         broken_fl = broken_files[1]
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
