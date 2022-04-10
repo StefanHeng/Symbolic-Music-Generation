@@ -5,8 +5,8 @@ Generate from trained reformer, no seed per `hash_seed`
 from transformers import ReformerModelWithLMHead
 
 from musicnlp.util import *
-from musicnlp.util.music_vocab import VocabType
-from musicnlp.models.music_tokenizer import MusicTokenizer
+from musicnlp.vocab.music_vocab import VocabType
+from musicnlp.vocab.music_tokenizer import MusicTokenizer
 from musicnlp.postprocess import MusicConverter
 
 

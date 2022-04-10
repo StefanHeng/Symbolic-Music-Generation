@@ -4,6 +4,7 @@ from tokenizers import AddedToken
 from transformers.tokenization_utils import PreTrainedTokenizer
 
 from musicnlp.util import *
+from musicnlp.vocab.music_vocab import MusicVocabulary
 
 
 class MusicTokenizer(PreTrainedTokenizer):

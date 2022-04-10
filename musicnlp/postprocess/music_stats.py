@@ -3,7 +3,7 @@ from collections import Counter
 
 from musicnlp.util import *
 from musicnlp.util.music_lib import Dur
-from musicnlp.postprocess import ElmType, MusicConverter
+from musicnlp.vocab import ElmType, MusicVocabulary, MusicConverter
 
 
 class MusicStats:
@@ -53,9 +53,11 @@ class MusicStats:
 if __name__ == '__main__':
     from icecream import ic
 
+    import musicnlp.util.music as music_util
+
     ms = MusicStats()
-    text = get_extracted_song_eg()
-    toks_ = text.list_split()
+    text = music_util.get_extracted_song_eg()
+    toks_ = text.split()
 
     # ic(ms.vocab_type_counts(toks))
     ic(ms.weighted_pitch_counts(toks_))

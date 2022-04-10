@@ -34,16 +34,16 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
 
 
 def get_extracted_song_eg(
-        fnm='musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29',
+        fnm='musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01',
         dir_=get_processed_path(),
         k: Union[int, str] = 0
 ) -> str:
     with open(os.path.join(dir_, f'{fnm}.json')) as f:
         dset = json.load(f)['music']
     if isinstance(k, int):
-        return dset[k]['text']
+        return dset[k]['score']
     else:
-        return next(d['text'] for d in dset if k in d['title'])
+        return next(d['score'] for d in dset if k in d['title'])
 
 
 def lmd_cleaned_title2title_n_ver(title: str) -> Tuple[str, int]:
