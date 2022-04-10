@@ -1,3 +1,5 @@
+from typing import Optional
+
 import datasets
 
 from musicnlp.util import *
@@ -28,7 +30,7 @@ class MusicExport:
             exp='str_join',
             parallel: Union[bool, int] = False,
             disable_tqdm: bool = False,
-            save_each: bool = False
+            save_each: bool = False,
     ):
         """
         Writes encoded files to JSON file
@@ -40,6 +42,9 @@ class MusicExport:
         :param parallel: Whether to parallelize extraction
             If true, a batch size may be specified
         :param save_each: If true, each song is saved into a json file separately
+            User is advice to keep each call to `__call__` to a different folder to keep track
+            Intended for processing large datasets & saving intermediate processed data,
+                instead of keeping all of them in memory
         """
         exp_opns = ['str', 'id', 'str_join']
         if exp not in exp_opns:
@@ -58,20 +63,29 @@ class MusicExport:
             dnm_ = fnms
             fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[:40]
             # fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[4000:]
-        self.logger.info(f'Extracting {logi(len(fnms))} songs... ')
+        self.logger.info(f'Extracting {logi(len(fnms))} songs with {log_dict(dict(save_each=save_each))}... ')
 
         pbar = None
 
-        def call_single(fl_nm) -> Dict:
+        def call_single(fl_nm) -> Optional[Dict]:
             if not hasattr(call_single, 'processed_count'):
                 call_single.processed_count = 0
             try:
-                ret = extractor(fl_nm, exp=exp, return_meta=True)
                 call_single.processed_count += 1  # Potential data race?
+                fl_nm_out = None
+                if save_each:
+                    # Should not exceed 255 limit, see `musicnlp.util.music.py
+                    fl_nm_out = os.path.join(path_out, f'Music Export - {stem(fl_nm)}.json')
+                    if os.path.exists(fl_nm_out):  # File already processed, ignore
+                        return
+                ret = extractor(fl_nm, exp=exp, return_meta=True)
                 if pbar:
                     pbar.update(1)
-                # ic(call_single.processed_count)
-                return ret
+                    d_out = dict(encoding_type=exp, extractor_meta=extractor.meta, music=ret, mxl_path=fl_nm)
+                    with open(fl_nm_out, 'w') as f_:
+                        json.dump(d_out, f_, indent=4)
+                else:
+                    return ret
             except Exception as e:
                 self.logger.error(f'Failed to extract {logi(fl_nm)}, {logi(e)}')
                 raise ValueError(f'Failed to extract {logi(fl_nm)}')  # Abruptly stop the process
@@ -91,14 +105,16 @@ class MusicExport:
                 gen = tqdm(gen, total=len(fnms), desc='Extracting music', unit='song')
             for i_fl, fnm in gen:
                 lst_out.append(call_single(fnm))
-        if dnm_ is not None:
-            fnm_out += f', dnm={dnm_}'
-        fnm_out += f', n={len(fnms)}, meta={extractor.meta2fnm_meta()}, {now(for_path=True)}'
-        fnm_out = os.path.join(path_out, f'{fnm_out}.json')
-        with open(fnm_out, 'w') as f:
-            # TODO: Knowing the extracted dict, expand only the first few levels??
-            json.dump(dict(encoding_type=exp, extractor_meta=extractor.meta, music=lst_out), f, indent=4)
-        self.logger.info(f'Extracted {logi(len(lst_out))} songs written to {logi(fnm_out)}')
+
+        if not save_each:
+            if dnm_ is not None:
+                fnm_out += f', dnm={dnm_}'
+            fnm_out += f', n={len(fnms)}, meta={extractor.meta2fnm_meta()}, {now(for_path=True)}'
+            fnm_out = os.path.join(path_out, f'{fnm_out}.json')
+            with open(fnm_out, 'w') as f:
+                # TODO: Knowing the extracted dict, expand only the first few levels??
+                json.dump(dict(encoding_type=exp, extractor_meta=extractor.meta, music=lst_out), f, indent=4)
+            self.logger.info(f'Extracted {logi(len(lst_out))} songs written to {logi(fnm_out)}')
 
     @staticmethod
     def json2dataset(fnm: str, path_out=get_processed_path()) -> datasets.Dataset:
@@ -131,7 +147,7 @@ if __name__ == '__main__':
         # me('LMD-cleaned-subset', parallel=False)
         me('LMD-cleaned-subset', parallel=False, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
     # check_sequential()
-    profile_runtime(check_sequential)
+    # profile_runtime(check_sequential)
 
     def check_parallel():
         me('LMD-cleaned-subset', parallel=3)
@@ -149,6 +165,16 @@ if __name__ == '__main__':
         # me(dnm)
         me(dnm, parallel=32, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
     # export2json()
+
+    def export2json_save_each():
+        path_out = os.path.join(get_processed_path(), '04-09_21-51')
+        parallel = 3
+        # parallel = 32
+        me(
+            'LMD-cleaned-subset', parallel=parallel, extractor_args=dict(greedy_tuplet_pitch_threshold=1),
+            path_out=path_out, save_each=True
+        )
+    export2json_save_each()
 
     def json2dset():
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-22 19-00-40'
