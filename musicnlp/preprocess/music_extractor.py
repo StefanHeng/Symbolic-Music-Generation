@@ -65,8 +65,9 @@ class MusicExtractor:
             ('mode', mode), ('precision', precision), ('greedy_tuplet_pitch_threshold', greedy_tuplet_pitch_threshold)
         ])
 
-    def meta2fnm_meta(self) -> str:
-        m, p, t = self.meta['mode'], self.meta['precision'], self.meta['greedy_tuplet_pitch_threshold']
+    @staticmethod
+    def meta2fnm_meta(d: Dict = None) -> str:
+        m, p, t = d['mode'], d['precision'], d['greedy_tuplet_pitch_threshold']
         return log_dict_p({'mode': m, 'prec': p, 'th': t})
 
     def it_bars(self, scr: Score) -> Iterator[Tuple[Tuple[Measure], TimeSignature, MetronomeMark]]:
@@ -500,6 +501,7 @@ class MusicExtractor:
             title = title[:-4]
 
         lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(self.it_bars(song))
+        assert len(lst_bar_info) > 0, 'No bars found'
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
 
         # Crop out empty bars at both ends to reduce token length
@@ -514,7 +516,7 @@ class MusicExtractor:
             return all(all(isinstance(e, Rest) for e in bar2elms(b)) for b in bars)
         empty_warns = []
         idx = 0
-        while is_empty_bars(lst_bar_info[idx][0]):
+        while is_empty_bars(lst_bar_info[idx][0]):  # grab the all the bars at current number
             idx += 1
         idx_strt_last_empty = idx-1
         if idx_strt_last_empty != -1:  # 2-tuple, 0-indexed, inclusive on both ends
@@ -884,7 +886,7 @@ if __name__ == '__main__':
         # broken_files = ['Grandi - Dolcissimo amore', 'John Elton - Burn Down the Mission']
         # broken_files = ['Battiato - Segnali di vita', 'Billy Joel - The River of Dreams']
         broken_files = ['Pooh - Anni senza fiato', 'Nirvana - Been a Son']
-        broken_fl = broken_files[1]
+        broken_fl = broken_files[0]
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
         path = f'/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/{broken_fl}.mxl'
