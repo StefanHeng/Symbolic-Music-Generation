@@ -27,7 +27,8 @@ class MusicExport:
             extractor_args: Dict = None,
             exp='str_join',
             parallel: Union[bool, int] = False,
-            disable_tqdm: bool = False
+            disable_tqdm: bool = False,
+            save_each: bool = False
     ):
         """
         Writes encoded files to JSON file
@@ -38,6 +39,7 @@ class MusicExport:
         :param exp: Music extraction output mode, see `MusicTokenizer`
         :param parallel: Whether to parallelize extraction
             If true, a batch size may be specified
+        :param save_each: If true, each song is saved into a json file separately
         """
         exp_opns = ['str', 'id', 'str_join']
         if exp not in exp_opns:
@@ -45,7 +47,7 @@ class MusicExport:
         os.makedirs(path_out, exist_ok=True)
 
         ext_args = dict(  # `save_memory` so that warnings are for each song
-            warn_logger=True, verbose=self.verbose, save_memory=True, precision=5, mode='melody',
+            warn_logger=True, verbose=self.verbose, precision=5, mode='melody',
             greedy_tuplet_pitch_threshold=3**9
         ) | (extractor_args or dict())
         extractor = MusicExtractor(**ext_args)
@@ -54,18 +56,34 @@ class MusicExport:
         dnm_ = None
         if isinstance(fnms, str):  # Dataset name provided
             dnm_ = fnms
-            # fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[:40]
-            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[4000:]
+            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[:40]
+            # fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[4000:]
         self.logger.info(f'Extracting {logi(len(fnms))} songs... ')
 
+        pbar = None
+
         def call_single(fl_nm) -> Dict:
-            return extractor(fl_nm, exp=exp, return_meta=True)
+            if not hasattr(call_single, 'processed_count'):
+                call_single.processed_count = 0
+            try:
+                ret = extractor(fl_nm, exp=exp, return_meta=True)
+                call_single.processed_count += 1  # Potential data race?
+                if pbar:
+                    pbar.update(1)
+                # ic(call_single.processed_count)
+                return ret
+            except Exception as e:
+                self.logger.error(f'Failed to extract {logi(fl_nm)}, {logi(e)}')
+                raise ValueError(f'Failed to extract {logi(fl_nm)}')  # Abruptly stop the process
 
         if parallel:
+            pbar = tqdm(total=len(fnms), desc='Extracting music', unit='song')
+
             def batched_map(fnms_, s, e):
                 return [call_single(fnms_[i]) for i in range(s, e)]
             bsz = (isinstance(parallel, int) and parallel) or 32
             lst_out = batched_conc_map(batched_map, fnms, batch_size=bsz, with_tqdm=True)
+            pbar.close()
         else:
             lst_out = []
             gen = enumerate(fnms)
@@ -105,13 +123,15 @@ class MusicExport:
 if __name__ == '__main__':
     from icecream import ic
 
-    # me = MusicExport()
+    me = MusicExport()
     # me = MusicExport(verbose=True)
-    me = MusicExport(verbose='single')
+    # me = MusicExport(verbose='single')
 
     def check_sequential():
-        me('LMD-cleaned-subset', parallel=False)
+        # me('LMD-cleaned-subset', parallel=False)
+        me('LMD-cleaned-subset', parallel=False, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
     # check_sequential()
+    profile_runtime(check_sequential)
 
     def check_parallel():
         me('LMD-cleaned-subset', parallel=3)
@@ -137,22 +157,3 @@ if __name__ == '__main__':
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
     # json2dset()
-
-    def fix_find_song_with_error():
-        fnm = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MNLP-Combined/' \
-              'music extraction, 04.09.22_18.51.log'
-        with open(fnm, 'r') as f:
-            lines = f.readlines()
-        ic(len(lines), lines[:5])
-        pattern_start = re.compile(r'^.*INFO - Extracting (?P<title>.*) with {.*$')
-        pattern_end = re.compile(r'^.*INFO - (?P<title>.*) extraction completed in .*$')
-        set_started, set_ended = set(), set()
-        for ln in lines:
-            m_start, m_end = pattern_start.match(ln), pattern_end.match(ln)
-            if m_start:
-                set_started.add(m_start.group('title'))
-            elif m_end:
-                set_ended.add(m_end.group('title'))
-        # ic(len(set_started), len(set_ended))
-        ic(set_started-set_ended)
-    # fix_find_song_with_error()
