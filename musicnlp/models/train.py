@@ -16,6 +16,7 @@ import musicnlp.util.models as model_util
 from musicnlp.vocab import MusicTokenizer
 from musicnlp.preprocess import get_dataset
 from musicnlp.models import _models
+from musicnlp.models import metrics
 
 
 def get_model_n_tokenizer(
@@ -253,6 +254,29 @@ def get_train_and_my_train_args(
     return TrainingArguments(**args), my_args
 
 
+class ComputeMetrics:
+    def __init__(self, tokenizer: MusicTokenizer):
+        self.acc = datasets.load_metric('accuracy')
+        self.ikr = metrics.IkrMetric(tokenizer=tokenizer)
+
+    def __call__(self, eval_pred):
+        """
+        :param eval_pred: 2-tuple of (greedy prediction **ids**, labels)
+
+        Will be the outputs on eval dataset, see `Trainer.compute_metrics`
+        """
+        predictions, labels = eval_pred
+        predictions = predictions.argmax(axis=-1)
+        d_metric = dict(ikr=self.ikr(predictions, labels))
+
+        predictions, labels = predictions[:, :-1], labels[:, 1:]  # since CLM
+        labels, predictions = labels.flatten(), predictions.flatten()
+        msk_non_pad = (labels != train_util.PT_LOSS_PAD)
+        labels, predictions = labels[msk_non_pad], predictions[msk_non_pad]
+        d_metric['ntp_acc'] = self.acc.compute(predictions=predictions, references=labels)['accuracy']
+        return d_metric
+
+
 def get_all_setup(
         model_name: str, model_size: str,
         dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None, dataset_seed=None,
@@ -271,11 +295,13 @@ def get_all_setup(
     )
 
     clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
+    cm = ComputeMetrics(tokenizer_)
     trainer_ = train_util.MyTrainer(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
+        train_metrics=dict(ikr=cm.ikr),
         model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer_, mlm=False),
-        train_dataset=tr, eval_dataset=vl, compute_metrics=train_util.compute_ntp_acc
+        train_dataset=tr, eval_dataset=vl, compute_metrics=cm
     )
     return model_, tokenizer_, trainer_
 
@@ -304,8 +330,8 @@ if __name__ == '__main__':
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        md_sz = 'debug'
-        # md_sz = 'tiny'
+        # md_sz = 'debug'
+        md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
         ic(md_sz)
@@ -315,7 +341,7 @@ if __name__ == '__main__':
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
 
-        if md_sz == 'debug':
+        if md_sz in ['debug', 'tiny']:
             n = 8
             train_args = dict(
                 per_device_train_batch_size=4,

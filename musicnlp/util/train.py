@@ -1,6 +1,5 @@
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
-import datasets
 
 from musicnlp.util.util import *
 
@@ -22,7 +21,7 @@ def _pretty_single(key: str, val, ref: Dict = None):
         return f'{s_val}/{lim}'  # Pad integer
     elif 'loss' in key:
         return f'{round(val, 4):7.4f}'
-    elif any(k in key for k in ('acc', 'recall', 'auc')):
+    elif any(k in key for k in ('acc', 'recall', 'auc', 'ikr')):  # custom in-key-ratio metric
         def _single(v):
             return f'{round(v * 100, 2):6.2f}' if v is not None else '-'
 
@@ -54,12 +53,16 @@ def meta2fnm_meta(meta: Dict) -> Dict:
 
 
 class MyTrainer(Trainer):
-    def __init__(self, clm_acc_logging=True, model_meta: Dict = None, my_args: Dict = None, **kwargs):
+    def __init__(
+            self, model_meta: Dict = None, my_args: Dict = None,
+            clm_acc_logging=True, train_metrics: Dict[str, Callable] = None, **kwargs
+    ):
         super().__init__(**kwargs)
         self.clm_acc_logging = clm_acc_logging
         self.model_meta = model_meta
         self.model_meta['parameter_count'] = get_model_num_trainable_parameter(self.model)
         self.name = self.model.__class__.__qualname__
+        self.train_metrics = train_metrics
 
         self.my_args = my_args
         self.post_init()
@@ -95,6 +98,10 @@ class MyTrainer(Trainer):
         if self.is_in_train and self.clm_acc_logging and 'labels' in inputs:
             preds = outputs.logits.detach().argmax(axis=-1)
             labels_ = inputs['labels'].detach()
+            d_log = dict(src='compute_loss')
+            if self.train_metrics:
+                d_log.update({k: f(preds, labels_) for k, f in self.train_metrics.items()})
+
             # CLM, predicting the next token given current, so shift
             preds, labels_ = preds[:, :-1], labels_[:, 1:]
             msk_not_pad = labels_ != PT_LOSS_PAD  # Consider only the actual tokens for accuracy
@@ -102,7 +109,7 @@ class MyTrainer(Trainer):
             matches: torch.Tensor = (preds_non_pad == labels_non_pad)
             # next-token-prediction task
             ntp_acc_meta = dict(matched=matches.sum().item(), total=preds_non_pad.numel())
-            d_log = dict(src='compute_loss', ntp_acc_meta=ntp_acc_meta)
+            d_log['ntp_acc_meta'] = ntp_acc_meta
             self.log(d_log)
         # ========================== End of added ==========================
 
@@ -212,26 +219,6 @@ class ColoredPrinterCallback(TrainerCallback):
                 self.logger_fl.info(logs)
 
 
-def compute_ntp_acc(eval_pred):
-    """
-    :param eval_pred: 2-tuple of (greedy prediction **ids**, labels)
-
-    Will be the outputs on eval dataset, see `Trainer.compute_metrics`
-    """
-    if not hasattr(compute_ntp_acc, 'metric'):
-        compute_ntp_acc.acc = datasets.load_metric('accuracy')
-    predictions, labels = eval_pred
-    predictions = predictions.argmax(axis=-1)
-    predictions, labels = predictions[:, :-1], labels[:, 1:]  # For CLM
-    labels, predictions = labels.flatten(), predictions.flatten()
-    msk_non_pad = (labels != PT_LOSS_PAD)
-    labels, predictions = labels[msk_non_pad], predictions[msk_non_pad]
-    d_metric = compute_ntp_acc.acc.compute(predictions=predictions, references=labels)
-    assert 'accuracy' in d_metric
-    d_metric['ntp_acc'] = d_metric.pop('accuracy')
-    return d_metric
-
-
 no_prefix = ['epoch', 'step']
 
 
@@ -242,10 +229,16 @@ def add_prefix(key: str) -> bool:
 class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
     """
     Additionally log next-token-prediction accuracy
+
+    .. note:: Music-theory-inspired in-key-ratio also added, see `models.metrics.py`
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.out_dict = None  # For passing NTP accuracy in training steps
+        self.pattern_eval_key = re.compile(r'^eval_(?P<key>.*)$')
+
+    def _get_eval_key(self, key: str) -> str:
+        return self.pattern_eval_key.match(key).group('key')
 
     def _log(self, d_log, mode='train', to_console=True):
         modes = ["train", "eval"]
@@ -274,16 +267,21 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     n_ep = state.epoch  # The one originally is rounded, see `Trainer.log`
                     loss, lr = logs['loss'], logs['learning_rate']
                     assert self.out_dict is not None
+                    from icecream import ic
+                    # ic(self.out_dict)
                     ntp_acc_meta = self.out_dict['ntp_acc_meta']
                     # TODO: Potentially support gradient accumulation
                     # ntp_acc_meta = {k: sum(v for v in d[k]) for k, d in ntp_acc_meta.items()}
                     # ic(ntp_acc_meta)
                     ntp_acc = ntp_acc_meta['matched'] / ntp_acc_meta['total']
+                    metrics = {k: self.out_dict[k] for k in self.trainer.train_metrics}
 
                     self.out_dict = OrderedDict([
                         ('step', step), ('epoch', n_ep), ('learning_rate', lr),
                         ('loss', loss), ('ntp_acc', ntp_acc)
                     ])
+                    self.out_dict.update(metrics)
+                    # ic(self.out_dict)
 
                     # `should_log` in Trainer just prevents the `on_log` call, I only filter console logging
                     should_log = False
@@ -294,12 +292,22 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                         should_log = True
                     self._log(self.out_dict, mode='train', to_console=should_log)
                 elif 'eval_loss' in logs:  # `Trainer.is_in_train` is not False so can't use
-                    loss, ntp_acc = logs['eval_loss'], logs['eval_ntp_acc']
+                    # from icecream import ic
+                    # ic(logs)
+                    assert 'epoch' in logs
+                    del logs['epoch']
+                    # For potential metrics computed
+                    ks = [self._get_eval_key(k) for k in logs.keys()]
+                    ks = [
+                        k for k in ks
+                        if k not in ['loss', 'ntp_acc', 'runtime', 'samples_per_second', 'steps_per_second']
+                    ]
+                    ks = ['loss', 'ntp_acc'] + ks
                     # Log eval on an epoch-level
                     # Evaluation finished during training; TODO: didn't verify other positive cases
                     n_ep = state.epoch
                     assert n_ep.is_integer()
-                    d_log = dict(step=state.global_step, epoch=int(n_ep), loss=loss, ntp_acc=ntp_acc)
+                    d_log = dict(step=state.global_step, epoch=int(n_ep), **{k: logs[f'eval_{k}'] for k in ks})
                     self._log(d_log, mode='eval', to_console=True)
                 else:
                     self.logger.info(log_dict(logs))

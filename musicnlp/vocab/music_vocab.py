@@ -46,7 +46,7 @@ class MusicVocabulary:
     # Uncommon Time Signatures in music theory, but empirically seen in MIDI data
     UNCOM_TSS: List[TsTup] = [(1, 4)]
 
-    RE_INT = r'[1-9]\d*'
+    RE_INT = r'[-]?\d*'  # negative sign for `octave`
     RE1 = rf'(?P<num>{RE_INT})'
     RE2 = rf'(?P<numer>{RE_INT})/(?P<denom>{RE_INT})'
 
