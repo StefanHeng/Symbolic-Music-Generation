@@ -56,13 +56,13 @@ class MusicExport:
             greedy_tuplet_pitch_threshold=3**9
         ) | (extractor_args or dict())
         extractor = MusicExtractor(**ext_args)
-        self.logger.info(f'Music Extractor created with args: {logi(ext_args)}')
+        self.logger.info(f'Music Extractor created with args: {log_dict(ext_args)}')
 
         dnm_ = None
         if isinstance(fnms, str):  # Dataset name provided
             dnm_ = fnms
-            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[:40]
-            # fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[4000:]
+            # fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[:40]
+            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[6000:]
         self.logger.info(f'Extracting {logi(len(fnms))} songs with {log_dict(dict(save_each=save_each))}... ')
 
         pbar = None
@@ -96,7 +96,7 @@ class MusicExport:
             def batched_map(fnms_, s, e):
                 return [call_single(fnms_[i]) for i in range(s, e)]
             bsz = (isinstance(parallel, int) and parallel) or 32
-            lst_out = batched_conc_map(batched_map, fnms, batch_size=bsz, with_tqdm=True)
+            lst_out = batched_conc_map(batched_map, fnms, batch_size=bsz)
             pbar.close()
         else:
             lst_out = []
@@ -168,8 +168,8 @@ if __name__ == '__main__':
 
     def export2json_save_each():
         path_out = os.path.join(get_processed_path(), '04-09_21-51')
-        parallel = 3
-        # parallel = 32
+        # parallel = 3
+        parallel = 64
         me(
             'LMD-cleaned-subset', parallel=parallel, extractor_args=dict(greedy_tuplet_pitch_threshold=1),
             path_out=path_out, save_each=True
