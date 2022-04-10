@@ -11,6 +11,7 @@ class MusicExport:
     """
     Batch export extracted/tokenized music from `MusicTokenizer` in a more accessible format
     """
+
     def __init__(self, mode='melody', verbose: Union[bool, str] = False):
         """
         :param mode: One of [`melody`, `full`], see `MusicTokenizer`
@@ -48,7 +49,8 @@ class MusicExport:
         """
         exp_opns = ['str', 'id', 'str_join']
         if exp not in exp_opns:
-            raise ValueError(f'Unexpected export mode - got {logi(exp)}, expect one of {logi(exp_opns)}')
+            raise ValueError(
+                f'Unexpected export mode - got {logi(exp)}, expect one of {logi(exp_opns)}')
         os.makedirs(path_out, exist_ok=True)
 
         ext_args = dict(  # `save_memory` so that warnings are for each song
@@ -56,14 +58,17 @@ class MusicExport:
             greedy_tuplet_pitch_threshold=3**9
         ) | (extractor_args or dict())
         extractor = MusicExtractor(**ext_args)
-        self.logger.info(f'Music Extractor created with args: {log_dict(ext_args)}')
+        self.logger.info(
+            f'Music Extractor created with args: {log_dict(ext_args)}')
 
         dnm_ = None
         if isinstance(fnms, str):  # Dataset name provided
             dnm_ = fnms
             # fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[:40]
-            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[6000:]
-        self.logger.info(f'Extracting {logi(len(fnms))} songs with {log_dict(dict(save_each=save_each))}... ')
+            fnms = music_util.get_cleaned_song_paths(fnms, fmt='mxl')[
+                3000:6000]
+        self.logger.info(
+            f'Extracting {logi(len(fnms))} songs with {log_dict(dict(save_each=save_each))}... ')
 
         pbar = None
 
@@ -75,20 +80,24 @@ class MusicExport:
                 fl_nm_out = None
                 if save_each:
                     # Should not exceed 255 limit, see `musicnlp.util.music.py
-                    fl_nm_out = os.path.join(path_out, f'Music Export - {stem(fl_nm)}.json')
+                    fl_nm_out = os.path.join(
+                        path_out, f'Music Export - {stem(fl_nm)}.json')
                     if os.path.exists(fl_nm_out):  # File already processed, ignore
                         return
                 ret = extractor(fl_nm, exp=exp, return_meta=True)
                 if pbar:
                     pbar.update(1)
-                    d_out = dict(encoding_type=exp, extractor_meta=extractor.meta, music=ret, mxl_path=fl_nm)
+                    d_out = dict(
+                        encoding_type=exp, extractor_meta=extractor.meta, music=ret, mxl_path=fl_nm)
                     with open(fl_nm_out, 'w') as f_:
                         json.dump(d_out, f_, indent=4)
                 else:
                     return ret
             except Exception as e:
-                self.logger.error(f'Failed to extract {logi(fl_nm)}, {logi(e)}')
-                raise ValueError(f'Failed to extract {logi(fl_nm)}')  # Abruptly stop the process
+                self.logger.error(
+                    f'Failed to extract {logi(fl_nm)}, {logi(e)}')
+                # Abruptly stop the process
+                raise ValueError(f'Failed to extract {logi(fl_nm)}')
 
         if parallel:
             pbar = tqdm(total=len(fnms), desc='Extracting music', unit='song')
@@ -102,7 +111,8 @@ class MusicExport:
             lst_out = []
             gen = enumerate(fnms)
             if not disable_tqdm:
-                gen = tqdm(gen, total=len(fnms), desc='Extracting music', unit='song')
+                gen = tqdm(gen, total=len(fnms),
+                           desc='Extracting music', unit='song')
             for i_fl, fnm in gen:
                 lst_out.append(call_single(fnm))
 
@@ -113,8 +123,10 @@ class MusicExport:
             fnm_out = os.path.join(path_out, f'{fnm_out}.json')
             with open(fnm_out, 'w') as f:
                 # TODO: Knowing the extracted dict, expand only the first few levels??
-                json.dump(dict(encoding_type=exp, extractor_meta=extractor.meta, music=lst_out), f, indent=4)
-            self.logger.info(f'Extracted {logi(len(lst_out))} songs written to {logi(fnm_out)}')
+                json.dump(dict(
+                    encoding_type=exp, extractor_meta=extractor.meta, music=lst_out), f, indent=4)
+            self.logger.info(
+                f'Extracted {logi(len(lst_out))} songs written to {logi(fnm_out)}')
 
     @staticmethod
     def json2dataset(fnm: str, path_out=get_processed_path()) -> datasets.Dataset:
@@ -130,7 +142,8 @@ class MusicExport:
             return d
         dset = datasets.Dataset.from_pandas(
             pd.DataFrame([prep_entry(d) for d in tr]),
-            info=datasets.DatasetInfo(description=json.dumps(dict(precision=dset_['precision'])))
+            info=datasets.DatasetInfo(description=json.dumps(
+                dict(precision=dset_['precision'])))
         )
         dset.save_to_disk(os.path.join(path_out, 'hf_datasets', fnm))
         return dset
@@ -145,7 +158,8 @@ if __name__ == '__main__':
 
     def check_sequential():
         # me('LMD-cleaned-subset', parallel=False)
-        me('LMD-cleaned-subset', parallel=False, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
+        me('LMD-cleaned-subset', parallel=False,
+           extractor_args=dict(greedy_tuplet_pitch_threshold=1))
     # check_sequential()
     # profile_runtime(check_sequential)
 
@@ -156,7 +170,8 @@ if __name__ == '__main__':
     def check_lower_threshold():
         # th = 4**5  # this number we can fairly justify
         th = 1  # The most aggressive, for the best speed, not sure about losing quality
-        me('LMD-cleaned-subset', parallel=3, extractor_args=dict(greedy_tuplet_pitch_threshold=th))
+        me('LMD-cleaned-subset', parallel=3,
+           extractor_args=dict(greedy_tuplet_pitch_threshold=th))
     # check_lower_threshold()
 
     def export2json():
