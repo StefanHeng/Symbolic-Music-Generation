@@ -128,7 +128,7 @@ if __name__ == '__main__':
         dnm = 'LMD-cleaned-subset'
         # me(dnm)
         me(dnm, parallel=32, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
-    export2json()
+    # export2json()
 
     def json2dset():
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-22 19-00-40'
@@ -137,3 +137,22 @@ if __name__ == '__main__':
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
     # json2dset()
+
+    def fix_find_song_with_error():
+        fnm = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MNLP-Combined/' \
+              'music extraction, 04.09.22_18.51.log'
+        with open(fnm, 'r') as f:
+            lines = f.readlines()
+        ic(len(lines), lines[:5])
+        pattern_start = re.compile(r'^.*INFO - Extracting (?P<title>.*) with {.*$')
+        pattern_end = re.compile(r'^.*INFO - (?P<title>.*) extraction completed in .*$')
+        set_started, set_ended = set(), set()
+        for ln in lines:
+            m_start, m_end = pattern_start.match(ln), pattern_end.match(ln)
+            if m_start:
+                set_started.add(m_start.group('title'))
+            elif m_end:
+                set_ended.add(m_end.group('title'))
+        # ic(len(set_started), len(set_ended))
+        ic(set_started-set_ended)
+    # fix_find_song_with_error()

@@ -81,7 +81,7 @@ class WarnLog:
                   ' - total note {n_note}, rest count {n_rest}'
         elif warn_nm == WarnLog.ExcecTupNote:
             msg = '{warn_name}: Too much Chord notes in tuplet group at bar#{bar_num}' \
-                  ' - note choices {note_choices}'
+                  ' - note choices {note_choices}, threshold {threshold}'
         elif warn_nm == WarnLog.UncomTimeSig:
             msg = '{warn_name}: Time Signature is uncommon' \
                   ' - Expect one of: {time_sig_expect}, got {time_sig_got}'
@@ -162,7 +162,7 @@ class WarnLog:
         elif nm in [WarnLog.EmptyStrt, WarnLog.EmptyEnd]:
             assert 'bar_range' in args
         elif nm == WarnLog.ExcecTupNote:
-            assert 'note_choices' in args
+            assert 'note_choices' in args and 'threshold' in args
         else:
             assert nm == WarnLog.IncTimeSig
             assert all(k in args for k in ['time_sig', 'threshold', 'n_bar_total', 'n_bar_mode'])
