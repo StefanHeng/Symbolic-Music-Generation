@@ -501,7 +501,10 @@ class MusicExtractor:
             title = title[:-4]
 
         lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(self.it_bars(song))
-        assert len(lst_bar_info) > 0, 'No bars found'
+        assert len(lst_bar_info) > 0, 'No bars found song'
+        assert all(len(bar_info[0]) > 0 for bar_info in lst_bar_info), \
+            'No notes found at all times, most likely the song contains drum tracks only - ' \
+            'Terminating as extraction output would be empty'
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
 
         # Crop out empty bars at both ends to reduce token length
@@ -516,6 +519,7 @@ class MusicExtractor:
             return all(all(isinstance(e, Rest) for e in bar2elms(b)) for b in bars)
         empty_warns = []
         idx = 0
+        # ic(lst_bar_info)
         while is_empty_bars(lst_bar_info[idx][0]):  # grab the all the bars at current number
             idx += 1
         idx_strt_last_empty = idx-1
@@ -885,8 +889,9 @@ if __name__ == '__main__':
     def check_edge_case():
         # broken_files = ['Grandi - Dolcissimo amore', 'John Elton - Burn Down the Mission']
         # broken_files = ['Battiato - Segnali di vita', 'Billy Joel - The River of Dreams']
-        broken_files = ['Pooh - Anni senza fiato', 'Nirvana - Been a Son']
-        broken_fl = broken_files[0]
+        # broken_files = ['Pooh - Anni senza fiato', 'Nirvana - Been a Son']
+        # broken_fl = broken_files[0]
+        broken_fl = 'U2 - The Electric Co.'
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
         path = f'/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/{broken_fl}.mxl'

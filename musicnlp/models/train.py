@@ -4,7 +4,6 @@ Proposed method: on compact melody & bass representation for autoregressive musi
 """
 from copy import deepcopy
 
-import torch
 from transformers import TransfoXLConfig, ReformerConfig, ReformerModelWithLMHead
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
 from transformers import Trainer
@@ -20,7 +19,7 @@ from musicnlp.models import MusicTokenizer, _models
 
 def get_model_n_tokenizer(
         model_name: str, model_size: str, prec: int = 5, model_config: Dict = None
-) -> Tuple[MusicTokenizer, model_util.MusicTransformerMixin, OrderedDict]:
+) -> Tuple[MusicTokenizer, Union[model_util.MusicTransformerMixin, torch.nn.Module], OrderedDict]:
     assert model_name in ['xl', 'reformer'], f'Unknown model_name: {model_name}'
 
     tokenizer_ = MusicTokenizer(prec=prec)  # needed for reformer config
@@ -261,24 +260,25 @@ def compute_metrics(eval_pred):
 def get_all_setup(
         model_name: str, model_size: str, dataset_name: str, prec: int = 5, n_sample=None, dataset_seed=None,
         model_config: Dict = None, train_args: Dict = None, my_train_args: Dict = None
-) -> Tuple[model_util.MusicTransformerMixin, MusicTokenizer, datasets.Dataset, Trainer]:
+) -> Tuple[model_util.MusicTransformerMixin, MusicTokenizer, Trainer]:
     tokenizer_, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
-    tr = get_dataset(
+    dset = get_dataset(
         dataset_name, map_func=lambda d: tokenizer_(d['text'], padding='max_length', truncation=True),
         remove_columns=['title', 'text'], n_sample=n_sample, random_seed=dataset_seed
     )
+    tr, vl = dset['train'], dset['test']
     args, my_args, = get_train_and_my_train_args(model_name, model_size, train_args, my_train_args, tr)
     # Ensure compatibility of dataset & tokenizer, see `music_export`
-    assert json.loads(tr.info.description)['precision'] == tokenizer_.prec
+    assert json.loads(dset.info.description)['precision'] == tokenizer_.prec
 
     clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
     trainer_ = train_util.MyTrainer(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
         model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer_, mlm=False),
-        train_dataset=tr, compute_metrics=compute_metrics
+        train_dataset=tr, eval_dataset=vl, compute_metrics=compute_metrics
     )
-    return model_, tokenizer_, tr, trainer_
+    return model_, tokenizer_, trainer_
 
 
 if __name__ == '__main__':
@@ -322,7 +322,7 @@ if __name__ == '__main__':
             logging_strategy='epoch',  # those are replicated from Trainer, for my own logging
             save_epochs=2
         )
-        mdl, tokenizer, dset_tr, trainer = get_all_setup(
+        mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, dataset_name=fnm, n_sample=n, dataset_seed=seed,
             train_args=train_args, my_train_args=my_train_args
         )
