@@ -33,7 +33,7 @@ def get_model_n_tokenizer(
             },
             reformer={
                 'debug': dict(
-                    max_position_embeddings=512, axial_pos_shape=(16, 32),
+                    max_position_embeddings=64, axial_pos_shape=(8, 8),
                     hidden_size=128, feed_forward_size=128*4, axial_pos_embds_dim=(32, 96),
                     # note attention head size in config is per head
                     num_attention_heads=8, attention_head_size=int(128/8),
@@ -127,12 +127,16 @@ def get_train_and_my_train_args(
     :param my_train_args: My own `MyTrainer` args, modifies trainer API for my customization
         - Added check pointing per k epochs
         - Logging strategy for Trainer replicated for my own console logging
+        Keys trying to follow the style of Trainer
     :param train_dataset: Training dataset, intended to get size for step per epoch calculation
     """
     if not hasattr(get_train_and_my_train_args, 'default_args'):
         get_train_and_my_train_args.default_args = dict(
             output_dir=os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, now(for_path=True)),
-            do_train=True, do_eval=False,
+            do_train=True,
+            do_eval=True,
+            evaluation_strategy='epoch',
+            eval_accumulation_steps=1,  # save as much GPU memory
             adam_beta1=0.9,
             adam_beta2=0.999,
             adam_epsilon=1e-08,
@@ -231,7 +235,7 @@ def get_train_and_my_train_args(
     if train_args is not None:
         args.update(train_args)
 
-    my_args: Dict[str, Union[int, str]] = dict()
+    my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps')  # default
     if my_train_args is not None:
         my_args.update(my_train_args)
     bsz = args['per_device_train_batch_size'] * args.get('gradient_accumulation_steps', 1)
@@ -246,22 +250,6 @@ def get_train_and_my_train_args(
         my_args['logging_steps'] = steps_per_epoch
     args = {k: v for k, v in args.items() if v is not None}
     return TrainingArguments(**args), my_args
-
-
-def compute_metrics(eval_pred):
-    """
-    :param eval_pred: 2-tuple of (greedy prediction **ids**, labels)
-        Intended to work with `CustomTrainer.prediction_step`
-    """
-    if not hasattr(compute_metrics, 'metric'):
-        compute_metrics.metric = datasets.load_metric('accuracy')
-    predictions, labels = eval_pred
-    predictions = predictions.argmax(dim=-1)
-    predictions, labels = predictions[:, :-1], labels[:, 1:]  # For CLM
-    labels, predictions = labels.flatten(), predictions.flatten()
-    msk_non_pad = (labels != train_util.PT_LOSS_PAD)
-    labels, predictions = labels[msk_non_pad], predictions[msk_non_pad]
-    return compute_metrics.metric.compute(predictions=predictions, references=labels)
 
 
 def get_all_setup(
@@ -286,7 +274,7 @@ def get_all_setup(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
         model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer_, mlm=False),
-        train_dataset=tr, eval_dataset=vl, compute_metrics=compute_metrics
+        train_dataset=tr, eval_dataset=vl, compute_metrics=train_util.compute_ntp_acc
     )
     return model_, tokenizer_, trainer_
 
@@ -319,29 +307,36 @@ if __name__ == '__main__':
         # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
-
-        n = 8
-        # n = None
+        ic(md_sz)
 
         if md_nm != 'reformer':
             transformers.set_seed(seed)
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
 
-        # train_args = dict(num_train_epochs=256)
-        train_args = dict(
-            per_device_train_batch_size=4,
-            save_strategy='epoch',
-            num_train_epochs=8
-        )
-        my_train_args = dict(
-            logging_strategy='epoch',  # those are replicated from Trainer, for my own logging
-            save_epochs=2
-        )
+        if md_sz == 'debug':
+            n = 8
+            train_args = dict(
+                per_device_train_batch_size=4,
+                # save_strategy='no',
+                save_strategy='epoch',
+                num_train_epochs=64,
+            )
+            my_train_args = dict(
+                save_epochs=16
+            )
+        else:
+            n = None
+            train_args = dict(num_train_epochs=16)
+            my_train_args = dict(
+                logging_strategy='epoch',
+                save_epochs=4
+            )
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n, dataset_seed=seed,
             train_args=train_args, my_train_args=my_train_args
         )
+
         if resume_from_checkpoint:
             trainer.train(resume_from_checkpoint)
         else:

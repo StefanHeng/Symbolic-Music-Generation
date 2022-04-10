@@ -1,5 +1,6 @@
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
+import datasets
 
 from musicnlp.util.util import *
 
@@ -90,7 +91,8 @@ class MyTrainer(Trainer):
 
         # ========================== Begin of added ==========================
         inputs: Dict[str, torch.Tensor]
-        if self.clm_acc_logging and 'labels' in inputs:
+        # don't need to calculate NTP acc here for eval, see `compute_ntp_acc`
+        if self.is_in_train and self.clm_acc_logging and 'labels' in inputs:
             preds = outputs.logits.detach().argmax(axis=-1)
             labels_ = inputs['labels'].detach()
             # CLM, predicting the next token given current, so shift
@@ -186,7 +188,6 @@ class ColoredPrinterCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
         if state.is_local_process_zero:
             if isinstance(logs, dict):
-                ic(self.trainer.is_in_train)
                 # Heuristics on the training step updates, see `Trainer._maybe_log_save_evaluate`
                 if self.mode == 'train' and all('runtime' not in k for k in logs):
                     logs['step'] = step = state.global_step
@@ -199,9 +200,10 @@ class ColoredPrinterCallback(TrainerCallback):
                     self.writer.add_scalar('Train/loss', loss, step)
                     self.writer.add_scalar('Train/learning_rate', lr, step)
 
-                    out_console, out_write = self.out_dict2str(logs, return_wo_color=True)  # TODO: `pretty_log_dict`
-                    self.logger.info(out_console)
-                    self.logger_fl.info(out_write)
+                    # out_console, out_write = self.out_dict2str(logs, return_wo_color=True)  # TODO: didn't test
+                    logs = pretty_log_dict(logs, ref=self.train_meta)
+                    self.logger.info(log_dict(logs))
+                    self.logger_fl.info(log_dict_nc(logs))
                 else:
                     self.logger.info(log_dict(logs))
                     self.logger_fl.info(log_dict(logs, with_color=False))
@@ -210,13 +212,54 @@ class ColoredPrinterCallback(TrainerCallback):
                 self.logger_fl.info(logs)
 
 
+def compute_ntp_acc(eval_pred):
+    """
+    :param eval_pred: 2-tuple of (greedy prediction **ids**, labels)
+
+    Will be the outputs on eval dataset, see `Trainer.compute_metrics`
+    """
+    if not hasattr(compute_ntp_acc, 'metric'):
+        compute_ntp_acc.acc = datasets.load_metric('accuracy')
+    predictions, labels = eval_pred
+    predictions = predictions.argmax(axis=-1)
+    predictions, labels = predictions[:, :-1], labels[:, 1:]  # For CLM
+    labels, predictions = labels.flatten(), predictions.flatten()
+    msk_non_pad = (labels != PT_LOSS_PAD)
+    labels, predictions = labels[msk_non_pad], predictions[msk_non_pad]
+    d_metric = compute_ntp_acc.acc.compute(predictions=predictions, references=labels)
+    assert 'accuracy' in d_metric
+    d_metric['ntp_acc'] = d_metric.pop('accuracy')
+    return d_metric
+
+
+no_prefix = ['epoch', 'step']
+
+
+def add_prefix(key: str) -> bool:
+    return key not in no_prefix
+
+
 class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
     """
     Additionally log next-token-prediction accuracy
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.out_dict = None
+        self.out_dict = None  # For passing NTP accuracy in training steps
+
+    def _log(self, d_log, mode='train', to_console=True):
+        modes = ["train", "eval"]
+        assert mode in ['train', 'eval'], f'Unexpected mode: expect one of {logi(modes)}, got {logi(mode)}'
+        d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log.items()}
+        d_log_write = pretty_log_dict(d_log_write, ref=self.train_meta)
+        if to_console:
+            self.logger.info(log_dict(d_log_write))
+        self.logger_fl.info(log_dict_nc(d_log_write))
+
+        step = d_log.get('step') if mode == 'train' else d_log.get('epoch')
+        for k, v in d_log.items():
+            if add_prefix(k):
+                self.writer.add_scalar(tag=f'{mode}/{k}', scalar_value=v, global_step=step)
 
     def on_log(self, args, state, control, logs=None, **kwargs):
         if state.is_local_process_zero:
@@ -231,22 +274,33 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     n_ep = state.epoch  # The one originally is rounded, see `Trainer.log`
                     loss, lr = logs['loss'], logs['learning_rate']
                     assert self.out_dict is not None
-                    ntp_acc = self.out_dict['ntp_acc']
+                    ntp_acc_meta = self.out_dict['ntp_acc_meta']
+                    # TODO: Potentially support gradient accumulation
+                    # ntp_acc_meta = {k: sum(v for v in d[k]) for k, d in ntp_acc_meta.items()}
+                    # ic(ntp_acc_meta)
+                    ntp_acc = ntp_acc_meta['matched'] / ntp_acc_meta['total']
+
                     self.out_dict = OrderedDict([
                         ('step', step), ('epoch', n_ep), ('learning_rate', lr),
-                        ('train_loss', loss), ('ntp_acc', ntp_acc)
+                        ('loss', loss), ('ntp_acc', ntp_acc)
                     ])
-                    self.out_dict = pretty_log_dict(self.out_dict, ref=self.train_meta)
-                    # `should_log` just prevents this call, I only filter console logging
-                    if self.trainer.my_args['logging_strategy'] == 'steps':
-                        self.logger.info(log_dict(self.out_dict))
-                    elif self.trainer.my_args['logging_strategy'] == 'epoch' and \
-                            step % self.trainer.my_args['steps_per_epoch'] == 0:
-                        self.logger.info(log_dict(self.out_dict))
-                    self.logger_fl.info(log_dict_nc(self.out_dict))
-                    self.writer.add_scalar('Train/loss', loss, step)
-                    self.writer.add_scalar('Train/ntp_acc', ntp_acc, step)
-                    self.writer.add_scalar('Train/learning_rate', lr, step)
+
+                    # `should_log` in Trainer just prevents the `on_log` call, I only filter console logging
+                    should_log = False
+                    my_log_strat = self.trainer.my_args.get('logging_strategy', 'steps')
+                    if my_log_strat == 'steps':
+                        should_log = True
+                    elif my_log_strat == 'epoch' and step % self.trainer.my_args['steps_per_epoch'] == 0:
+                        should_log = True
+                    self._log(self.out_dict, mode='train', to_console=should_log)
+                elif 'eval_loss' in logs:  # `Trainer.is_in_train` is not False so can't use
+                    loss, ntp_acc = logs['eval_loss'], logs['eval_ntp_acc']
+                    # Log eval on an epoch-level
+                    # Evaluation finished during training; TODO: didn't verify other positive cases
+                    n_ep = state.epoch
+                    assert n_ep.is_integer()
+                    d_log = dict(step=state.global_step, epoch=int(n_ep), loss=loss, ntp_acc=ntp_acc)
+                    self._log(d_log, mode='eval', to_console=True)
                 else:
                     self.logger.info(log_dict(logs))
                     self.logger_fl.info(log_dict_nc(logs))
@@ -292,7 +346,7 @@ class ClmAccCallback(ColoredPrinterCallback):
                 del self.out_dict_tr[self.k_acc]
                 self.out_dict_tr['learning_rate'] = logs['learning_rate']
                 self.out_dict_tr['train_loss'] = logs['loss']
-                self.logger.info(self.out_dict2str(self.out_dict_tr))
+                self.logger.info(pretty_log_dict(self.out_dict_tr))
                 self.out_dict_tr = None  # Rest for next global step
             elif any('runtime' in k for k in logs.keys()):
                 self.logger.info(log_dict(logs) if isinstance(logs, dict) else logs)

@@ -1,12 +1,8 @@
-from typing import Type
-
-from responses import target
 from musicnlp.util import *
 from musicnlp.util.music_lib import *
 from musicnlp.postprocess import ElmType, MusicElement
 from musicnlp.models import MusicTokenizer
 import music21
-import itertools
 from itertools import filterfalse
 from collections import Counter
 
