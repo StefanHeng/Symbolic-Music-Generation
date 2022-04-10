@@ -503,8 +503,8 @@ class MusicExtractor:
         lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(self.it_bars(song))
         assert len(lst_bar_info) > 0, 'No bars found song'
         assert all(len(bar_info[0]) > 0 for bar_info in lst_bar_info), \
-            'No notes found at all times, most likely the song contains drum tracks only - ' \
-            'Terminating as extraction output would be empty'
+            f'No notes found at all times, most likely the song contains {logi("drum tracks")} only - ' \
+            f'Terminating as extraction output would be empty'
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
 
         # Crop out empty bars at both ends to reduce token length

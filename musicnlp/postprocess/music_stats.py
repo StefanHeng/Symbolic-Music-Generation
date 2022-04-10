@@ -55,7 +55,7 @@ if __name__ == '__main__':
 
     ms = MusicStats()
     text = get_extracted_song_eg()
-    toks_ = text.split()
+    toks_ = text.list_split()
 
     # ic(ms.vocab_type_counts(toks))
     ic(ms.weighted_pitch_counts(toks_))

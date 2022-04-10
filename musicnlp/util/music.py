@@ -1,9 +1,6 @@
 import glob
-import os
 from shutil import copyfile
 from collections import defaultdict
-
-from tqdm import tqdm
 
 from musicnlp.util.util import *
 
@@ -111,6 +108,8 @@ def convert_dataset(dataset_name: str = 'POP909'):
                 # Modified the name, but still keep to the original way of versioning,
                 #   i.e. `<title>.<version>` if there's a separate version,
                 # so that `get_lmd_cleaned_subset_fnms` can work without changes
+                # TODO: however, the original LMD dataset's way of versioning the same song
+                #  is not intuitive & better be changed
                 fnm_ = f'{fnm_[:my_lim]}... '
                 path2fnm.count_too_long += 1
             v_str = '' if v == 0 else f'.{v}'
@@ -138,30 +137,16 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
 
     Expects `convert_dataset` called first
     """
-    # TODO: this applies to the original LMD dataset's way of versioning the same song, which better be changed
     # this folder contains all MIDI files that can be converted to MXL, on my machine
     path = os.path.join(PATH_BASE, DIR_DSET, 'LMD-cleaned_valid')
     # <artist> - <title>(.<version>)?.mid
     pattern = re.compile(r'^(?P<artist>.*) - (?P<title>.*)(\.(?P<version>[1-9]\d*))?\.mid$')
-    # pattern_title = re.compile(r'((?P<title>.*)\.(?P<version>[1-9]\d*))?')
-
-    pattern_title = re.compile(r'^(?P<title>.*)\.(?P<version>[1-9]\d*)\.mid$')
-
     d_song2fnms: Dict[Tuple[str, str], Dict[int, str]] = defaultdict(dict)
     fnms = sorted(glob.iglob(os.path.join(path, '*.mid')))
     for fnm in tqdm(fnms, desc='Getting LMD-cleaned subset', unit='song'):
-        # from icecream import ic
-        # ic(fnm)
         fnm = stem(fnm, keep_ext=True)
         m = pattern.match(fnm)
         artist, title = m.group('artist'), m.group('title')
-        # assert artist is not None and title is not None
-        # m = pattern_title.match(title)
-        # title_, version = m.group('title'), m.group('version')
-        # if title_ is None:
-        #     assert version is None
-        # else:
-        #     title, version = title_, int(version)
         title, version = lmd_cleaned_title2title_n_ver(title)
 
         version = version or 0

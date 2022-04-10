@@ -60,7 +60,7 @@ for k in keys(config[DIR_DSET]):    # Accommodate other OS
     k = f'{DIR_DSET}.{k}'
     val = get(config, k)
     if k[k.rfind('.')+1:] == 'dir_nm':
-        set_(config, k, os.path.join(*val.split('/')))
+        set_(config, k, os.path.join(*val.list_split('/')))
 
 
 def get_stats(songs: List[Dict]):

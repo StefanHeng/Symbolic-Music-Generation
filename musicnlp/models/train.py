@@ -32,7 +32,14 @@ def get_model_n_tokenizer(
                 'small': dict(d_model=1024)
             },
             reformer={
-                'debug': dict(max_position_embeddings=1024, axial_pos_shape=(32, 32)),
+                'debug': dict(
+                    max_position_embeddings=512, axial_pos_shape=(16, 32),
+                    hidden_size=128, feed_forward_size=128*4, axial_pos_embds_dim=(32, 96),
+                    # note attention head size in config is per head
+                    num_attention_heads=8, attention_head_size=int(128/8),
+                    # effectively 6 layers as default config; going even smaller produces an error
+                    attn_layers=layer_pair*3
+                ),
                 # overall, given hidden size, keep
                 #   feed_forward_size = 4 x hidden size
                 #   attention_head_size = hidden_size
@@ -258,18 +265,21 @@ def compute_metrics(eval_pred):
 
 
 def get_all_setup(
-        model_name: str, model_size: str, dataset_name: str, prec: int = 5, n_sample=None, dataset_seed=None,
+        model_name: str, model_size: str,
+        dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None, dataset_seed=None,
         model_config: Dict = None, train_args: Dict = None, my_train_args: Dict = None
 ) -> Tuple[model_util.MusicTransformerMixin, MusicTokenizer, Trainer]:
     tokenizer_, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
     dset = get_dataset(
-        dataset_name, map_func=lambda d: tokenizer_(d['text'], padding='max_length', truncation=True),
-        remove_columns=['title', 'text'], n_sample=n_sample, random_seed=dataset_seed
+        dataset_names=dataset_names, map_func=lambda d: tokenizer_(d['score'], padding='max_length', truncation=True),
+        # i.e. keep the input ids only
+        remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=dataset_seed
     )
     tr, vl = dset['train'], dset['test']
     args, my_args, = get_train_and_my_train_args(model_name, model_size, train_args, my_train_args, tr)
-    # Ensure compatibility of dataset & tokenizer, see `music_export`
-    assert json.loads(dset.info.description)['precision'] == tokenizer_.prec
+    assert all(  # Ensure compatibility of dataset & tokenizer, see `music_export`
+        get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer_.prec for ds in dset.values()
+    )
 
     clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
     trainer_ = train_util.MyTrainer(
@@ -285,7 +295,12 @@ if __name__ == '__main__':
     import transformers
     from icecream import ic
 
-    fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
+    ic.lineWrapWidth = 400
+
+    dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+    dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
+    dnms = [dnm_909, dnm_lmd]
 
     def check_model_size():
         md_nm = 'reformer'
@@ -294,13 +309,14 @@ if __name__ == '__main__':
         md_sz = 'large'
         mdl: torch.nn.Module = get_model_n_tokenizer(model_name=md_nm, model_size=md_sz)[1]
         ic(get_model_num_trainable_parameter(mdl))
-    check_model_size()
+    # check_model_size()
 
     def train(resume_from_checkpoint: str = None):
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        md_sz = 'tiny'
+        md_sz = 'debug'
+        # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
 
@@ -323,7 +339,7 @@ if __name__ == '__main__':
             save_epochs=2
         )
         mdl, tokenizer, trainer = get_all_setup(
-            model_name=md_nm, model_size=md_sz, dataset_name=fnm, n_sample=n, dataset_seed=seed,
+            model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n, dataset_seed=seed,
             train_args=train_args, my_train_args=my_train_args
         )
         if resume_from_checkpoint:
@@ -331,7 +347,7 @@ if __name__ == '__main__':
         else:
             trainer.train()
         trainer.save_model(os.path.join(trainer.args.output_dir, 'trained'))
-    # train()
+    train()
 
     # checkpoint_path = os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
     # train(resume_from_checkpoint=checkpoint_path)

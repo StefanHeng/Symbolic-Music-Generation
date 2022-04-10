@@ -194,7 +194,7 @@ def compress(lst: List[T]) -> List[Tuple[T, int]]:
             + compress(list(itertools.dropwhile(lambda elm: elm == lst[0], lst))))
 
 
-def split(lst: List[T], call: Callable[[T], bool]) -> List[List[T]]:
+def list_split(lst: List[T], call: Callable[[T], bool]) -> List[List[T]]:
     """
     :return: Split a list by locations of elements satisfying a condition
     """
@@ -218,7 +218,7 @@ def group_n(it: Iterable[T], n: int) -> Iterable[Tuple[T]]:
         yield chunk
 
 
-def conc_map(fn: Callable[[T], K], it: Iterable[T], with_tqdm = False) -> Iterable[K]:
+def conc_map(fn: Callable[[T], K], it: Iterable[T], with_tqdm=False) -> Iterable[K]:
     """
     Wrapper for `concurrent.futures.map`
 
@@ -235,7 +235,7 @@ def conc_map(fn: Callable[[T], K], it: Iterable[T], with_tqdm = False) -> Iterab
 def batched_conc_map(
         fn: Callable[[Tuple[List[T], int, int]], K], lst: List[T], n_worker: int = os.cpu_count(),
         batch_size: int = None,
-        with_tqdm: bool = False
+        with_tqdm: bool = False  # TODO: doesn't seem to work as expected
 ) -> List[K]:
     """
     Batched concurrent mapping, map elements in list in batches

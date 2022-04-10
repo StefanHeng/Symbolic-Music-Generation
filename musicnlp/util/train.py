@@ -99,7 +99,8 @@ class MyTrainer(Trainer):
             preds_non_pad, labels_non_pad = preds[msk_not_pad], labels_[msk_not_pad]
             matches: torch.Tensor = (preds_non_pad == labels_non_pad)
             # next-token-prediction task
-            d_log = dict(src='compute_loss', ntp_acc=matches.sum().item()/preds_non_pad.numel())
+            ntp_acc_meta = dict(matched=matches.sum().item(), total=preds_non_pad.numel())
+            d_log = dict(src='compute_loss', ntp_acc_meta=ntp_acc_meta)
             self.log(d_log)
         # ========================== End of added ==========================
 
@@ -185,6 +186,7 @@ class ColoredPrinterCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
         if state.is_local_process_zero:
             if isinstance(logs, dict):
+                ic(self.trainer.is_in_train)
                 # Heuristics on the training step updates, see `Trainer._maybe_log_save_evaluate`
                 if self.mode == 'train' and all('runtime' not in k for k in logs):
                     logs['step'] = step = state.global_step
