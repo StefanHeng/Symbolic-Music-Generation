@@ -22,6 +22,7 @@ class WarnLog:
     HighPchOvl, HighPchOvlTup = 'Higher Pitch Overlap', 'Higher Pitch Overlap with Triplet'
     LowPchMakeup, LowPchMakeupRmv = 'Lower Pitch Makeup', 'Lower Pitch Makeup Removed'
     IncTimeSig, UncomTimeSig = 'Inconsistent Time Signatures', 'Uncommon Time Signature'
+    UncomTempo = 'Uncommon Mean Tempo'
     NoteNotQuant, TupNoteQuant = 'Notes Beyond Quantization', 'Tuplet Notes Quantizable'
     InvBarDur = 'Invalid Bar Notes Duration'
     BarNoteGap = 'Gap in extracted Bar Notes'
@@ -31,7 +32,7 @@ class WarnLog:
         EmptyStrt, EmptyEnd,
         MultTempo, MultTimeSig,
         MissTempo,
-        IncTimeSig, UncomTimeSig,
+        IncTimeSig, UncomTimeSig, UncomTempo,
         HighPchOvl, HighPchOvlTup,
         LowPchMakeup, LowPchMakeupRmv,
         InvTupSz,
@@ -85,6 +86,9 @@ class WarnLog:
         elif warn_nm == WarnLog.UncomTimeSig:
             msg = '{warn_name}: Time Signature is uncommon' \
                   ' - Expect one of: {time_sig_expect}, got {time_sig_got}'
+        elif warn_nm == WarnLog.UncomTempo:
+            msg = '{warn_name}: Mean Tempo is uncommon' \
+                  ' - Expect one of: {tempo_expect}, got {tempo_got}'
         elif warn_nm == WarnLog.IncTimeSig:
             msg = '{warn_name}: ratio of mode time signature below {threshold}' \
                   ' - #mode {n_bar_mode}, #total {n_bar_total}'
@@ -159,6 +163,8 @@ class WarnLog:
             assert 'bar_num' in args
         elif nm == WarnLog.UncomTimeSig:
             assert 'time_sig_expect' in args and 'time_sig_got' in args
+        elif nm == WarnLog.UncomTempo:
+            assert 'tempo_expect' in args and 'tempo_got' in args
         elif nm in [WarnLog.EmptyStrt, WarnLog.EmptyEnd]:
             assert 'bar_range' in args
         elif nm == WarnLog.ExcecTupNote:

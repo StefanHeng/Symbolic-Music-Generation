@@ -101,20 +101,6 @@ def is_8th(d: Dur) -> bool:
     return is_int(d*2)
 
 
-COMMON_TIME_SIGS: List[TsTup] = sorted(  # Sort first by denominator
-    [(4, 4), (2, 4), (2, 2), (3, 4), (6, 8), (5, 4), (12, 8)],
-    key=lambda tup_: tuple(reversed(tup_))
-)
-
-
-def is_common_time_sig(ts: Union[TimeSignature, TsTup]):
-    if not hasattr(is_common_time_sig, 'COM_TS'):  # List of common time signatures
-        is_common_time_sig.COM_TS = set(COMMON_TIME_SIGS)
-    if isinstance(ts, TimeSignature):
-        ts = (ts.numerator, ts.denominator)
-    return ts in is_common_time_sig.COM_TS
-
-
 def note2pitch(note: ExtNote):
     if isinstance(note, tuple):  # Triplet, return average pitch
         # Duration for each note not necessarily same duration, for transcription quality
@@ -345,11 +331,17 @@ def is_notes_no_overlap(notes: Iterable[ExtNote]) -> bool:
     return True
 
 
+def is_notes_pos_duration(notes: Iterable[ExtNote]) -> bool:
+    return all(note.duration.quarterLength > 0 for note in flatten_notes(notes))
+
+
 def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature) -> bool:
     dur_bar = time_sig.numerator / time_sig.denominator * 4
     # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
-    return is_notes_no_overlap(notes) \
-        and math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=1e-6)
+    pos_dur = is_notes_pos_duration(notes)
+    no_ovl = is_notes_no_overlap(notes)
+    match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=1e-6)
+    return pos_dur and no_ovl and match_bar_dur
 
 
 def get_score_skeleton(title: str = None, composer: str = PKG_NM, mode: str = 'melody') -> Score:

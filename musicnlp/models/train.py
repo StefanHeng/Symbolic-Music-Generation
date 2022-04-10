@@ -330,8 +330,8 @@ if __name__ == '__main__':
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        # md_sz = 'debug'
-        md_sz = 'tiny'
+        md_sz = 'debug'
+        # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
         ic(md_sz)
@@ -342,7 +342,8 @@ if __name__ == '__main__':
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
 
         if md_sz in ['debug', 'tiny']:
-            n = 8
+            n = None
+            # n = 8
             train_args = dict(
                 per_device_train_batch_size=4,
                 # save_strategy='no',

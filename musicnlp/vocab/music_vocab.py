@@ -6,6 +6,29 @@ from music21.pitch import Pitch
 from musicnlp.util.music_lib import *
 
 
+COMMON_TIME_SIGS: List[TsTup] = sorted(  # Sort first by denominator
+    [(4, 4), (2, 4), (2, 2), (3, 4), (6, 8), (5, 4), (12, 8)],
+    key=lambda tup_: tuple(reversed(tup_))
+)
+COMMON_TEMPOS: List[int] = list(range(40, 241))  # [40-240]
+
+
+def is_common_time_sig(ts: Union[TimeSignature, TsTup]):
+    if not hasattr(is_common_time_sig, 'COM_TS'):  # List of common time signatures
+        is_common_time_sig.COM_TS = set(COMMON_TIME_SIGS)
+    if isinstance(ts, TimeSignature):
+        ts = (ts.numerator, ts.denominator)
+    return ts in is_common_time_sig.COM_TS
+
+
+def is_common_tempo(tempo: Union[MetronomeMark, int]):
+    if not hasattr(is_common_tempo, 'COM_TEMPO'):  # List of common tempos
+        is_common_tempo.COM_TEMPO = set(COMMON_TEMPOS)
+    if isinstance(tempo, MetronomeMark):
+        tempo = tempo.number
+    return tempo in is_common_tempo.COM_TEMPO
+
+
 class VocabType(Enum):
     time_sig, tempo, duration, pitch, special = list(range(5))
 
@@ -44,7 +67,22 @@ class MusicVocabulary:
         prefix_tempo='Tempo'
     )
     # Uncommon Time Signatures in music theory, but empirically seen in MIDI data
-    UNCOM_TSS: List[TsTup] = [(1, 4)]
+    # See music_visualize.py for distribution
+    UNCOM_TSS: List[TsTup] = [
+        (1, 4),  # seen, a lot, from POP909
+
+        # from LMD-cleaned_subset, only a small fraction are edge cases
+        (3, 2), (4, 2),
+        (6, 4), (7, 4), (8, 4), (12, 4), (132, 4),
+        (1, 8), (3, 8), (4, 8), (5, 8), (7, 8), (8, 8), (9, 8), (11, 8),
+        (8, 16), (16, 16),
+        (2, 64)
+    ]
+    UNCOM_TP: List[int] = [  # Observed from LMD-cleaned_subset
+        30, 37,
+        241, 244, 245, 246, 250, 254, 255, 256, 265, 275, 276, 278, 280, 287, 293,
+        305, 334, 397
+    ]
 
     RE_INT = r'[-]?\d*'  # negative sign for `octave`
     RE1 = rf'(?P<num>{RE_INT})'
@@ -97,7 +135,8 @@ class MusicVocabulary:
         def rev(time_sig):
             return tuple(reversed(time_sig))  # Syntactic sugar
         tss = [elm2str(rev(ts))[0] for ts in sorted(rev(ts) for ts in COMMON_TIME_SIGS + MusicVocabulary.UNCOM_TSS)]
-        tempos = [elm2str(tp)[0] for tp in range(20, 220)]  # Expected normal song ranges
+        # See music_visualize.py for distribution; TODO: filter out the tempos not found?
+        tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS + MusicVocabulary.UNCOM_TP]
         pitches = [self.cache['rest']] + [self._note2pch_str(Pitch(midi=i)) for i in range(128)]
 
         self.toks: Dict[str, List[str]] = dict(
