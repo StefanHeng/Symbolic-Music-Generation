@@ -27,11 +27,11 @@ class IkrMetric:
         gts = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
         return 1 - np.mean([self.get_off_key_ratio(gen, gt)for gen, gt in zip(gens, gts)])
 
-    def get_init_key_est(self, gt_token_seq: Union[str, List[str]], num_bars: int = 4):
+    def get_init_key_est(self, gt_token_seq: Union[str, List[str]], num_bars: int = 2):
         tok_lst = gt_token_seq.split() if isinstance(gt_token_seq, str) else gt_token_seq
 
         # Heuristics to determine starting bar
-        bar_idx = [idx for idx, tok in enumerate(tok_lst) if tok in [self.vocab.start_of_bar, self.tokenizer.eos_token]]
+        bar_idx = [idx for idx, tok in enumerate(tok_lst) if tok == self.vocab.start_of_bar]
         assert len(bar_idx) > num_bars + 1, \
             f'Not enough bars for key estimation: expect at least {logi(num_bars + 1)} total bars in music, ' \
             f'got {logi(len(bar_idx))}'
@@ -119,3 +119,4 @@ if __name__ == '__main__':
                 im(ids, ids)  # effectively we're only checking the ground-truth init key part
                 # exit(1)
     check_init_key_no_error()
+    profile_runtime(check_init_key_no_error())
