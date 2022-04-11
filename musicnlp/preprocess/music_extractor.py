@@ -467,7 +467,6 @@ class MusicExtractor:
                 all(not isinstance(n_, Chord) for n_ in n) if isinstance(n, tuple) else (not isinstance(n, Chord))
                 for n in lst
             )
-        # assert is_notes_pos_duration(lst)
         return lst
 
     def __call__(
@@ -589,10 +588,10 @@ class MusicExtractor:
                         ic(n)
                         exit(1)
                 groups[n_.offset].append(n)
-            if number == 22:
-                ic(groups)
-                for k, v in groups.items():
-                    assert is_notes_pos_duration(v)
+            # if number == 22:
+            #     ic(groups)
+            #     for k, v in groups.items():
+            #         assert is_notes_pos_duration(v)
 
             # def sort_groups(g):
             #     return {
@@ -610,8 +609,8 @@ class MusicExtractor:
             #         ic(k, len(v))
 
             def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
-                if number == 22:
-                    ic('in new get_notes_out')
+                # if number == 22:
+                #     ic('in new get_notes_out')
                 # if not hasattr(get_notes_out, 'recurse_count'):
                 #     get_notes_out.recurse_count = 0
                 # get_notes_out.recurse_count += 1
@@ -626,13 +625,6 @@ class MusicExtractor:
                         del groups[offset]
                         continue
                     nt = notes_[-1]  # Note with the highest pitch
-                    if number == 22:
-                        # ic(nt)
-                        if isinstance(nt, tuple):
-                            for n___ in nt:
-                                assert n___.duration.quarterLength > 0
-                        else:
-                            assert nt.duration.quarterLength > 0
                     nt_ = nt[-1] if isinstance(nt, tuple) else nt
                     nt_end_offset = nt_.offset + nt_.duration.quarterLength
                     # if number == 50:
@@ -654,27 +646,16 @@ class MusicExtractor:
 
                                 nt_ = nt[0] if isinstance(nt, tuple) else nt
                                 # Resulting duration usually non-0, for offset grouping
-                                ic(
-                                    ns_out[-1].offset, nt_, nt_.offset, nt_.duration.quarterLength, nt_.offset - ns_out[-1].offset
-                                )
-                                ic('before changing duration', ns_out, groups)
                                 ns_out[-1].duration = dur_last = Duration(quarterLength=nt_.offset - ns_out[-1].offset)
-                                ic(ns_out)
                                 assert dur_last.quarterLength >= 0
                                 # If it's 0, it's cos a **truncated** note was appended, as makeup
-                                if dur_last.quarterLength == 0:
-                                    ic(ns_out, 'about to delete last note')
+                                if dur_last.quarterLength == 0:  # TODO: verify
                                     note_2_delete = ns_out.pop()
                                     assert note_2_delete.offset == offset
-                                    ic(groups, offset, groups[offset], note_2_delete, note_2_delete.offset)
                                     assert groups[offset][-1] == note_2_delete
                                     del groups[offset][-1]
-                                    # del ns_out[-1]
-                                    ic(ns_out)
                                     self.log_warn(dict(warn_name=WarnLog.LowPchMakeupRmv, bar_num=number))
                             ns_out.append(nt)
-                            # ic(ns_out)
-                            assert is_notes_pos_duration(ns_out)
                             offset_next = nt_end_offset
                         # Later note has smaller pitch, but ends later than the last note
                         # Truncate the note, add it into later group for consideration
@@ -690,14 +671,9 @@ class MusicExtractor:
                                 # since Fractions and float that are real close, are not equal (==)
                                 if abs(offset_next-offset_next_closest) < eps:
                                     offset_next = offset_next_closest
-                                ic(offset_next_closest, offset_next, offset_next == offset_next_closest)
                                 if offset_next in groups:
                                     groups[offset_next].append(nt_)
                                 else:
-                                    # ic(nt_end_offset-offset_next, nt_end_offset, offset_next)
-                                    # ic(offset_next - Fraction(721, 480))
-                                    # ic('offset not in groups', offset_next, groups)
-                                    # exit(1)
                                     groups[offset_next] = [nt_]
                                 sort_groups()
                                 self.log_warn(dict(warn_name=WarnLog.LowPchMakeup, bar_num=number))
@@ -711,9 +687,9 @@ class MusicExtractor:
 
             with RecurseLimit(2**14):
                 notes_out = get_notes_out()
-            if number == 22:
-                ic(notes_out)
-                assert is_notes_pos_duration(notes_out)
+            # if number == 22:
+            #     ic(notes_out)
+            #     assert is_notes_pos_duration(notes_out)
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
             #   e.g. tiny-duration notes shifts all subsequent notes
@@ -778,14 +754,14 @@ class MusicExtractor:
                     lst.append(nt)
             return lst
         lst_notes = [trip_n_quant2notes(notes, num_bar=i) for i, notes in enumerate(lst_notes)]
-        # for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
-        #     assert is_valid_bar_notes(notes, time_sig)
-        bar_wicked = lst_notes[22]
-        ic(bar_wicked, len(bar_wicked))
-        for e in bar_wicked:
-            name, qLen = e.fullName, e.duration.quarterLength
-            ic(name, e.offset, qLen)
-        assert is_notes_pos_duration(bar_wicked)
+        for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
+            assert is_valid_bar_notes(notes, time_sig)
+        # bar_wicked = lst_notes[22]
+        # ic(bar_wicked, len(bar_wicked))
+        # for e in bar_wicked:
+        #     name, qLen = e.fullName, e.duration.quarterLength
+        #     ic(name, e.offset, qLen)
+        # assert is_notes_pos_duration(bar_wicked)
         if exp == 'mxl':  # TODO: didn't test
             scr_out = make_score(
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
@@ -943,10 +919,11 @@ if __name__ == '__main__':
         # broken_fl = 'U2 - The Electric Co.'
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
-        path = f'/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/{broken_fl}.mxl'
-        ic(path)
-        print(me(path, exp='visualize'))
-        # me(path, exp='mxl')
+        for broken_fl in broken_files:
+            path = f'/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/{broken_fl}.mxl'
+            ic(path)
+            print(me(path, exp='visualize'))
+            # me(path, exp='mxl')
     check_edge_case()
 
     def fix_find_song_with_0dur():

@@ -215,8 +215,10 @@ if __name__ == '__main__':
     from icecream import ic
 
     # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01.json'
+    # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+    #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41.json'
     fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-          'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41.json'
+          'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52.json'
     fnm = os.path.join(get_processed_path(), fnm)
     mv = MusicVisualize(fnm)
 
@@ -233,17 +235,17 @@ if __name__ == '__main__':
     check_uncommon_tempos()
 
     def plots():
-        # mv.token_length_dist()
+        mv.token_length_dist()
         # mv.bar_count_dist()
         # mv.tuplet_count_dist()
         # mv.song_duration_dist()
         # mv.time_sig_dist()
-        mv.tempo_dist()
+        # mv.tempo_dist()
         # ic(mv.df)
         # mv.note_pitch_dist()
         # mv.note_duration_dist()
         # mv.warning_type_dist()
-    # plots()
+    plots()
 
     fig_sz = (9, 5)
 

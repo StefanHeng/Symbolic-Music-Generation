@@ -31,10 +31,12 @@ class IkrMetric:
         tok_lst = gt_token_seq.split() if isinstance(gt_token_seq, str) else gt_token_seq
 
         # Heuristics to determine starting bar
-        bar_idx = [idx for idx, tok in enumerate(tok_lst) if self.vocab.type(tok) == VocabType.special]
-        assert len(bar_idx) >= num_bars + 1, 'So many bars for extracting keys'
+        bar_idx = [idx for idx, tok in enumerate(tok_lst) if tok in [self.vocab.start_of_bar, self.tokenizer.eos_token]]
+        assert len(bar_idx) > num_bars + 1, \
+            f'Not enough bars for key estimation: expect at least {logi(num_bars + 1)} total bars in music, ' \
+            f'got {logi(len(bar_idx))}'
 
-        pitch_lst = list(filterfalse(lambda x: self.vocab.type(x) != VocabType.pitch, tok_lst[:bar_idx[num_bars + 1]]))
+        pitch_lst = list(filterfalse(lambda x: self.vocab.type(x) != VocabType.pitch, tok_lst[:bar_idx[num_bars]]))
         key_cls = [music21.pitch.Pitch(midi=self.vocab.compact(p)).pitchClass for p in pitch_lst]
         key_est = Counter(key_cls).most_common()[0][0]
         return key_est
@@ -83,4 +85,37 @@ if __name__ == '__main__':
         text = music_util.get_extracted_song_eg(k='平凡之路')  # this one has tuplets
         ic(text[:200])
         ic(im.get_off_key_ratio(text, text))
-    check_key_metric()
+    # check_key_metric()
+
+    def check_init_key_no_error():
+        """
+        Pass through all songs in the dataset, make sure no errors raised during training
+        """
+        from musicnlp.preprocess import get_dataset
+
+        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+        dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+                  'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
+        dnms = [dnm_909, dnm_lmd]
+
+        n_sample = None
+        seed = config('random-seed')
+        tokenizer = MusicTokenizer(prec=5)
+        tokenizer.model_max_length = 2048  # TODO: hard-code for now
+        dset = get_dataset(
+            dataset_names=dnms, map_func=lambda x: tokenizer(x['score'], padding='max_length', truncation=True),
+            remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=seed
+        )
+        # effectively get the fist tokens of model size, simulating training data-loading
+        for split, ds in dset.items():
+            ic(split)
+            for d in tqdm(ds):
+                # ic(d)
+                # text = tokenizer.decode(d['input_ids'])
+                # ic(text)
+                # im.get_init_key_est(text)
+                ids = np.array(d['input_ids']).reshape(1, -1)  # dummy batch dim
+                # ic(ids.shape)
+                im(ids, ids)  # effectively we're only checking the ground-truth init key part
+                # exit(1)
+    check_init_key_no_error()

@@ -71,8 +71,8 @@ class MusicExport:
             try:
                 call_single.processed_count += 1  # Potential data race?
                 # Should not exceed 255 limit, see `musicnlp.util.music.py
-                fl_nm_out = os.path.join(path_out, f'Music Export - {stem(fl_nm)}.json')
-                if save_each and os.path.exists(fl_nm_out):  # File already processed, ignore
+                fl_nm_single_out = os.path.join(path_out, f'Music Export - {stem(fl_nm)}.json')
+                if save_each and os.path.exists(fl_nm_single_out):  # File already processed, ignore
                     if pbar:
                         pbar.update(1)
                     return
@@ -82,7 +82,7 @@ class MusicExport:
                         if pbar:
                             pbar.update(1)
                         d_out = dict(encoding_type=exp, extractor_meta=extractor.meta, music=ret, mxl_path=fl_nm)
-                        with open(fl_nm_out, 'w') as f_:
+                        with open(fl_nm_single_out, 'w') as f_:
                             json.dump(d_out, f_, indent=4)
                     else:
                         assert not pbar
@@ -214,11 +214,11 @@ if __name__ == '__main__':
             filenames: Union[str, List[str]] = 'LMD-cleaned-subset',
             save_dir: str = 'LMD-cleaned_subset save single 04-09_21-51'
     ):
-        path_out = os.path.join(get_processed_path(), save_dir)
+        path_out = os.path.join(get_processed_path(), 'intermediate', save_dir)
         # parallel = 3
         parallel = 64
         me(
-            filenames, parallel=parallel, extractor_args=dict(greedy_tuplet_pitch_threshold=1),
+            filenames, parallel=False, extractor_args=dict(greedy_tuplet_pitch_threshold=1),
             path_out=path_out, save_each=True
         )
     # export2json_save_each()
@@ -226,7 +226,7 @@ if __name__ == '__main__':
     # export2json_save_each(filenames=music_util.get_cleaned_song_paths('LMD-cleaned-subset', fmt='mxl')[3000:])
 
     def combine_single_json_songs(singe_song_dir: str, output_fnm: str):
-        fnms = sorted(glob.iglob(os.path.join(get_processed_path(), singe_song_dir, '*.json')))
+        fnms = sorted(glob.iglob(os.path.join(get_processed_path(), 'intermediate', singe_song_dir, '*.json')))
         songs = me.combine_saved_songs(filenames=fnms, output_filename=output_fnm)
         ic(songs.keys(), len(songs['music']))
     # combine_single_json_songs(
@@ -251,8 +251,10 @@ if __name__ == '__main__':
         Split the data for now, when amount of data is not huge
         """
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+        # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+        #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
         fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
+              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
         # for 10k data in the LMD-cleaned dataset, this is like 200 songs, should be good enough
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
         ic(dset)

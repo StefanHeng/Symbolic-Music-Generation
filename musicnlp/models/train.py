@@ -289,6 +289,7 @@ def get_all_setup(
         remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=dataset_seed
     )
     tr, vl = dset['train'], dset['test']
+    # ic(tr, len(tr), tr[:2])
     args, my_args, = get_train_and_my_train_args(model_name, model_size, train_args, my_train_args, tr)
     assert all(  # Ensure compatibility of dataset & tokenizer, see `music_export`
         get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer_.prec for ds in dset.values()
@@ -313,8 +314,10 @@ if __name__ == '__main__':
     ic.lineWrapWidth = 400
 
     dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+    # dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+    #           'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
     dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
+              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
     dnms = [dnm_909, dnm_lmd]
 
     def check_model_size():
@@ -330,8 +333,8 @@ if __name__ == '__main__':
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        md_sz = 'debug'
-        # md_sz = 'tiny'
+        # md_sz = 'debug'
+        md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
         ic(md_sz)
