@@ -11,9 +11,10 @@ class IkrMetric:
     """
     Vectorized metric of matched keys per pitch, based on `_get_off_key_ratio`
     """
-    def __init__(self, tokenizer: MusicTokenizer):
+    def __init__(self, tokenizer: MusicTokenizer, n_init_bars: int = 4):
         self.tokenizer = tokenizer
         self.vocab = tokenizer.vocab
+        self.n_init_bars = n_init_bars
 
     def __call__(self, preds: np.ndarray, labels: np.ndarray) -> float:
         """
@@ -27,21 +28,26 @@ class IkrMetric:
         gts = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
         return 1 - np.mean([self.get_off_key_ratio(gen, gt)for gen, gt in zip(gens, gts)])
 
-    def get_init_key_est(self, gt_token_seq: Union[str, List[str]], num_bars: int = 2):
+    def get_init_key_est(self, gt_token_seq: Union[str, List[str]]):
         tok_lst = gt_token_seq.split() if isinstance(gt_token_seq, str) else gt_token_seq
 
         # Heuristics to determine starting bar
         bar_idx = [idx for idx, tok in enumerate(tok_lst) if tok == self.vocab.start_of_bar]
-        assert len(bar_idx) > num_bars + 1, \
-            f'Not enough bars for key estimation: expect at least {logi(num_bars + 1)} total bars in music, ' \
+        assert len(bar_idx) > self.n_init_bars + 1, \
+            f'Not enough bars for key estimation: expect at least {logi(self.n_init_bars + 1)} total bars in music, ' \
             f'got {logi(len(bar_idx))}'
 
-        pitch_lst = list(filterfalse(lambda x: self.vocab.type(x) != VocabType.pitch, tok_lst[:bar_idx[num_bars]]))
+        pitch_lst = list(
+            filterfalse(lambda x: self.vocab.type(x) != VocabType.pitch, tok_lst[:bar_idx[self.n_init_bars]])
+        )
         key_cls = [music21.pitch.Pitch(midi=self.vocab.compact(p)).pitchClass for p in pitch_lst]
         key_est = Counter(key_cls).most_common()[0][0]
         return key_est
 
-    def get_off_key_ratio(self, gen_token_text: Union[str, List[str]], gt_token_text: Union[str, List[str]]) -> float:
+    def get_off_key_ratio(
+            self, gen_token_text: Union[str, List[str]], gt_token_text: Union[str, List[str]],
+            n_init_bars: int = 4
+    ) -> float:
         """
         For a single song
 
@@ -79,7 +85,7 @@ if __name__ == '__main__':
 
     import musicnlp.util.music as music_util
 
-    im = IkrMetric(MusicTokenizer())
+    im = IkrMetric(MusicTokenizer(), n_init_bars=2)
 
     def check_key_metric():
         text = music_util.get_extracted_song_eg(k='平凡之路')  # this one has tuplets
@@ -118,5 +124,5 @@ if __name__ == '__main__':
                 # ic(ids.shape)
                 im(ids, ids)  # effectively we're only checking the ground-truth init key part
                 # exit(1)
-    check_init_key_no_error()
-    profile_runtime(check_init_key_no_error())
+    # check_init_key_no_error()
+    profile_runtime(check_init_key_no_error)
