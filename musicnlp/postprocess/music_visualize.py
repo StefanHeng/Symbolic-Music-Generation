@@ -2,7 +2,6 @@ from copy import deepcopy
 from fractions import Fraction
 from collections import Counter
 
-import numpy as np
 from pandas.api.types import CategoricalDtype
 
 from musicnlp.util import *
@@ -55,7 +54,6 @@ class MusicVisualize:
 
     def _get_song_info(self):
         entries: List[Dict] = self.dset['music']
-        # ic(self.dset.keys(), type(self.dset['music']))
         # entries = entries[:256]  # TODO: debugging
 
         def extract_info(d: Dict):
@@ -116,10 +114,7 @@ class MusicVisualize:
     def song_duration_dist(self, **kwargs):
         def callback(ax):
             x_tick_vals = [v for v in plt.xticks()[0] if v >= 0]
-            # ic(x_tick_vals)
-            # ic([sec2mmss(v) for v in x_tick_vals])
             ax.set_xticks(x_tick_vals, labels=[sec2mmss(v) for v in x_tick_vals])
-            # ic(plt.xticks())
         args = dict(
             col_name='duration', title='Histogram of song duration', xlabel='duration (mm:ss)', callback=callback
         )
@@ -315,7 +310,6 @@ if __name__ == '__main__':
         # sns.set(style="ticks", context="talk")
         plt.style.use('dark_background')
         sns.set(style='ticks', context='talk')
-        sns.set(rc={})
         plt.rcParams.update({
             'axes.facecolor': od_bg, 'figure.facecolor': od_bg, 'savefig.facecolor': od_bg,
             'xtick.color': od_fg, 'ytick.color': od_fg, 'axes.labelcolor': od_fg,
@@ -337,10 +331,6 @@ if __name__ == '__main__':
             mv.song_duration_dist(**args)
             return mv.df.duration, 'Distribution of song duration'
 
-        # vals, title = token_len()
         vals, title = song_duration()
-        # mi, ma = vals.min(), np.percentile(vals, q=99.7)   # ~3std
-        # ax.set_xlim([mi, ma])
-        # plt.show()
         save_fig(f'{title}, {now(for_path=True)}')
     plots_for_presentation()

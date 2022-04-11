@@ -818,11 +818,11 @@ if __name__ == '__main__':
 
     def toy_example():
         logger = WarnLog()
-        fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        # fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = get_my_example_songs('Shape of You', fmt='MXL')
         # fnm = get_my_example_songs('平凡之路', fmt='MXL')
         # fnm = music_util.get_my_example_songs('Canon')
-        # fnm = music_util.get_my_example_songs('canonpiano')
+        fnm = music_util.get_my_example_songs('Canon piano')
         # fnm = music_util.get_my_example_songs('canonroc1')
         # fnm = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/Kool & The Gang - ' \
         #       'What Would the World Be Without Music Let the Music Take Your Mind Medley.mxl'
@@ -831,7 +831,7 @@ if __name__ == '__main__':
 
         def check_mxl_out():
             mt(fnm, exp='mxl')
-            ic(logger.to_df())
+            # ic(logger.to_df())
 
         def check_str():
             toks = mt(fnm, exp='str')
@@ -844,7 +844,7 @@ if __name__ == '__main__':
         check_mxl_out()
         # check_str()
         # check_visualize()
-    # toy_example()
+    toy_example()
 
     def encode_a_few():
         # dnm = 'POP909'
@@ -924,7 +924,7 @@ if __name__ == '__main__':
             ic(path)
             print(me(path, exp='visualize'))
             # me(path, exp='mxl')
-    check_edge_case()
+    # check_edge_case()
 
     def fix_find_song_with_0dur():
         """

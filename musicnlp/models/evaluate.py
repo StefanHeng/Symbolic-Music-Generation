@@ -6,8 +6,7 @@ from transformers import ReformerModelWithLMHead
 
 from musicnlp.util import *
 from musicnlp.vocab.music_vocab import VocabType
-from musicnlp.vocab.music_tokenizer import MusicTokenizer
-from musicnlp.postprocess import MusicConverter
+from musicnlp.vocab import MusicTokenizer, MusicConverter
 
 
 def load_trained(model_name: str, directory_name: str):
@@ -89,6 +88,7 @@ class MusicGenerator:
             else:
                 generate_args['do_sample'] = True
         args |= generate_args
+        ic(args, MusicGenerator.args2fnm(args))
         outputs = self.model.generate(**inputs, **args)[0]  # for now, generate one at a time
 
         if truncate_to_sob:
@@ -112,7 +112,8 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # dir_nm = os.path.join('2022-04-01_09-40-48', 'trained')
-    dir_nm = os.path.join('2022-04-03_11-01-04', 'checkpoint-3712')
+    # dir_nm = os.path.join('2022-04-03_11-01-04', 'checkpoint-3712')
+    dir_nm = os.path.join('2022-04-11_00-26-05', 'trained')
     mdl = load_trained(model_name='reformer', directory_name=dir_nm)
     ic(get_model_num_trainable_parameter(mdl))
     mg = MusicGenerator(mdl)
@@ -148,8 +149,9 @@ if __name__ == '__main__':
     # check_why_tie_in_output()
 
     def export_generated():
-        fnms = ['Merry Go Round of Life', 'Shape of You']
-        gen_args = dict(topk=16, top_p=0.75)
+        # fnms = ['Merry Go Round of Life', 'Shape of You']
+        fnms = ['Canon piano', 'Shape of You']
+        gen_args = dict(top_k=16, top_p=0.75)
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True)
             prompt = dict(path=path)
