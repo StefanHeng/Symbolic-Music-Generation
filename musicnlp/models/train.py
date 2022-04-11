@@ -257,7 +257,8 @@ def get_train_and_my_train_args(
 class ComputeMetrics:
     def __init__(self, tokenizer: MusicTokenizer):
         self.acc = datasets.load_metric('accuracy')
-        self.ikr = metrics.IkrMetric(tokenizer=tokenizer)
+        # so that no error if small #bars for now; TODO
+        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, n_init_bars=2)
 
     def __call__(self, eval_pred):
         """

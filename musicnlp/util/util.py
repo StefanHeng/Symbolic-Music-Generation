@@ -415,16 +415,17 @@ def get_model_num_trainable_parameter(model: torch.nn.Module, readable: bool = T
     return readable_int(n) if readable else n
 
 
-def hex2rgb(hx: str) -> Union[Tuple[int], Tuple[float]]:
+def hex2rgb(hx: str, normalize=False) -> Union[Tuple[int], Tuple[float]]:
     # Modified from https://stackoverflow.com/a/62083599/10732321
     if not hasattr(hex2rgb, 'regex'):
         hex2rgb.regex = re.compile(r'#[a-fA-F0-9]{3}(?:[a-fA-F0-9]{3})?$')
     m = hex2rgb.regex.match(hx)
     assert m is not None
     if len(hx) <= 4:
-        return tuple(int(hx[i]*2, 16) for i in range(1, 4))
+        ret = tuple(int(hx[i]*2, 16) for i in range(1, 4))
     else:
-        return tuple(int(hx[i:i+2], 16) for i in range(1, 7, 2))
+        ret = tuple(int(hx[i:i+2], 16) for i in range(1, 7, 2))
+    return tuple(i/255 for i in ret) if normalize else ret
 
 
 class MyTheme:

@@ -2,6 +2,7 @@ from copy import deepcopy
 from fractions import Fraction
 from collections import Counter
 
+import numpy as np
 from pandas.api.types import CategoricalDtype
 
 from musicnlp.util import *
@@ -16,24 +17,46 @@ class MusicVisualize:
 
     See `preprocess.music_export.py`
     """
-    def __init__(self, fl_nm):
-        with open(os.path.join(fl_nm)) as f:
-            self.dset: Dict = json.load(f)
+    def __init__(self, filenames: Union[str, List[str]]):
+        """
+        :param filenames: Path to a json dataset, or a list of paths, in which case datasets are concatenated
+            See `preprocess.music_export.py`
+        """
+        def _load_single(f_: str) -> Dict:
+            with open(f_, 'r') as f:
+                return json.load(f)
 
-        self.prec = get(self.dset, 'extractor_meta.precision')
+        def get_prec(ds: Dict) -> int:
+            return get(ds, 'extractor_meta.precision')
+
+        self.dset: Dict
+        if isinstance(filenames, str):
+            self.dset = _load_single(filenames)
+        else:
+            dset = [_load_single(f) for f in filenames]
+            assert all(ds['extractor_meta'] == dset[0]['extractor_meta'] for ds in dset)
+            self.dset = dict(
+                music=sum([d['music'] for d in dset], []),
+                extractor_meta=dset[0]['extractor_meta']
+            )
+
+        self.prec = get_prec(self.dset)
         assert self.prec >= 2
         self.tokenizer = MusicTokenizer(prec=self.prec)
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec)
-        self.df = None
+        self._df = None
 
-    def load_df(self) -> pd.DataFrame:
-        if self.df is None:
-            self.df = self._get_song_info()
-        return self.df
+    @property
+    def df(self) -> pd.DataFrame:
+        if self._df is None:
+            self._df = self._get_song_info()
+        return self._df
 
     def _get_song_info(self):
         entries: List[Dict] = self.dset['music']
+        # ic(self.dset.keys(), type(self.dset['music']))
+        # entries = entries[:256]  # TODO: debugging
 
         def extract_info(d: Dict):
             d = deepcopy(d)
@@ -56,9 +79,10 @@ class MusicVisualize:
         return pd.DataFrame(ds)
 
     def hist_wrapper(
-            self, col_name: str, title: str, xlabel: str, callback: Callable = None, new_figure=True, **kwargs
+            self, col_name: str, title: str, xlabel: str, callback: Callable = None, new_figure=True,
+            upper_percentile: float = None,
+            **kwargs
     ):
-        self.load_df()
         kwargs = dict(kde=True) | kwargs
         if not new_figure:
             assert 'ax' in kwargs, f'If not {logi("new_figure")}, {logi("ax")} must be passed in'
@@ -67,13 +91,18 @@ class MusicVisualize:
         plt.ylabel('count')
         if title is not None:
             plt.title(title)
+        if upper_percentile:
+            vs = self.df[col_name]
+            q = upper_percentile if isinstance(upper_percentile, float) else 99.7  # ~3std
+            mi, ma = vs.min(), np.percentile(vs, q=q)
+            ax.set_xlim([mi, ma])
         if callback is not None:
             callback(ax)
         if new_figure:
             plt.show()
 
     def token_length_dist(self, **kwargs):
-        args = dict(col_name='n_token', title='Histogram of token length', xlabel='token length')
+        args = dict(col_name='n_token', title='Histogram of token length', xlabel='#token')
         if kwargs is not None:
             args.update(kwargs)
         self.hist_wrapper(**args)
@@ -86,9 +115,11 @@ class MusicVisualize:
 
     def song_duration_dist(self, **kwargs):
         def callback(ax):
-            x_tick_vals = plt.xticks()[0]
+            x_tick_vals = [v for v in plt.xticks()[0] if v >= 0]
+            # ic(x_tick_vals)
+            # ic([sec2mmss(v) for v in x_tick_vals])
             ax.set_xticks(x_tick_vals, labels=[sec2mmss(v) for v in x_tick_vals])
-        self.load_df()
+            # ic(plt.xticks())
         args = dict(
             col_name='duration', title='Histogram of song duration', xlabel='duration (mm:ss)', callback=callback
         )
@@ -110,7 +141,6 @@ class MusicVisualize:
         )
 
     def note_pitch_dist(self, weighted=True):
-        self.load_df()
         counts = Counter()
         for d in (self.df.weighted_pitch_count if weighted else self.df.pitch_count):
             counts.update(d)
@@ -132,7 +162,6 @@ class MusicVisualize:
         """
         Tuplet notes contribute to a single duration, i.e. all quantized durations
         """
-        self.load_df()
         counts = Counter()
         for d in self.df.duration_count:
             counts.update(d)
@@ -214,13 +243,11 @@ class MusicVisualize:
 if __name__ == '__main__':
     from icecream import ic
 
-    # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01.json'
-    # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-    #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41.json'
-    fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-          'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52.json'
-    fnm = os.path.join(get_processed_path(), fnm)
-    mv = MusicVisualize(fnm)
+    dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01.json'
+    dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52.json'
+    dnms = [os.path.join(get_processed_path(), dnm) for dnm in [dnm_909, dnm_lmd]]
+    mv = MusicVisualize(dnms)
 
     def check_warn():
         df = mv.warn_info(as_counts=True)
@@ -232,7 +259,7 @@ if __name__ == '__main__':
         tempos = df.tempo.unique()
         ic(tempos)
         ic(set(tempos) - set(COMMON_TEMPOS))
-    check_uncommon_tempos()
+    # check_uncommon_tempos()
 
     def plots():
         mv.token_length_dist()
@@ -245,7 +272,7 @@ if __name__ == '__main__':
         # mv.note_pitch_dist()
         # mv.note_duration_dist()
         # mv.warning_type_dist()
-    plots()
+    # plots()
 
     fig_sz = (9, 5)
 
@@ -273,3 +300,47 @@ if __name__ == '__main__':
         title = 'Average #Warnings for each song'
         save_fig(f'{title}, {now(for_path=True)}')
     # save_for_report_warn()
+
+    fig_sz = (9, 9)
+
+    def plots_for_presentation():
+        # Colors from One Dark theme
+        od_fg = hex2rgb('#B1B8C5', normalize=True)
+        od_bg = hex2rgb('#282C34', normalize=True)
+        od_blue = hex2rgb('#619AEF', normalize=True)
+        od_purple = hex2rgb('#C678DD', normalize=True)
+        # ic(od_bg, od_blue)
+
+        # sns.set_style('dark_background')
+        # sns.set(style="ticks", context="talk")
+        plt.style.use('dark_background')
+        sns.set(style='ticks', context='talk')
+        sns.set(rc={})
+        plt.rcParams.update({
+            'axes.facecolor': od_bg, 'figure.facecolor': od_bg, 'savefig.facecolor': od_bg,
+            'xtick.color': od_fg, 'ytick.color': od_fg, 'axes.labelcolor': od_fg,
+            'grid.linewidth': 0.5, 'grid.alpha': 0.5,
+            'axes.linewidth': 0.5,
+        })
+
+        plt.figure(figsize=fig_sz)
+        ax = plt.gca()
+        args = dict(new_figure=False, ax=ax, title=None)
+
+        def token_len():
+            args['color'] = od_blue
+            mv.token_length_dist(**args)
+            return mv.df.n_token, 'Distribution of token length for each song'
+
+        def song_duration():
+            args.update(dict(color=od_purple, upper_percentile=97))
+            mv.song_duration_dist(**args)
+            return mv.df.duration, 'Distribution of song duration'
+
+        # vals, title = token_len()
+        vals, title = song_duration()
+        # mi, ma = vals.min(), np.percentile(vals, q=99.7)   # ~3std
+        # ax.set_xlim([mi, ma])
+        # plt.show()
+        save_fig(f'{title}, {now(for_path=True)}')
+    plots_for_presentation()
