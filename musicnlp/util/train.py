@@ -297,7 +297,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     assert 'epoch' in logs
                     del logs['epoch']
                     # For potential metrics computed
-                    ks = [self._get_eval_key(k) for k in logs.keys()]
+                    ks = [self._get_eval_key(k) for k in logs.it_keys()]
                     ks = [
                         k for k in ks
                         if k not in ['loss', 'ntp_acc', 'runtime', 'samples_per_second', 'steps_per_second']
@@ -356,7 +356,7 @@ class ClmAccCallback(ColoredPrinterCallback):
                 self.out_dict_tr['train_loss'] = logs['loss']
                 self.logger.info(pretty_log_dict(self.out_dict_tr))
                 self.out_dict_tr = None  # Rest for next global step
-            elif any('runtime' in k for k in logs.keys()):
+            elif any('runtime' in k for k in logs.it_keys()):
                 self.logger.info(log_dict(logs) if isinstance(logs, dict) else logs)
             else:
                 print('unhandled case', logs)

@@ -22,7 +22,7 @@ def get_dataset(
             def k2concat_args(split) -> Dict:
                 dsets = [d_dict[split] for d_dict in dset]
                 descs = [json.loads(d_dict[split].info.description) for d_dict in dset]
-                descs = {k_: [d[k_] for d in descs] for k_ in descs[0].keys()}  # Merge all keys
+                descs = {k_: [d[k_] for d in descs] for k_ in descs[0].it_keys()}  # Merge all keys
                 assert list_is_same_elms(descs['extractor_meta']), \
                     f'{logi("extractor_meta")} must be the same for all datasets to combine'
                 descs['extractor_meta'] = descs['extractor_meta'][0]

@@ -56,7 +56,7 @@ config: dict = {
 }
 
 
-for k in keys(config[DIR_DSET]):    # Accommodate other OS
+for k in it_keys(config[DIR_DSET]):    # Accommodate other OS
     k = f'{DIR_DSET}.{k}'
     val = get(config, k)
     if k[k.rfind('.')+1:] == 'dir_nm':

@@ -95,7 +95,7 @@ def set_(dic, ks, val):
     node[ks[-1]] = val
 
 
-def keys(dic, prefix=''):
+def it_keys(dic, prefix=''):
     """
     :return: Generator for all potentially-nested keys
     """
@@ -103,7 +103,7 @@ def keys(dic, prefix=''):
         return k_ if prefix == '' else f'{prefix}.{k_}'
     for k, v in dic.items():
         if isinstance(v, dict):
-            for k__ in keys(v, prefix=_full(k)):
+            for k__ in it_keys(v, prefix=_full(k)):
                 yield k__
         else:
             yield _full(k)

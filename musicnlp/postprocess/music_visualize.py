@@ -304,10 +304,7 @@ if __name__ == '__main__':
         od_bg = hex2rgb('#282C34', normalize=True)
         od_blue = hex2rgb('#619AEF', normalize=True)
         od_purple = hex2rgb('#C678DD', normalize=True)
-        # ic(od_bg, od_blue)
 
-        # sns.set_style('dark_background')
-        # sns.set(style="ticks", context="talk")
         plt.style.use('dark_background')
         sns.set(style='ticks', context='talk')
         plt.rcParams.update({

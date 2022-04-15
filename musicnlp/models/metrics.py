@@ -84,14 +84,36 @@ if __name__ == '__main__':
     from icecream import ic
 
     import musicnlp.util.music as music_util
+    from musicnlp.preprocess import MusicExtractor, KeyFinder
+
+    song_nm = 'Merry Go Round of Life'
+
+    def write_eg_song_json(song_name: str = 'Merry Go Round of Life'):
+        fnm = music_util.get_my_example_songs(song_name, fmt='MXL')
+        me = MusicExtractor()
+        score = me(fnm, exp='str_join')
+        with open(os.path.join(get_processed_path(), f'{song_name}.json'), 'w') as f:
+            json.dump(dict(score=score), f, indent=2)
+    # write_eg_song_json(song_nm)
+
+    def get_eg_song_key(song_name: str = 'Merry Go Round of Life'):
+        fnm = music_util.get_my_example_songs(song_name, fmt='MXL')
+
+        kf = KeyFinder(fnm)
+        keys = kf.find_key()
+        ic(keys)
+        # ic(kf.find_scale_degrees(keys))
+    # get_eg_song_key(song_nm)
 
     im = IkrMetric(MusicTokenizer(), n_init_bars=2)
 
     def check_key_metric():
-        text = music_util.get_extracted_song_eg(k='平凡之路')  # this one has tuplets
+        # text = music_util.get_extracted_song_eg(k='平凡之路')  # this one has tuplets
+        with open(os.path.join(get_processed_path(), f'{song_nm}.json'), 'r') as f:
+            text = json.load(f)['score']
         ic(text[:200])
         ic(im.get_off_key_ratio(text, text))
-    # check_key_metric()
+    check_key_metric()
 
     def check_init_key_no_error():
         """
@@ -125,4 +147,4 @@ if __name__ == '__main__':
                 im(ids, ids)  # effectively we're only checking the ground-truth init key part
                 # exit(1)
     # check_init_key_no_error()
-    profile_runtime(check_init_key_no_error)
+    # profile_runtime(check_init_key_no_error)

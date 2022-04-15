@@ -32,7 +32,6 @@ def parse_tensorboard(path) -> Dict[str, pd.DataFrame]:
     events = [list(v) for k, v in itertools.groupby(events, key=lambda e: e['step'])]
 
     pattern_name = re.compile(r'(?P<tag>.*)/(?P<key>.*)')
-    # tags = ['train', 'eval']  # TODO: hard-coded for now
 
     def name2tag_n_key(name: str) -> Tuple[str, str]:
         m = pattern_name.match(name)
@@ -40,26 +39,20 @@ def parse_tensorboard(path) -> Dict[str, pd.DataFrame]:
 
     def group_single(group_events: List[Dict]) -> Dict[str, Dict[str, Any]]:  # expects certain formatting of the `name`
         d_out = defaultdict(dict)
-        # d_out = dict(step=group_events[0]['step'])  # pick one arbitrarily
-        # tags, ks = zip(*[name2tag_n_key(e['name']) for e in events])
         for e in group_events:
             tag, key = name2tag_n_key(e['name'])
             if 'step' not in d_out[tag]:
                 d_out[tag]['step'] = e['step']
             d_out[tag][key] = e['value']
-        # return d_out | {name2tag_n_key(e['name'])[1]: e['value'] for e in group_events}
         return d_out
     events = [group_single(e) for e in events]
-    # ic(events[20])
     assert all(all(k in ['train', 'eval'] for k in e.keys()) for e in events)
     d_dfs = {
         tag: pd.DataFrame([d_out[tag] for d_out in events if tag in d_out])
         for tag in events[0].keys()
     }
-    # df_ = pd.DataFrame(events)
     for tag, df_ in d_dfs.items():
         mi, ma = df_.step.min(), df_.step.max()
-        # ic(tag, df_.step)
         assert np.array_equal(df_.step.to_numpy(), np.arange(mi, ma + 1)), \
             f'Expect step for {logi(tag)} to be continuously increasing integer range'
     return d_dfs
@@ -91,61 +84,44 @@ def smooth(vals: Sequence[float], factor: float) -> np.array:
 
 
 def plot_tb(
-        d_df: Dict[str, pd.DataFrame], y: Union[str, List[str]] = 'loss', save=False,
-        label: Union[str, List[str]] = None, smooth_factor=0.9, figure_kwargs: Dict = None,
-        title: str = None, cs = None,
+        d_df: Dict[str, pd.DataFrame], y: str = 'loss', label: str = None,
+        smooth_factor: Union[float, Dict[str, float]] = 0.9, figure_kwargs: Dict = None,
+        title: str = None, cs=None, save=False,
         smaller_plot: bool = False, steps_per_epoch: int = None
 ):
-    # if isinstance(y, (list, tuple)):
-    #     assert len(y) == 2, 'Only 2 values supported for multiple-value plot'
-    # else:
-    #     y = [y]
     if not isinstance(y, str):
         raise ValueError('y should be a string, multiple-variable plot no longer supported')
     label = label if label is not None else y
-    # if not isinstance(label, (list, tuple)):
-    #     label = [label]
     assert all(k in ['train', 'eval'] for k in d_df.keys())
     if figure_kwargs is None:
         figure_kwargs = dict()
     plt.figure(**figure_kwargs)
     cs = cs or sns.color_palette(palette='husl', n_colors=7)
 
-    def plot_single(tag, idx, y_, ax=plt.gca(), c=None):
-        df = d_df[tag]
+    def plot_single(idx_, tag_, ax=plt.gca()):
+        df = d_df[tag_]
         x = df.step
-        if tag == 'eval':
+        if tag_ == 'eval':
             x *= steps_per_epoch  # to match the time step for training, see `util.train.py`
-        y__ = df[y_]
-        # if 'acc' in y_:
-        #     y__ *= 100
-        factor = smooth_factor[tag] if isinstance(smooth_factor, dict) else smooth_factor
-        y_s = smooth(y__, factor=factor)
-        if c is None:
-            c = cs[idx]
+        y_ = df[y]
+        if 'acc' in y:
+            y_ *= 100
+        factor = smooth_factor[tag_] if isinstance(smooth_factor, dict) else smooth_factor
+        y_s = smooth(y_, factor=factor)
+        c = cs[idx_]
         if smaller_plot:  # TODO: kinda ugly & hard-coded
             args_ori = LN_KWARGS | dict(ls='None', c=c, alpha=0.5, ms=0.2)
-            if tag == 'eval':
+            if tag_ == 'eval':
                 args_ori |= dict(ms=8, marker='1', alpha=0.9)
             args_smooth = LN_KWARGS | dict(c=c, lw=0.75, marker=None)
         else:
             args_ori = LN_KWARGS | dict(ls=':', c=c, alpha=0.7)
             args_smooth = LN_KWARGS | dict(c=c, lw=0.75)
-        ic(tag, smaller_plot, args_ori, args_smooth)
-        ax.plot(x, y__, **args_ori)
-        return ax.plot(x, y_s, **args_smooth, label=f'{tag} {label}')
+        ax.plot(x, y_, **args_ori)
+        return ax.plot(x, y_s, **args_smooth, label=f'{tag_} {label}')
     plt.xlabel('Step')
-    # if len(y) == 2:
-    #     ax1 = plt.gca()
-    #     ax2 = ax1.twinx()
-    #     l1 = plot_single(0, y[0], ax=ax1)
-    #     l2 = plot_single(1, y[1], ax=ax2)
-    #     ax1.set_ylabel(label[0])
-    #     ax2.set_ylabel(label[1])
-    #     plt.legend(handles=l1+l2)
-    # else:
     for idx, tag in enumerate(d_df.keys()):
-        plot_single(tag, idx, y, c=cs[idx])
+        plot_single(idx, tag)
         plt.ylabel(label)
         plt.legend()
     save_title = 'Training per-batch performance over Steps'
@@ -211,7 +187,6 @@ if __name__ == '__main__':
         od_blue = hex2rgb('#619AEF', normalize=True)
         od_purple = hex2rgb('#C678DD', normalize=True)
         plt.style.use('dark_background')
-        # sns.set(style='ticks', context='talk')
         plt.rcParams.update({
             'axes.facecolor': od_bg, 'figure.facecolor': od_bg, 'savefig.facecolor': od_bg,
             'xtick.color': od_fg, 'ytick.color': od_fg, 'axes.labelcolor': od_fg,
@@ -229,4 +204,3 @@ if __name__ == '__main__':
             steps_per_epoch=343
         )
     plot_train_for_presentation()
-
