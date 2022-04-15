@@ -139,18 +139,24 @@ class MusicVocabulary:
         tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS + MusicVocabulary.UNCOM_TP]
         pitches = [self.cache['rest']] + [self._note2pch_str(Pitch(midi=i)) for i in range(128)]
 
-        self.toks: Dict[str, List[str]] = dict(
-            special=[specs[k] for k in ('end_of_song', 'start_of_bar', 'start_of_tuplet', 'end_of_tuplet')],
-            time_sig=tss,
-            tempo=tempos,
-            pitch=pitches,
-            duration=self.get_durations(exp='str')
-        )
+        self.toks: Dict[str, List[str]] = OrderedDict([  # Enforce iteration order
+            ('special', [specs[k] for k in ('end_of_song', 'start_of_bar', 'start_of_tuplet', 'end_of_tuplet')]),
+            ('time_sig', tss),
+            ('tempo', tempos),
+            ('pitch', pitches),
+            ('duration', self.get_durations(exp='str'))
+        ])
         self.enc: Dict[str, int] = {  # Back2back index as ids
             tok: id_ for id_, tok in enumerate(join_its(toks for toks in self.toks.values()))
         }
         self.dec = {v: k for k, v in self.enc.items()}
         assert len(self.enc) == len(self.dec)  # Sanity check: no id collision
+
+        # cache them for efficiency
+        self.id2type: Dict[int, VocabType] = {id_: self.type(tok) for id_, tok in self.dec.items()}
+        self.id2compact: Dict[int, Compact] = {
+            id_: self.compact(tok) for id_, tok in self.dec.items() if self.has_compact(tok)
+        }
 
     def to_dict(self, save=False):
         d_out = dict(
@@ -198,20 +204,23 @@ class MusicVocabulary:
     def __len__(self):
         return len(self.enc)
 
-    def has_compact(self, tok: str) -> bool:
+    def has_compact(self, tok: Union[str, int]) -> bool:
         return self.type(tok) != VocabType.special
 
-    def type(self, tok: str) -> VocabType:
-        if self.cache['pref_dur'] in tok:
-            return VocabType.duration
-        elif self.cache['pref_pch'] in tok:
-            return VocabType.pitch
-        elif self.cache['pref_time_sig'] in tok:
-            return VocabType.time_sig
-        elif self.cache['pref_tempo'] in tok:
-            return VocabType.tempo
+    def type(self, tok: Union[str, int]) -> VocabType:
+        if isinstance(tok, int):
+            return self.id2type[tok]
         else:
-            return VocabType.special
+            if self.cache['pref_dur'] in tok:
+                return VocabType.duration
+            elif self.cache['pref_pch'] in tok:
+                return VocabType.pitch
+            elif self.cache['pref_time_sig'] in tok:
+                return VocabType.time_sig
+            elif self.cache['pref_tempo'] in tok:
+                return VocabType.tempo
+            else:
+                return VocabType.special
 
     @staticmethod
     def _get_group1(tok, tpl) -> int:
@@ -236,26 +245,29 @@ class MusicVocabulary:
             If duration, returns the duration quarterLength
         """
         assert self.has_compact(tok), ValueError(f'{logi(tok)} does not have a compact representation')
-        typ = self.type(tok)
-        tpl = self.type2compact_re[typ]
-        if typ == VocabType.duration:
-            if '/' in tok:
-                numer, denom = MusicVocabulary._get_group2(tok, tpl['frac'])
-                assert math.log2(denom).is_integer()
-                # Quantized so definitely an exact float, but keep Fraction for exact additions
-                return Fraction(numer, denom)
-            else:
-                return MusicVocabulary._get_group1(tok, tpl['int'])
-        elif typ == VocabType.pitch:
-            if tok == self.cache['rest']:
-                return -1
-            else:
-                pch, octave = MusicVocabulary._get_group2(tok, tpl)
-                return pch-1 + octave*12  # See `pch2step`
-        elif typ == VocabType.time_sig:
-            return MusicVocabulary._get_group2(tok, tpl)
-        else:  # VocabType.tempo
-            return MusicVocabulary._get_group1(tok, tpl)
+        if isinstance(tok, int):
+            return self.id2compact[tok]
+        else:
+            typ = self.type(tok)
+            tpl = self.type2compact_re[typ]
+            if typ == VocabType.duration:
+                if '/' in tok:
+                    numer, denom = MusicVocabulary._get_group2(tok, tpl['frac'])
+                    assert math.log2(denom).is_integer()
+                    # Quantized so definitely an exact float, but keep Fraction for exact additions
+                    return Fraction(numer, denom)
+                else:
+                    return MusicVocabulary._get_group1(tok, tpl['int'])
+            elif typ == VocabType.pitch:
+                if tok == self.cache['rest']:
+                    return -1
+                else:
+                    pch, octave = MusicVocabulary._get_group2(tok, tpl)
+                    return pch-1 + octave*12  # See `pch2step`
+            elif typ == VocabType.time_sig:
+                return MusicVocabulary._get_group2(tok, tpl)
+            else:  # VocabType.tempo
+                return MusicVocabulary._get_group1(tok, tpl)
 
     def uncompact(self, type: VocabType, compact: Optional[Compact] = None) -> str:
         """
