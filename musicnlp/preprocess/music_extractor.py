@@ -25,6 +25,15 @@ class MusicExtractor:
     """
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation
     """
+    instrs_drum = (
+        m21.instrument.BassDrum,
+        m21.instrument.BongoDrums,
+        m21.instrument.CongaDrum,
+        m21.instrument.SnareDrum,
+        m21.instrument.SteelDrum,
+        m21.instrument.TenorDrum,
+    )
+
     def __init__(
             self, precision: int = 5, mode: str = 'melody',
             warn_logger: Union[WarnLog, bool] = None,
@@ -72,35 +81,33 @@ class MusicExtractor:
         m, p, t = d['mode'], d['precision'], d['greedy_tuplet_pitch_threshold']
         return log_dict_p({'mode': m, 'prec': p, 'th': t})
 
+    @staticmethod
+    def is_drum(part: Part) -> bool:
+
+        """
+        :return: True if `part` contains *only* `Unpitched`
+
+        Intended for removing drum tracks
+        """
+        # One pass through `part`, more efficient
+        has_unpitched, has_percussion, has_note = False, False, False
+        for e in part.recurse():  # Need to look through the entire part to check no Notes
+            if isinstance(e, MusicExtractor.instrs_drum):
+                return True  # If part has a drum as instrument, take for granted it's a drum track
+            elif isinstance(e, m21.note.Note):
+                has_note = True
+            elif isinstance(e, m21.percussion.PercussionChord):
+                has_percussion = True
+            elif isinstance(e, m21.note.Unpitched):
+                has_unpitched = True
+        return (has_unpitched or has_percussion) and not has_note
+
     def it_bars(self, scr: Score) -> Iterator[Tuple[Tuple[Measure], TimeSignature, MetronomeMark]]:
         """
         Unroll a score by time, with the time signatures of each bar
         """
-        # Remove drum tracks
-        def is_drum(part):
-            """
-            :return: True if `part` contains *only* `Unpitched`
-            """
-            # One pass through `part`, more efficient
-            has_unpitched, has_percussion, has_note = False, False, False
-            for e in part.recurse():  # Need to look through the entire part to check no Notes
-                if isinstance(e, m21.note.Note):
-                    has_note = True
-                elif isinstance(e, m21.percussion.PercussionChord):
-                    has_percussion = True
-                elif isinstance(e, m21.note.Unpitched):
-                    has_unpitched = True
-            return (has_unpitched or has_percussion) and not has_note
-        instrs_drum = [
-            m21.instrument.BassDrum,
-            m21.instrument.BongoDrums,
-            m21.instrument.CongaDrum,
-            m21.instrument.SnareDrum,
-            m21.instrument.SteelDrum,
-            m21.instrument.TenorDrum,
-        ]
         parts = list(scr.parts)
-        ignore = [bool(any(p_[drum] for drum in instrs_drum) or is_drum(p_)) for p_ in parts]
+        ignore = [MusicExtractor.is_drum(p_) for p_ in parts]
 
         time_sig, tempo = None, None
         for idx, bars in enumerate(zip(*[list(p[Measure]) for p in parts])):  # Bars for all tracks across time

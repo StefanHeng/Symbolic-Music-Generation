@@ -2,9 +2,19 @@
  using the Krumhansl-Schmuckler key-finding algorithm.
  TODO:What if there are some other good algos?
  It still would not realize all 24 keys!(only 12)"""
-import music21 as m21
+from typing import List, Tuple, Dict, Union
+
 import numpy as np
-from icecream import ic
+import music21 as m21
+
+from musicnlp.util.music_lib import *
+from musicnlp.vocab import Key
+from musicnlp.preprocess.music_extractor import MusicExtractor
+
+
+# Tuple of key and (un-normalized) confidence score
+Keys = Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]
+KeysDict = Dict[Key, float]
 
 
 def get_durations(s):
@@ -34,23 +44,10 @@ class KeyFinder:
 
     def __init__(self, file_name):
         """file_name: the name of file given path it is in"""
-        self.piece = m21.converter.parse(file_name)
+        self.piece: Score = m21.converter.parse(file_name)
 
-        # remove all the percussion in this piece, got from MelodyExtractor.py
-        def is_drum(part):
-            """
-            :return: True if `part` contains *only* `Unpitched`
-            """
-            return list(part[m21.note.Unpitched]) and not list(part[m21.note.Note])
-
-        parts_drum = filter(lambda p_: any(p_[drum] for drum in [
-            m21.instrument.BassDrum,
-            m21.instrument.BongoDrums,
-            m21.instrument.CongaDrum,
-            m21.instrument.SnareDrum,
-            m21.instrument.SteelDrum,
-            m21.instrument.TenorDrum,
-        ]) or is_drum(p_), self.piece.parts)
+        # remove all the percussion in this piece
+        parts_drum = filter(lambda p_: MusicExtractor.is_drum(p_), self.piece.parts)
         for pd in parts_drum:
             self.piece.remove(pd)
 
@@ -89,7 +86,7 @@ class KeyFinder:
         }
 
     # @eye
-    def find_key(self):
+    def find_key(self, return_enum: bool = False) -> Union[Keys, KeysDict]:
         """
         return: 2 arrays that contains the best k candidates for major and minor respectively
         of the piece as a string.
@@ -113,7 +110,7 @@ class KeyFinder:
         best_val_min = np.max(corrcoef_mat[1])
         # fuzzy search
         close_ma = len(corrcoef_mat[0][corrcoef_mat[0] >= best_val_maj * 0.8])
-        close_mi = len(corrcoef_mat[1][corrcoef_mat[1] >= best_val_min * 0.8])
+        close_mi = len(corrcoef_mat[1][corrcoef_mat[1] >= best_val_min * 0.7])
         best_maj_keys = (np.argsort(corrcoef_mat[0]))[-close_ma:]
         best_min_keys = (np.argsort(corrcoef_mat[1]))[-close_mi:]
         # convert candidates to string in convention format(circle of fifth).
@@ -122,7 +119,12 @@ class KeyFinder:
         min_keys_result = [(f'{self.conv_minor[pitches[tonic]]}Minor', corrcoef_mat[1][tonic]) for (_, tonic) in
                            [divmod(i, 12) for i in best_min_keys]]
         #
-        return maj_keys_result, min_keys_result
+        if return_enum:
+            def key_tup2dict(key_tup: List[Tuple[str, float]]) -> KeysDict:
+                return {Key.from_str(k_): v for k_, v in dict(key_tup).items()}
+            return key_tup2dict(maj_keys_result) | key_tup2dict(min_keys_result)
+        else:
+            return maj_keys_result, min_keys_result
     #
     # def alt_find(self):
     #     a = m21.analysis.discrete.TemperleyKostkaPayne(self.piece)
@@ -181,8 +183,8 @@ class KeyFinder:
 
 def main(path: str):
     a = KeyFinder(path)
-    k = a.find_key()
-    ic(k)
+    keys = a.find_key()
+    ic(keys)
     # ic(a.find_scale_degrees(k))
 
 
@@ -191,8 +193,11 @@ if __name__ == '__main__':
 
     import musicnlp.util.music as music_util
 
-    p = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
-    ic(p)
-    main(p)
+    def check_get_key():
+        path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        ic(path)
+        kf = KeyFinder(path)
+        ic(kf.find_key(return_enum=True))
+    check_get_key()
     # path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
     # main(path)

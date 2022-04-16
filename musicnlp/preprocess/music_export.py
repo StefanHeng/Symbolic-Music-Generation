@@ -1,7 +1,11 @@
+import os
 import glob
-from typing import Optional
+import json
+from typing import List, Dict, Optional, Union
 
+import pandas as pd
 import datasets
+from tqdm import tqdm
 
 from musicnlp.util import *
 import musicnlp.util.music as music_util
@@ -26,7 +30,7 @@ class MusicExport:
     def __call__(
             self,
             filenames: Union[List[str], str],
-            output_filename=f'{PKG_NM} music extraction', path_out=get_processed_path(),
+            output_filename=f'{PKG_NM} music extraction', path_out=music_util.get_processed_path(),
             extractor_args: Dict = None, exp='str_join',
             parallel: Union[bool, int] = False, disable_tqdm: bool = False, save_each: bool = False,
     ):
@@ -121,7 +125,8 @@ class MusicExport:
 
     @staticmethod
     def combine_saved_songs(
-            filenames: List[str], output_filename=f'{PKG_NM} music extraction', path_out=get_processed_path(),
+            filenames: List[str], output_filename=f'{PKG_NM} music extraction',
+            path_out=music_util.get_processed_path(),
     ) -> Optional[Dict]:
         """
         Combine the individual single-song json file exports to a single file,
@@ -147,7 +152,7 @@ class MusicExport:
 
     @staticmethod
     def json2dataset(
-            fnm: str, path_out=get_processed_path(), split_args: Dict = None
+            fnm: str, path_out=music_util.get_processed_path(), split_args: Dict = None
     ) -> Union[datasets.Dataset, datasets.DatasetDict]:
         """
         Save extracted `.json` dataset by `__call__`, as HuggingFace Dataset to disk
@@ -214,7 +219,7 @@ if __name__ == '__main__':
             filenames: Union[str, List[str]] = 'LMD-cleaned-subset',
             save_dir: str = 'LMD-cleaned_subset save single 04-09_21-51'
     ):
-        path_out = os.path.join(get_processed_path(), 'intermediate', save_dir)
+        path_out = os.path.join(music_util.get_processed_path(), 'intermediate', save_dir)
         # parallel = 3
         parallel = 64
         me(
@@ -226,7 +231,7 @@ if __name__ == '__main__':
     # export2json_save_each(filenames=music_util.get_cleaned_song_paths('LMD-cleaned-subset', fmt='mxl')[3000:])
 
     def combine_single_json_songs(singe_song_dir: str, output_fnm: str):
-        fnms = sorted(glob.iglob(os.path.join(get_processed_path(), 'intermediate', singe_song_dir, '*.json')))
+        fnms = sorted(glob.iglob(os.path.join(music_util.get_processed_path(), 'intermediate', singe_song_dir, '*.json')))
         songs = me.combine_saved_songs(filenames=fnms, output_filename=output_fnm)
         ic(songs.keys(), len(songs['music']))
     # combine_single_json_songs(

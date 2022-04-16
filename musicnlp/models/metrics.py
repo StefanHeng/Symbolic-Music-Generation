@@ -97,7 +97,9 @@ if __name__ == '__main__':
     def write_eg_song_json(song_name: str = 'Merry Go Round of Life'):
         fnm = music_util.get_my_example_songs(song_name, fmt='MXL')
         me = MusicExtractor()
-        score = me(fnm, exp='str_join')
+        # exp = 'str_join'
+        exp = 'id'
+        score = me(fnm, exp=exp)
         with open(os.path.join(music_util.get_processed_path(), f'{song_name}.json'), 'w') as f:
             json.dump(dict(score=score), f, indent=2)
     write_eg_song_json(song_nm)

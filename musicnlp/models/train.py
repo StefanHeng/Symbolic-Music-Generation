@@ -22,7 +22,7 @@ import musicnlp.util.train as train_util
 import musicnlp.util.models as model_util
 from musicnlp.vocab import MusicTokenizer
 from musicnlp.preprocess import get_dataset
-from musicnlp.models import _models, metrics
+from musicnlp.models import architectures, metrics
 
 
 def get_model_n_tokenizer(
@@ -100,7 +100,7 @@ def get_model_n_tokenizer(
             ))
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
-            'xl': (TransfoXLConfig, _models.MyTransfoXLLMHeadModel),
+            'xl': (TransfoXLConfig, architectures.MyTransfoXLLMHeadModel),
             'reformer': (ReformerConfig, ReformerModelWithLMHead)
         }
     cls_config, cls_model = get_model_n_tokenizer.d_nm2cls[model_name]
@@ -166,7 +166,7 @@ def get_train_and_my_train_args(
             optim=OptimizerNames.ADAMW_TORCH,
             disable_tqdm=True,
             report_to='none',
-            # gradient_checkpointing=torch.cuda.is_available()
+            # `gradient_checkpointing` for both Transformer XL and Reformer not supported
         )
     if not hasattr(get_train_and_my_train_args, 'd_train_args'):
         get_train_and_my_train_args.d_train_args = dict(

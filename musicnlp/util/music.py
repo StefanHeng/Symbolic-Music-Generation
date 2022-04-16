@@ -9,7 +9,7 @@ from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
 
-from musicnlp.util.util import *
+from musicnlp.util import *
 from musicnlp.util.data_path import PATH_BASE, DIR_DSET
 
 
@@ -21,8 +21,8 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
     """
     :return: A list of or single MIDI file path
     """
-    fmt, formats = fmt.lower(), ['mxl', 'midi']
-    assert fmt in formats, f'Invalid format: expected one of {logi(formats)}, got {logi(fmt)}'
+    fmt = fmt.lower()
+    ca(fmt=fmt)
     if extracted:
         assert fmt == 'mxl', 'Only support extracted for MXL files'
     dset_nm = f'{fmt}-eg'
