@@ -48,8 +48,7 @@ class IkrMetric:
         return key_est
 
     def get_off_key_ratio(
-            self, gen_token_text: Union[str, List[str]], gt_token_text: Union[str, List[str]],
-            n_init_bars: int = 4
+            self, gen_token_text: Union[str, List[str]], gt_token_text: Union[str, List[str]]
     ) -> float:
         """
         For a single song

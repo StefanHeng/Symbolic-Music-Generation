@@ -22,8 +22,7 @@ import musicnlp.util.train as train_util
 import musicnlp.util.models as model_util
 from musicnlp.vocab import MusicTokenizer
 from musicnlp.preprocess import get_dataset
-from musicnlp.models import _models
-from musicnlp.models import metrics
+from musicnlp.models import _models, metrics
 
 
 def get_model_n_tokenizer(

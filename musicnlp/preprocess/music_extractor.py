@@ -4,21 +4,21 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 See `melody_extractor` for the old version.
 """
 import os
+import math
 import datetime
 import itertools
-from typing import Any
+from typing import List, Tuple, Dict, Iterable, Iterator, Union, Any
+from fractions import Fraction
 from collections import defaultdict, Counter, OrderedDict
 
-from music21.stream import Voice
-from music21.duration import Duration
+import numpy as np
+import music21 as m21
 
+from musicnlp.util import *
 from musicnlp.util.data_path import PATH_BASE, DIR_DSET
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import COMMON_TEMPOS, COMMON_TIME_SIGS, is_common_tempo, is_common_time_sig, MusicVocabulary
 from musicnlp.preprocess import WarnLog
-
-# Type for extracted music
-ScoreExt = Union[Score, List[str], List[int], str]
 
 
 class MusicExtractor:
@@ -81,17 +81,6 @@ class MusicExtractor:
             """
             :return: True if `part` contains *only* `Unpitched`
             """
-            # # has_unpitched = bool(list(part[m21.note.Unpitched])) or \
-            # # at least one Unpitched found
-            # has_unpitched = any(True for _ in part[m21.note.Unpitched]) or all(
-            #         all(isinstance(n, m21.note.Unpitched) for n in c.notes)
-            #         for c in part[m21.percussion.PercussionChord]
-            #     )
-            # pcs = list(part[m21.percussion.PercussionChord])
-            # if len(pcs) > 0:
-            #     has_unpitched = has_unpitched and \
-            #                     all(all(isinstance(n, m21.note.Unpitched) for n in pc.notes)for pc in pcs)
-            # return has_unpitched and len(list(part[m21.note.Note])) == 0
             # One pass through `part`, more efficient
             has_unpitched, has_percussion, has_note = False, False, False
             for e in part.recurse():  # Need to look through the entire part to check no Notes
@@ -265,7 +254,7 @@ class MusicExtractor:
         #     ic('in expand_bar', number)
         while elm is not None:
             full_nm = getattr(elm, 'fullName', None)
-            if full_nm and TUPLET_POSTFIX in full_nm:
+            if full_nm and tuplet_postfix in full_nm:
                 tup_str, n_tup = fullname2tuplet_meta(full_nm)
 
                 elms_tup: List[Union[Rest, Note, Chord]] = [elm]
@@ -634,7 +623,6 @@ class MusicExtractor:
                     nt_end_offset = nt_.offset + nt_.duration.quarterLength
                     # if number == 50:
                     #     ic(ns_out, nt, offset, offset_next)
-                    eps = 1e-3
                     # For difference between floating point and Fraction on real small duration edge cases
                     # See below for another instance
                     if offset_next-offset > eps:
@@ -923,7 +911,7 @@ if __name__ == '__main__':
             'Ozzy Osbourne - Mr. Crowley',
             'Ricky Martin - Jaleo (Spanglish)'
         ]
-        broken_fl = broken_files[0]
+        # broken_fl = broken_files[0]
         # broken_fl = 'U2 - The Electric Co.'
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 

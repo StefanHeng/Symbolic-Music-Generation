@@ -3,11 +3,18 @@ Deprecated, see `music_extractor.py`
 """
 import os
 import json
+import math
 import functools
-from typing import Callable, Any
+from copy import deepcopy
+from typing import List, Tuple, Dict, Callable, Union, Any
 from warnings import warn
+from fractions import Fraction
 
-# import musicnlp.util.music as music_util
+import numpy as np
+import music21 as m21
+
+from musicnlp.util import *
+import musicnlp.util.music as music_util
 from musicnlp.util.data_path import PATH_BASE, DIR_DSET
 from musicnlp.util.music_lib import *
 

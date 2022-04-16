@@ -15,6 +15,8 @@ from music21.tempo import MetronomeMark
 from music21.note import Note, Rest
 from music21.stream import Measure, Part, Score
 from music21.chord import Chord
+from music21.stream import Voice
+from music21.duration import Duration
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -32,11 +34,49 @@ if KEEP_OBSOLETE:
     from librosa import display
 
 
+__all__ = [
+    'TimeSignature', 'MetronomeMark', 'Note', 'Rest', 'Measure', 'Part', 'Score', 'Chord', 'Voice', 'Duration',
+    
+    'ExtNote', 'SNote', 'Dur', 'TsTup', 'ordinal2dur_type', 'ScoreExt',
+    'time_sig2n_slots',
+    'eps', 'is_int', 'is_8th', 'quarter_len2fraction',
+    'note2pitch', 'note2dur', 'note2note_cleaned', 'notes2offset_duration',
+    'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
+    'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes',
+    'is_notes_no_overlap', 'is_notes_pos_duration', 'is_valid_bar_notes',
+    'get_score_skeleton', 'insert_ts_n_tp_to_part', 'make_score'
+]
+
+if KEEP_OBSOLETE:
+    __all__ += [
+        'default_tempo',  'tempo2bpm',
+        'MidoUtil', 'PrettyMidiUtil', 'Music21Util'
+    ]
+
+
 # Note entity/group as far as music extraction is concerned
 ExtNote = Union[Note, Rest, Chord, Tuple[Union[Note, Rest]]]
 SNote = Union[Note, Rest]  # Single note
 Dur = Union[float, Fraction]
 TsTup = Tuple[int, int]
+eps = 1e-6  # for music21 duration equality comparison
+
+
+TupletNameMeta = namedtuple('TupletNameMeta', field_names=['tuplet_string', 'n_note'])
+tuplet_postfix = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
+tuplet_prefix2n_note = dict(  # Tuplet prefix => expected number of notes
+    Tri=3,
+    Quintu=5,
+    Nonu=9
+)
+
+
+# support up to certain precision; my power index is off by 2 relative to music21's quarterLength
+ordinal2dur_type = ['whole', 'half', 'quarter', 'eighth', '16th', '32nd', '64th', '128th', '256th', '512th', '1024th']
+
+
+# Type for extracted music
+ScoreExt = Union[Score, List[str], List[int], str]
 
 
 def time_sig2n_slots(time_sig: m21.meter.TimeSignature, precision: int) -> Tuple[int, int]:
@@ -52,14 +92,141 @@ def time_sig2n_slots(time_sig: m21.meter.TimeSignature, precision: int) -> Tuple
     return n_slots_per_beat, n_slots
 
 
-def it_m21_elm(
-        stream: Union[m21.stream.Measure, m21.stream.Part, m21.stream.Score, m21.stream.Voice],
-        types=(Note, Rest)
-):
+def is_int(num: Union[float, Fraction], check_close: Union[bool, float] = True) -> bool:
+    if isinstance(num, float):
+        if check_close:  # Numeric issue summing Fractions with floats
+            eps = check_close if isinstance(check_close, float) else 1e-6
+            return math.isclose(num, round(num), abs_tol=eps)
+        else:
+            return num.is_integer()
+    else:
+        return num.denominator == 1
+
+
+def is_8th(d: Dur) -> bool:
+    """
+    :return If Duration `d` in quarterLength, is multiple of 8th note
+    """
+    return is_int(d*2)
+
+
+def quarter_len2fraction(q_len: Dur) -> Fraction:
+    """
+    :param q_len: A quarterLength value to convert
+        Requires one of power of 2
+    """
+    if isinstance(q_len, float):
+        numer, denom = q_len, 1.
+        while not (numer.is_integer() and denom.is_integer()):  # Should terminate quick for the expected use case
+            numer *= 2
+            denom *= 2
+        return Fraction(int(numer), int(denom))
+    else:
+        return q_len
+
+
+def note2pitch(note: ExtNote):
+    if isinstance(note, tuple):  # Triplet, return average pitch
+        # Duration for each note not necessarily same duration, for transcription quality
+        fs, durs = zip(*[(note2pitch(n__), n__.duration.quarterLength) for n__ in note])
+        return np.average(fs, weights=durs)
+    elif isinstance(note, Note):
+        return note.pitch.frequency
+    else:
+        assert isinstance(note, Rest)
+        return 0  # `Rest` given pitch frequency of 0
+
+
+def note2dur(note: ExtNote) -> Dur:
+    if isinstance(note, tuple):
+        return sum(note2dur(nt) for nt in note)
+    else:
+        return note.duration.quarterLength
+
+
+def note2note_cleaned(
+        note: ExtNote, q_len=None, offset=None, for_output: bool = False, from_tuplet: bool = False
+) -> ExtNote:
+    """
+    :param note: Note to clean
+    :param q_len: Quarter length to set
+    :param offset: Offset to set
+    :param for_output: If true, set duration for tuplet notes in the proper format,
+        so that music21 export sees tuplets as a group
+        Expects total duration of tuplet to be quantized
+    :param from_tuplet: Flag for note creation for tuplet
+        Internally used for duration setting in case `for_output`
+    :return: A cleaned version of Note or tuplets with only duration, offset and pitch set
+        Notes in tuplets are set with-equal duration given by (`q_len` if `q_len` given, else tuplet total length)
+    """
+    if q_len is None:
+        q_len = note2dur(note)
+    if isinstance(note, tuple):
+        offset = offset if offset is not None else note[0].offset
+        q_len = quarter_len2fraction(q_len)
+        dur_ea = q_len/len(note)
+        if for_output:
+            # 2 to keep on par with quarterLength, 1 more as it seems how music21 works...
+            my_ordinal = math.log2(q_len.denominator) + 2 + 1
+            assert my_ordinal.is_integer()
+            my_ordinal = int(my_ordinal)
+
+            notes: List[SNote] = [note2note_cleaned(n, from_tuplet=True) for n in note]
+            # cos directly setting a fraction to Duration would result in error in music21 write, if fraction too small
+            dur_ea_tup = m21.duration.Tuplet(
+                numberNotesActual=len(notes), numberNotesNormal=q_len.numerator,
+                # effectively not using the first 2, but it's fine
+                # as multiplying `q_len.numerator` is equivalent as smaller ordinal
+                durationNormal=ordinal2dur_type[my_ordinal]
+            )
+            for n in notes:
+                n.duration.appendTuplet(dur_ea_tup)
+        else:
+            notes: List[SNote] = [note2note_cleaned(n, q_len=dur_ea) for n in note]
+        for i, nt_tup in enumerate(notes):
+            notes[i].offset = offset + dur_ea * i
+        return tuple(notes)
+    dur = Duration(quarterLength=q_len)
+    dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
+    assert isinstance(note, (Note, Rest, Chord))
+    if isinstance(note, Note):  # Removes e.g. `tie`s
+        nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), **dur_args)
+    elif isinstance(note, Rest):
+        nt = Rest(offset=note.offset, **dur_args)
+    else:
+        nt = Chord(notes=note.notes, offset=note.offset, **dur_args)
+    # Setting offset in constructor doesn't seem to work per `music21
+    nt.offset = offset if offset is not None else note.offset
+    return nt
+
+
+def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[float], List[Dur]]:
+    if isinstance(notes, list):  # Else, single tuplet notes
+        notes = flatten_notes(unroll_notes(notes))
+    offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
+    return offsets, durs
+
+
+def fullname2tuplet_meta(fullname: str) -> TupletNameMeta:
+    post, pref2n = tuplet_postfix, tuplet_prefix2n_note
+    pref = fullname[:fullname.find(post)].split()[-1]
+    tup_str: str = f'{pref}{post}'
+    if pref in pref2n:
+        n_tup = pref2n[pref]
+    else:
+        assert pref == 'Tu'  # A generic case, music21 processing, different from that of MuseScore
+        # e.g. 'C in octave 1 Dotted 32nd Tuplet of 9/8ths (1/6 QL) Note' makes 9 notes in tuplet
+        words = fullname.split()
+        word_n_tup = words[words.index(tup_str) + 2]
+        n_tup = int(word_n_tup[:word_n_tup.find('/')])
+    return TupletNameMeta(tuplet_string=tup_str, n_note=n_tup)
+
+
+def it_m21_elm(stream: Union[Measure, Part, Score, Voice], types=(Note, Rest)):
     """
     Iterates elements in a stream, for those that are instances of that of `type`, in the original order
     """
-    if isinstance(stream, (m21.stream.Measure, m21.stream.Voice)):
+    if isinstance(stream, (Measure, Voice)):
         return iter(filter(lambda elm: isinstance(elm, types), stream))
     else:
         return iter(filter(lambda elm: isinstance(elm, types), stream.flatten()))
@@ -84,77 +251,6 @@ def group_triplets(bar) -> List[ExtNote]:
             lst.append(elm)
         elm = next(it, None)
     return lst
-
-
-EPS = 1e-6
-
-
-def is_int(num: Union[float, Fraction], check_close: Union[bool, float] = True) -> bool:
-    if isinstance(num, float):
-        if check_close:  # Numeric issue summing Fractions with floats
-            eps = check_close if isinstance(check_close, float) else 1e-6
-            return math.isclose(num, round(num), abs_tol=eps)
-        else:
-            return num.is_integer()
-    else:
-        return num.denominator == 1
-
-
-def is_8th(d: Dur) -> bool:
-    """
-    :return If Duration `d` in quarterLength, is multiple of 8th note
-    """
-    return is_int(d*2)
-
-
-def note2pitch(note: ExtNote):
-    if isinstance(note, tuple):  # Triplet, return average pitch
-        # Duration for each note not necessarily same duration, for transcription quality
-        fs, durs = zip(*[(note2pitch(n__), n__.duration.quarterLength) for n__ in note])
-        return np.average(fs, weights=durs)
-    elif isinstance(note, Note):
-        return note.pitch.frequency
-    else:
-        assert isinstance(note, Rest)
-        return 0  # `Rest` given pitch frequency of 0
-
-
-def note2dur(note: ExtNote) -> Dur:
-    if isinstance(note, tuple):
-        return sum(note2dur(nt) for nt in note)
-    else:
-        return note.duration.quarterLength
-
-
-def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[float], List[Dur]]:
-    if isinstance(notes, list):  # Else, single tuplet notes
-        notes = flatten_notes(unroll_notes(notes))
-    offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
-    return offsets, durs
-
-
-TupletNameMeta = namedtuple('TupletNameMeta', field_names=['tuplet_string', 'n_note'])
-TUPLET_POSTFIX = 'plet'  # Postfix for all tuplets, e.g. `Triplet`, `Quintuplet`
-TUPLET_PREFIX2N_NOTE = dict(  # Tuplet prefix => expected number of notes
-    Tri=3,
-    Quintu=5,
-    Nonu=9
-)
-
-
-def fullname2tuplet_meta(fullname: str) -> TupletNameMeta:
-    post, pref2n = TUPLET_POSTFIX, TUPLET_PREFIX2N_NOTE
-    pref = fullname[:fullname.find(post)].split()[-1]
-    tup_str: str = f'{pref}{post}'
-    if pref in pref2n:
-        n_tup = pref2n[pref]
-    else:
-        assert pref == 'Tu'  # A generic case, music21 processing, different from that of MuseScore
-        # e.g. 'C in octave 1 Dotted 32nd Tuplet of 9/8ths (1/6 QL) Note' makes 9 notes in tuplet
-        words = fullname.split()
-        word_n_tup = words[words.index(tup_str) + 2]
-        n_tup = int(word_n_tup[:word_n_tup.find('/')])
-    return TupletNameMeta(tuplet_string=tup_str, n_note=n_tup)
 
 
 def flatten_notes(notes: Iterable[ExtNote]) -> Iterator[SNote]:
@@ -243,81 +339,6 @@ def unroll_notes(notes: List[ExtNote]) -> List[ExtNote]:
         return notes
 
 
-def quarter_len2fraction(q_len: Dur) -> Fraction:
-    """
-    :param q_len: A quarterLength value to convert
-        Requires one of power of 2
-    """
-    if isinstance(q_len, float):
-        numer, denom = q_len, 1.
-        while not (numer.is_integer() and denom.is_integer()):  # Should terminate quick for the expected use case
-            numer *= 2
-            denom *= 2
-        return Fraction(int(numer), int(denom))
-    else:
-        return q_len
-
-
-# support up to certain precision; my power index is off by 2 relative to music21's quarterLength
-ordinal2dur_type = ['whole', 'half', 'quarter', 'eighth', '16th', '32nd', '64th', '128th', '256th', '512th', '1024th']
-
-
-def note2note_cleaned(
-        note: ExtNote, q_len=None, offset=None, for_output: bool = False, from_tuplet: bool = False
-) -> ExtNote:
-    """
-    :param note: Note to clean
-    :param q_len: Quarter length to set
-    :param offset: Offset to set
-    :param for_output: If true, set duration for tuplet notes in the proper format,
-        so that music21 export sees tuplets as a group
-        Expects total duration of tuplet to be quantized
-    :param from_tuplet: Flag for note creation for tuplet
-        Internally used for duration setting in case `for_output`
-    :return: A cleaned version of Note or tuplets with only duration, offset and pitch set
-        Notes in tuplets are set with-equal duration given by (`q_len` if `q_len` given, else tuplet total length)
-    """
-    if q_len is None:
-        q_len = note2dur(note)
-    if isinstance(note, tuple):
-        offset = offset if offset is not None else note[0].offset
-        q_len = quarter_len2fraction(q_len)
-        dur_ea = q_len/len(note)
-        if for_output:
-            # 2 to keep on par with quarterLength, 1 more as it seems how music21 works...
-            my_ordinal = math.log2(q_len.denominator) + 2 + 1
-            assert my_ordinal.is_integer()
-            my_ordinal = int(my_ordinal)
-
-            notes: List[SNote] = [note2note_cleaned(n, from_tuplet=True) for n in note]
-            # cos directly setting a fraction to Duration would result in error in music21 write, if fraction too small
-            dur_ea_tup = m21.duration.Tuplet(
-                numberNotesActual=len(notes), numberNotesNormal=q_len.numerator,
-                # effectively not using the first 2, but it's fine
-                # as multiplying `q_len.numerator` is equivalent as smaller ordinal
-                durationNormal=ordinal2dur_type[my_ordinal]
-            )
-            for n in notes:
-                n.duration.appendTuplet(dur_ea_tup)
-        else:
-            notes: List[SNote] = [note2note_cleaned(n, q_len=dur_ea) for n in note]
-        for i, nt_tup in enumerate(notes):
-            notes[i].offset = offset + dur_ea * i
-        return tuple(notes)
-    dur = m21.duration.Duration(quarterLength=q_len)
-    dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
-    assert isinstance(note, (Note, Rest, Chord))
-    if isinstance(note, Note):  # Removes e.g. `tie`s
-        nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), **dur_args)
-    elif isinstance(note, Rest):
-        nt = Rest(offset=note.offset, **dur_args)
-    else:
-        nt = Chord(notes=note.notes, offset=note.offset, **dur_args)
-    # Setting offset in constructor doesn't seem to work per `music21
-    nt.offset = offset if offset is not None else note.offset
-    return nt
-
-
 def is_notes_no_overlap(notes: Iterable[ExtNote]) -> bool:
     """
     :return True if notes don't overlap, given the start time and duration
@@ -329,7 +350,7 @@ def is_notes_no_overlap(notes: Iterable[ExtNote]) -> bool:
     while note is not None:
         # Current note should begin, after the previous one ends
         # Since numeric representation of one-third durations, aka tuplets
-        if (end-EPS) <= note.offset:
+        if (end-eps) <= note.offset:
             end = note.offset + note.duration.quarterLength
             note = next(notes, None)
         else:
@@ -402,19 +423,18 @@ def make_score(
     return score
 
 
-DEF_TPO = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)
-N_NOTE_OCT = 12  # Number of notes in an octave
-
-
-def tempo2bpm(tempo):
-    """
-    :param tempo: ms per beat
-    :return: Beat per minute
-    """
-    return 60 * 1e6 / tempo
-
-
 if KEEP_OBSOLETE:
+    default_tempo = int(5e5)  # Midi default tempo (ms per beat, i.e. 120 BPM)
+
+
+    def tempo2bpm(tempo):
+        """
+        :param tempo: ms per beat
+        :return: Beat per minute
+        """
+        return 60 * 1e6 / tempo
+
+
     class MidoUtil:
         def __init__(self):
             pass
@@ -438,7 +458,7 @@ if KEEP_OBSOLETE:
                 tempos = [msg.tempo for msg in lst_msgs]
                 return list(set(tempos)) if dedupe else tempos
             else:
-                return [DEF_TPO]
+                return [default_tempo]
 
 
     class PrettyMidiUtil:
@@ -478,9 +498,9 @@ if KEEP_OBSOLETE:
                 else:
                     return list(_get(pm_))
             strt, end = _get_pitch_range()
-            if clip_:
-                strt = math.floor(strt / N_NOTE_OCT) * N_NOTE_OCT
-                end = math.ceil(end / N_NOTE_OCT) * N_NOTE_OCT
+            if clip_:  # clip by octave
+                strt = math.floor(strt / 12) * 12
+                end = math.ceil(end / 12) * 12
             return strt, end
 
         @staticmethod

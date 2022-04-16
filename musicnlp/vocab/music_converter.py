@@ -1,3 +1,9 @@
+from typing import List, Dict, Union
+
+import numpy as np
+import music21 as m21
+
+from musicnlp.util import *
 from musicnlp.vocab.elm_type import ElmType, MusicElement
 from musicnlp.vocab.music_vocab import VocabType, MusicVocabulary
 from musicnlp.vocab.music_tokenizer import MusicTokenizer
@@ -20,7 +26,7 @@ class MusicConverter:
         elm = next(it, None)
         lst = []
         while elm is not None:  # similar logic as in `MusicExtractor.expand_bar`
-            if hasattr(elm, 'fullName') and TUPLET_POSTFIX in elm.fullName:
+            if hasattr(elm, 'fullName') and tuplet_postfix in elm.fullName:
                 tup_str, n_tup = fullname2tuplet_meta(elm.fullName)
                 lst_tup = [elm]
                 elm_ = next(it, None)
