@@ -270,10 +270,53 @@ if __name__ == '__main__':
 
     def fix_insert_key():
         """
-        As extracting from all the 10k songs is time-consuming, temporarily insert keys for each of the processed json
+        As extracting from all the 10k songs is time-consuming,
+        temporarily insert keys into the already processed json files
         """
-        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
-        dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-                  'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
-    fix_insert_key()
+        from musicnlp.preprocess.key_finder import KeyFinder
 
+        # dnm = 'POP909'
+        dnm = 'LMD-cleaned-subset'
+        # dir_nm = 'POP909 save single 04-10_02.15'
+        dir_nm = 'LMD-cleaned_subset save single 04-09_21-51'
+        dir_nm_out = f'{dir_nm}, add key'
+        path = os.path.join(music_util.get_processed_path(), 'intermediate', dir_nm)
+        path_out = os.path.join(music_util.get_processed_path(), 'intermediate', dir_nm_out)
+        os.makedirs(path_out, exist_ok=True)
+        fnms = sorted(glob.iglob(os.path.join(path, '*.json')))
+
+        nm = 'Insert Key Back'
+        logger = get_logger(nm)
+        pbar = tqdm(total=len(fnms), desc=nm, unit='song')
+
+        dir_nm_dset = 'LMD-cleaned_valid' if dnm == 'LMD-cleaned-subset' else dnm  # for pop909
+
+        def song_title2path(title: str) -> str:
+            # Needed cos the original json files may not be processed on my local computer
+            return os.path.join(PATH_BASE, DIR_DSET, dir_nm_dset, f'{title}.mxl')
+
+        def call_single(fl_nm: str):
+            try:
+                fnm_out = os.path.join(path_out, f'{stem(fl_nm)}.json')
+                if not os.path.exists(fnm_out):
+                    with open(fl_nm, 'r') as f:
+                        song = json.load(f)
+                    # ic(song.keys())
+                    assert 'key' not in song['music']  # sanity check
+                    # ic(fl_nm, song.keys(), song['music'].keys())
+                    path_mxl = song_title2path(song['music']['title'])
+                    song['music']['key'] = keys = KeyFinder(path_mxl).find_key(return_type='dict')
+                    assert len(keys) > 0
+                    with open(fnm_out, 'w') as f:
+                        json.dump(song, f, indent=4)
+                pbar.update(1)
+            except Exception as e:
+                logger.error(f'Failed to find key for {logi(fl_nm)}, {logi(e)}')  # Abruptly stop the process
+                raise ValueError(f'Failed to find key for {logi(fl_nm)}')
+        # for fnm in fnms[:20]:
+        #     call_single(fnm)
+
+        def batched_map(fnms_, s, e):
+            return [call_single(fnms_[i]) for i in range(s, e)]
+        batched_conc_map(batched_map, fnms, batch_size=32)
+    fix_insert_key()

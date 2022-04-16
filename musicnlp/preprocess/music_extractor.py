@@ -463,7 +463,9 @@ class MusicExtractor:
         if self.warn_logger is not None:
             self.warn_logger.end_tracking()
 
+        song_path = None
         if isinstance(song, str):
+            song_path = song
             song = m21.converter.parse(song)
         song: Score
 
@@ -787,6 +789,8 @@ class MusicExtractor:
         ret = scr_out
         if return_meta:
             ret = dict(score=scr_out, title=title, duration=secs, warnings=self.warn_logger.tracked(exp='serialize'))
+            if song_path:
+                ret['song_path'] = song_path
         if return_key:
             keys = KeyFinder(song).find_key(return_type='dict')
             if isinstance(ret, dict):

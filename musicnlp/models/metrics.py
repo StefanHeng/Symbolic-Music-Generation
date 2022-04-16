@@ -102,7 +102,7 @@ if __name__ == '__main__':
         score = me(fnm, exp=exp)
         with open(os.path.join(music_util.get_processed_path(), f'{song_name}.json'), 'w') as f:
             json.dump(dict(score=score), f, indent=2)
-    write_eg_song_json(song_nm)
+    # write_eg_song_json(song_nm)
 
     def get_eg_song_key(song_name: str = 'Merry Go Round of Life'):
         fnm = music_util.get_my_example_songs(song_name, fmt='MXL')

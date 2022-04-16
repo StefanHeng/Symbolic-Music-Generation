@@ -258,7 +258,7 @@ def get_train_and_my_train_args(
     if train_args is not None:
         args.update(train_args)
 
-    my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps', disable_tqdm=True)  # default
+    my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps', tqdm=False)  # default
     if my_train_args is not None:
         my_args.update(my_train_args)
     bsz = args['per_device_train_batch_size'] * args.get('gradient_accumulation_steps', 1)
@@ -269,8 +269,12 @@ def get_train_and_my_train_args(
         args['save_strategy'] = 'steps'
         # TODO: DDP not supported
         args['save_steps'] = my_args['save_epochs'] * steps_per_epoch
-    if 'logging_strategy' in my_args and my_args['logging_strategy'] == 'epoch':
+    logging_strategy = my_args['logging_strategy']
+    ca(logging_strategy=logging_strategy)
+    if logging_strategy == 'epoch':
         my_args['logging_steps'] = steps_per_epoch
+    # args['disable_tqdm'] = not bool(my_args['tqdm'])
+    args['disable_tqdm'] = True  # Always use my own tqdm, see `musicnlp.util.train.MyTrainer`
     args = {k: v for k, v in args.items() if v is not None}
     return TrainingArguments(**args), my_args
 
@@ -354,8 +358,8 @@ if __name__ == '__main__':
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        # md_sz = 'debug'
-        md_sz = 'debug-large'
+        md_sz = 'debug'
+        # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
@@ -367,18 +371,19 @@ if __name__ == '__main__':
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
 
         if 'debug' in md_sz or md_sz == 'tiny':
-            n = None
-            # n = 8
+            # n = None
+            n = 32
             train_args = dict(
-                per_device_train_batch_size=4,
+                per_device_train_batch_size=2,
                 # save_strategy='no',
                 save_strategy='epoch',
-                logging_strategy='epoch',
+                # logging_strategy='epoch',
+                logging_strategy='no',
                 num_train_epochs=64,
             )
             my_train_args = dict(
                 save_epochs=16,
-                disable_tqdm=False
+                tqdm='train-only',
             )
         else:
             n = None

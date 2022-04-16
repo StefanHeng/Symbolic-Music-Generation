@@ -7,7 +7,7 @@ from typing import List, Tuple, Dict, Union
 import numpy as np
 import music21 as m21
 
-from musicnlp.util import ca
+from musicnlp.util import *
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import Key
 
@@ -17,22 +17,27 @@ Keys = Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]
 KeysDict = Dict[Union[Key, str], float]
 
 
-def get_durations(s):
+def get_durations(s) -> np.array:
     """
-    s: a music21.Stream object that stores the piece without drums
-    return: a np list of total durations for each pitch class in quarterLength.
+    :param: s: a music21.Stream object that stores the piece without drums
+    :return: a np list of total durations for each pitch class in quarterLength.
     P.S. So kind of normalized version?
     """
     # flatten, then filter all the notes
     result = np.zeros(12)
-    for n in s.flatten().flatten().notesAndRests:
-        length = n.quarterLength
-        if n.isChord:
+    # for n in s.flatten().flatten().notesAndRests:
+    #     length = n.quarterLength
+    #     if n.isChord:
+    #         for m in n.pitchClasses:
+    #             result[m] += length
+    #     elif not n.isRest:
+    #         result[n.pitch.pitchClass] += length
+    for n in s.recurse():
+        if isinstance(n, Note):
+            result[n.pitch.pitchClass] += n.quarterLength
+        elif isinstance(n, Chord):
             for m in n.pitchClasses:
-                result[m] += length
-        elif not n.isRest:
-            result[n.pitch.pitchClass] += length
-    # ic(result)
+                result[m] += n.quarterLength
     return result
 
 
@@ -221,7 +226,25 @@ if __name__ == '__main__':
         """
         dnm = 'POP909'
         fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')
-        for fnm in tqdm(fnms):
-            keys = KeyFinder(fnm).find_key(return_type='enum')
-            assert len(keys) > 0
+        # fnms = fnms[:20]  # TODO: debugging
+        # for fnm in tqdm(fnms):
+        #     keys = KeyFinder(fnm).find_key(return_type='enum')
+        #     assert len(keys) > 0
+        nm = 'Test Key Finder'
+        logger = get_logger(nm)
+        pbar = tqdm(total=len(fnms), desc=nm, unit='song')
+
+        def call_single(fl_nm: str):
+            try:
+                keys = KeyFinder(fl_nm).find_key(return_type='enum')
+                assert len(keys) > 0
+                pbar.update(1)
+            except Exception as e:
+                logger.error(f'Failed to find key for {logi(fl_nm)}, {logi(e)}')  # Abruptly stop the process
+                raise ValueError(f'Failed to find key for {logi(fl_nm)}')
+
+        def batched_map(fnms_, s, e):
+            return [call_single(fnms_[i]) for i in range(s, e)]
+        batched_conc_map(batched_map, fnms, batch_size=32)
     check_key_finder_terminates()
+    # profile_runtime(check_key_finder_terminates)
