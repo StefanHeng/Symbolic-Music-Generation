@@ -161,7 +161,7 @@ def get_cleaned_song_paths(dataset_name: str, fmt='mid') -> List[str]:
     :return: List of music file paths in my cleaned file system structure
     """
     lmd_c_s = 'LMD-cleaned-subset'
-    dataset_names = list(config('datasets').it_keys()) + [lmd_c_s]
+    dataset_names = list(config('datasets').keys()) + [lmd_c_s]
     assert dataset_name in dataset_names, \
         f'Invalid dataset name: {logi(dataset_name)}, expected one of {logi(dataset_names)}'
     fmts = ['mid', 'mxl']

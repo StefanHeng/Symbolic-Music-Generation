@@ -1,3 +1,5 @@
+import collections
+
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
 
@@ -52,11 +54,57 @@ def meta2fnm_meta(meta: Dict) -> Dict:
     return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
 
 
+class MyProgressCallback(TrainerCallback):
+    """
+    A [`TrainerCallback`] that displays the progress of training or evaluation.
+    """
+
+    def __init__(self):
+        self.training_bar = None
+        self.prediction_bar = None
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            self.training_bar = tqdm(total=state.max_steps)
+        self.current_step = 0
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            self.training_bar.update(state.global_step - self.current_step)
+            self.current_step = state.global_step
+
+    def on_prediction_step(self, args, state, control, eval_dataloader=None, **kwargs):
+        if state.is_local_process_zero and isinstance(eval_dataloader.dataset, collections.abc.Sized):
+            if self.prediction_bar is None:
+                self.prediction_bar = tqdm(total=len(eval_dataloader), leave=self.training_bar is None)
+            self.prediction_bar.update(1)
+
+    def on_evaluate(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            if self.prediction_bar is not None:
+                self.prediction_bar.close()
+            self.prediction_bar = None
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if state.is_local_process_zero and self.training_bar is not None:
+            _ = logs.pop("total_flos", None)
+            # ========================== Begin of Modified ==========================
+            # Effectively remove all logging, keep only the progress bar
+            # self.training_bar.write(str(logs))
+            # ========================== End of Modified ==========================
+
+    def on_train_end(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            self.training_bar.close()
+            self.training_bar = None
+
+
 class MyTrainer(Trainer):
     def __init__(
             self, model_meta: Dict = None, my_args: Dict = None,
             clm_acc_logging=True, train_metrics: Dict[str, Callable] = None, **kwargs
     ):
+        assert kwargs['args'].disable_tqdm  # Always disable
         super().__init__(**kwargs)
         self.clm_acc_logging = clm_acc_logging
         self.model_meta = model_meta
@@ -68,15 +116,27 @@ class MyTrainer(Trainer):
         self.post_init()
 
     def post_init(self):
+        # from icecream import ic
         callbacks = self.callback_handler.callbacks
-        # When tqdm disabled, Trainer adds a PrinterCallback, replace that with my own
+        # ic(callbacks)
+        # Trainer adds a `PrinterCallback` or a `ProgressCallback`, replace all that with my own,
+        # see `MyProgressCallback`
+        # for c in self.callback_handler.callbacks:
+        #     ic(str(c.__class__))
         self.callback_handler.callbacks = [
-            c for c in callbacks if str(c.__class__) != "<class 'transformers.trainer_callback.PrinterCallback'>"
+            c for c in callbacks if str(c.__class__) not in [
+                "<class 'transformers.trainer_callback.ProgressCallback'>",
+                "<class 'transformers.trainer_callback.PrinterCallback'>"
+            ]
         ]
         callback_cls = ColoredPrinterCallbackForClm if self.clm_acc_logging else ColoredPrinterCallback
         if not self.clm_acc_logging:
             raise NotImplementedError('on-CLM task logging not updated')
+        # ic(self.callback_handler.callbacks)
+        # exit(1)
         self.add_callback(callback_cls(name=self.name, parent_trainer=self))
+        if not self.my_args['disable_tqdm']:
+            self.add_callback(MyProgressCallback())
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -297,7 +357,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     assert 'epoch' in logs
                     del logs['epoch']
                     # For potential metrics computed
-                    ks = [self._get_eval_key(k) for k in logs.it_keys()]
+                    ks = [self._get_eval_key(k) for k in logs.keys()]
                     ks = [
                         k for k in ks
                         if k not in ['loss', 'ntp_acc', 'runtime', 'samples_per_second', 'steps_per_second']
@@ -356,7 +416,7 @@ class ClmAccCallback(ColoredPrinterCallback):
                 self.out_dict_tr['train_loss'] = logs['loss']
                 self.logger.info(pretty_log_dict(self.out_dict_tr))
                 self.out_dict_tr = None  # Rest for next global step
-            elif any('runtime' in k for k in logs.it_keys()):
+            elif any('runtime' in k for k in logs.keys()):
                 self.logger.info(log_dict(logs) if isinstance(logs, dict) else logs)
             else:
                 print('unhandled case', logs)

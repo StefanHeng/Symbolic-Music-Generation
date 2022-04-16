@@ -42,6 +42,14 @@ def get_model_n_tokenizer(
                     # effectively 6 layers as default config; going even smaller produces an error
                     attn_layers=layer_pair*3
                 ),
+                'debug-large': dict(
+                    max_position_embeddings=128, axial_pos_shape=(8, 16),
+                    hidden_size=128, feed_forward_size=128*4, axial_pos_embds_dim=(32, 96),
+                    # note attention head size in config is per head
+                    num_attention_heads=8, attention_head_size=int(128/8),
+                    # effectively 6 layers as default config; going even smaller produces an error
+                    attn_layers=layer_pair*3
+                ),
                 # overall, given hidden size, keep
                 #   feed_forward_size = 4 x hidden size
                 #   attention_head_size = hidden_size
@@ -188,6 +196,13 @@ def get_train_and_my_train_args(
                     lr_scheduler_type=SchedulerType.CONSTANT,
                     num_train_epochs=32,
                 ),
+                'debug-large': dict(
+                    batch_size=8,
+                    learning_rate=3e-4,
+                    weight_decay=0,
+                    lr_scheduler_type=SchedulerType.CONSTANT,
+                    num_train_epochs=32,
+                ),
                 'tiny': dict(
                     batch_size=32,  # reformer uses batch size of 8; pop music transformer uses batch size of 16
                     learning_rate=3e-4,
@@ -268,7 +283,8 @@ class ComputeMetrics:
         """
         predictions, labels = eval_pred
         predictions = predictions.argmax(axis=-1)
-        d_metric = dict(ikr=self.ikr(predictions, labels))
+        d_metric = dict()  # TODO: debugging
+        # d_metric = dict(ikr=self.ikr(predictions, labels))
 
         predictions, labels = predictions[:, :-1], labels[:, 1:]  # since CLM
         labels, predictions = labels.flatten(), predictions.flatten()
@@ -301,7 +317,7 @@ def get_all_setup(
     trainer_ = train_util.MyTrainer(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
-        train_metrics=dict(ikr=cm.ikr),
+        # train_metrics=dict(ikr=cm.ikr),
         model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer_, mlm=False),
         train_dataset=tr, eval_dataset=vl, compute_metrics=cm
     )
@@ -334,8 +350,9 @@ if __name__ == '__main__':
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        # md_sz = 'debug'
-        md_sz = 'tiny'
+        md_sz = 'debug'
+        # md_sz = 'debug-large'
+        # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
         ic(md_sz)
@@ -345,17 +362,19 @@ if __name__ == '__main__':
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
 
-        if md_sz in ['debug', 'tiny']:
+        if 'debug' in md_sz or md_sz == 'tiny':
             n = None
             # n = 8
             train_args = dict(
                 per_device_train_batch_size=4,
                 # save_strategy='no',
                 save_strategy='epoch',
+                logging_strategy='epoch',
                 num_train_epochs=64,
             )
             my_train_args = dict(
-                save_epochs=16
+                save_epochs=16,
+                disable_tqdm=False
             )
         else:
             n = None
