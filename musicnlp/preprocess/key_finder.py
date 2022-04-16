@@ -117,9 +117,9 @@ class KeyFinder:
         best_maj_keys = (np.argsort(corrcoef_mat[0]))[-close_ma:]
         best_min_keys = (np.argsort(corrcoef_mat[1]))[-close_mi:]
         # convert candidates to string in convention format(circle of fifth).
-        maj_keys_result = [f'{self.conv_major[pitches[tonic]]}Major' for (_, tonic) in
+        maj_keys_result = [(f'{self.conv_major[pitches[tonic]]}Major', corrcoef_mat[0][tonic]) for (_, tonic) in
                            [divmod(i, 12) for i in best_maj_keys]]
-        min_keys_result = [f'{self.conv_minor[pitches[tonic]]}Minor' for (_, tonic) in
+        min_keys_result = [(f'{self.conv_minor[pitches[tonic]]}Minor', corrcoef_mat[1][tonic]) for (_, tonic) in
                            [divmod(i, 12) for i in best_min_keys]]
         #
         return maj_keys_result, min_keys_result
@@ -183,15 +183,15 @@ def main(path: str):
     a = KeyFinder(path)
     k = a.find_key()
     ic(k)
-    ic(a.find_scale_degrees(k))
+    # ic(a.find_scale_degrees(k))
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
-    import musicnlp.util.music as music_util
-
-    p = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
-    ic(p)
-
-    main(p)
+    # from icecream import ic
+    #
+    # import musicnlp.util.music as music_util
+    #
+    # p = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+    # ic(p)
+    path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
+    main(path)
