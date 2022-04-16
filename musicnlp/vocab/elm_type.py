@@ -18,10 +18,10 @@ class Key(Enum):
 
     @classmethod
     def from_str(cls, key: str) -> 'Key':
-        return key2ordinal[key]
+        return key_str2enum[key]
 
 
-key2ordinal: Dict[str, Key] = {
+key_str2enum: Dict[str, Key] = {
     'CMajor': Key.CMaj,
     'FMajor': Key.FMaj,
     'BbMajor': Key.BfMaj,

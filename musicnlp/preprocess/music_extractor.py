@@ -18,22 +18,14 @@ from musicnlp.util import *
 from musicnlp.util.data_path import PATH_BASE, DIR_DSET
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import COMMON_TEMPOS, COMMON_TIME_SIGS, is_common_tempo, is_common_time_sig, MusicVocabulary
-from musicnlp.preprocess import WarnLog
+from musicnlp.preprocess.warning_logger import WarnLog
+from musicnlp.preprocess.key_finder import KeyFinder
 
 
 class MusicExtractor:
     """
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation
     """
-    instrs_drum = (
-        m21.instrument.BassDrum,
-        m21.instrument.BongoDrums,
-        m21.instrument.CongaDrum,
-        m21.instrument.SnareDrum,
-        m21.instrument.SteelDrum,
-        m21.instrument.TenorDrum,
-    )
-
     def __init__(
             self, precision: int = 5, mode: str = 'melody',
             warn_logger: Union[WarnLog, bool] = None,
@@ -81,33 +73,12 @@ class MusicExtractor:
         m, p, t = d['mode'], d['precision'], d['greedy_tuplet_pitch_threshold']
         return log_dict_p({'mode': m, 'prec': p, 'th': t})
 
-    @staticmethod
-    def is_drum(part: Part) -> bool:
-
-        """
-        :return: True if `part` contains *only* `Unpitched`
-
-        Intended for removing drum tracks
-        """
-        # One pass through `part`, more efficient
-        has_unpitched, has_percussion, has_note = False, False, False
-        for e in part.recurse():  # Need to look through the entire part to check no Notes
-            if isinstance(e, MusicExtractor.instrs_drum):
-                return True  # If part has a drum as instrument, take for granted it's a drum track
-            elif isinstance(e, m21.note.Note):
-                has_note = True
-            elif isinstance(e, m21.percussion.PercussionChord):
-                has_percussion = True
-            elif isinstance(e, m21.note.Unpitched):
-                has_unpitched = True
-        return (has_unpitched or has_percussion) and not has_note
-
     def it_bars(self, scr: Score) -> Iterator[Tuple[Tuple[Measure], TimeSignature, MetronomeMark]]:
         """
         Unroll a score by time, with the time signatures of each bar
         """
         parts = list(scr.parts)
-        ignore = [MusicExtractor.is_drum(p_) for p_ in parts]
+        ignore = [is_drum_track(p_) for p_ in parts]
 
         time_sig, tempo = None, None
         for idx, bars in enumerate(zip(*[list(p[Measure]) for p in parts])):  # Bars for all tracks across time
@@ -471,7 +442,7 @@ class MusicExtractor:
         return lst
 
     def __call__(
-            self, song: Union[str, Score], exp='mxl', return_meta: bool = False,
+            self, song: Union[str, Score], exp='mxl', return_meta: bool = False, return_key: bool = False,
     ) -> Union[ScoreExt, Dict[str, Union[ScoreExt, Any]]]:
         """
         :param song: A music21 Score object, or file path to an MXL file
@@ -482,6 +453,8 @@ class MusicExtractor:
             If `visualize`, a grouped, colorized string is returned, intended for console output
         :param return_meta: If true, metadata about the music is returned, along with the score as a dictionary
             Metadata includes 1) the song title, 2) the song duration in seconds, and 3) warnings found
+        :param return_key: If true, possible key signatures of the song is returned
+            See `musicnlp.preprocess.key_finder.py`
         """
         t_strt = datetime.datetime.now()
         exp_opns = ['mxl', 'str', 'id', 'str_join', 'visualize']
@@ -811,10 +784,16 @@ class MusicExtractor:
             t = fmt_time(datetime.datetime.now() - t_strt)
             self.logger.info(f'{logi(title)} extraction completed in {log_s(t, c="y")} '
                              f'with warnings {log_dict(self.warn_logger.tracked())}')
+        ret = scr_out
         if return_meta:
-            return dict(score=scr_out, title=title, duration=secs, warnings=self.warn_logger.tracked(exp='serialize'))
-        else:
-            return scr_out
+            ret = dict(score=scr_out, title=title, duration=secs, warnings=self.warn_logger.tracked(exp='serialize'))
+        if return_key:
+            keys = KeyFinder(song).find_key(return_type='dict')
+            if isinstance(ret, dict):
+                ret['keys'] = keys
+            else:
+                ret = dict(score=scr_out, keys=keys)
+        return ret
 
 
 if __name__ == '__main__':
@@ -852,9 +831,13 @@ if __name__ == '__main__':
             s = mt(fnm, exp='visualize')
             print(s)
 
-        check_mxl_out()
+        def check_return_meta_n_key():
+            d_out = mt(fnm, exp='str_join', return_meta=True, return_key=True)
+            ic(d_out)
+        # check_mxl_out()
         # check_str()
         # check_visualize()
+        check_return_meta_n_key()
     toy_example()
 
     def encode_a_few():

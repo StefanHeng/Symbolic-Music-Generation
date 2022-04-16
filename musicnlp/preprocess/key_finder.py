@@ -7,14 +7,14 @@ from typing import List, Tuple, Dict, Union
 import numpy as np
 import music21 as m21
 
+from musicnlp.util import ca
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import Key
-from musicnlp.preprocess.music_extractor import MusicExtractor
 
 
 # Tuple of key and (un-normalized) confidence score
 Keys = Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]
-KeysDict = Dict[Key, float]
+KeysDict = Dict[Union[Key, str], float]
 
 
 def get_durations(s):
@@ -42,12 +42,12 @@ class KeyFinder:
     TODO: Do I need to find all modulated keys?
     """
 
-    def __init__(self, file_name):
+    def __init__(self, song: Union[str, Score]):
         """file_name: the name of file given path it is in"""
-        self.piece: Score = m21.converter.parse(file_name)
+        self.piece: Score = m21.converter.parse(song) if isinstance(song, str) else song
 
         # remove all the percussion in this piece
-        parts_drum = filter(lambda p_: MusicExtractor.is_drum(p_), self.piece.parts)
+        parts_drum = filter(lambda p_: is_drum_track(p_), self.piece.parts)
         for pd in parts_drum:
             self.piece.remove(pd)
 
@@ -86,15 +86,20 @@ class KeyFinder:
         }
 
     # @eye
-    def find_key(self, return_enum: bool = False) -> Union[Keys, KeysDict]:
+    def find_key(self, return_type: str = 'list') -> Union[Keys, KeysDict]:
         """
         return: 2 arrays that contains the best k candidates for major and minor respectively
         of the piece as a string.
         The string format would be [keyName]+Major/Minor.
         All keys with accidental signs are marked as sharp, which would equate 'A#' to 'Bb'.
         Then be transformed to more conventional enharmonic reading. e.g. 'A#' to 'Bb'..
+
+        :param return_type: One of ['list', 'enum', 'dict']
+            If 'list', returns 2-tuple list of tuples of (key, confidence) for major and minor respectively
+            If 'enum' or `dict`, returns dict of {Key: confidence} where the key is either `Key` or `str` respectively
         """
-        tonality = ['Major', 'Minor']
+        ca(key_type=return_type)
+        # tonality = ['Major', 'Minor']
         pitches = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
         durations = get_durations(self.piece)
@@ -119,12 +124,16 @@ class KeyFinder:
         min_keys_result = [(f'{self.conv_minor[pitches[tonic]]}Minor', corrcoef_mat[1][tonic]) for (_, tonic) in
                            [divmod(i, 12) for i in best_min_keys]]
         #
-        if return_enum:
-            def key_tup2dict(key_tup: List[Tuple[str, float]]) -> KeysDict:
-                return {Key.from_str(k_): v for k_, v in dict(key_tup).items()}
-            return key_tup2dict(maj_keys_result) | key_tup2dict(min_keys_result)
-        else:
+        if return_type == 'list':
             return maj_keys_result, min_keys_result
+        else:
+            return KeyFinder._key_tup2dict(maj_keys_result, return_type=return_type) | \
+                   KeyFinder._key_tup2dict(min_keys_result, return_type=return_type)
+
+    @staticmethod
+    def _key_tup2dict(key_tup: List[Tuple[str, float]], return_type: str = 'enum') -> KeysDict:
+        return {(Key.from_str(k_) if return_type == 'enum' else k_): v for k_, v in dict(key_tup).items()}
+
     #
     # def alt_find(self):
     #     a = m21.analysis.discrete.TemperleyKostkaPayne(self.piece)
@@ -189,6 +198,7 @@ def main(path: str):
 
 
 if __name__ == '__main__':
+    from tqdm import tqdm
     from icecream import ic
 
     import musicnlp.util.music as music_util
@@ -197,7 +207,21 @@ if __name__ == '__main__':
         path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         ic(path)
         kf = KeyFinder(path)
-        ic(kf.find_key(return_enum=True))
-    check_get_key()
-    # path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
-    # main(path)
+        ic(kf.find_key(return_type='enum'))
+    # check_get_key()
+
+    def carson_dev():
+        path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
+        main(path)
+    # carson_dev()
+
+    def check_key_finder_terminates():
+        """
+        Make sure calling KeyFinder on any song in the dataset terminates properly, and at least 1 key returned
+        """
+        dnm = 'POP909'
+        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')
+        for fnm in tqdm(fnms):
+            keys = KeyFinder(fnm).find_key(return_type='enum')
+            assert len(keys) > 0
+    check_key_finder_terminates()

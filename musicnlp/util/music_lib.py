@@ -42,6 +42,7 @@ __all__ = [
     'eps', 'is_int', 'is_8th', 'quarter_len2fraction',
     'note2pitch', 'note2dur', 'note2note_cleaned', 'notes2offset_duration',
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
+    'is_drum_track',
     'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes',
     'is_notes_no_overlap', 'is_notes_pos_duration', 'is_valid_bar_notes',
     'get_score_skeleton', 'insert_ts_n_tp_to_part', 'make_score'
@@ -74,6 +75,14 @@ tuplet_prefix2n_note = dict(  # Tuplet prefix => expected number of notes
 # support up to certain precision; my power index is off by 2 relative to music21's quarterLength
 ordinal2dur_type = ['whole', 'half', 'quarter', 'eighth', '16th', '32nd', '64th', '128th', '256th', '512th', '1024th']
 
+instrs_drum = (
+    m21.instrument.BassDrum,
+    m21.instrument.BongoDrums,
+    m21.instrument.CongaDrum,
+    m21.instrument.SnareDrum,
+    m21.instrument.SteelDrum,
+    m21.instrument.TenorDrum,
+)
 
 # Type for extracted music
 ScoreExt = Union[Score, List[str], List[int], str]
@@ -220,6 +229,27 @@ def fullname2tuplet_meta(fullname: str) -> TupletNameMeta:
         word_n_tup = words[words.index(tup_str) + 2]
         n_tup = int(word_n_tup[:word_n_tup.find('/')])
     return TupletNameMeta(tuplet_string=tup_str, n_note=n_tup)
+
+
+def is_drum_track(part: Part) -> bool:
+
+    """
+    :return: True if `part` contains *only* `Unpitched`
+
+    Intended for removing drum tracks in music extraction
+    """
+    # One pass through `part`, more efficient
+    has_unpitched, has_percussion, has_note = False, False, False
+    for e in part.recurse():  # Need to look through the entire part to check no Notes
+        if isinstance(e, instrs_drum):
+            return True  # If part has a drum as instrument, take for granted it's a drum track
+        elif isinstance(e, m21.note.Note):
+            has_note = True
+        elif isinstance(e, m21.percussion.PercussionChord):
+            has_percussion = True
+        elif isinstance(e, m21.note.Unpitched):
+            has_unpitched = True
+    return (has_unpitched or has_percussion) and not has_note
 
 
 def it_m21_elm(stream: Union[Measure, Part, Score, Voice], types=(Note, Rest)):

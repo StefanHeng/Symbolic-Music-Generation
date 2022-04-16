@@ -265,4 +265,15 @@ if __name__ == '__main__':
         ic(dset)
         ic(len(dset['train']), len(dset['test']))
         ic(dset['train'][:3], dset['test'][:3])
-    json2dset_with_split()
+    # json2dset_with_split()
+
+
+    def fix_insert_key():
+        """
+        As extracting from all the 10k songs is time-consuming, temporarily insert keys for each of the processed json
+        """
+        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+        dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+                  'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
+    fix_insert_key()
+

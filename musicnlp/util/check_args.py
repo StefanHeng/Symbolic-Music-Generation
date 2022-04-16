@@ -9,6 +9,7 @@ class CheckArg:
     """
     extraction_export_types = ['mxl', 'str', 'id', 'str_join', 'visualize']
     music_file_formats = ['mxl', 'midi']
+    key_type = ['list', 'enum', 'dict']
 
     @staticmethod
     def check_mismatch(arg_type: str, arg_value: str, expected_values: List[str]):
@@ -24,10 +25,15 @@ class CheckArg:
     def check_music_file_format(fmt: str):
         CheckArg.check_mismatch('Music File Format', fmt, CheckArg.music_file_formats)
 
+    @staticmethod
+    def check_key_type(key_type: str):
+        CheckArg.check_mismatch('Keys Output Type', key_type, CheckArg.key_type)
+
     def __init__(self):
         self.d_name2func = dict(
             exp=CheckArg.check_extraction_export_type,
-            fmt=CheckArg.check_music_file_format
+            fmt=CheckArg.check_music_file_format,
+            key_type=CheckArg.check_key_type
         )
 
     def __call__(self, **kwargs):

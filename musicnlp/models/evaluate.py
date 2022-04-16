@@ -1,7 +1,10 @@
 """
 Generate from trained reformer, no seed per `hash_seed`
 """
+import os
+from typing import Union
 
+import torch
 from transformers import ReformerModelWithLMHead
 
 from musicnlp.util import *
@@ -92,7 +95,7 @@ class MusicGenerator:
         outputs = self.model.generate(**inputs, **args)[0]  # for now, generate one at a time
 
         if truncate_to_sob:
-            idxs_eob = torch.nonzero(outputs == self.tokenizer.sob_token_id).flatten().tolist()
+            idxs_eob = torch.nonzero(outputs.eq(self.tokenizer.sob_token_id)).flatten().tolist()
             assert len(idxs_eob) > 0, f'No start of bar token found when {logi("truncate_to_sob")} enabled'
             outputs = outputs[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(outputs, skip_special_tokens=False)
@@ -141,7 +144,7 @@ if __name__ == '__main__':
     def check_why_tie_in_output():
         import music21 as m21
         incorrect_tie_fl = '/Users/stefanh/Desktop/incorrect tie.mxl'
-        score = m21.converter.parse(incorrect_tie_fl)
+        score: m21.stream.Score = m21.converter.parse(incorrect_tie_fl)
         for bar in list(score.parts)[0][m21.stream.Measure]:
             for e in bar:
                 if isinstance(e, (m21.note.Note, m21.note.Rest)):
