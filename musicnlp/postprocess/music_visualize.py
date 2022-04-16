@@ -1,8 +1,16 @@
+import math
+import json
 from copy import deepcopy
+from typing import List, Dict, Callable, Union
 from fractions import Fraction
 from collections import Counter
 
+import numpy as np
+import pandas as pd
 from pandas.api.types import CategoricalDtype
+import matplotlib.pyplot as plt
+import seaborn as sns
+from tqdm import tqdm
 
 from musicnlp.util import *
 from musicnlp.vocab import COMMON_TEMPOS, MusicVocabulary, MusicTokenizer
@@ -236,12 +244,16 @@ class MusicVisualize:
 
 
 if __name__ == '__main__':
+    import os
+
     from icecream import ic
+
+    import musicnlp.util.music as music_util
 
     dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01.json'
     dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
               'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52.json'
-    dnms = [os.path.join(get_processed_path(), dnm) for dnm in [dnm_909, dnm_lmd]]
+    dnms = [os.path.join(music_util.get_processed_path(), dnm) for dnm in [dnm_909, dnm_lmd]]
     mv = MusicVisualize(dnms)
 
     def check_warn():
@@ -250,7 +262,7 @@ if __name__ == '__main__':
     # check_warn()
 
     def check_uncommon_tempos():
-        df = mv.load_df()
+        df = mv.df
         tempos = df.tempo.unique()
         ic(tempos)
         ic(set(tempos) - set(COMMON_TEMPOS))

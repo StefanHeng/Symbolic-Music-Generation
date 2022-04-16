@@ -2,7 +2,13 @@
 Data Loader for pytorch
 """
 
-from musicnlp.util import *
+import os
+import json
+import itertools
+
+import numpy as np
+
+import musicnlp.util.music as music_util
 from musicnlp.preprocess.melody_extractor import get_tokenizer
 
 tokenizer = get_tokenizer()
@@ -11,7 +17,7 @@ ID_PAD = tokenizer['encoder']['[PAD]']
 
 class MelodyLoader:
     # File path for decoded song ids
-    SONG_FP = os.path.join(get_processed_path(), 'Song-ids.json')
+    SONG_FP = os.path.join(music_util.get_processed_path(), 'Song-ids.json')
 
     def __init__(self, pad=True):
         """

@@ -2,8 +2,15 @@
 Proposed method: on compact melody & bass representation for autoregressive music generation
     Trying Transformer-XL, Reformer
 """
+import os
+import json
+import math
 from copy import deepcopy
+from typing import List, Tuple, Dict, Union
+from collections import OrderedDict
 
+import numpy as np
+import torch
 from transformers import TransfoXLConfig, ReformerConfig, ReformerModelWithLMHead
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
 from transformers import Trainer
@@ -43,7 +50,7 @@ def get_model_n_tokenizer(
                     attn_layers=layer_pair*3
                 ),
                 'debug-large': dict(
-                    max_position_embeddings=128, axial_pos_shape=(8, 16),
+                    max_position_embeddings=512, axial_pos_shape=(16, 32),
                     hidden_size=128, feed_forward_size=128*4, axial_pos_embds_dim=(32, 96),
                     # note attention head size in config is per head
                     num_attention_heads=8, attention_head_size=int(128/8),
@@ -252,7 +259,7 @@ def get_train_and_my_train_args(
     if train_args is not None:
         args.update(train_args)
 
-    my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps')  # default
+    my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps', disable_tqdm=True)  # default
     if my_train_args is not None:
         my_args.update(my_train_args)
     bsz = args['per_device_train_batch_size'] * args.get('gradient_accumulation_steps', 1)
@@ -283,8 +290,7 @@ class ComputeMetrics:
         """
         predictions, labels = eval_pred
         predictions = predictions.argmax(axis=-1)
-        d_metric = dict()  # TODO: debugging
-        # d_metric = dict(ikr=self.ikr(predictions, labels))
+        d_metric = dict(ikr=self.ikr(predictions, labels))
 
         predictions, labels = predictions[:, :-1], labels[:, 1:]  # since CLM
         labels, predictions = labels.flatten(), predictions.flatten()
@@ -306,7 +312,6 @@ def get_all_setup(
         remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=dataset_seed
     )
     tr, vl = dset['train'], dset['test']
-    # ic(tr, len(tr), tr[:2])
     args, my_args, = get_train_and_my_train_args(model_name, model_size, train_args, my_train_args, tr)
     assert all(  # Ensure compatibility of dataset & tokenizer, see `music_export`
         get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer_.prec for ds in dset.values()
@@ -317,7 +322,7 @@ def get_all_setup(
     trainer_ = train_util.MyTrainer(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
-        # train_metrics=dict(ikr=cm.ikr),
+        train_metrics=dict(ikr=cm.ikr),
         model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer_, mlm=False),
         train_dataset=tr, eval_dataset=vl, compute_metrics=cm
     )
@@ -350,8 +355,8 @@ if __name__ == '__main__':
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        md_sz = 'debug'
-        # md_sz = 'debug-large'
+        # md_sz = 'debug'
+        md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'

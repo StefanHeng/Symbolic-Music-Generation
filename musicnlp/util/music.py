@@ -1,8 +1,20 @@
+import os
+import re
 import glob
+import json
 from shutil import copyfile
+from typing import Tuple, List, Dict, Union
 from collections import defaultdict
 
+import pandas as pd
+from tqdm import tqdm
+
 from musicnlp.util.util import *
+from musicnlp.util.data_path import PATH_BASE, DIR_DSET
+
+
+def get_processed_path():
+    return os.path.join(PATH_BASE, DIR_DSET, config('datasets.my.dir_nm'))
 
 
 def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False):

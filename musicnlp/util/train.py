@@ -1,7 +1,16 @@
+import os
+import re
+import math
+from typing import Dict, Callable
+import datetime
 import collections
+from collections import OrderedDict
 
+import pandas as pd
+import torch
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
+from tqdm import tqdm
 
 from musicnlp.util.util import *
 
@@ -116,13 +125,9 @@ class MyTrainer(Trainer):
         self.post_init()
 
     def post_init(self):
-        # from icecream import ic
         callbacks = self.callback_handler.callbacks
-        # ic(callbacks)
         # Trainer adds a `PrinterCallback` or a `ProgressCallback`, replace all that with my own,
         # see `MyProgressCallback`
-        # for c in self.callback_handler.callbacks:
-        #     ic(str(c.__class__))
         self.callback_handler.callbacks = [
             c for c in callbacks if str(c.__class__) not in [
                 "<class 'transformers.trainer_callback.ProgressCallback'>",
@@ -132,8 +137,6 @@ class MyTrainer(Trainer):
         callback_cls = ColoredPrinterCallbackForClm if self.clm_acc_logging else ColoredPrinterCallback
         if not self.clm_acc_logging:
             raise NotImplementedError('on-CLM task logging not updated')
-        # ic(self.callback_handler.callbacks)
-        # exit(1)
         self.add_callback(callback_cls(name=self.name, parent_trainer=self))
         if not self.my_args['disable_tqdm']:
             self.add_callback(MyProgressCallback())
@@ -247,7 +250,7 @@ class ColoredPrinterCallback(TrainerCallback):
 
     def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
         self.t_end = datetime.datetime.now()
-        t = fmt_dt(self.t_end - self.t_strt)
+        t = fmt_time(self.t_end - self.t_strt)
         self.logger.info(f'Training completed in {logi(t)} ')
         self.logger_fl.info(f'Training completed in {t} ')
         self.mode = 'eval'

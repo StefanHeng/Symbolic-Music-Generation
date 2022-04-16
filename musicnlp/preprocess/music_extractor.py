@@ -3,11 +3,16 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 
 See `melody_extractor` for the old version.
 """
-from collections import defaultdict, Counter
+import os
+import datetime
+import itertools
+from typing import Any
+from collections import defaultdict, Counter, OrderedDict
 
 from music21.stream import Voice
 from music21.duration import Duration
 
+from musicnlp.util.data_path import PATH_BASE, DIR_DSET
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import COMMON_TEMPOS, COMMON_TIME_SIGS, is_common_tempo, is_common_time_sig, MusicVocabulary
 from musicnlp.preprocess import WarnLog
@@ -800,7 +805,7 @@ class MusicExtractor:
                 else:
                     scr_out = ' '.join(toks)
         if self.verbose and self.warn_logger is not None:
-            t = fmt_dt(datetime.datetime.now() - t_strt)
+            t = fmt_time(datetime.datetime.now() - t_strt)
             self.logger.info(f'{logi(title)} extraction completed in {log_s(t, c="y")} '
                              f'with warnings {log_dict(self.warn_logger.tracked())}')
         if return_meta:
@@ -810,6 +815,9 @@ class MusicExtractor:
 
 
 if __name__ == '__main__':
+    import re
+    import json
+
     from icecream import ic
 
     ic.lineWrapWidth = 400
@@ -932,7 +940,7 @@ if __name__ == '__main__':
         """
         dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
                   'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
-        path = os.path.join(get_processed_path(), f'{dnm_lmd}.json')
+        path = os.path.join(music_util.get_processed_path(), f'{dnm_lmd}.json')
         ic(path)
         with open(path, 'r') as f:
             dset: Dict = json.load(f)

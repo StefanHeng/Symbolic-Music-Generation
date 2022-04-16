@@ -1,7 +1,8 @@
+import itertools
+from typing import Tuple, Dict, Iterable
 from fractions import Fraction
 from collections import Counter
 
-from musicnlp.util import *
 from musicnlp.util.music_lib import Dur
 from musicnlp.vocab import ElmType, MusicVocabulary, MusicConverter
 

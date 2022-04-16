@@ -1,8 +1,13 @@
+import os
+import re
+import json
 from enum import Enum
 from typing import Set, Optional
+from collections import OrderedDict
 
 from music21.pitch import Pitch
 
+import musicnlp.util.music as music_util
 from musicnlp.util.music_lib import *
 
 
@@ -172,7 +177,7 @@ class MusicVocabulary:
         )
         if save:
             fnm = f'{self.__class__.__qualname__}, n={len(self.enc)}, prec={self.prec}, {now(for_path=True)}'
-            path = os.path.join(get_processed_path(), f'{fnm}.json')
+            path = os.path.join(music_util.get_processed_path(), f'{fnm}.json')
             with open(path, 'w') as f:
                 json.dump(d_out, f, indent=4)
         return d_out

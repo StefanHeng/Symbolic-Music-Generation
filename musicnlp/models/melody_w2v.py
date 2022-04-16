@@ -3,6 +3,9 @@ Exploring word2vec on time-slot melody representation
 
 *obsolete*
 """
+import os
+import datetime
+from typing import Iterable
 
 from gensim.models import Word2Vec
 from gensim.models.callbacks import CallbackAny2Vec
@@ -45,7 +48,7 @@ class PitchEmbeddingModel:
 
         def on_epoch_end(self, model):
             self.end = datetime.datetime.now()
-            log(f'Epoch #{logi(self.epoch)} completed in {logi(fmt_dt(self.end - self.strt))} ')
+            log(f'Epoch #{logi(self.epoch)} completed in {logi(fmt_time(self.end - self.strt))} ')
             self.epoch += 1
 
     def __init__(self, archi='sg', algo='hs', w2v_kwargs=None):
@@ -120,5 +123,3 @@ if __name__ == '__main__':
             vec = vects[wd]
             ic(wd, vec[:2], vec.shape)
     # train()
-
-

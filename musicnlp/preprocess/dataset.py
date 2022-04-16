@@ -1,7 +1,12 @@
+import os
+import json
+from typing import List, Dict, Callable, Union
+
 import datasets
 from datasets import Dataset, DatasetDict
 
 from musicnlp.util import *
+import musicnlp.util.music as music_util
 
 
 def get_dataset(
@@ -15,7 +20,7 @@ def get_dataset(
     If multiple dataset names are given, the datasets are stacked
     """
     def load_single(dnm: str) -> Union[Dataset, DatasetDict]:
-        return datasets.load_from_disk(os.path.join(get_processed_path(), 'processed', dnm))
+        return datasets.load_from_disk(os.path.join(music_util.get_processed_path(), 'processed', dnm))
     if isinstance(dataset_names, (list, tuple)):
         dset = [load_single(dnm) for dnm in dataset_names]
         if isinstance(dset[0], DatasetDict):
