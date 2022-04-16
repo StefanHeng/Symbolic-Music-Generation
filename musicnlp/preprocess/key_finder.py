@@ -187,11 +187,12 @@ def main(path: str):
 
 
 if __name__ == '__main__':
-    # from icecream import ic
-    #
-    # import musicnlp.util.music as music_util
-    #
-    # p = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
-    # ic(p)
-    path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
-    main(path)
+    from icecream import ic
+
+    import musicnlp.util.music as music_util
+
+    p = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+    ic(p)
+    main(p)
+    # path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
+    # main(path)

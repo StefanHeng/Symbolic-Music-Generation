@@ -48,10 +48,10 @@ def get_dataset(
         n_cpu = os.cpu_count()
         if fast and n_cpu >= 2:
             num_proc = n_cpu // 2
-            datasets.set_progress_bar_enabled(False)
+            datasets.disable_progress_bar()
 
         dset = dset.map(map_func, batched=True, remove_columns=remove_columns, num_proc=num_proc)
-        datasets.set_progress_bar_enabled(True)
+        datasets.enable_progress_bar()
     dset = dset.shuffle(seed=shuffle_seed) if shuffle_seed is not None else dset.shuffle()  # will always shuffle
     return dset
 

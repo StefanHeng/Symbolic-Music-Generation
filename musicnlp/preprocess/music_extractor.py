@@ -747,14 +747,21 @@ class MusicExtractor:
                     lst.append(nt)
             return lst
         lst_notes = [trip_n_quant2notes(notes, num_bar=i) for i, notes in enumerate(lst_notes)]
+
+        for notes in lst_notes:
+            for n in notes:
+                if not isinstance(n, tuple):  # ignore tuplet durations as `consolidate` doesn't consider tuplets
+                    # Merges complex durations into one for MXL output
+                    n.duration.consolidate()
         for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
             assert is_valid_bar_notes(notes, time_sig)
-        # bar_wicked = lst_notes[22]
+        # lst_notes = lst_notes[:22]  # breaks when including bar index 21
+        # bar_wicked = lst_notes[21]
+        # ic(lst_notes[20], lst_notes[21])
         # ic(bar_wicked, len(bar_wicked))
         # for e in bar_wicked:
         #     name, qLen = e.fullName, e.duration.quarterLength
-        #     ic(name, e.offset, qLen)
-        # assert is_notes_pos_duration(bar_wicked)
+        #     ic(name, e.offset, qLen, e.duration)
         if exp == 'mxl':  # TODO: didn't test
             scr_out = make_score(
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
@@ -766,6 +773,7 @@ class MusicExtractor:
             # sometimes file-writes via `mxl` couldn't be read by MuseScore
             mode_str = 'melody only' if self.mode == 'melody' else 'full'
             path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}, {mode_str}.{fmt}')
+            # disable all `music21` modifications, I should have handled all the edge cases
             scr_out.write(fmt=fmt, fp=path, makeNotation=False)
         else:
             assert exp in ['str', 'id', 'visualize', 'str_join']
@@ -814,11 +822,11 @@ if __name__ == '__main__':
 
     def toy_example():
         logger = WarnLog()
-        # fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
-        # fnm = get_my_example_songs('Shape of You', fmt='MXL')
-        # fnm = get_my_example_songs('平凡之路', fmt='MXL')
+        fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        # fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
+        # fnm = music_util.get_my_example_songs('平凡之路', fmt='MXL')
         # fnm = music_util.get_my_example_songs('Canon')
-        fnm = music_util.get_my_example_songs('Canon piano')
+        # fnm = music_util.get_my_example_songs('Canon piano')
         # fnm = music_util.get_my_example_songs('canonroc1')
         # fnm = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/Kool & The Gang - ' \
         #       'What Would the World Be Without Music Let the Music Take Your Mind Medley.mxl'
