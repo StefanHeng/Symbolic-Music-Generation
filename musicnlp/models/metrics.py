@@ -157,7 +157,7 @@ if __name__ == '__main__':
         keys = kf.find_key(return_type="enum")
         ic(keys)
         # ic(kf.find_scale_degrees(keys))
-    get_eg_song_key(song_nm)
+    # get_eg_song_key(song_nm)
 
     im = IkrMetric(MusicTokenizer(), n_init_bars=2)
 
@@ -166,9 +166,16 @@ if __name__ == '__main__':
         # k='平凡之路')  # this one has tuplets
         with open(os.path.join(music_util.get_processed_path(), f'{song_nm}.json'), 'r') as f:
             text = json.load(f)['score']
+        # Get keys from Key_Finder
+        fnm = music_util.get_my_example_songs(song_nm, fmt='MXL')
+        kf = KeyFinder(fnm)
+        keys = kf.find_key(return_type="enum")
         # ic(text[:200])
         # ic(im.get_off_key_ratio(text, Key.AfMaj))
-        ic(im.get_in_key_ratio(text, Key.DMin))
+        exp_out = [im.get_in_key_ratio(text, key) for key in keys]
+        ic(exp_out)
+        ic(f"Average IKR for {song_nm}: {np.round(np.mean(exp_out), 5)}")
+        # ic(im.get_in_key_ratio(text, Key.DMin))
     check_key_metric()
 
     def check_init_key_no_error():
