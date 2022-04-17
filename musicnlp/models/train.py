@@ -270,12 +270,11 @@ def get_train_and_my_train_args(
         # TODO: DDP not supported
         args['save_steps'] = my_args['save_epochs'] * steps_per_epoch
     assert args['logging_strategy'] == 'steps'  # for my own internal logging to run
+    assert args['disable_tqdm']  # Always use my own tqdm, see `musicnlp.util.train.MyTrainer`
     logging_strategy = my_args['logging_strategy']
     ca(logging_strategy=logging_strategy)
     if logging_strategy == 'epoch':
         my_args['logging_steps'] = steps_per_epoch
-    # args['disable_tqdm'] = not bool(my_args['tqdm'])
-    args['disable_tqdm'] = True  # Always use my own tqdm, see `musicnlp.util.train.MyTrainer`
     args = {k: v for k, v in args.items() if v is not None}
     return TrainingArguments(**args), my_args
 

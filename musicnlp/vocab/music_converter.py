@@ -4,10 +4,9 @@ import numpy as np
 import music21 as m21
 
 from musicnlp.util import *
-from musicnlp.vocab.elm_type import ElmType, MusicElement
-from musicnlp.vocab.music_vocab import VocabType, MusicVocabulary
-from musicnlp.vocab.music_tokenizer import MusicTokenizer
 from musicnlp.util.music_lib import *
+from musicnlp.vocab import ElmType, MusicElement, VocabType, MusicVocabulary, MusicTokenizer
+from musicnlp.preprocess import KeyFinder
 
 
 class MusicConverter:
@@ -52,7 +51,9 @@ class MusicConverter:
             elm = next(it, None)
         return lst
 
-    def mxl2str(self, song: Union[str, Score], join: bool = True, n_bar: int = None) -> Union[str, List[str]]:
+    def mxl2str(
+            self, song: Union[str, Score], join: bool = True, n_bar: int = None, insert_key: Union[bool, str] = False
+    ) -> Union[str, List[str]]:
         """
         Convert a MusicExtractor output song into the music token representation
 
@@ -62,6 +63,7 @@ class MusicConverter:
         :param n_bar: If given, only return the decoded first n bars, star of bar is appended
                 Intended for conditional generation
             Otherwise, the entire song is converted and end of song token is appended
+        :param insert_key: A key is inserted accordingly, intended for generation
         """
         if isinstance(song, str):
             song = m21.converter.parse(song)
@@ -81,6 +83,9 @@ class MusicConverter:
         assert len(tempos) == 1, f'Invalid #Tempo: Expect only 1 tempo - {warn}'
         time_sig, tempo = time_sigs[0], tempos[0]
         toks = [self.vocab(time_sig), self.vocab(tempo)]
+        if insert_key:
+            key = insert_key if isinstance(insert_key, str) else sample(KeyFinder(song).find_key(return_type='dict'))
+            toks.append(self.vocab(key))
 
         for_gen = n_bar is not None
         if for_gen:

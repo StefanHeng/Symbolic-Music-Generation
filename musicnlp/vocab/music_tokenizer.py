@@ -18,14 +18,14 @@ class MusicTokenizer(PreTrainedTokenizer):
 
     model_input_names = ['input_ids']  # Per `TransfoXLTokenizer`
 
-    def __init__(self, precision: int = 5, **kwargs):
+    def __init__(self, precision: int = 5, deprecated: bool = False, **kwargs):
         super().__init__(**kwargs)
         # Model max length undefined, for infinite input length; See `tokenization_utils_base`
         if self.model_max_length == int(1e30):
             self.model_max_length = 4096  # TODO: subject to change?
 
         self.precision = precision
-        self.vocab = MusicVocabulary(precision=precision, color=False)
+        self.vocab = MusicVocabulary(precision=precision, color=False, deprecated=deprecated)
         self.spec_toks_enc, self.spec_toks_dec = dict(), dict()
         self._add_special_token(MusicTokenizer.TOK_PAD)
         self.pad_token, self.eos_token = MusicTokenizer.TOK_PAD, self.vocab.end_of_song

@@ -32,7 +32,7 @@ from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM
 __all__ = [
     'LN_KWARGS', 'nan',
     'vars_', 'get', 'set_', 'it_keys', 'config',
-    'compress', 'flatten', 'list_split', 'join_its', 'group_n', 'conc_map', 'batched_conc_map',
+    'compress', 'flatten', 'list_split', 'join_its', 'group_n', 'sample', 'conc_map', 'batched_conc_map',
     'readable_int', 'now', 'fmt_time', 'sec2mmss', 'round_up_1digit', 'profile_runtime',
     'clip', 'np_index', 'clean_whitespace', 'stem', 'list_is_same_elms', 'save_fig', 'read_pickle',
     'is_on_colab', 'get_model_num_trainable_parameter',
@@ -270,6 +270,18 @@ def group_n(it: Iterable[T], n: int) -> Iterable[Tuple[T]]:
         yield chunk
 
 
+def sample(d: Dict[K, Union[float, Any]]) -> K:
+    """
+    Sample a key from a dict based on confidence score as value
+        Keys with confidence evaluated to false are ignored
+
+    Internally uses `torch.multinomial`
+    """
+    d_keys = {k: v for k, v in d.items() if v}  # filter out `None`s
+    keys, weights = zip(*d_keys.items())
+    return keys[torch.multinomial(torch.tensor(weights), 1, replacement=True).item()]
+
+
 def conc_map(fn: Callable[[T], K], it: Iterable[T], with_tqdm=False) -> Iterable[K]:
     """
     Wrapper for `concurrent.futures.map`
@@ -379,7 +391,7 @@ def is_float(x: Any, no_int=False, no_sci=False) -> bool:
         return False
 
 
-def log_dict(d: Dict, with_color=True, pad_float: int = 5, sep=': ') -> str:
+def log_dict(d: Dict = None, with_color=True, pad_float: int = 5, sep=': ', **kwargs) -> str:
     """
     Syntactic sugar for logging dict with coloring for console output
     """
@@ -395,8 +407,7 @@ def log_dict(d: Dict, with_color=True, pad_float: int = 5, sep=': ') -> str:
                     return logi(v) if with_color else v
             else:
                 return logi(v) if with_color else v
-    if d is None:
-        d = dict()
+    d = d or kwargs or dict()
     pairs = (f'{k}{sep}{_log_val(v)}' for k, v in d.items())
     pref = log_s('{', c='m') if with_color else '{'
     post = log_s('}', c='m') if with_color else '}'

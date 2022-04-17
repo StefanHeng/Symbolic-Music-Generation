@@ -843,8 +843,8 @@ if __name__ == '__main__':
             ic(d_out)
         # check_mxl_out()
         # check_str()
-        # check_visualize()
-        check_return_meta_n_key()
+        check_visualize()
+        # check_return_meta_n_key()
     toy_example()
 
     def encode_a_few():

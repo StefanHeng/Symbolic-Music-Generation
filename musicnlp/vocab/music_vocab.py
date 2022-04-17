@@ -99,6 +99,15 @@ class MusicVocabulary:
     RE1 = rf'(?P<num>{RE_INT})'
     RE2 = rf'(?P<numer>{RE_INT})/(?P<denom>{RE_INT})'
 
+    _token_type2color: Dict[VocabType, str] = {
+        VocabType.time_sig: 'r',
+        VocabType.tempo: 'r',
+        VocabType.key: 'r',
+        VocabType.duration: 'g',
+        VocabType.pitch: 'b',
+        VocabType.special: 'm'
+    }
+
     # TODO: remove, original training was without key support
     def __init__(self, precision: int = 5, color: bool = False, deprecated: bool = False):
         """
@@ -334,6 +343,13 @@ class MusicVocabulary:
         """
         return self._colorize_spec(MusicVocabulary.SPEC_TOKS[k])
 
+    def colorize_token(self, tok: str) -> str:
+        """
+        Colorize token for terminal output
+            Color determined by token type
+        """
+        return log_s(tok, c=MusicVocabulary._token_type2color[self.type(tok)])
+
     def __call__(
             self, elm: Union[ExtNote, Union[TimeSignature, TsTup], Union[MetronomeMark, int], str],
             color: bool = None,
@@ -350,7 +366,7 @@ class MusicVocabulary:
         c = self.color if color is None else color
 
         def colorize(s):
-            return self._colorize_spec(s, color=c)
+            return self.colorize_token(s) if c else s
 
         if isinstance(elm, TimeSignature) or (isinstance(elm, tuple) and isinstance(elm[0], int)):  # Time Signature
             if isinstance(elm, TimeSignature):

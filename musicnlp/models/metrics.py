@@ -4,7 +4,6 @@ from collections import Counter
 
 import numpy as np
 import music21
-from responses import target
 
 from musicnlp.util import *
 from musicnlp.util.train import PT_LOSS_PAD

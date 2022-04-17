@@ -2,7 +2,6 @@ import os
 import json
 from typing import List, Dict, Callable, Union
 
-import torch
 import datasets
 from datasets import Dataset, DatasetDict
 
@@ -107,10 +106,7 @@ class KeySampleDataset:
         assert self.tokenizer.vocab.type(toks[0]) == VocabType.time_sig  # sanity check data well-formed
         assert self.tokenizer.vocab.type(toks[1]) == VocabType.tempo
 
-        d_keys = {k: v for k, v in item['keys'].items() if v}  # filter out `None`s
-        keys, weights = zip(*d_keys.items())
-        key = keys[torch.multinomial(torch.tensor(weights), 1, replacement=True).item()]
-        key_tok = self.tokenizer.vocab(key)[0]
+        key_tok = self.tokenizer.vocab(sample(item['keys']))[0]
         toks.insert(2, key_tok)
         # from icecream import ic
         # ic(item['title'], key_tok)
