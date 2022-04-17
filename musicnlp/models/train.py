@@ -2,8 +2,14 @@
 Proposed method: on compact melody & bass representation for autoregressive music generation
     Trying Transformer-XL, Reformer
 """
+import os
+import json
+import math
 from copy import deepcopy
+from typing import List, Tuple, Dict, Union
+from collections import OrderedDict
 
+import numpy as np
 import torch
 from transformers import TransfoXLConfig, ReformerConfig, ReformerModelWithLMHead
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
@@ -14,16 +20,17 @@ import datasets
 from musicnlp.util import *
 import musicnlp.util.train as train_util
 import musicnlp.util.models as model_util
-from musicnlp.preprocess import get_dataset
-from musicnlp.models import MusicTokenizer, _models
+from musicnlp.vocab import MusicTokenizer
+from musicnlp.preprocess import get_dataset, KeySampleDataset
+from musicnlp.models import architectures, metrics
 
 
 def get_model_n_tokenizer(
         model_name: str, model_size: str, prec: int = 5, model_config: Dict = None
-) -> Tuple[MusicTokenizer, model_util.MusicTransformerMixin, OrderedDict]:
+) -> Tuple[MusicTokenizer, Union[model_util.MusicTransformerMixin, torch.nn.Module], OrderedDict]:
     assert model_name in ['xl', 'reformer'], f'Unknown model_name: {model_name}'
 
-    tokenizer_ = MusicTokenizer(prec=prec)  # needed for reformer config
+    tokenizer_ = MusicTokenizer(precision=prec)  # needed for reformer config
     if not hasattr(get_model_n_tokenizer, 'd_config'):
         layer_pair = ['local', 'lsh']
         get_model_n_tokenizer.d_config = dict(
@@ -33,7 +40,22 @@ def get_model_n_tokenizer(
                 'small': dict(d_model=1024)
             },
             reformer={
-                'debug': dict(max_position_embeddings=1024, axial_pos_shape=(32, 32)),
+                'debug': dict(
+                    max_position_embeddings=64, axial_pos_shape=(8, 8),
+                    hidden_size=128, feed_forward_size=128*4, axial_pos_embds_dim=(32, 96),
+                    # note attention head size in config is per head
+                    num_attention_heads=8, attention_head_size=int(128/8),
+                    # effectively 6 layers as default config; going even smaller produces an error
+                    attn_layers=layer_pair*3
+                ),
+                'debug-large': dict(
+                    max_position_embeddings=512, axial_pos_shape=(16, 32),
+                    hidden_size=128, feed_forward_size=128*4, axial_pos_embds_dim=(32, 96),
+                    # note attention head size in config is per head
+                    num_attention_heads=8, attention_head_size=int(128/8),
+                    # effectively 6 layers as default config; going even smaller produces an error
+                    attn_layers=layer_pair*3
+                ),
                 # overall, given hidden size, keep
                 #   feed_forward_size = 4 x hidden size
                 #   attention_head_size = hidden_size
@@ -78,7 +100,7 @@ def get_model_n_tokenizer(
             ))
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
-            'xl': (TransfoXLConfig, _models.MyTransfoXLLMHeadModel),
+            'xl': (TransfoXLConfig, architectures.MyTransfoXLLMHeadModel),
             'reformer': (ReformerConfig, ReformerModelWithLMHead)
         }
     cls_config, cls_model = get_model_n_tokenizer.d_nm2cls[model_name]
@@ -121,12 +143,16 @@ def get_train_and_my_train_args(
     :param my_train_args: My own `MyTrainer` args, modifies trainer API for my customization
         - Added check pointing per k epochs
         - Logging strategy for Trainer replicated for my own console logging
+        Keys trying to follow the style of Trainer
     :param train_dataset: Training dataset, intended to get size for step per epoch calculation
     """
     if not hasattr(get_train_and_my_train_args, 'default_args'):
         get_train_and_my_train_args.default_args = dict(
             output_dir=os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, now(for_path=True)),
-            do_train=True, do_eval=False,
+            do_train=True,
+            do_eval=True,
+            evaluation_strategy='epoch',
+            eval_accumulation_steps=1,  # save as much GPU memory
             adam_beta1=0.9,
             adam_beta2=0.999,
             adam_epsilon=1e-08,
@@ -140,7 +166,7 @@ def get_train_and_my_train_args(
             optim=OptimizerNames.ADAMW_TORCH,
             disable_tqdm=True,
             report_to='none',
-            # gradient_checkpointing=torch.cuda.is_available()
+            # `gradient_checkpointing` for both Transformer XL and Reformer not supported
         )
     if not hasattr(get_train_and_my_train_args, 'd_train_args'):
         get_train_and_my_train_args.d_train_args = dict(
@@ -170,6 +196,13 @@ def get_train_and_my_train_args(
             },
             reformer={
                 'debug': dict(
+                    batch_size=8,
+                    learning_rate=3e-4,
+                    weight_decay=0,
+                    lr_scheduler_type=SchedulerType.CONSTANT,
+                    num_train_epochs=32,
+                ),
+                'debug-large': dict(
                     batch_size=8,
                     learning_rate=3e-4,
                     weight_decay=0,
@@ -225,7 +258,7 @@ def get_train_and_my_train_args(
     if train_args is not None:
         args.update(train_args)
 
-    my_args: Dict[str, Union[int, str]] = dict()
+    my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps', tqdm=False, augment_key=False)  # default
     if my_train_args is not None:
         my_args.update(my_train_args)
     bsz = args['per_device_train_batch_size'] * args.get('gradient_accumulation_steps', 1)
@@ -236,56 +269,80 @@ def get_train_and_my_train_args(
         args['save_strategy'] = 'steps'
         # TODO: DDP not supported
         args['save_steps'] = my_args['save_epochs'] * steps_per_epoch
-    if 'logging_strategy' in my_args and my_args['logging_strategy'] == 'epoch':
+    assert args['logging_strategy'] == 'steps'  # for my own internal logging to run
+    logging_strategy = my_args['logging_strategy']
+    ca(logging_strategy=logging_strategy)
+    if logging_strategy == 'epoch':
         my_args['logging_steps'] = steps_per_epoch
+    # args['disable_tqdm'] = not bool(my_args['tqdm'])
+    args['disable_tqdm'] = True  # Always use my own tqdm, see `musicnlp.util.train.MyTrainer`
     args = {k: v for k, v in args.items() if v is not None}
     return TrainingArguments(**args), my_args
 
 
-def compute_metrics(eval_pred):
-    """
-    :param eval_pred: 2-tuple of (greedy prediction **ids**, labels)
-        Intended to work with `CustomTrainer.prediction_step`
-    """
-    if not hasattr(compute_metrics, 'metric'):
-        compute_metrics.metric = datasets.load_metric('accuracy')
-    predictions, labels = eval_pred
-    predictions = predictions.argmax(dim=-1)
-    predictions, labels = predictions[:, :-1], labels[:, 1:]  # For CLM
-    labels, predictions = labels.flatten(), predictions.flatten()
-    msk_non_pad = (labels != train_util.PT_LOSS_PAD)
-    labels, predictions = labels[msk_non_pad], predictions[msk_non_pad]
-    return compute_metrics.metric.compute(predictions=predictions, references=labels)
+class ComputeMetrics:
+    def __init__(self, tokenizer: MusicTokenizer):
+        self.acc = datasets.load_metric('accuracy')
+        # so that no error if small #bars for now; TODO
+        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, n_init_bars=2)
+
+    def __call__(self, eval_pred):
+        """
+        :param eval_pred: 2-tuple of (greedy prediction **ids**, labels)
+
+        Will be the outputs on eval dataset, see `Trainer.compute_metrics`
+        """
+        predictions, labels = eval_pred
+        predictions = predictions.argmax(axis=-1)
+        d_metric = dict(ikr=self.ikr(predictions, labels))
+
+        predictions, labels = predictions[:, :-1], labels[:, 1:]  # since CLM
+        labels, predictions = labels.flatten(), predictions.flatten()
+        msk_non_pad = (labels != train_util.PT_LOSS_PAD)
+        labels, predictions = labels[msk_non_pad], predictions[msk_non_pad]
+        d_metric['ntp_acc'] = self.acc.compute(predictions=predictions, references=labels)['accuracy']
+        return d_metric
 
 
 def get_all_setup(
-        model_name: str, model_size: str, dataset_name: str, prec: int = 5, n_sample=None, dataset_seed=None,
+        model_name: str, model_size: str,
+        dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None,
         model_config: Dict = None, train_args: Dict = None, my_train_args: Dict = None
-) -> Tuple[model_util.MusicTransformerMixin, MusicTokenizer, datasets.Dataset, Trainer]:
-    tokenizer_, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
-    tr = get_dataset(
-        dataset_name, map_func=lambda d: tokenizer_(d['text'], padding='max_length', truncation=True),
-        remove_columns=['title', 'text'], n_sample=n_sample, random_seed=dataset_seed
-    )
+) -> Tuple[model_util.MusicTransformerMixin, MusicTokenizer, Trainer]:
+    # n_sample mainly for debugging
+    tokenizer, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
+    if my_train_args.get('augment_key', False):
+        # For now, just do non-deterministic sampling for eval set too, TODO?
+        dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
+    else:
+        dset = get_dataset(
+            dataset_names=dataset_names,
+            map_func=lambda d: tokenizer(d['score'], padding='max_length', truncation=True),
+            remove_columns=['title', 'score', 'duration'], n_sample=n_sample  # i.e. keep the input ids only
+        )
+    tr, vl = dset['train'], dset['test']
     args, my_args, = get_train_and_my_train_args(model_name, model_size, train_args, my_train_args, tr)
-    # Ensure compatibility of dataset & tokenizer, see `music_export`
-    assert json.loads(tr.info.description)['precision'] == tokenizer_.prec
+    assert all(  # Ensure compatibility of dataset & tokenizer, see `music_export`
+        get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer.precision for ds in dset.values()
+    )
 
     clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
+    cm = ComputeMetrics(tokenizer)
     trainer_ = train_util.MyTrainer(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
-        model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer_, mlm=False),
-        train_dataset=tr, compute_metrics=compute_metrics
+        train_metrics=dict(ikr=cm.ikr),
+        model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        train_dataset=tr, eval_dataset=vl, compute_metrics=cm
     )
-    return model_, tokenizer_, tr, trainer_
+    return model_, tokenizer, trainer_
 
 
 if __name__ == '__main__':
     import transformers
     from icecream import ic
 
-    fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
+    ic.lineWrapWidth = 400
 
     def check_model_size():
         md_nm = 'reformer'
@@ -294,44 +351,71 @@ if __name__ == '__main__':
         md_sz = 'large'
         mdl: torch.nn.Module = get_model_n_tokenizer(model_name=md_nm, model_size=md_sz)[1]
         ic(get_model_num_trainable_parameter(mdl))
-    check_model_size()
+    # check_model_size()
 
     def train(resume_from_checkpoint: str = None):
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        md_sz = 'tiny'
+        md_sz = 'debug'
+        # md_sz = 'debug-large'
+        # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
-
-        n = 8
-        # n = None
+        ic(md_sz)
 
         if md_nm != 'reformer':
             transformers.set_seed(seed)
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
 
-        # train_args = dict(num_train_epochs=256)
-        train_args = dict(
-            per_device_train_batch_size=4,
-            save_strategy='epoch',
-            num_train_epochs=8
-        )
-        my_train_args = dict(
-            logging_strategy='epoch',  # those are replicated from Trainer, for my own logging
-            save_epochs=2
-        )
-        mdl, tokenizer, dset_tr, trainer = get_all_setup(
-            model_name=md_nm, model_size=md_sz, dataset_name=fnm, n_sample=n, dataset_seed=seed,
+        augment_key = True
+        if augment_key:
+            dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
+                     'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+            dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
+                      'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
+        else:
+            dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
+                      'meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+            dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
+                      'meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
+        dnms = [dnm_909, dnm_lmd]
+
+        if 'debug' in md_sz or md_sz == 'tiny':
+            # n = None
+            n = 32
+            train_args = dict(
+                per_device_train_batch_size=2,
+                # save_strategy='no',
+                save_strategy='epoch',
+                num_train_epochs=64,
+            )
+            my_train_args = dict(
+                save_epochs=16,
+                # logging_strategy='no',
+                logging_strategy='epoch',
+                tqdm='train-only',
+                augment_key=augment_key,
+            )
+        else:
+            n = None
+            train_args = dict(num_train_epochs=16)
+            my_train_args = dict(
+                logging_strategy='epoch',
+                save_epochs=4
+            )
+        mdl, tokenizer, trainer = get_all_setup(
+            model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n,
             train_args=train_args, my_train_args=my_train_args
         )
+
         if resume_from_checkpoint:
             trainer.train(resume_from_checkpoint)
         else:
             trainer.train()
         trainer.save_model(os.path.join(trainer.args.output_dir, 'trained'))
-    # train()
+    train()
 
     # checkpoint_path = os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
     # train(resume_from_checkpoint=checkpoint_path)

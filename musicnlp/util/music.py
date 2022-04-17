@@ -1,18 +1,28 @@
+import os
+import re
 import glob
+import json
 from shutil import copyfile
+from typing import Tuple, List, Dict, Union
 from collections import defaultdict
 
+import pandas as pd
 from tqdm import tqdm
 
-from musicnlp.util.util import *
+from musicnlp.util import *
+from musicnlp.util.data_path import PATH_BASE, DIR_DSET
+
+
+def get_processed_path():
+    return os.path.join(PATH_BASE, DIR_DSET, config('datasets.my.dir_nm'))
 
 
 def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False):
     """
     :return: A list of or single MIDI file path
     """
-    fmt, formats = fmt.lower(), ['mxl', 'midi']
-    assert fmt in formats, f'Invalid format: expected one of {logi(formats)}, got {logi(fmt)}'
+    fmt = fmt.lower()
+    ca(fmt=fmt)
     if extracted:
         assert fmt == 'mxl', 'Only support extracted for MXL files'
     dset_nm = f'{fmt}-eg'
@@ -36,16 +46,36 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
 
 
 def get_extracted_song_eg(
-        fnm='musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29',
+        fnm='musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01',
         dir_=get_processed_path(),
         k: Union[int, str] = 0
 ) -> str:
     with open(os.path.join(dir_, f'{fnm}.json')) as f:
         dset = json.load(f)['music']
     if isinstance(k, int):
-        return dset[k]['text']
+        return dset[k]['score']
     else:
-        return next(d['text'] for d in dset if k in d['title'])
+        return next(d['score'] for d in dset if k in d['title'])
+
+
+def lmd_cleaned_title2title_n_ver(title: str) -> Tuple[str, int]:
+    """
+    :param title: File name of format `<title>(.<ver>)?`
+
+    Note there's a file in the original dataset, by artist `Gary Glitter`, named `Rock 'n' Roll PT.2..mid`
+        We consider this an edge case, the last dot should not be there, and we ignore this case
+        Users are advised to modify the file to remove the dot
+    """
+    if not hasattr(lmd_cleaned_title2title_n_ver, 'pattern_title'):  # version as a number has to be at the end
+        lmd_cleaned_title2title_n_ver.pattern_title = re.compile(r'^(?P<title>.*)\.(?P<version>[1-9]\d*)$')
+    m = lmd_cleaned_title2title_n_ver.pattern_title.match(title)
+    if m:
+        title_, version = m.group('title'), m.group('version')
+        assert title_ is not None and version is not None
+        title, v = title_, int(version)
+    else:
+        v = 0
+    return title, v
 
 
 def convert_dataset(dataset_name: str = 'POP909'):
@@ -81,14 +111,7 @@ def convert_dataset(dataset_name: str = 'POP909'):
             paths_last = p_.split(os.sep)[-2:]
             artist, title = paths_last
             title = title[:-4]  # remove `.mid`
-            pattern_title = re.compile(r'(?P<title>.*)\.(?P<version>[1-9]\d*)')
-            m = pattern_title.match(title)
-            if m:
-                title_, version = m.group('title'), m.group('version')
-                assert version is not None
-                title, v = title_, int(version)
-            else:
-                v = 0
+            title, v = lmd_cleaned_title2title_n_ver(title)
 
             fnm_ = clean_whitespace(f'{artist} - {title}')
             assert len(clean_whitespace(artist)) - 3 <= my_lim, \
@@ -97,6 +120,8 @@ def convert_dataset(dataset_name: str = 'POP909'):
                 # Modified the name, but still keep to the original way of versioning,
                 #   i.e. `<title>.<version>` if there's a separate version,
                 # so that `get_lmd_cleaned_subset_fnms` can work without changes
+                # TODO: however, the original LMD dataset's way of versioning the same song
+                #  is not intuitive & better be changed
                 fnm_ = f'{fnm_[:my_lim]}... '
                 path2fnm.count_too_long += 1
             v_str = '' if v == 0 else f'.{v}'
@@ -124,25 +149,18 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
 
     Expects `convert_dataset` called first
     """
-    # TODO: this applies to the original LMD dataset's way of versioning the same song, which better be changed
     # this folder contains all MIDI files that can be converted to MXL, on my machine
     path = os.path.join(PATH_BASE, DIR_DSET, 'LMD-cleaned_valid')
     # <artist> - <title>(.<version>)?.mid
     pattern = re.compile(r'^(?P<artist>.*) - (?P<title>.*)(\.(?P<version>[1-9]\d*))?\.mid$')
-    pattern_title = re.compile(r'((?P<title>.*)\.(?P<version>[1-9]\d*))?')
     d_song2fnms: Dict[Tuple[str, str], Dict[int, str]] = defaultdict(dict)
     fnms = sorted(glob.iglob(os.path.join(path, '*.mid')))
     for fnm in tqdm(fnms, desc='Getting LMD-cleaned subset', unit='song'):
         fnm = stem(fnm, keep_ext=True)
         m = pattern.match(fnm)
         artist, title = m.group('artist'), m.group('title')
-        assert artist is not None and title is not None
-        m = pattern_title.match(title)
-        title_, version = m.group('title'), m.group('version')
-        if title_ is None:
-            assert version is None
-        else:
-            title, version = title_, int(version)
+        title, version = lmd_cleaned_title2title_n_ver(title)
+
         version = version or 0
         d = d_song2fnms[(artist, title)]
         assert version not in d
@@ -177,7 +195,12 @@ def get_cleaned_song_paths(dataset_name: str, fmt='mid') -> List[str]:
     else:
         d_dset = config(f'datasets.{dataset_name}')
         dir_nm = d_dset['dir_nm']
-        path = os.path.join(path, dir_nm, d_dset[fmt])
+        path = os.path.join(path, dir_nm, d_dset[f'song_fmt_{fmt}'])
+        # from icecream import ic
+        # ic(path)
+        # ic(os.listdir(os.path.join(PATH_BASE, DIR_DSET, dir_nm)))
+        # ic(len(sorted(glob.iglob(path, recursive=True))))
+        # exit(1)
         return sorted(glob.iglob(path, recursive=True))
 
 
@@ -231,10 +254,10 @@ if __name__ == '__main__':
             if fnm != fnm_new:
                 os.rename(fnm, fnm_new)
                 print(f'Renamed {logi(fnm)} => {logi(fnm_new)}')
-    fix_match_mxl_names_with_new_mid()
+    # fix_match_mxl_names_with_new_mid()
 
     def get_lmd_subset():
         # fnms = get_lmd_cleaned_subset_fnms()
         fnms = get_cleaned_song_paths('LMD-cleaned-subset')
         ic(len(fnms), fnms[:20])
-    # get_lmd_subset()
+    get_lmd_subset()

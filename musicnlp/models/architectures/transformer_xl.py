@@ -1,10 +1,9 @@
-from typing import Optional
+from typing import List, Tuple, Optional
 
 import torch
 from transformers import TransfoXLLMHeadModel
 from transformers.file_utils import ModelOutput
 
-from musicnlp.util import *
 from musicnlp.util.models import MusicTransformerMixin
 
 

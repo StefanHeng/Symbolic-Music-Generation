@@ -1,8 +1,19 @@
+import os
+import re
+import math
+from typing import Dict, Callable
+import datetime
+import collections
+from collections import OrderedDict
+
+import pandas as pd
+import torch
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
+from tqdm import tqdm
 
 from musicnlp.util.util import *
-
+from musicnlp.util.check_args import ca
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
 
@@ -21,7 +32,7 @@ def _pretty_single(key: str, val, ref: Dict = None):
         return f'{s_val}/{lim}'  # Pad integer
     elif 'loss' in key:
         return f'{round(val, 4):7.4f}'
-    elif any(k in key for k in ('acc', 'recall', 'auc')):
+    elif any(k in key for k in ('acc', 'recall', 'auc', 'ikr')):  # custom in-key-ratio metric
         def _single(v):
             return f'{round(v * 100, 2):6.2f}' if v is not None else '-'
 
@@ -52,26 +63,114 @@ def meta2fnm_meta(meta: Dict) -> Dict:
     return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
 
 
+class MyProgressCallback(TrainerCallback):
+    """
+    My modification to the HF progress callback
+
+    1. Effectively remove all logging, keep only the progress bar w.r.t. this callback
+    2. Train tqdm for each epoch only
+    3. Option to disable progress bar for evaluation
+
+    Expects to start from whole epochs
+    """
+
+    def __init__(self, train_only: bool = False):
+        """
+        :param train_only: If true, disable progress bar for evaluation
+        """
+        self.training_bar = None
+        self.prediction_bar = None
+        self.train_only = train_only
+        self.step_per_epoch = None
+        self.current_step = None
+
+    def on_epoch_begin(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            # self.training_bar = tqdm(total=state.max_steps)
+            n_ep = _pretty_single('epoch', int(state.epoch), ref={'epoch': state.num_train_epochs})
+            # self.training_bar.set_description(f'Epoch {n_ep}')
+            assert state.max_steps % state.num_train_epochs == 0
+            self.step_per_epoch = state.max_steps // state.num_train_epochs
+            self.training_bar = tqdm(total=self.step_per_epoch, desc=f'Epoch {n_ep}')
+        self.current_step = 0
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        # if state.is_local_process_zero:
+        #     self.training_bar = tqdm(total=state.max_steps)
+        # self.current_step = 0
+        pass
+
+    def on_epoch_end(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+        #     self.training_bar.update(state.num_steps)
+        #     self.training_bar.refresh()
+            self.training_bar.close()
+            self.training_bar = None
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            # self.training_bar.update(state.global_step - self.current_step)
+            # self.current_step = state.global_step
+            # self.training_bar.update(self.step_per_epoch - state.global_step % self.step_per_epoch)
+            # self.current_step = state.global_step % self.step_per_epoch
+            self.training_bar.update(1)
+
+    def on_prediction_step(self, args, state, control, eval_dataloader=None, **kwargs):
+        if not self.train_only:
+            if state.is_local_process_zero and isinstance(eval_dataloader.dataset, collections.abc.Sized):
+                if self.prediction_bar is None:
+                    self.prediction_bar = tqdm(total=len(eval_dataloader), leave=self.training_bar is None)
+                self.prediction_bar.update(1)
+
+    def on_evaluate(self, args, state, control, **kwargs):
+        if not self.train_only:
+            if state.is_local_process_zero:
+                if self.prediction_bar is not None:
+                    self.prediction_bar.close()
+                self.prediction_bar = None
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if state.is_local_process_zero and self.training_bar is not None:
+            _ = logs.pop("total_flos", None)
+
+    def on_train_end(self, args, state, control, **kwargs):
+        pass
+        # if state.is_local_process_zero:
+        #     self.training_bar.close()
+        #     self.training_bar = None
+
+
 class MyTrainer(Trainer):
-    def __init__(self, clm_acc_logging=True, model_meta: Dict = None, my_args: Dict = None, **kwargs):
+    def __init__(
+            self, model_meta: Dict = None, my_args: Dict = None,
+            clm_acc_logging=True, train_metrics: Dict[str, Callable] = None, **kwargs
+    ):
+        assert kwargs['args'].disable_tqdm  # Always disable
         super().__init__(**kwargs)
         self.clm_acc_logging = clm_acc_logging
         self.model_meta = model_meta
         self.model_meta['parameter_count'] = get_model_num_trainable_parameter(self.model)
         self.name = self.model.__class__.__qualname__
+        self.train_metrics = train_metrics
 
         self.my_args = my_args
         self.post_init()
 
     def post_init(self):
         callbacks = self.callback_handler.callbacks
-        # When tqdm disabled, Trainer adds a PrinterCallback, replace that with my own
+        # Trainer adds a `PrinterCallback` or a `ProgressCallback`, replace all that with my own,
+        # see `MyProgressCallback`
         self.callback_handler.callbacks = [
-            c for c in callbacks if str(c.__class__) != "<class 'transformers.trainer_callback.PrinterCallback'>"
+            c for c in callbacks if str(c.__class__) not in [
+                "<class 'transformers.trainer_callback.ProgressCallback'>",
+                "<class 'transformers.trainer_callback.PrinterCallback'>"
+            ]
         ]
         callback_cls = ColoredPrinterCallbackForClm if self.clm_acc_logging else ColoredPrinterCallback
         if not self.clm_acc_logging:
             raise NotImplementedError('on-CLM task logging not updated')
+        if self.my_args['tqdm']:
+            self.add_callback(MyProgressCallback(train_only=self.my_args['tqdm'] == 'train-only'))
         self.add_callback(callback_cls(name=self.name, parent_trainer=self))
 
     def compute_loss(self, model, inputs, return_outputs=False):
@@ -90,16 +189,22 @@ class MyTrainer(Trainer):
 
         # ========================== Begin of added ==========================
         inputs: Dict[str, torch.Tensor]
-        if self.clm_acc_logging and 'labels' in inputs:
+        # don't need to calculate NTP acc here for eval, see `compute_ntp_acc`
+        if self.is_in_train and self.clm_acc_logging and 'labels' in inputs:
             preds = outputs.logits.detach().argmax(axis=-1)
             labels_ = inputs['labels'].detach()
+            d_log = dict(src='compute_loss')
+            if self.train_metrics:
+                d_log.update({k: f(preds, labels_) for k, f in self.train_metrics.items()})
+
             # CLM, predicting the next token given current, so shift
             preds, labels_ = preds[:, :-1], labels_[:, 1:]
             msk_not_pad = labels_ != PT_LOSS_PAD  # Consider only the actual tokens for accuracy
             preds_non_pad, labels_non_pad = preds[msk_not_pad], labels_[msk_not_pad]
             matches: torch.Tensor = (preds_non_pad == labels_non_pad)
             # next-token-prediction task
-            d_log = dict(src='compute_loss', ntp_acc=matches.sum().item()/preds_non_pad.numel())
+            ntp_acc_meta = dict(matched=matches.sum().item(), total=preds_non_pad.numel())
+            d_log['ntp_acc_meta'] = ntp_acc_meta
             self.log(d_log)
         # ========================== End of added ==========================
 
@@ -177,7 +282,7 @@ class ColoredPrinterCallback(TrainerCallback):
 
     def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
         self.t_end = datetime.datetime.now()
-        t = fmt_dt(self.t_end - self.t_strt)
+        t = fmt_time(self.t_end - self.t_strt)
         self.logger.info(f'Training completed in {logi(t)} ')
         self.logger_fl.info(f'Training completed in {t} ')
         self.mode = 'eval'
@@ -197,9 +302,10 @@ class ColoredPrinterCallback(TrainerCallback):
                     self.writer.add_scalar('Train/loss', loss, step)
                     self.writer.add_scalar('Train/learning_rate', lr, step)
 
-                    out_console, out_write = self.out_dict2str(logs, return_wo_color=True)  # TODO: `pretty_log_dict`
-                    self.logger.info(out_console)
-                    self.logger_fl.info(out_write)
+                    # out_console, out_write = self.out_dict2str(logs, return_wo_color=True)  # TODO: didn't test
+                    logs = pretty_log_dict(logs, ref=self.train_meta)
+                    self.logger.info(log_dict(logs))
+                    self.logger_fl.info(log_dict_nc(logs))
                 else:
                     self.logger.info(log_dict(logs))
                     self.logger_fl.info(log_dict(logs, with_color=False))
@@ -208,13 +314,39 @@ class ColoredPrinterCallback(TrainerCallback):
                 self.logger_fl.info(logs)
 
 
+no_prefix = ['epoch', 'step']
+
+
+def add_prefix(key: str) -> bool:
+    return key not in no_prefix
+
+
 class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
     """
     Additionally log next-token-prediction accuracy
+
+    .. note:: Music-theory-inspired in-key-ratio also added, see `models.metrics.py`
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.out_dict = None
+        self.out_dict = None  # For passing NTP accuracy in training steps
+        self.pattern_eval_key = re.compile(r'^eval_(?P<key>.*)$')
+
+    def _get_eval_key(self, key: str) -> str:
+        return self.pattern_eval_key.match(key).group('key')
+
+    def _log(self, d_log, mode='train', to_console=True):
+        ca(logging_mode=mode)
+        d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log.items()}
+        d_log_write = pretty_log_dict(d_log_write, ref=self.train_meta)
+        if to_console:
+            self.logger.info(log_dict(d_log_write))
+        self.logger_fl.info(log_dict_nc(d_log_write))
+
+        step = d_log.get('step') if mode == 'train' else d_log.get('epoch')
+        for k, v in d_log.items():
+            if add_prefix(k):
+                self.writer.add_scalar(tag=f'{mode}/{k}', scalar_value=v, global_step=step)
 
     def on_log(self, args, state, control, logs=None, **kwargs):
         if state.is_local_process_zero:
@@ -229,22 +361,46 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     n_ep = state.epoch  # The one originally is rounded, see `Trainer.log`
                     loss, lr = logs['loss'], logs['learning_rate']
                     assert self.out_dict is not None
-                    ntp_acc = self.out_dict['ntp_acc']
+                    from icecream import ic
+                    # ic(self.out_dict)
+                    ntp_acc_meta = self.out_dict['ntp_acc_meta']
+                    # TODO: Potentially support gradient accumulation
+                    # ntp_acc_meta = {k: sum(v for v in d[k]) for k, d in ntp_acc_meta.items()}
+                    # ic(ntp_acc_meta)
+                    ntp_acc = ntp_acc_meta['matched'] / ntp_acc_meta['total']
+                    metrics = {k: self.out_dict[k] for k in self.trainer.train_metrics}
+
                     self.out_dict = OrderedDict([
                         ('step', step), ('epoch', n_ep), ('learning_rate', lr),
-                        ('train_loss', loss), ('ntp_acc', ntp_acc)
+                        ('loss', loss), ('ntp_acc', ntp_acc)
                     ])
-                    self.out_dict = pretty_log_dict(self.out_dict, ref=self.train_meta)
-                    # `should_log` just prevents this call, I only filter console logging
-                    if self.trainer.my_args['logging_strategy'] == 'steps':
-                        self.logger.info(log_dict(self.out_dict))
-                    elif self.trainer.my_args['logging_strategy'] == 'epoch' and \
-                            step % self.trainer.my_args['steps_per_epoch'] == 0:
-                        self.logger.info(log_dict(self.out_dict))
-                    self.logger_fl.info(log_dict_nc(self.out_dict))
-                    self.writer.add_scalar('Train/loss', loss, step)
-                    self.writer.add_scalar('Train/ntp_acc', ntp_acc, step)
-                    self.writer.add_scalar('Train/learning_rate', lr, step)
+                    self.out_dict.update(metrics)
+                    # ic(self.out_dict)
+
+                    # `should_log` in Trainer just prevents the `on_log` call, I only filter console logging
+                    should_log = False
+                    my_log_strat = self.trainer.my_args.get('logging_strategy', 'steps')
+                    if my_log_strat == 'steps':
+                        should_log = True
+                    elif my_log_strat == 'epoch' and step % self.trainer.my_args['steps_per_epoch'] == 0:
+                        should_log = True
+                    self._log(self.out_dict, mode='train', to_console=should_log)
+                elif 'eval_loss' in logs:  # `Trainer.is_in_train` is not False so can't use
+                    assert 'epoch' in logs
+                    del logs['epoch']
+                    # For potential metrics computed
+                    ks = [self._get_eval_key(k) for k in logs.keys()]
+                    ks = [
+                        k for k in ks
+                        if k not in ['loss', 'ntp_acc', 'runtime', 'samples_per_second', 'steps_per_second']
+                    ]
+                    ks = ['loss', 'ntp_acc'] + ks
+                    # Log eval on an epoch-level, always logged irrelevant to `logging_strategy`
+                    # Evaluation finished during training; TODO: didn't verify other positive cases
+                    n_ep = state.epoch
+                    assert n_ep.is_integer()
+                    d_log = dict(step=state.global_step, epoch=int(n_ep), **{k: logs[f'eval_{k}'] for k in ks})
+                    self._log(d_log, mode='eval', to_console=True)
                 else:
                     self.logger.info(log_dict(logs))
                     self.logger_fl.info(log_dict_nc(logs))
@@ -290,7 +446,7 @@ class ClmAccCallback(ColoredPrinterCallback):
                 del self.out_dict_tr[self.k_acc]
                 self.out_dict_tr['learning_rate'] = logs['learning_rate']
                 self.out_dict_tr['train_loss'] = logs['loss']
-                self.logger.info(self.out_dict2str(self.out_dict_tr))
+                self.logger.info(pretty_log_dict(self.out_dict_tr))
                 self.out_dict_tr = None  # Rest for next global step
             elif any('runtime' in k for k in logs.keys()):
                 self.logger.info(log_dict(logs) if isinstance(logs, dict) else logs)

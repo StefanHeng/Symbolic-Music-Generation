@@ -1,9 +1,21 @@
 """
 Deprecated, see `music_extractor.py`
 """
-
+import os
+import json
+import math
+import functools
+from copy import deepcopy
+from typing import List, Tuple, Dict, Callable, Union, Any
 from warnings import warn
+from fractions import Fraction
 
+import numpy as np
+import music21 as m21
+
+from musicnlp.util import *
+import musicnlp.util.music as music_util
+from musicnlp.util.data_path import PATH_BASE, DIR_DSET
 from musicnlp.util.music_lib import *
 
 
@@ -629,7 +641,7 @@ class MxlMelodyExtractor:
 
             ids = [_call(*args) for args in lst_bar_n_ts]
             id_bar = self.tokenizer('[SEP]')
-            return reduce(lambda a, b: a+[id_bar]+b, ids)  # Join the encodings with bar separation
+            return functools.reduce(lambda a, b: a+[id_bar]+b, ids)  # Join the encodings with bar separation
 
         def decode(
                 self,
@@ -943,7 +955,7 @@ def extract(dnms: List[str], exp='json') -> List[Dict[str, Any]]:
     count = 0
     count_suc = 0
     songs = []
-    fnms = {dnm: get_cleaned_song_paths(dnm, fmt='song_fmt_exp') for dnm in dnms}
+    fnms = {dnm: music_util.get_cleaned_song_paths(dnm, fmt='song_fmt_exp') for dnm in dnms}
     n_songs = sum(len(e) for e in fnms.values())
     n = len(str(n_songs))
     for dnm, fnms in fnms.items():
@@ -980,7 +992,7 @@ if __name__ == '__main__':
     from icecream import ic
 
     def check_midi():
-        fnm = get_my_example_songs('Shape of You')
+        fnm = music_util.get_my_example_songs('Shape of You')
         # fnm = eg_songs('My Favorite Things')
         me = MidiMelodyExtractor(fnm)
         ic(me.bpm)
@@ -989,7 +1001,7 @@ if __name__ == '__main__':
 
     def check_mxl():
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
-        fnm = get_my_example_songs('Shape of You', fmt='MXL')
+        fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm)
         me.bar_with_max_pitch(exp='mxl')
@@ -997,7 +1009,7 @@ if __name__ == '__main__':
 
     def extract_encoding():
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
-        fnm = get_my_example_songs('Shape of You', fmt='MXL')
+        fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm, n=None)
         me.bar_with_max_pitch(exp='symbol')
@@ -1006,7 +1018,7 @@ if __name__ == '__main__':
     def sanity_check_encoding():
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
-        fnm = get_my_example_songs('平凡之路', fmt='MXL')
+        fnm = music_util.get_my_example_songs('平凡之路', fmt='MXL')
         ic(fnm)
         me = MxlMelodyExtractor(fnm, n=None)
         ids = me.bar_with_max_pitch(exp='symbol')
@@ -1019,7 +1031,7 @@ if __name__ == '__main__':
     def encode_a_few():
         # n = 2**6
         dnm = 'POP909'
-        fnms = get_cleaned_song_paths(dnm, fmt='song_fmt_exp')
+        fnms = music_util.get_cleaned_song_paths(dnm, fmt='song_fmt_exp')
         # for idx, fnm in enumerate(fnms):
         for idx, fnm in enumerate(fnms[66+136+289:]):
             ic(idx, stem(fnm))

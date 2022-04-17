@@ -26,7 +26,20 @@ import seaborn as sns
 from tqdm import tqdm
 
 
-from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM, DIR_DSET
+from musicnlp.util.data_path import PATH_BASE, DIR_PROJ, PKG_NM
+
+
+__all__ = [
+    'LN_KWARGS', 'nan',
+    'vars_', 'get', 'set_', 'it_keys', 'config',
+    'compress', 'flatten', 'list_split', 'join_its', 'group_n', 'conc_map', 'batched_conc_map',
+    'readable_int', 'now', 'fmt_time', 'sec2mmss', 'round_up_1digit', 'profile_runtime',
+    'clip', 'np_index', 'clean_whitespace', 'stem', 'list_is_same_elms', 'save_fig', 'read_pickle',
+    'is_on_colab', 'get_model_num_trainable_parameter',
+    'log', 'log_s', 'logi', 'is_float', 'log_dict', 'log_dict_nc', 'log_dict_id', 'log_dict_pg', 'log_dict_p',
+    'hex2rgb', 'MyTheme', 'MyFormatter', 'get_logger',
+    'RecurseLimit'
+]
 
 
 pd.set_option('expand_frame_repr', False)
@@ -40,11 +53,10 @@ sns.set_style('darkgrid')
 LN_KWARGS = dict(marker='o', ms=0.3, lw=0.25)
 
 nan = float('nan')
+T = TypeVar('T')
+K = TypeVar('K')
 
-
-def flatten(lsts):
-    """ Flatten list of [list of elements] to list of elements """
-    return sum(lsts, [])
+PATH_CONF = os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util', 'config.json')
 
 
 def clip(val, vmin, vmax):
@@ -53,6 +65,25 @@ def clip(val, vmin, vmax):
 
 def np_index(arr, idx):
     return np.where(arr == idx)[0][0]
+
+
+def clean_whitespace(s: str):
+    if not hasattr(clean_whitespace, 'pattern_space'):
+        clean_whitespace.pattern_space = re.compile(r'\s+')
+    return clean_whitespace.pattern_space.sub(' ', s).strip()
+
+
+def stem(path, keep_ext=False):
+    """
+    :param path: A potentially full path to a file
+    :param keep_ext: If True, file extensions is preserved
+    :return: The file name, without parent directories
+    """
+    return os.path.basename(path) if keep_ext else pathlib.Path(path).stem
+
+
+def list_is_same_elms(lst: List[T]) -> bool:
+    return all(l == lst[0] for l in lst)
 
 
 def vars_(obj, include_private=False):
@@ -67,17 +98,6 @@ def vars_(obj, include_private=False):
             return lambda a: not a.startswith('__') and not a.startswith('_')
     attrs = filter(is_relevant(), dir(obj))
     return {a: getattr(obj, a) for a in attrs}
-
-
-def read_pickle(fnm):
-    objects = []
-    with (open(fnm, 'rb')) as f:
-        while True:
-            try:
-                objects.append(pickle.load(f))
-            except EOFError:
-                break
-    return objects
 
 
 def get(dic, ks):
@@ -95,7 +115,7 @@ def set_(dic, ks, val):
     node[ks[-1]] = val
 
 
-def keys(dic, prefix=''):
+def it_keys(dic, prefix=''):
     """
     :return: Generator for all potentially-nested keys
     """
@@ -103,13 +123,10 @@ def keys(dic, prefix=''):
         return k_ if prefix == '' else f'{prefix}.{k_}'
     for k, v in dic.items():
         if isinstance(v, dict):
-            for k__ in keys(v, prefix=_full(k)):
+            for k__ in it_keys(v, prefix=_full(k)):
                 yield k__
         else:
             yield _full(k)
-
-
-PATH_CONF = os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util', 'config.json')
 
 
 def config(attr):
@@ -124,8 +141,15 @@ def config(attr):
     return get(config.config, attr)
 
 
-def get_processed_path():
-    return os.path.join(PATH_BASE, DIR_DSET, config('datasets.my.dir_nm'))
+def readable_int(num: int, suffix: str = '') -> str:
+    """
+    Converts (potentially large) integer to human-readable format
+    """
+    for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Y', suffix)
 
 
 def now(as_str=True, for_path=False):
@@ -148,18 +172,38 @@ def save_fig(title, save=True):
         plt.savefig(os.path.join(save_fig.path, fnm), dpi=300)
 
 
-def fmt_dt(secs: Union[int, float, datetime.timedelta]):
+def read_pickle(fnm):
+    objects = []
+    with (open(fnm, 'rb')) as f:
+        while True:
+            try:
+                objects.append(pickle.load(f))
+            except EOFError:
+                break
+    return objects
+
+
+def is_on_colab() -> bool:
+    return 'google.colab' in sys.modules
+
+
+def get_model_num_trainable_parameter(model: torch.nn.Module, readable: bool = True) -> Union[int, str]:
+    n = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return readable_int(n) if readable else n
+
+
+def fmt_time(secs: Union[int, float, datetime.timedelta]):
     if isinstance(secs, datetime.timedelta):
         secs = secs.seconds + (secs.microseconds/1e6)
     if secs >= 86400:
         d = secs // 86400  # // floor division
-        return f'{round(d)}d{fmt_dt(secs-d*86400)}'
+        return f'{round(d)}d{fmt_time(secs - d * 86400)}'
     elif secs >= 3600:
         h = secs // 3600
-        return f'{round(h)}h{fmt_dt(secs-h*3600)}'
+        return f'{round(h)}h{fmt_time(secs - h * 3600)}'
     elif secs >= 60:
         m = secs // 60
-        return f'{round(m)}m{fmt_dt(secs-m*60)}'
+        return f'{round(m)}m{fmt_time(secs - m * 60)}'
     else:
         return f'{round(secs)}s'
 
@@ -174,14 +218,17 @@ def round_up_1digit(num: int):
     return math.ceil(num/fact) * fact
 
 
-def clean_whitespace(s: str):
-    if not hasattr(clean_whitespace, 'pattern_space'):
-        clean_whitespace.pattern_space = re.compile(r'\s+')
-    return clean_whitespace.pattern_space.sub(' ', s).strip()
-
-
-T = TypeVar('T')
-K = TypeVar('K')
+def profile_runtime(callback: Callable, sleep: Union[float, int] = None):
+    import cProfile
+    import pstats
+    profiler = cProfile.Profile()
+    profiler.enable()
+    callback()
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('cumtime')
+    if sleep:    # Sometimes, the top rows in `print_states` are now shown properly
+        time.sleep(sleep)
+    stats.print_stats()
 
 
 def compress(lst: List[T]) -> List[Tuple[T, int]]:
@@ -194,7 +241,12 @@ def compress(lst: List[T]) -> List[Tuple[T, int]]:
             + compress(list(itertools.dropwhile(lambda elm: elm == lst[0], lst))))
 
 
-def split(lst: List[T], call: Callable[[T], bool]) -> List[List[T]]:
+def flatten(lsts):
+    """ Flatten list of [list of elements] to list of elements """
+    return sum(lsts, [])
+
+
+def list_split(lst: List[T], call: Callable[[T], bool]) -> List[List[T]]:
     """
     :return: Split a list by locations of elements satisfying a condition
     """
@@ -218,7 +270,7 @@ def group_n(it: Iterable[T], n: int) -> Iterable[Tuple[T]]:
         yield chunk
 
 
-def conc_map(fn: Callable[[T], K], it: Iterable[T], with_tqdm = False) -> Iterable[K]:
+def conc_map(fn: Callable[[T], K], it: Iterable[T], with_tqdm=False) -> Iterable[K]:
     """
     Wrapper for `concurrent.futures.map`
 
@@ -235,7 +287,7 @@ def conc_map(fn: Callable[[T], K], it: Iterable[T], with_tqdm = False) -> Iterab
 def batched_conc_map(
         fn: Callable[[Tuple[List[T], int, int]], K], lst: List[T], n_worker: int = os.cpu_count(),
         batch_size: int = None,
-        with_tqdm: bool = False
+        with_tqdm: bool = False  # TODO: doesn't seem to work as expected
 ) -> List[K]:
     """
     Batched concurrent mapping, map elements in list in batches
@@ -262,19 +314,6 @@ def batched_conc_map(
     else:
         args = lst, 0, n
         return fn(*args)
-
-
-def profile_runtime(callback: Callable, sleep: Union[float, int] = None):
-    import cProfile
-    import pstats
-    profiler = cProfile.Profile()
-    profiler.enable()
-    callback()
-    profiler.disable()
-    stats = pstats.Stats(profiler).sort_stats('cumtime')
-    if sleep:    # Sometimes, the top rows in `print_states` are now shown properly
-        time.sleep(sleep)
-    stats.print_stats()
 
 
 def log(s, c: str = 'log', c_time='green', as_str=False, pad: int = None):
@@ -386,45 +425,17 @@ def log_dict_p(d: Dict, **kwargs) -> str:
     return log_dict(d, with_color=False, sep='=', **kwargs)
 
 
-def readable_int(num: int, suffix: str = '') -> str:
-    """
-    Converts (potentially large) integer to human-readable format
-    """
-    for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z']:
-        if abs(num) < 1024.0:
-            return "%3.1f%s%s" % (num, unit, suffix)
-        num /= 1024.0
-    return "%.1f%s%s" % (num, 'Y', suffix)
-
-
-def list_is_same_elms(lst: List[T]) -> bool:
-    return all(l == lst[0] for l in lst)
-
-
-def stem(path, keep_ext=False):
-    """
-    :param path: A potentially full path to a file
-    :param keep_ext: If True, file extensions is preserved
-    :return: The file name, without parent directories
-    """
-    return os.path.basename(path) if keep_ext else pathlib.Path(path).stem
-
-
-def get_model_num_trainable_parameter(model: torch.nn.Module, readable: bool = True) -> Union[int, str]:
-    n = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    return readable_int(n) if readable else n
-
-
-def hex2rgb(hx: str) -> Union[Tuple[int], Tuple[float]]:
+def hex2rgb(hx: str, normalize=False) -> Union[Tuple[int], Tuple[float]]:
     # Modified from https://stackoverflow.com/a/62083599/10732321
     if not hasattr(hex2rgb, 'regex'):
         hex2rgb.regex = re.compile(r'#[a-fA-F0-9]{3}(?:[a-fA-F0-9]{3})?$')
     m = hex2rgb.regex.match(hx)
     assert m is not None
     if len(hx) <= 4:
-        return tuple(int(hx[i]*2, 16) for i in range(1, 4))
+        ret = tuple(int(hx[i]*2, 16) for i in range(1, 4))
     else:
-        return tuple(int(hx[i:i+2], 16) for i in range(1, 7, 2))
+        ret = tuple(int(hx[i:i+2], 16) for i in range(1, 7, 2))
+    return tuple(i/255 for i in ret) if normalize else ret
 
 
 class MyTheme:

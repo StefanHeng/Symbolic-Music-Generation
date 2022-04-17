@@ -1,13 +1,15 @@
 """
 Generate from trained reformer, no seed per `hash_seed`
 """
+import os
+from typing import Union
 
+import torch
 from transformers import ReformerModelWithLMHead
 
 from musicnlp.util import *
-from musicnlp.util.music_vocab import VocabType
-from musicnlp.models.music_tokenizer import MusicTokenizer
-from musicnlp.postprocess import MusicConverter
+from musicnlp.vocab.music_vocab import VocabType
+from musicnlp.vocab import MusicTokenizer, MusicConverter
 
 
 def load_trained(model_name: str, directory_name: str):
@@ -89,10 +91,11 @@ class MusicGenerator:
             else:
                 generate_args['do_sample'] = True
         args |= generate_args
+        ic(args, MusicGenerator.args2fnm(args))
         outputs = self.model.generate(**inputs, **args)[0]  # for now, generate one at a time
 
         if truncate_to_sob:
-            idxs_eob = torch.nonzero(outputs == self.tokenizer.sob_token_id).flatten().tolist()
+            idxs_eob = torch.nonzero(outputs.eq(self.tokenizer.sob_token_id)).flatten().tolist()
             assert len(idxs_eob) > 0, f'No start of bar token found when {logi("truncate_to_sob")} enabled'
             outputs = outputs[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(outputs, skip_special_tokens=False)
@@ -112,7 +115,8 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # dir_nm = os.path.join('2022-04-01_09-40-48', 'trained')
-    dir_nm = os.path.join('2022-04-03_11-01-04', 'checkpoint-3712')
+    # dir_nm = os.path.join('2022-04-03_11-01-04', 'checkpoint-3712')
+    dir_nm = os.path.join('2022-04-11_00-26-05', 'trained')
     mdl = load_trained(model_name='reformer', directory_name=dir_nm)
     ic(get_model_num_trainable_parameter(mdl))
     mg = MusicGenerator(mdl)
@@ -140,7 +144,7 @@ if __name__ == '__main__':
     def check_why_tie_in_output():
         import music21 as m21
         incorrect_tie_fl = '/Users/stefanh/Desktop/incorrect tie.mxl'
-        score = m21.converter.parse(incorrect_tie_fl)
+        score: m21.stream.Score = m21.converter.parse(incorrect_tie_fl)
         for bar in list(score.parts)[0][m21.stream.Measure]:
             for e in bar:
                 if isinstance(e, (m21.note.Note, m21.note.Rest)):
@@ -148,8 +152,9 @@ if __name__ == '__main__':
     # check_why_tie_in_output()
 
     def export_generated():
-        fnms = ['Merry Go Round of Life', 'Shape of You']
-        gen_args = dict(topk=16, top_p=0.75)
+        # fnms = ['Merry Go Round of Life', 'Shape of You']
+        fnms = ['Canon piano', 'Shape of You']
+        gen_args = dict(top_k=16, top_p=0.75)
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True)
             prompt = dict(path=path)

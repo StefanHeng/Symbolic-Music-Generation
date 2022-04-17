@@ -1,7 +1,13 @@
+from typing import List, Dict, Union
+
+import numpy as np
+import music21 as m21
+
 from musicnlp.util import *
+from musicnlp.vocab.elm_type import ElmType, MusicElement
+from musicnlp.vocab.music_vocab import VocabType, MusicVocabulary
+from musicnlp.vocab.music_tokenizer import MusicTokenizer
 from musicnlp.util.music_lib import *
-from musicnlp.postprocess import ElmType, MusicElement
-from musicnlp.models import MusicTokenizer
 
 
 class MusicConverter:
@@ -9,7 +15,7 @@ class MusicConverter:
         self.prec = prec
         if tokenizer_kw is None:
             tokenizer_kw = dict()
-        self.tokenizer = MusicTokenizer(prec=prec, **tokenizer_kw)
+        self.tokenizer = MusicTokenizer(precision=prec, **tokenizer_kw)
         self.vocab: MusicVocabulary = self.tokenizer.vocab
 
     def _bar2grouped_bar(self, bar: Measure) -> List[ExtNote]:
@@ -20,7 +26,7 @@ class MusicConverter:
         elm = next(it, None)
         lst = []
         while elm is not None:  # similar logic as in `MusicExtractor.expand_bar`
-            if hasattr(elm, 'fullName') and TUPLET_POSTFIX in elm.fullName:
+            if hasattr(elm, 'fullName') and tuplet_postfix in elm.fullName:
                 tup_str, n_tup = fullname2tuplet_meta(elm.fullName)
                 lst_tup = [elm]
                 elm_ = next(it, None)
@@ -86,10 +92,15 @@ class MusicConverter:
             assert n_bar > 0, f'Invalid {logi("n_bar")}: Expects positive integer'
             bars = bars[:min(n_bar, len(bars))]
         for bar in bars:
+<<<<<<< HEAD:musicnlp/postprocess/music_converter.py
             assert all(not isinstance(e, m21.stream.Voice)
                        for e in bar), f'Invalid Bar: Expect no voice - {warn}'
             toks.extend([[self.vocab.start_of_bar]] + [self.vocab(e)
                         for e in self._bar2grouped_bar(bar)])
+=======
+            assert all(not isinstance(e, m21.stream.Voice) for e in bar), f'Invalid Bar: Expect no voice - {warn}'
+            toks.extend([[self.vocab.start_of_bar]] + [self.vocab(e) for e in self._bar2grouped_bar(bar)])
+>>>>>>> master:musicnlp/vocab/music_converter.py
         # as `vocab` converts each music element to a list
         toks = sum(toks, start=[])
         toks += [self.vocab.start_of_bar if for_gen else self.vocab.end_of_song]
@@ -210,6 +221,7 @@ if __name__ == '__main__':
 
     def check_encode():
         # text = get_extracted_song_eg(k=2)  # this one has tuplets
+<<<<<<< HEAD:musicnlp/postprocess/music_converter.py
         text = music_util.get_extracted_song_eg(
             k='平凡之路')  # this one has tuplets
         token = text.split()
@@ -222,6 +234,14 @@ if __name__ == '__main__':
         # ic(toks)
         # scr = mc.str2score(text)
         # ic(scr)
+=======
+        text = music_util.get_extracted_song_eg(k='平凡之路')  # this one has tuplets
+        # ic(text)
+        # toks = mc.str2notes(text)
+        # ic(toks)
+        scr = mc.str2score(text)
+        ic(scr)
+>>>>>>> master:musicnlp/vocab/music_converter.py
         # scr.show()
     check_encode()
 

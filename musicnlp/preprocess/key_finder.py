@@ -2,27 +2,42 @@
  using the Krumhansl-Schmuckler key-finding algorithm.
  TODO:What if there are some other good algos?
  It still would not realize all 24 keys!(only 12)"""
-import music21 as m21
+from typing import List, Tuple, Dict, Union
+
 import numpy as np
-from icecream import ic
+import music21 as m21
+
+from musicnlp.util import *
+from musicnlp.util.music_lib import *
+from musicnlp.vocab import Key
 
 
-def get_durations(s):
+# Tuple of key and (un-normalized) confidence score
+Keys = Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]
+KeysDict = Dict[Union[Key, str], float]
+
+
+def get_durations(s) -> np.array:
     """
-    s: a music21.Stream object that stores the piece without drums
-    return: a np list of total durations for each pitch class in quarterLength.
+    :param: s: a music21.Stream object that stores the piece without drums
+    :return: a np list of total durations for each pitch class in quarterLength.
     P.S. So kind of normalized version?
     """
     # flatten, then filter all the notes
     result = np.zeros(12)
-    for n in s.flatten().flatten().notesAndRests:
-        length = n.quarterLength
-        if n.isChord:
+    # for n in s.flatten().flatten().notesAndRests:
+    #     length = n.quarterLength
+    #     if n.isChord:
+    #         for m in n.pitchClasses:
+    #             result[m] += length
+    #     elif not n.isRest:
+    #         result[n.pitch.pitchClass] += length
+    for n in s.recurse():
+        if isinstance(n, Note):
+            result[n.pitch.pitchClass] += n.quarterLength
+        elif isinstance(n, Chord):
             for m in n.pitchClasses:
-                result[m] += length
-        elif not n.isRest:
-            result[n.pitch.pitchClass] += length
-    # ic(result)
+                result[m] += n.quarterLength
     return result
 
 
@@ -32,25 +47,12 @@ class KeyFinder:
     TODO: Do I need to find all modulated keys?
     """
 
-    def __init__(self, file_name):
+    def __init__(self, song: Union[str, Score]):
         """file_name: the name of file given path it is in"""
-        self.piece = m21.converter.parse(file_name)
+        self.piece: Score = m21.converter.parse(song) if isinstance(song, str) else song
 
-        # remove all the percussion in this piece, got from MelodyExtractor.py
-        def is_drum(part):
-            """
-            :return: True if `part` contains *only* `Unpitched`
-            """
-            return list(part[m21.note.Unpitched]) and not list(part[m21.note.Note])
-
-        parts_drum = filter(lambda p_: any(p_[drum] for drum in [
-            m21.instrument.BassDrum,
-            m21.instrument.BongoDrums,
-            m21.instrument.CongaDrum,
-            m21.instrument.SnareDrum,
-            m21.instrument.SteelDrum,
-            m21.instrument.TenorDrum,
-        ]) or is_drum(p_), self.piece.parts)
+        # remove all the percussion in this piece
+        parts_drum = filter(lambda p_: is_drum_track(p_), self.piece.parts)
         for pd in parts_drum:
             self.piece.remove(pd)
 
@@ -89,15 +91,20 @@ class KeyFinder:
         }
 
     # @eye
-    def find_key(self):
+    def find_key(self, return_type: str = 'list') -> Union[Keys, KeysDict]:
         """
         return: 2 arrays that contains the best k candidates for major and minor respectively
         of the piece as a string.
         The string format would be [keyName]+Major/Minor.
         All keys with accidental signs are marked as sharp, which would equate 'A#' to 'Bb'.
         Then be transformed to more conventional enharmonic reading. e.g. 'A#' to 'Bb'..
+
+        :param return_type: One of ['list', 'enum', 'dict']
+            If 'list', returns 2-tuple list of tuples of (key, confidence) for major and minor respectively
+            If 'enum' or `dict`, returns dict of {Key: confidence} where the key is either `Key` or `str` respectively
         """
-        tonality = ['Major', 'Minor']
+        ca(key_type=return_type)
+        # tonality = ['Major', 'Minor']
         pitches = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
         durations = get_durations(self.piece)
@@ -113,16 +120,25 @@ class KeyFinder:
         best_val_min = np.max(corrcoef_mat[1])
         # fuzzy search
         close_ma = len(corrcoef_mat[0][corrcoef_mat[0] >= best_val_maj * 0.8])
-        close_mi = len(corrcoef_mat[1][corrcoef_mat[1] >= best_val_min * 0.8])
+        close_mi = len(corrcoef_mat[1][corrcoef_mat[1] >= best_val_min * 0.7])
         best_maj_keys = (np.argsort(corrcoef_mat[0]))[-close_ma:]
         best_min_keys = (np.argsort(corrcoef_mat[1]))[-close_mi:]
         # convert candidates to string in convention format(circle of fifth).
-        maj_keys_result = [f'{self.conv_major[pitches[tonic]]}Major' for (_, tonic) in
+        maj_keys_result = [(f'{self.conv_major[pitches[tonic]]}Major', corrcoef_mat[0][tonic]) for (_, tonic) in
                            [divmod(i, 12) for i in best_maj_keys]]
-        min_keys_result = [f'{self.conv_minor[pitches[tonic]]}Minor' for (_, tonic) in
+        min_keys_result = [(f'{self.conv_minor[pitches[tonic]]}Minor', corrcoef_mat[1][tonic]) for (_, tonic) in
                            [divmod(i, 12) for i in best_min_keys]]
         #
-        return maj_keys_result, min_keys_result
+        if return_type == 'list':
+            return maj_keys_result, min_keys_result
+        else:
+            return KeyFinder._key_tup2dict(maj_keys_result, return_type=return_type) | \
+                   KeyFinder._key_tup2dict(min_keys_result, return_type=return_type)
+
+    @staticmethod
+    def _key_tup2dict(key_tup: List[Tuple[str, float]], return_type: str = 'enum') -> KeysDict:
+        return {(Key.from_str(k_) if return_type == 'enum' else k_): v for k_, v in dict(key_tup).items()}
+
     #
     # def alt_find(self):
     #     a = m21.analysis.discrete.TemperleyKostkaPayne(self.piece)
@@ -181,17 +197,62 @@ class KeyFinder:
 
 def main(path: str):
     a = KeyFinder(path)
-    k = a.find_key()
-    ic(k)
-    ic(a.find_scale_degrees(k))
+    keys = a.find_key()
+    ic(keys)
+    ic(a.find_scale_degrees(keys))
 
 
 if __name__ == '__main__':
+    from tqdm import tqdm
     from icecream import ic
 
     import musicnlp.util.music as music_util
 
-    p = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
-    ic(p)
+    def check_get_key():
+        path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        ic(path)
+        kf = KeyFinder(path)
+        ic(kf.find_key(return_type='enum'))
+    # check_get_key()
 
-    main(p)
+    def check_deprecated_scale_deg():
+        path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        kf = KeyFinder(path)
+        keys_dep_maj, keys_dep_min = kf.find_key()
+        keys_dep_maj, keys_dep_min = [key for key, score in keys_dep_maj], [key for key, score in keys_dep_min]
+        ic(kf.find_scale_degrees((keys_dep_maj, keys_dep_min)))
+    check_deprecated_scale_deg()
+
+    def carson_dev():
+        path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
+        main(path)
+    # carson_dev()
+
+    def check_key_finder_terminates():
+        """
+        Make sure calling KeyFinder on any song in the dataset terminates properly, and at least 1 key returned
+        """
+        dnm = 'POP909'
+        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')
+        # fnms = fnms[:20]  # TODO: debugging
+        # for fnm in tqdm(fnms):
+        #     keys = KeyFinder(fnm).find_key(return_type='enum')
+        #     assert len(keys) > 0
+        nm = 'Test Key Finder'
+        logger = get_logger(nm)
+        pbar = tqdm(total=len(fnms), desc=nm, unit='song')
+
+        def call_single(fl_nm: str):
+            try:
+                keys = KeyFinder(fl_nm).find_key(return_type='enum')
+                assert len(keys) > 0
+                pbar.update(1)
+            except Exception as e:
+                logger.error(f'Failed to find key for {logi(fl_nm)}, {logi(e)}')  # Abruptly stop the process
+                raise ValueError(f'Failed to find key for {logi(fl_nm)}')
+
+        def batched_map(fnms_, s, e):
+            return [call_single(fnms_[i]) for i in range(s, e)]
+        batched_conc_map(batched_map, fnms, batch_size=32)
+    # check_key_finder_terminates()
+    # profile_runtime(check_key_finder_terminates)
