@@ -28,14 +28,10 @@ class MusicTokenizer(PreTrainedTokenizer):
         self.prec = prec
         self.vocab = MusicVocabulary(prec=prec, color=False)
         self.spec_toks_enc, self.spec_toks_dec = dict(), dict()
-        # for tok in MusicTokenizer.TOK_PAD, MusicTokenizer.TOK_EOS:
-        #     self._add_special_token(tok)
         self._add_special_token(MusicTokenizer.TOK_PAD)
-        # self.pad_token, self.eos_token = MusicTokenizer.TOK_PAD, MusicTokenizer.TOK_EOS
         self.pad_token, self.eos_token = MusicTokenizer.TOK_PAD, self.vocab.end_of_song
         self.sob_token = self.vocab.start_of_bar
         self.sob_token_id = self._convert_token_to_id(self.sob_token)
-        self.start_of_bar_id = self._convert_token_to_id(self.vocab.start_of_bar)
 
     def _add_special_token(self, tok):
         assert tok not in self.spec_toks_enc
@@ -69,31 +65,31 @@ class MusicTokenizer(PreTrainedTokenizer):
 if __name__ == '__main__':
     from icecream import ic
 
+    ic.lineWrapWidth = 400
+
     from musicnlp.preprocess import get_dataset
 
-    # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
-    fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
+    fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
     dset = get_dataset(fnm)
 
     def implementation_check():
         # ic(dset, dset[:2])
-
         tkzer = MusicTokenizer(model_max_length=12)
         # tkzer = MusicTokenizer()
         ic(tkzer, tkzer.model_max_length, len(tkzer))
-        txt = dset[1]['text']
+        txt = dset[1]['score']
         # txt = dset[:3]['text']
         # Turning off both `padding` & `truncation`, and the token ids too long warning appears
         input_ = tkzer(txt, padding='max_length', truncation=True)
         # ic(input_)
         # ic(len(input_['input_ids']))
         ids_ = input_['input_ids']
-        ic(ids_, tkzer.decode(ids_))
-    # implementation_check()
+        ic(input_, ids_, tkzer.decode(ids_))
+    implementation_check()
 
     def check_pad_n_eos():
         tkzer = MusicTokenizer(model_max_length=12)
         ic(tkzer.eos_token_id, tkzer.pad_token_id, tkzer.eos_token, tkzer.pad_token)
         vocab = tkzer.vocab
         ic(vocab.t2i(vocab.end_of_song))
-    check_pad_n_eos()
+    # check_pad_n_eos()

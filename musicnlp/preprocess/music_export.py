@@ -166,8 +166,12 @@ class MusicExport:
         songs, meta = dset['music'], dset['extractor_meta']
         d_info = dict(json_filename=fnm, extractor_meta=meta)
 
+        expected_col_names = {'score', 'title', 'keys'}
+
         def prep_entry(d: Dict) -> Dict:
             del d['warnings']
+            del d['duration']
+            assert all(k in expected_col_names for k in d.keys())  # sanity check
             return d
         dset = datasets.Dataset.from_pandas(
             pd.DataFrame([prep_entry(d) for d in songs]),
@@ -302,10 +306,10 @@ if __name__ == '__main__':
                     with open(fl_nm, 'r') as f:
                         song = json.load(f)
                     # ic(song.keys())
-                    assert 'key' not in song['music']  # sanity check
+                    assert 'keys' not in song['music']  # sanity check
                     # ic(fl_nm, song.keys(), song['music'].keys())
                     path_mxl = song_title2path(song['music']['title'])
-                    song['music']['key'] = keys = KeyFinder(path_mxl).find_key(return_type='dict')
+                    song['music']['keys'] = keys = KeyFinder(path_mxl).find_key(return_type='dict')
                     assert len(keys) > 0
                     with open(fnm_out, 'w') as f:
                         json.dump(song, f, indent=4)
@@ -318,5 +322,53 @@ if __name__ == '__main__':
 
         def batched_map(fnms_, s, e):
             return [call_single(fnms_[i]) for i in range(s, e)]
-        batched_conc_map(batched_map, fnms, batch_size=32)
+        n_worker = os.cpu_count() * 2  # majority of the time is m21 parsing file
+        batched_conc_map(batched_map, fnms, batch_size=32, n_worker=n_worker)
     fix_insert_key()
+    # profile_runtime(fix_insert_key)
+
+    def fix_key_api_change():
+        """
+        Original KeyFinder results are stored in a key `key`, the new API uses `keys`, so update the written files
+        """
+        dir_nm = 'LMD-cleaned_subset save single 04-09_21-51, add key'
+        # dir_nm = 'POP909 save single 04-10_02.15, add key'
+        path = os.path.join(music_util.get_processed_path(), 'intermediate', dir_nm)
+        fnms = sorted(glob.iglob(os.path.join(path, '*.json')))
+        # ic(len(fnms))
+        # exit(1)
+
+        count_old_key = 0
+        for fnm in tqdm(fnms):
+            with open(fnm, 'r') as f:
+                d = json.load(f)
+            if 'key' in d['music']:
+                d['music']['keys'] = d['music'].pop('key')
+                count_old_key += 1
+                with open(fnm, 'w') as f:  # Override the original file
+                    json.dump(d, f, indent=4)
+        ic(count_old_key)
+    # fix_key_api_change()
+
+    def combine_single_json_songs_with_key():
+        dir_nm = 'POP909 save single 04-10_02.15, add key'
+        output_fnm = f'{PKG_NM} music extraction, dnm=POP909'
+        fnms = sorted(
+            glob.iglob(os.path.join(music_util.get_processed_path(), 'intermediate', dir_nm, '*.json')))
+        songs = me.combine_saved_songs(filenames=fnms, output_filename=output_fnm)
+        ic(songs.keys(), len(songs['music']))
+    # combine_single_json_songs_with_key()
+
+    def json2dset_with_key():
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+        dset = me.json2dataset(fnm)
+        ic(dset, dset.column_names, dset[:5])
+    # json2dset_with_key()
+
+    def check_dset_with_key_features():
+        dnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+        dset = datasets.load_from_disk(os.path.join(music_util.get_processed_path(), 'processed', dnm))
+        feat_keys = dset.features['keys']
+        ic(type(feat_keys))
+        ic(dset[:4]['keys'])
+    # check_dset_with_key_features()

@@ -13,6 +13,7 @@ from music21.pitch import Pitch
 from musicnlp.util import *
 import musicnlp.util.music as music_util
 from musicnlp.util.music_lib import *
+from musicnlp.vocab.elm_type import Key, key_str2enum
 
 
 COMMON_TIME_SIGS: List[TsTup] = sorted(  # Sort first by denominator
@@ -39,18 +40,18 @@ def is_common_tempo(tempo: Union[MetronomeMark, int]):
 
 
 class VocabType(Enum):
-    time_sig, tempo, duration, pitch, special = list(range(5))
+    time_sig, tempo, key, duration, pitch, special = list(range(6))
 
     @classmethod
     def compact(cls) -> Iterator['VocabType']:
         """
         :return: Iterator of all token types with compact representation
         """
-        for i in range(4):
+        for i in range(5):  # `special` doesn't have a compact representation
             yield cls(i)
 
 
-Compact = Union[TsTup, int, Dur]
+Compact = Union[TsTup, int, Dur, Key]
 
 
 class MusicVocabulary:
@@ -73,7 +74,8 @@ class MusicVocabulary:
         start_of_bar=start_of_bar,
         end_of_song=end_of_song,
         prefix_time_sig='TimeSig',
-        prefix_tempo='Tempo'
+        prefix_tempo='Tempo',
+        prefix_key='Key'
     )
     # Uncommon Time Signatures in music theory, but empirically seen in MIDI data
     # See music_visualize.py for distribution
@@ -97,7 +99,8 @@ class MusicVocabulary:
     RE1 = rf'(?P<num>{RE_INT})'
     RE2 = rf'(?P<numer>{RE_INT})/(?P<denom>{RE_INT})'
 
-    def __init__(self, prec: int = 5, color: bool = False):
+    # TODO: remove, original training was without key support
+    def __init__(self, prec: int = 5, color: bool = False, deprecated: bool = False):
         """
         :param prec: See `MusicTokenizer`
         :param color: If True, string outputs are colorized
@@ -105,6 +108,7 @@ class MusicVocabulary:
         """
         self.prec = prec
         self.color = color
+        self.deprecated = deprecated
 
         specs = MusicVocabulary.SPEC_TOKS  # Syntactic sugar
         sep = specs['sep']
@@ -113,8 +117,9 @@ class MusicVocabulary:
             pref_pch=specs['prefix_pitch']+sep,
             pref_time_sig=specs['prefix_time_sig']+sep,
             pref_tempo=specs['prefix_tempo']+sep,
-            bot=self.__getitem__('start_of_tuplet'),
-            eot=self.__getitem__('end_of_tuplet')
+            pref_key=specs['prefix_key']+sep,
+            bot=self['start_of_tuplet'],
+            eot=self['end_of_tuplet']
         )
         self.rest = self.cache['rest'] = self.cache['pref_pch'] + specs['rest']
 
@@ -125,21 +130,14 @@ class MusicVocabulary:
             ),
             VocabType.pitch: re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$'),
             VocabType.time_sig: re.compile(rf'^{self.cache["pref_time_sig"]}{MusicVocabulary.RE2}$'),
-            VocabType.tempo: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE1}$')
+            VocabType.tempo: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE1}$'),
+            VocabType.key: re.compile(rf'^{self.cache["pref_key"]}(?P<key>.*)$'),
         }
 
         self.compacts: Set[VocabType] = set(VocabType.compact())
 
         def elm2str(elm):
-            return self.__call__(elm, color=False, return_int=False)
-        # self.n_slots = OrderedDict([  # Reserved slots for each token category
-        #     ('special', 32),
-        #     ('time_sig', 32),  # A few common time signatures only
-        #     ('tempo', 256),  # Usually range from 20+ to 200+
-        #     # 128 pitches in MIDI representation; TODO: with music-theory, mod-7 scale, may increase
-        #     ('pitch', 256),
-        #     ('duration', 256)  # Depends on quantization
-        # ])
+            return self(elm, color=False, return_int=False)
 
         def rev(time_sig):
             return tuple(reversed(time_sig))  # Syntactic sugar
@@ -147,14 +145,23 @@ class MusicVocabulary:
         # See music_visualize.py for distribution; TODO: filter out the tempos not found?
         tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS + MusicVocabulary.UNCOM_TP]
         pitches = [self.cache['rest']] + [self._note2pch_str(Pitch(midi=i)) for i in range(128)]
+        keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
+        # from icecream import ic
+        # ic(keys)
 
+        # TODO: with music-theory, mod-7 scale degree, vocab size would increase
         self.toks: Dict[str, List[str]] = OrderedDict([  # Enforce iteration order
             ('special', [specs[k] for k in ('end_of_song', 'start_of_bar', 'start_of_tuplet', 'end_of_tuplet')]),
             ('time_sig', tss),
             ('tempo', tempos),
-            ('pitch', pitches),
-            ('duration', self.get_durations(exp='str'))
+            # ('key', keys),
+            # ('pitch', pitches),
+            # ('duration', self.get_durations(exp='str'))
         ])
+        if not deprecated:
+            self.toks['key'] = keys
+        self.toks['pitch'] = pitches
+        self.toks['duration'] = self.get_durations(exp='str')
         self.enc: Dict[str, int] = {  # Back2back index as ids
             tok: id_ for id_, tok in enumerate(join_its(toks for toks in self.toks.values()))
         }
@@ -197,7 +204,8 @@ class MusicVocabulary:
         """
         if bound is None:
             # TODO: support for longer duration needed?
-            bound = max(ts[0]/ts[1] for ts in COMMON_TIME_SIGS + MusicVocabulary.UNCOM_TSS) * 4
+            tss = COMMON_TIME_SIGS + MusicVocabulary.UNCOM_TSS if self.deprecated else COMMON_TIME_SIGS
+            bound = max(ts[0]/ts[1] for ts in tss) * 4  # Effectively support up to 6 in terms of quarter length
             assert bound.is_integer()
         dur_slot, denom = 4/2**self.prec, 2**self.prec/4
         assert denom.is_integer()
@@ -219,15 +227,17 @@ class MusicVocabulary:
     def type(self, tok: Union[str, int]) -> VocabType:
         if isinstance(tok, int):
             return self.id2type[tok]
-        else:
-            if self.cache['pref_dur'] in tok:
-                return VocabType.duration
-            elif self.cache['pref_pch'] in tok:
+        else:  # order by decreasing expected frequency for efficiency
+            if self.cache['pref_pch'] in tok:
                 return VocabType.pitch
+            elif self.cache['pref_dur'] in tok:
+                return VocabType.duration
             elif self.cache['pref_time_sig'] in tok:
                 return VocabType.time_sig
             elif self.cache['pref_tempo'] in tok:
                 return VocabType.tempo
+            elif self.cache['pref_key'] in tok:
+                return VocabType.key
             else:
                 return VocabType.special
 
@@ -275,8 +285,11 @@ class MusicVocabulary:
                     return pch-1 + octave*12  # See `pch2step`
             elif typ == VocabType.time_sig:
                 return MusicVocabulary._get_group2(tok, tpl)
-            else:  # VocabType.tempo
+            elif typ == VocabType.tempo:
                 return MusicVocabulary._get_group1(tok, tpl)
+            else:
+                assert typ == VocabType.key
+                return key_str2enum[tpl.match(tok)['key']]
 
     def uncompact(self, type: VocabType, compact: Optional[Compact] = None) -> str:
         """
@@ -322,7 +335,7 @@ class MusicVocabulary:
         return self._colorize_spec(MusicVocabulary.SPEC_TOKS[k])
 
     def __call__(
-            self, elm: Union[ExtNote, Union[TimeSignature, TsTup], Union[MetronomeMark, int]],
+            self, elm: Union[ExtNote, Union[TimeSignature, TsTup], Union[MetronomeMark, int], str],
             color: bool = None,
             return_int: bool = False  # TODO
     ) -> Union[List[str], List[int]]:  # TODO: Support chords?
@@ -360,6 +373,9 @@ class MusicVocabulary:
             return [colorize(bot)] + [
                 (self._note2pch_str(e)) for e in elm
             ] + [self._note2dur_str(elm)] + [colorize(eot)]
+        elif isinstance(elm, str):
+            assert elm in key_str2enum
+            return [colorize(self.cache['pref_key'] + str(elm))]
         else:  # TODO: chords
             ic('other element type', elm)
             exit(1)
@@ -429,4 +445,10 @@ if __name__ == '__main__':
     mv = MusicVocabulary()
     # ic(mv.get_durations(exp='dur'))
 
-    ic(mv.to_dict(save=True))
+    # ic(mv.to_dict(save=True))
+
+    def check_vocab_size():
+        for k, v in mv.toks.items():
+            ic(k, len(v))
+        ic(sum(len(v) for v in mv.toks.values()))
+    check_vocab_size()
