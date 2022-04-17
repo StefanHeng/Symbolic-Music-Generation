@@ -100,13 +100,13 @@ class MusicVocabulary:
     RE2 = rf'(?P<numer>{RE_INT})/(?P<denom>{RE_INT})'
 
     # TODO: remove, original training was without key support
-    def __init__(self, prec: int = 5, color: bool = False, deprecated: bool = False):
+    def __init__(self, precision: int = 5, color: bool = False, deprecated: bool = False):
         """
-        :param prec: See `MusicTokenizer`
+        :param precision: See `musicnlp.preprocess.music_extractor`
         :param color: If True, string outputs are colorized
             Update individual coloring of subsequent tokens via `__getitem__`
         """
-        self.prec = prec
+        self.precision = precision
         self.color = color
         self.deprecated = deprecated
 
@@ -176,7 +176,7 @@ class MusicVocabulary:
 
     def to_dict(self, save=False):
         d_out = dict(
-            precision=self.prec,
+            precision=self.precision,
             special_tokens={
                 'start_of_bar': MusicVocabulary.start_of_bar,
                 'end_of_song': MusicVocabulary.end_of_song,
@@ -187,7 +187,7 @@ class MusicVocabulary:
             n_vocabulary=len(self.enc),
         )
         if save:
-            fnm = f'{self.__class__.__qualname__}, n={len(self.enc)}, prec={self.prec}, {now(for_path=True)}'
+            fnm = f'{self.__class__.__qualname__}, n={len(self.enc)}, prec={self.precision}, {now(for_path=True)}'
             path = os.path.join(music_util.get_processed_path(), f'{fnm}.json')
             with open(path, 'w') as f:
                 json.dump(d_out, f, indent=4)
@@ -207,7 +207,7 @@ class MusicVocabulary:
             tss = COMMON_TIME_SIGS + MusicVocabulary.UNCOM_TSS if self.deprecated else COMMON_TIME_SIGS
             bound = max(ts[0]/ts[1] for ts in tss) * 4  # Effectively support up to 6 in terms of quarter length
             assert bound.is_integer()
-        dur_slot, denom = 4/2**self.prec, 2**self.prec/4
+        dur_slot, denom = 4 / 2 ** self.precision, 2 ** self.precision / 4
         assert denom.is_integer()
         denom = int(denom)
         gen_numers = range(math.ceil(bound / dur_slot))

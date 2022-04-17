@@ -261,16 +261,16 @@ if __name__ == '__main__':
         """
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
         # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-        #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
-        fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
-        # for 10k data in the LMD-cleaned dataset, this is like 200 songs, should be good enough
+        #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+        # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+        #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
+        # for 10k data in the LMD-cleaned subset dataset, this is like 200 songs, should be good enough
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
         ic(dset)
         ic(len(dset['train']), len(dset['test']))
         ic(dset['train'][:3], dset['test'][:3])
-    # json2dset_with_split()
-
+    json2dset_with_split()
 
     def fix_insert_key():
         """
@@ -324,7 +324,7 @@ if __name__ == '__main__':
             return [call_single(fnms_[i]) for i in range(s, e)]
         n_worker = os.cpu_count() * 2  # majority of the time is m21 parsing file
         batched_conc_map(batched_map, fnms, batch_size=32, n_worker=n_worker)
-    fix_insert_key()
+    # fix_insert_key()
     # profile_runtime(fix_insert_key)
 
     def fix_key_api_change():
@@ -351,8 +351,10 @@ if __name__ == '__main__':
     # fix_key_api_change()
 
     def combine_single_json_songs_with_key():
-        dir_nm = 'POP909 save single 04-10_02.15, add key'
-        output_fnm = f'{PKG_NM} music extraction, dnm=POP909'
+        # dir_nm = 'POP909 save single 04-10_02.15, add key'
+        dir_nm = 'LMD-cleaned_subset save single 04-09_21-51, add key'
+        # output_fnm = f'{PKG_NM} music extraction, dnm=POP909'
+        output_fnm = f'{PKG_NM} music extraction, dnm=LMD-cleaned-subset'
         fnms = sorted(
             glob.iglob(os.path.join(music_util.get_processed_path(), 'intermediate', dir_nm, '*.json')))
         songs = me.combine_saved_songs(filenames=fnms, output_filename=output_fnm)

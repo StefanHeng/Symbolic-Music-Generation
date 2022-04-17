@@ -1,9 +1,17 @@
+import os
+import re
 import glob
+import itertools
+import statistics
+from typing import List, Tuple, Dict, Sequence, Any, Union
 from collections import defaultdict
-from typing import Sequence
 
+import numpy as np
+import pandas as pd
 import tensorflow as tf
 from tensorflow.core.util import event_pb2
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from musicnlp.util import *
 
@@ -46,11 +54,9 @@ def parse_tensorboard(path) -> Dict[str, pd.DataFrame]:
             d_out[tag][key] = e['value']
         return d_out
     events = [group_single(e) for e in events]
-    assert all(all(k in ['train', 'eval'] for k in e.keys()) for e in events)
-    d_dfs = {
-        tag: pd.DataFrame([d_out[tag] for d_out in events if tag in d_out])
-        for tag in events[0].keys()
-    }
+    tags = set(tag for e in events for tag in e.keys())
+    assert tags == {'train', 'eval'}, f'Expect {logi("train")} and {logi("eval")} tags, found {logi(tags)}'
+    d_dfs = {tag: pd.DataFrame([d_out[tag] for d_out in events if tag in d_out]) for tag in tags}
     for tag, df_ in d_dfs.items():
         mi, ma = df_.step.min(), df_.step.max()
         assert np.array_equal(df_.step.to_numpy(), np.arange(mi, ma + 1)), \
@@ -58,21 +64,28 @@ def parse_tensorboard(path) -> Dict[str, pd.DataFrame]:
     return d_dfs
 
 
-def parse_tensorboards(paths: List[str]) -> pd.DataFrame:
+def parse_tensorboards(paths: List[str]) -> Dict[str, pd.DataFrame]:
     """
     Parse multiple tensorboard files & merge them by steps
         Intended for resuming training from checkpoints
     :param paths: Paths to tensorboard files, in increasing order of ste[s
     """
-    dfs = [parse_tensorboard(path) for path in paths]
-    mis, mas = [df.step.min() for df in dfs], [df.step.max() for df in dfs]
-    mis_correct = all(mi < mis[i+1] for i, mi in enumerate(mis[:-1]))
-    mas_correct = all(ma < mas[i+1] for i, ma in enumerate(mas[:-1]))
-    assert mis_correct and mas_correct, 'Steps for each consecutive tensorboard should be increasing'
-    dfs_ = [dfs[-1]]  # add dataframes backwards, earlier overlapping data will be truncated
-    for i, df_ in enumerate(reversed(dfs[:-1])):
-        dfs_.append(df_[df_.step < mis[i+1]])
-    return pd.concat(reversed(dfs_)).reset_index(drop=True)
+    lst_d_dfs = [parse_tensorboard(path) for path in paths]
+    tags = lst_d_dfs[0].keys()
+    assert all(d_dfs.keys() == tags for d_dfs in lst_d_dfs), \
+        f'Expect all tensorboard files to have the same tags, found {logi(tags)}'
+    d_df_out = dict()
+    for tag in tags:
+        dfs = [d_dfs[tag] for d_dfs in lst_d_dfs]
+        mis, mas = [df.step.min() for df in dfs], [df.step.max() for df in dfs]
+        mis_correct = all(mi < mis[i+1] for i, mi in enumerate(mis[:-1]))
+        mas_correct = all(ma < mas[i+1] for i, ma in enumerate(mas[:-1]))
+        assert mis_correct and mas_correct, 'Steps for each consecutive tensorboard should be increasing'
+        dfs_ = [dfs[-1]]  # add dataframes backwards, earlier overlapping data will be truncated
+        for i, df_ in reversed(list(enumerate(dfs[:-1]))):
+            dfs_.append(df_[df_.step < mis[i+1]])
+        d_df_out[tag] = pd.concat(reversed(dfs_)).reset_index(drop=True)
+    return d_df_out
 
 
 def smooth(vals: Sequence[float], factor: float) -> np.array:
@@ -87,15 +100,13 @@ def plot_tb(
         d_df: Dict[str, pd.DataFrame], y: str = 'loss', label: str = None,
         smooth_factor: Union[float, Dict[str, float]] = 0.9, figure_kwargs: Dict = None,
         title: str = None, cs=None, save=False,
-        smaller_plot: bool = False, steps_per_epoch: int = None
+        steps_per_epoch: int = None
 ):
-    if not isinstance(y, str):
-        raise ValueError('y should be a string, multiple-variable plot no longer supported')
-    label = label if label is not None else y
+    label = label or y
     assert all(k in ['train', 'eval'] for k in d_df.keys())
     if figure_kwargs is None:
         figure_kwargs = dict()
-    plt.figure(**figure_kwargs)
+    fig = plt.figure(**figure_kwargs)
     cs = cs or sns.color_palette(palette='husl', n_colors=7)
 
     def plot_single(idx_, tag_, ax=plt.gca()):
@@ -109,17 +120,14 @@ def plot_tb(
         factor = smooth_factor[tag_] if isinstance(smooth_factor, dict) else smooth_factor
         y_s = smooth(y_, factor=factor)
         c = cs[idx_]
-        if smaller_plot:  # TODO: kinda ugly & hard-coded
-            args_ori = LN_KWARGS | dict(ls='None', c=c, alpha=0.5, ms=0.2)
-            if tag_ == 'eval':
-                args_ori |= dict(ms=8, marker='1', alpha=0.9)
-            args_smooth = LN_KWARGS | dict(c=c, lw=0.75, marker=None)
-        else:
-            args_ori = LN_KWARGS | dict(ls=':', c=c, alpha=0.7)
-            args_smooth = LN_KWARGS | dict(c=c, lw=0.75)
+        ms = statistics.harmonic_mean(fig.get_size_inches()) / 16
+        args_ori = LN_KWARGS | dict(ls='None', c=c, alpha=0.3, ms=ms)
+        if tag_ == 'eval':  # enlarge markers for eval
+            args_ori |= dict(ms=ms * 16, marker='1', alpha=0.9)
+        args_smooth = LN_KWARGS | dict(c=c, lw=0.75, marker=None)
         ax.plot(x, y_, **args_ori)
         return ax.plot(x, y_s, **args_smooth, label=f'{tag_} {label}')
-    plt.xlabel('Step')
+    plt.xlabel('step')
     for idx, tag in enumerate(d_df.keys()):
         plot_single(idx, tag)
         plt.ylabel(label)
@@ -152,30 +160,42 @@ if __name__ == '__main__':
     # check_plot_single()
 
     def check_plot_multiple():
-        dir_nms = ['2022-04-03_00-20-53', '2022-04-03_11-01-04']
-        paths_ = [md_n_dir2tb_path(directory_name=d) for d in dir_nms]
-        df = parse_tensorboards(paths_)
-        ic(df)
-    # check_plot_multiple()
+        # dir_nms = ['2022-04-03_00-20-53', '2022-04-03_11-01-04']
+        dir_nms = ['2022-04-15_13-42-56', '2022-04-15_18-45-49', '2022-04-16_16-08-03']
+        paths = [md_n_dir2tb_path(directory_name=d) for d in dir_nms]
+        # ic(paths)
+        d_df = parse_tensorboards(paths)
+        # ic(d_df)
 
-    def plot_trained_04_03():
-        """
-        Plot training for base reformer, trained for 256 epochs, until 128 epochs
-        """
-        dir_nms = ['2022-04-03_00-20-53', '2022-04-03_11-01-04']
-        paths_ = [md_n_dir2tb_path(directory_name=d) for d in dir_nms]
-        df = parse_tensorboards(paths_)
-        steps_per_epoch = 29
-        df = df[df.step < 128 * steps_per_epoch]
-        # doesn't look nice
-        # plot_tb(df, y=['loss', 'ntp_acc'], label=['Loss', 'Next-Token Prediction Accuracy'], save=False)
+        # y = 'loss'
+        y = 'ntp_acc'
+        label = 'Next-Token-Prediction Accuracy'
+
         plot_tb(
-            df, y='loss', label='Loss',
-            # title='Reformer-base Training per-batch performance over Steps',
-            title='None',
-            smooth_factor=0.95, smaller_plot=True, figure_kwargs=dict(figsize=(9, 4)),
-            save=True
+            d_df, y=y, label=label, smooth_factor=dict(train=0.95, eval=0.5), steps_per_epoch=343,
+            title='Reformer-base Training per-batch performance over Steps',
+            # save=True
         )
+    check_plot_multiple()
+
+    # def plot_trained_04_03():
+    #     """
+    #     Plot training for base reformer, trained for 256 epochs, until 128 epochs
+    #     """
+    #     dir_nms = ['2022-04-03_00-20-53', '2022-04-03_11-01-04']
+    #     paths_ = [md_n_dir2tb_path(directory_name=d) for d in dir_nms]
+    #     df = parse_tensorboards(paths_)
+    #     steps_per_epoch = 29
+    #     df = df[df.step < 128 * steps_per_epoch]
+    #     # doesn't look nice
+    #     # plot_tb(df, y=['loss', 'ntp_acc'], label=['Loss', 'Next-Token Prediction Accuracy'], save=False)
+    #     plot_tb(
+    #         df, y='loss', label='Loss',
+    #         # title='Reformer-base Training per-batch performance over Steps',
+    #         title='None',
+    #         smooth_factor=0.95, figure_kwargs=dict(figsize=(9, 4)),
+    #         save=True
+    #     )
     # plot_trained_04_03()
 
     def plot_train_for_presentation():
@@ -198,9 +218,9 @@ if __name__ == '__main__':
             d_df, y='loss',
             # title='Reformer-base Training per-batch performance over Steps',
             title='None',
-            smooth_factor=dict(train=0.95, eval=0.5), smaller_plot=True, figure_kwargs=dict(figsize=(9, 4)),
+            smooth_factor=dict(train=0.95, eval=0.5), figure_kwargs=dict(figsize=(9, 4)),
             save=True,
             cs=[od_blue, od_purple],
             steps_per_epoch=343
         )
-    plot_train_for_presentation()
+    # plot_train_for_presentation()

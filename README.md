@@ -3,8 +3,7 @@ Symbolic music generation taking inspiration from NLP Language Modeling, human c
 
 Contributor: [Stefan/Yuzhao Heng](https://stefanheng.github.io), [Carson/Jiachun Zhang](https://github.com/SonyaInSiberia), [Xiaoyang Song](https://github.com/Xiaoyang-Song).
 Mentored by [Artem Abzaliev](http://artem.site44.com), 
-supported by [Prof. Rada Mihalcea](https://web.eecs.umich.edu/~mihalcea/)  
-at [LIT](https://lit.eecs.umich.edu/people.html).
+supported by [Prof. Rada Mihalcea](https://web.eecs.umich.edu/~mihalcea/) at [LIT](https://lit.eecs.umich.edu/people.html).
 
 
 ## To use 

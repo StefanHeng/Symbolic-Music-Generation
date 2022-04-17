@@ -199,7 +199,7 @@ def main(path: str):
     a = KeyFinder(path)
     keys = a.find_key()
     ic(keys)
-    # ic(a.find_scale_degrees(k))
+    ic(a.find_scale_degrees(keys))
 
 
 if __name__ == '__main__':
@@ -214,6 +214,14 @@ if __name__ == '__main__':
         kf = KeyFinder(path)
         ic(kf.find_key(return_type='enum'))
     # check_get_key()
+
+    def check_deprecated_scale_deg():
+        path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        kf = KeyFinder(path)
+        keys_dep_maj, keys_dep_min = kf.find_key()
+        keys_dep_maj, keys_dep_min = [key for key, score in keys_dep_maj], [key for key, score in keys_dep_min]
+        ic(kf.find_scale_degrees((keys_dep_maj, keys_dep_min)))
+    check_deprecated_scale_deg()
 
     def carson_dev():
         path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
@@ -246,5 +254,5 @@ if __name__ == '__main__':
         def batched_map(fnms_, s, e):
             return [call_single(fnms_[i]) for i in range(s, e)]
         batched_conc_map(batched_map, fnms, batch_size=32)
-    check_key_finder_terminates()
+    # check_key_finder_terminates()
     # profile_runtime(check_key_finder_terminates)

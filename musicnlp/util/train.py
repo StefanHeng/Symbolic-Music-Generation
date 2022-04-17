@@ -13,6 +13,7 @@ from transformers import Trainer, TrainingArguments, TrainerCallback
 from tqdm import tqdm
 
 from musicnlp.util.util import *
+from musicnlp.util.check_args import ca
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
 
@@ -335,8 +336,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
         return self.pattern_eval_key.match(key).group('key')
 
     def _log(self, d_log, mode='train', to_console=True):
-        modes = ["train", "eval"]
-        assert mode in ['train', 'eval'], f'Unexpected mode: expect one of {logi(modes)}, got {logi(mode)}'
+        ca(logging_mode=mode)
         d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log.items()}
         d_log_write = pretty_log_dict(d_log_write, ref=self.train_meta)
         if to_console:

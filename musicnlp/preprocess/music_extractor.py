@@ -7,6 +7,7 @@ import os
 import math
 import datetime
 import itertools
+from copy import deepcopy
 from typing import List, Tuple, Dict, Iterable, Iterator, Union, Any
 from fractions import Fraction
 from collections import defaultdict, Counter, OrderedDict
@@ -463,11 +464,13 @@ class MusicExtractor:
         if self.warn_logger is not None:
             self.warn_logger.end_tracking()
 
-        song_path = None
+        song_path, song_for_key = None, None
         if isinstance(song, str):
             song_path = song
             song = m21.converter.parse(song)
         song: Score
+        if return_key:  # in case I modified the Score object
+            song_for_key = deepcopy(song)
 
         title = song.metadata.title
         if title.endswith('.mxl'):
@@ -792,7 +795,7 @@ class MusicExtractor:
             if song_path:
                 ret['song_path'] = song_path
         if return_key:
-            keys = KeyFinder(song).find_key(return_type='dict')
+            keys = KeyFinder(song_for_key).find_key(return_type='dict')
             if isinstance(ret, dict):
                 ret['keys'] = keys
             else:
