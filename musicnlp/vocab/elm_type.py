@@ -79,7 +79,7 @@ key_enum2tuple: Dict[Key, tuple[int, str]] = {
 }
 
 # This does not take ENHARMONICS into account
-# TODO: Fix this by adding ENHARMONIC relations
+# TODO: Fix this by adding COMPLETE ENHARMONIC relations
 key_offset_dict: Dict[str, int] = {
     'C': 0,
     'C#': 1,

@@ -71,7 +71,7 @@ class IkrMetric:
         ic(stats_pitch_cls_str)
         ic(stats_pitch_cls_int)
 
-    def get_off_key_ratio(
+    def get_in_key_ratio(
             self, preds: List[int], key: Key, enable_heuristic: bool = False,
         heuristic_thres: int = 5
     ) -> float:
@@ -93,12 +93,24 @@ class IkrMetric:
         in_key_lst = list(filterfalse(
             lambda x: x in OFFKEY_OFFSET[key_type], pred_offset))
         in_key_ratio = len(in_key_lst) / num_toks
-        # Heuristics
-        # TODO: add more music theories later
-        key_thres, key_count, num_off_key = 8, 0, 0
-        prev_p_cls = None
-        num_off_key = 0
-        # Heuristic Update: Discard for now
+        # Heuristics (Naive implementation)
+        # The first pitch of the bar decides the key of the bar
+        # TODO: change the processing procedure to speed up
+        # Heuristic Update Rule #1: Too many problems + low performance, discard for now
+        # pitch_bar_lst = list(filterfalse(
+        #     lambda x: self.vocab.type(x) != VocabType.pitch and x != self.tokenizer.sob_token_id, tok_lst))
+        # # ic(pitch_bar_lst)
+        # # ic(Counter(pitch_bar_lst))
+        # s_bar = [idx for idx, tok in enumerate(
+        #     pitch_bar_lst) if tok == self.tokenizer.sob_token_id]
+        # # ic(s_bar)
+        # e_bar, num_bars = s_bar[1:] + [len(pitch_bar_lst)], len(s_bar)
+        # ic([pitch_bar_lst[s_bar[i]+1:e_bar[i]]
+        #     for i in range(num_bars)])
+        # pitch_lst_per_bar = list(filterfalse(lambda x: len(x) <= 1, [pitch_bar_lst[s_bar[i]+1:e_bar[i]]
+        #                                                              for i in range(num_bars)]))
+
+        # Heuristic Update method 2: Discard for now
         # for p in pitch_lst:
         #     p_cls = music21.pitch.Pitch(midi=self.vocab.compact(p)).pitchClass
         #     if p_cls != target_key:
@@ -156,7 +168,7 @@ if __name__ == '__main__':
             text = json.load(f)['score']
         # ic(text[:200])
         # ic(im.get_off_key_ratio(text, Key.AfMaj))
-        ic(im.get_off_key_ratio(text, Key.DMin))
+        ic(im.get_in_key_ratio(text, Key.DMin))
     check_key_metric()
 
     def check_init_key_no_error():
