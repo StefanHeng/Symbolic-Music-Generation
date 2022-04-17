@@ -72,7 +72,8 @@ class IkrMetric:
         ic(stats_pitch_cls_int)
 
     def get_off_key_ratio(
-            self, preds: List[int], key: Key
+            self, preds: List[int], key: Key, enable_heuristic: bool = False,
+        heuristic_thres: int = 5
     ) -> float:
 
         tok_lst = preds.split() if isinstance(preds, str) else preds
@@ -92,11 +93,12 @@ class IkrMetric:
         in_key_lst = list(filterfalse(
             lambda x: x in OFFKEY_OFFSET[key_type], pred_offset))
         in_key_ratio = len(in_key_lst) / num_toks
-        # # Heuristics
-        # # TODO: add more music theories later
-        # key_thres, key_count, num_off_key = 8, 0, 0
-        # prev_p_cls = None
-        # num_off_key = 0
+        # Heuristics
+        # TODO: add more music theories later
+        key_thres, key_count, num_off_key = 8, 0, 0
+        prev_p_cls = None
+        num_off_key = 0
+        # Heuristic Update: Discard for now
         # for p in pitch_lst:
         #     p_cls = music21.pitch.Pitch(midi=self.vocab.compact(p)).pitchClass
         #     if p_cls != target_key:

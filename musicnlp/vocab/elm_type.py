@@ -110,4 +110,4 @@ MusicElement = namedtuple(typename='MusicElement', field_names=[
 
 if __name__ == '__main__':
     assert len(key_str2enum) == len(
-        key_enum2str), "Dictionary should be of the same size"
+        key_enum2tuple), "Dictionary should be of the same size"
