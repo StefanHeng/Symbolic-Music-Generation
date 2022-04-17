@@ -15,7 +15,7 @@ class MusicConverter:
         self.prec = prec
         if tokenizer_kw is None:
             tokenizer_kw = dict()
-        self.tokenizer = MusicTokenizer(prec=prec, **tokenizer_kw)
+        self.tokenizer = MusicTokenizer(precision=prec, **tokenizer_kw)
         self.vocab: MusicVocabulary = self.tokenizer.vocab
 
     def _bar2grouped_bar(self, bar: Measure) -> List[ExtNote]:

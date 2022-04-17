@@ -170,7 +170,7 @@ if __name__ == '__main__':
 
         n_sample = None
         seed = config('random-seed')
-        tokenizer = MusicTokenizer(prec=5)
+        tokenizer = MusicTokenizer(precision=5)
         tokenizer.model_max_length = 2048  # TODO: hard-code for now
         dset = get_dataset(
             dataset_names=dnms, map_func=lambda x: tokenizer(

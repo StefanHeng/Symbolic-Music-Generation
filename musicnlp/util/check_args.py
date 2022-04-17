@@ -10,6 +10,8 @@ class CheckArg:
     extraction_export_types = ['mxl', 'str', 'id', 'str_join', 'visualize']
     music_file_formats = ['mxl', 'midi']
     key_type = ['list', 'enum', 'dict']
+    logging_strategy = ['epoch', 'steps', 'no']
+    logging_mode = ['train', 'eval']
 
     @staticmethod
     def check_mismatch(arg_type: str, arg_value: str, expected_values: List[str]):
@@ -29,11 +31,21 @@ class CheckArg:
     def check_key_type(key_type: str):
         CheckArg.check_mismatch('Keys Output Type', key_type, CheckArg.key_type)
 
+    @staticmethod
+    def check_logging_strategy(ls: str):
+        CheckArg.check_mismatch('Train Logging Strategy', ls, CheckArg.logging_strategy)
+
+    @staticmethod
+    def check_logging_mode(mode: str):
+        CheckArg.check_mismatch('Train Logging Mode', mode, CheckArg.logging_mode)
+
     def __init__(self):
         self.d_name2func = dict(
             exp=CheckArg.check_extraction_export_type,
             fmt=CheckArg.check_music_file_format,
-            key_type=CheckArg.check_key_type
+            key_type=CheckArg.check_key_type,
+            logging_strategy=CheckArg.check_logging_strategy,
+            logging_mode=CheckArg.check_logging_mode
         )
 
     def __call__(self, **kwargs):

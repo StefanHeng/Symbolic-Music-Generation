@@ -21,7 +21,7 @@ from musicnlp.util import *
 import musicnlp.util.train as train_util
 import musicnlp.util.models as model_util
 from musicnlp.vocab import MusicTokenizer
-from musicnlp.preprocess import get_dataset
+from musicnlp.preprocess import get_dataset, KeySampleDataset
 from musicnlp.models import architectures, metrics
 
 
@@ -30,7 +30,7 @@ def get_model_n_tokenizer(
 ) -> Tuple[MusicTokenizer, Union[model_util.MusicTransformerMixin, torch.nn.Module], OrderedDict]:
     assert model_name in ['xl', 'reformer'], f'Unknown model_name: {model_name}'
 
-    tokenizer_ = MusicTokenizer(prec=prec)  # needed for reformer config
+    tokenizer_ = MusicTokenizer(precision=prec)  # needed for reformer config
     if not hasattr(get_model_n_tokenizer, 'd_config'):
         layer_pair = ['local', 'lsh']
         get_model_n_tokenizer.d_config = dict(
@@ -258,7 +258,7 @@ def get_train_and_my_train_args(
     if train_args is not None:
         args.update(train_args)
 
-    my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps', disable_tqdm=True)  # default
+    my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps', tqdm=False, augment_key=False)  # default
     if my_train_args is not None:
         my_args.update(my_train_args)
     bsz = args['per_device_train_batch_size'] * args.get('gradient_accumulation_steps', 1)
@@ -269,8 +269,13 @@ def get_train_and_my_train_args(
         args['save_strategy'] = 'steps'
         # TODO: DDP not supported
         args['save_steps'] = my_args['save_epochs'] * steps_per_epoch
-    if 'logging_strategy' in my_args and my_args['logging_strategy'] == 'epoch':
+    assert args['logging_strategy'] == 'steps'  # for my own internal logging to run
+    logging_strategy = my_args['logging_strategy']
+    ca(logging_strategy=logging_strategy)
+    if logging_strategy == 'epoch':
         my_args['logging_steps'] = steps_per_epoch
+    # args['disable_tqdm'] = not bool(my_args['tqdm'])
+    args['disable_tqdm'] = True  # Always use my own tqdm, see `musicnlp.util.train.MyTrainer`
     args = {k: v for k, v in args.items() if v is not None}
     return TrainingArguments(**args), my_args
 
@@ -301,31 +306,36 @@ class ComputeMetrics:
 
 def get_all_setup(
         model_name: str, model_size: str,
-        dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None, dataset_seed=None,
+        dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None,
         model_config: Dict = None, train_args: Dict = None, my_train_args: Dict = None
 ) -> Tuple[model_util.MusicTransformerMixin, MusicTokenizer, Trainer]:
-    tokenizer_, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
-    dset = get_dataset(
-        dataset_names=dataset_names, map_func=lambda d: tokenizer_(d['score'], padding='max_length', truncation=True),
-        # i.e. keep the input ids only
-        remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=dataset_seed
-    )
+    # n_sample mainly for debugging
+    tokenizer, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
+    if my_train_args.get('augment_key', False):
+        # For now, just do non-deterministic sampling for eval set too, TODO?
+        dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
+    else:
+        dset = get_dataset(
+            dataset_names=dataset_names,
+            map_func=lambda d: tokenizer(d['score'], padding='max_length', truncation=True),
+            remove_columns=['title', 'score', 'duration'], n_sample=n_sample  # i.e. keep the input ids only
+        )
     tr, vl = dset['train'], dset['test']
     args, my_args, = get_train_and_my_train_args(model_name, model_size, train_args, my_train_args, tr)
     assert all(  # Ensure compatibility of dataset & tokenizer, see `music_export`
-        get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer_.prec for ds in dset.values()
+        get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer.precision for ds in dset.values()
     )
 
     clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
-    cm = ComputeMetrics(tokenizer_)
+    cm = ComputeMetrics(tokenizer)
     trainer_ = train_util.MyTrainer(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
         train_metrics=dict(ikr=cm.ikr),
-        model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer_, mlm=False),
+        model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
         train_dataset=tr, eval_dataset=vl, compute_metrics=cm
     )
-    return model_, tokenizer_, trainer_
+    return model_, tokenizer, trainer_
 
 
 if __name__ == '__main__':
@@ -333,13 +343,6 @@ if __name__ == '__main__':
     from icecream import ic
 
     ic.lineWrapWidth = 400
-
-    dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
-    # dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-    #           'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
-    dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
-    dnms = [dnm_909, dnm_lmd]
 
     def check_model_size():
         md_nm = 'reformer'
@@ -354,8 +357,8 @@ if __name__ == '__main__':
         seed = config('random-seed')
 
         md_nm = 'reformer'
-        # md_sz = 'debug'
-        md_sz = 'debug-large'
+        md_sz = 'debug'
+        # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
@@ -366,19 +369,34 @@ if __name__ == '__main__':
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
 
+        augment_key = True
+        if augment_key:
+            dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
+                     'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+            dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
+                      'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
+        else:
+            dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
+                      'meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+            dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
+                      'meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
+        dnms = [dnm_909, dnm_lmd]
+
         if 'debug' in md_sz or md_sz == 'tiny':
-            n = None
-            # n = 8
+            # n = None
+            n = 32
             train_args = dict(
-                per_device_train_batch_size=4,
+                per_device_train_batch_size=2,
                 # save_strategy='no',
                 save_strategy='epoch',
-                logging_strategy='epoch',
                 num_train_epochs=64,
             )
             my_train_args = dict(
                 save_epochs=16,
-                disable_tqdm=False
+                # logging_strategy='no',
+                logging_strategy='epoch',
+                tqdm='train-only',
+                augment_key=augment_key,
             )
         else:
             n = None
@@ -388,7 +406,7 @@ if __name__ == '__main__':
                 save_epochs=4
             )
         mdl, tokenizer, trainer = get_all_setup(
-            model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n, dataset_seed=seed,
+            model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n,
             train_args=train_args, my_train_args=my_train_args
         )
 

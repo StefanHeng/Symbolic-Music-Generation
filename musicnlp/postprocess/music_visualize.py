@@ -49,7 +49,7 @@ class MusicVisualize:
 
         self.prec = get_prec(self.dset)
         assert self.prec >= 2
-        self.tokenizer = MusicTokenizer(prec=self.prec)
+        self.tokenizer = MusicTokenizer(precision=self.prec)
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec)
         self._df = None

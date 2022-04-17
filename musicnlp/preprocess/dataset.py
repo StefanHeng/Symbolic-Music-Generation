@@ -2,11 +2,13 @@ import os
 import json
 from typing import List, Dict, Callable, Union
 
+import torch
 import datasets
 from datasets import Dataset, DatasetDict
 
 from musicnlp.util import *
 import musicnlp.util.music as music_util
+from musicnlp.vocab import VocabType, MusicTokenizer
 
 
 def get_dataset(
@@ -52,25 +54,102 @@ def get_dataset(
 
         dset = dset.map(map_func, batched=True, remove_columns=remove_columns, num_proc=num_proc)
         datasets.enable_progress_bar()
-    dset = dset.shuffle(seed=shuffle_seed) if shuffle_seed is not None else dset.shuffle()  # will always shuffle
+    if shuffle_seed:
+        dset = dset.shuffle(seed=shuffle_seed)
+    # else, don't shuffle
     return dset
 
 
+class KeySampleDataset:
+    """
+    A wrapper around a datasets.Dataset, with my custom augmentation about inserting keys
+
+    For each song, sample one of the potential keys based on confidence
+        See `musicnlp.preprocess.key_finder.py`
+    """
+    def __init__(self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None):
+        if isinstance(dataset, str):
+            self.dset = datasets.load_from_disk(os.path.join(music_util.get_processed_path(), 'processed', dataset))
+        else:
+            self.dset = dataset
+        # per Dataset creation from my dictionary representation, the `keys` field is the same dictionary with
+        # all possible keys, where the values for bad keys are None
+        assert 'keys' in self.dset.column_names  # sanity check
+        prec = get(json.loads(self.dset.info.description), 'extractor_meta.precision')
+        if tokenizer:
+            self.tokenizer = tokenizer
+            assert prec == tokenizer.precision
+        else:
+            self.tokenizer = MusicTokenizer(precision=prec)
+
+    @classmethod
+    def from_hf(
+            cls, dataset_names: Union[str, List[str]], tokenizer: MusicTokenizer = None,
+            get_dataset_kwargs: Dict = None
+    ) -> Union['KeySampleDataset', Dict[str, 'KeySampleDataset']]:
+        """
+        From path(s) to huggingface dataset(s), based on `get_dataset`
+        """
+        dset = get_dataset(dataset_names, **(get_dataset_kwargs or dict()))
+        return cls(dset, tokenizer) if isinstance(dset, Dataset) else {k: cls(v, tokenizer) for k, v in dset.items()}
+
+    @property
+    def info(self) -> datasets.DatasetInfo:
+        return self.dset.info
+
+    def __len__(self):
+        return len(self.dset)
+
+    def __getitem__(self, idx):
+        assert isinstance(idx, int), 'Batched indexing not supported'
+        item = self.dset[idx]
+        toks = self.tokenizer.tokenize(item['score'])
+        assert self.tokenizer.vocab.type(toks[0]) == VocabType.time_sig  # sanity check data well-formed
+        assert self.tokenizer.vocab.type(toks[1]) == VocabType.tempo
+
+        d_keys = {k: v for k, v in item['keys'].items() if v}  # filter out `None`s
+        keys, weights = zip(*d_keys.items())
+        key = keys[torch.multinomial(torch.tensor(weights), 1, replacement=True).item()]
+        key_tok = self.tokenizer.vocab(key)[0]
+        toks.insert(2, key_tok)
+        # from icecream import ic
+        # ic(item['title'], key_tok)
+
+        return self.tokenizer(toks, padding='max_length', truncation=True, is_split_into_words=True)
+
+
 if __name__ == '__main__':
+    import transformers
     from icecream import ic
 
-    ic.lineWrapWidth = 400
+    ic.lineWrapWidth = 1024
 
     seed = config('random-seed')
+    transformers.set_seed(seed)  # to test key sampling
 
-    dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
-    dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
-    # dset_ = get_dataset(dnm_909)
-    # dset_ = get_dataset(dnm_lmd)
-    dset_ = get_dataset([dnm_909, dnm_lmd], shuffle_seed=seed)
-    ic(dset_)
-    ic(dset_['train'][0])
+    def check_combined_dset():
+        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+        dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+                  'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
+        # dset_ = get_dataset(dnm_909)
+        # dset_ = get_dataset(dnm_lmd)
+        dset_ = get_dataset([dnm_909, dnm_lmd], shuffle_seed=seed)
+        ic(dset_)
+        ic(dset_['train'][0])
 
-    info_ = json.loads(dset_['train'].info.description)
-    ic(info_)
+        info_ = json.loads(dset_['train'].info.description)
+        ic(info_)
+    # check_combined_dset()
+
+    def check_key_sample_data_loading():
+        # dnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+        dnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
+              'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
+        tokenizer = MusicTokenizer()
+        ic(tokenizer)
+        dset = KeySampleDataset.from_hf(dnm, tokenizer=tokenizer)
+        tr, vl = dset['train'], dset['test']
+        for i in range(16):
+            ids = tr[i]['input_ids']
+            ic(len(ids), tokenizer.decode(ids)[:100])
+    check_key_sample_data_loading()
