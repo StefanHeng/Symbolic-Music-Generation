@@ -13,10 +13,11 @@ import music21 as m21
 from music21.meter import TimeSignature
 from music21.tempo import MetronomeMark
 from music21.note import Note, Rest
-from music21.stream import Measure, Part, Score
-from music21.chord import Chord
-from music21.stream import Voice
+from music21.pitch import Pitch
 from music21.duration import Duration
+from music21.chord import Chord
+from music21.stream import Measure, Part, Score
+from music21.stream import Voice
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -35,7 +36,7 @@ if KEEP_OBSOLETE:
 
 
 __all__ = [
-    'TimeSignature', 'MetronomeMark', 'Note', 'Rest', 'Measure', 'Part', 'Score', 'Chord', 'Voice', 'Duration',
+    'TimeSignature', 'MetronomeMark', 'Note', 'Rest', 'Chord', 'Pitch', 'Duration', 'Measure', 'Part', 'Score', 'Voice',
     
     'ExtNote', 'SNote', 'Dur', 'TsTup', 'ordinal2dur_type', 'ScoreExt',
     'time_sig2n_slots',
@@ -199,7 +200,7 @@ def note2note_cleaned(
     dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
     assert isinstance(note, (Note, Rest, Chord))
     if isinstance(note, Note):  # Removes e.g. `tie`s
-        nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), **dur_args)
+        nt = Note(pitch=Pitch(midi=note.pitch.midi), **dur_args)
     elif isinstance(note, Rest):
         nt = Rest(offset=note.offset, **dur_args)
     else:

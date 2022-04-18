@@ -22,7 +22,7 @@ import musicnlp.util.train as train_util
 import musicnlp.util.models as model_util
 from musicnlp.vocab import MusicTokenizer
 from musicnlp.preprocess import get_dataset, KeySampleDataset
-from musicnlp.models import architectures, metrics
+from musicnlp.models import architecture, metrics
 
 
 def get_model_n_tokenizer(
@@ -100,7 +100,7 @@ def get_model_n_tokenizer(
             ))
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
-            'xl': (TransfoXLConfig, architectures.MyTransfoXLLMHeadModel),
+            'xl': (TransfoXLConfig, architecture.MyTransfoXLLMHeadModel),
             'reformer': (ReformerConfig, ReformerModelWithLMHead)
         }
     cls_config, cls_model = get_model_n_tokenizer.d_nm2cls[model_name]
@@ -393,6 +393,7 @@ if __name__ == '__main__':
             my_train_args = dict(
                 save_epochs=16,
                 # logging_strategy='no',
+                # logging_strategy='steps',
                 logging_strategy='epoch',
                 tqdm='train-only',
                 augment_key=augment_key,

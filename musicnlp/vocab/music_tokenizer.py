@@ -14,8 +14,6 @@ class MusicTokenizer(PreTrainedTokenizer):
 
     Note that there are **no special tokens**
     """
-    TOK_PAD = '[PAD]'
-
     model_input_names = ['input_ids']  # Per `TransfoXLTokenizer`
 
     def __init__(self, precision: int = 5, deprecated: bool = False, **kwargs):
@@ -27,8 +25,8 @@ class MusicTokenizer(PreTrainedTokenizer):
         self.precision = precision
         self.vocab = MusicVocabulary(precision=precision, color=False, deprecated=deprecated)
         self.spec_toks_enc, self.spec_toks_dec = dict(), dict()
-        self._add_special_token(MusicTokenizer.TOK_PAD)
-        self.pad_token, self.eos_token = MusicTokenizer.TOK_PAD, self.vocab.end_of_song
+        # self._add_special_token(self.vocab.pad)
+        self.pad_token, self.eos_token = self.vocab.pad, self.vocab.end_of_song
         self.sob_token = self.vocab.start_of_bar
         self.sob_token_id = self._convert_token_to_id(self.sob_token)
 

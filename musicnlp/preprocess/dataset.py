@@ -108,8 +108,6 @@ class KeySampleDataset:
 
         key_tok = self.tokenizer.vocab(sample(item['keys']))[0]
         toks.insert(2, key_tok)
-        # from icecream import ic
-        # ic(item['title'], key_tok)
 
         return self.tokenizer(toks, padding='max_length', truncation=True, is_split_into_words=True)
 

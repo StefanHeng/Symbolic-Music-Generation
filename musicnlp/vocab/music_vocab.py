@@ -7,12 +7,13 @@ from typing import List, Tuple, Set, Dict, Iterator, Optional, Union
 from fractions import Fraction
 from collections import OrderedDict
 
+import numpy as np
+import torch
 import music21 as m21
-from music21.pitch import Pitch
 
 from musicnlp.util import *
-import musicnlp.util.music as music_util
 from musicnlp.util.music_lib import *
+import musicnlp.util.music as music_util
 from musicnlp.vocab.elm_type import Key, key_str2enum
 
 
@@ -51,6 +52,8 @@ class VocabType(Enum):
             yield cls(i)
 
 
+int_types = (int, np.int32, np.int64, torch.Tensor)
+Int = Union[int, np.int32, np.int64, torch.Tensor]
 Compact = Union[TsTup, int, Dur, Key]
 
 
@@ -63,6 +66,7 @@ class MusicVocabulary:
     end_of_song = '</s>'
     start_of_tuplet = '<tup>'
     end_of_tuplet = '</tup>'
+    pad = '[PAD]'  # Needed for type-checking, see `musicnlp.models.metric.get_in_key_ratio`
 
     SPEC_TOKS = dict(
         sep='_',  # Separation
@@ -89,11 +93,13 @@ class MusicVocabulary:
         (8, 16), (16, 16),
         (2, 64)
     ]
-    UNCOM_TP: List[int] = [  # Observed from LMD-cleaned_subset
+    UNCOM_TPS: List[int] = [  # Observed from LMD-cleaned_subset
         30, 37,
         241, 244, 245, 246, 250, 254, 255, 256, 265, 275, 276, 278, 280, 287, 293,
         305, 334, 397
     ]
+    # Observed from LMD-cleaned_subset
+    UNCOM_DURS: List[Union[int, float]] = [25/4, 13/2, 15/2, 8, 77/8, 12, 29/2, 16, 24]
 
     RE_INT = r'[-]?\d*'  # negative sign for `octave`
     RE1 = rf'(?P<num>{RE_INT})'
@@ -152,15 +158,15 @@ class MusicVocabulary:
             return tuple(reversed(time_sig))  # Syntactic sugar
         tss = [elm2str(rev(ts))[0] for ts in sorted(rev(ts) for ts in COMMON_TIME_SIGS + MusicVocabulary.UNCOM_TSS)]
         # See music_visualize.py for distribution; TODO: filter out the tempos not found?
-        tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS + MusicVocabulary.UNCOM_TP]
+        tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS + MusicVocabulary.UNCOM_TPS]
         pitches = [self.cache['rest']] + [self._note2pch_str(Pitch(midi=i)) for i in range(128)]
         keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
-        # from icecream import ic
-        # ic(keys)
 
         # TODO: with music-theory, mod-7 scale degree, vocab size would increase
+        special = [specs[k] for k in ('end_of_song', 'start_of_bar', 'start_of_tuplet', 'end_of_tuplet')]
+        special.append(MusicVocabulary.pad)
         self.toks: Dict[str, List[str]] = OrderedDict([  # Enforce iteration order
-            ('special', [specs[k] for k in ('end_of_song', 'start_of_bar', 'start_of_tuplet', 'end_of_tuplet')]),
+            ('special', special),
             ('time_sig', tss),
             ('tempo', tempos),
             # ('key', keys),
@@ -218,13 +224,20 @@ class MusicVocabulary:
             assert bound.is_integer()
         dur_slot, denom = 4 / 2 ** self.precision, 2 ** self.precision / 4
         assert denom.is_integer()
-        denom = int(denom)
-        gen_numers = range(math.ceil(bound / dur_slot))
+        # denom = int(denom)
+        dur_nums = list(range(math.ceil(bound / dur_slot)))
         if exp == 'str':
-            return [self._note2dur_str((i+1) * dur_slot) for i in gen_numers]
+            from icecream import ic
+            durs = [self._note2dur_str((i+1) * dur_slot) for i in dur_nums]
+            if not self.deprecated:
+                # sanity check no overlap & quantizable
+                assert all((d > bound and (d / dur_slot).is_integer()) for d in MusicVocabulary.UNCOM_DURS)
+                durs += [self._note2dur_str(d) for d in MusicVocabulary.UNCOM_DURS]
+            return durs
         else:
+            raise NotImplementedError('Haven\'t factored in uncommon durations')
             assert exp == 'dur'
-            ret = [Fraction(i+1, denom) for i in gen_numers]
+            ret = [Fraction(i+1, denom) for i in dur_nums]
             return [int(f) if f.denominator == 1 else f for f in ret]
 
     def __len__(self):
@@ -233,9 +246,9 @@ class MusicVocabulary:
     def has_compact(self, tok: Union[str, int]) -> bool:
         return self.type(tok) != VocabType.special
 
-    def type(self, tok: Union[str, int]) -> VocabType:
-        if isinstance(tok, int):
-            return self.id2type[tok]
+    def type(self, tok: Union[str, Int]) -> VocabType:
+        if isinstance(tok, int_types):
+            return self.id2type[int(tok)]
         else:  # order by decreasing expected frequency for efficiency
             if self.cache['pref_pch'] in tok:
                 return VocabType.pitch
@@ -259,7 +272,7 @@ class MusicVocabulary:
         m = tpl.match(tok)
         return int(m.group('numer')), int(m.group('denom'))
 
-    def compact(self, tok: str) -> Compact:
+    def compact(self, tok: Union[str, Int]) -> Compact:
         """
         Convert tokens to the numeric format
 
@@ -273,8 +286,8 @@ class MusicVocabulary:
             If duration, returns the duration quarterLength
         """
         assert self.has_compact(tok), ValueError(f'{logi(tok)} does not have a compact representation')
-        if isinstance(tok, int):
-            return self.id2compact[tok]
+        if isinstance(tok, int_types):
+            return self.id2compact[int(tok)]
         else:
             typ = self.type(tok)
             tpl = self.type2compact_re[typ]
@@ -402,7 +415,7 @@ class MusicVocabulary:
         :param e: A note, tuplet, or a numeric representing duration
         """
         # If a float, expect multiple of powers of 2
-        dur = Fraction(e if isinstance(e, (float, Fraction)) else note2dur(e))
+        dur = Fraction(e if isinstance(e, (int, float, Fraction)) else note2dur(e))
         if dur.denominator == 1:
             s = f'{self.cache["pref_dur"]}{dur.numerator}'
         else:

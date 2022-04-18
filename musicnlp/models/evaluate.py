@@ -77,7 +77,7 @@ class MusicGenerator:
         """
         ca(generation_mode=mode, generation_strategy=strategy)
 
-        generate_args = dict(num_beams=4) | (generate_args or dict())
+        generate_args = (generate_args or dict())
         prompt_args: Dict[str, Any] = dict(n_bar=4, insert_key=False) | (prompt_args or dict())
         key = prompt_args['insert_key']
         if key is True:
@@ -105,42 +105,43 @@ class MusicGenerator:
             else:
                 generate_args['do_sample'] = False
         elif strategy == 'sample':
-            assert (k in ['do_sample', 'top_k', 'top_p'] for k in generate_args)
+            assert all(k in ['do_sample', 'top_k', 'top_p'] for k in generate_args)
             if 'do_sample' in generate_args:
                 assert generate_args['do_sample'], f'{logi("do_sample")} must be True for sample generation'
             else:
                 generate_args['do_sample'] = True
             assert 'top_k' in generate_args or 'top_p' in generate_args, \
                 f'Expect either {logi("top_k")} or {logi("top_p")} for sample generation'
-        else:
+        else:  # seems to repeat itself
             assert strategy == 'beam'
-            assert (k in ['do_sample', 'num_beams', 'num_beam_groups'] for k in generate_args)
+            generate_args = dict(num_beams=4, early_stopping=True) | generate_args
+            assert (k in ['do_sample', 'num_beams', 'num_beam_groups', 'early_stopping'] for k in generate_args)
             assert generate_args['num_beams'] > 1, f'{logi("num_beams")} must >1 for beam-search generation'
         args |= generate_args
-        ic(MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args))
         prompt_colored = ' '.join([self.tokenizer.vocab.colorize_token(tok) for tok in self.tokenizer.tokenize(prompt)])
         d_log = dict(mode=mode, strategy=strategy, args=generate_args | prompt_args, prompt=prompt_colored)
         self.logger.info(f'Generating with {log_dict(d_log)}')
         t = datetime.datetime.now()
-        out = self.model.generate(**inputs, **args)  # TODO: debugging
         self.logger.info(f'Model generation finished in {logi(fmt_time(datetime.datetime.now() - t))}')
-        ic(out, len(out))
-        outputs = self.model.generate(**inputs, **args)[0]  # for now, generate one at a time
+        output = self.model.generate(**inputs, **args)  # for now, generate one at a time
+        assert len(output) == 1  # sanity check
+        output = output[0]
 
         if truncate_to_sob:
-            idxs_eob = torch.nonzero(outputs.eq(self.tokenizer.sob_token_id)).flatten().tolist()
+            idxs_eob = torch.nonzero(output.eq(self.tokenizer.sob_token_id)).flatten().tolist()
             assert len(idxs_eob) > 0, f'No start of bar token found when {logi("truncate_to_sob")} enabled'
-            outputs = outputs[:idxs_eob[-1]]  # truncate also that `sob_token`
-        decoded = self.tokenizer.decode(outputs, skip_special_tokens=False)
+            output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
+        decoded = self.tokenizer.decode(output, skip_special_tokens=False)
         title = f'{save}-generated' if save is not None else None
         score = self.converter.str2score(decoded, omit_eos=True, title=title)  # incase model can't finish generation
         if save:
             # `makeNotations` disabled any clean-up by music21, intended to remove `tie`s added
-            str_args = MusicGenerator.args2fnm(args | prompt_args)
+            str_args = MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args)
             out_path = self.eval_path
-            ic(save_dir)
             if save_dir:
                 out_path = os.path.join(save_dir, out_path)
+                os.makedirs(out_path, exist_ok=True)
+            ic(save_dir, out_path)
             path = os.path.join(out_path, f'{title}, {str_args}, {now(for_path=True)}.mxl')
             score.write(fmt='mxl', fp=path, makeNotation=False)
         else:
@@ -184,7 +185,7 @@ if __name__ == '__main__':
             mode='conditional', strategy=strat, generate_args=gen_args, prompt_args=prompt_args, save=fnm,
             save_dir=save_dir_
         )
-    explore_generate_conditional()
+    # explore_generate_conditional()
 
     def check_why_tie_in_output():
         import music21 as m21

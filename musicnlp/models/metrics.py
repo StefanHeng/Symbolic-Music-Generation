@@ -27,11 +27,13 @@ class IkrMetric:
         """
         assert preds.shape == labels.shape, \
             f'Input and label shapes do not match, {logi(preds.shape)} vs {logi(labels.shape)}'
-        # switch from HF CLM training pad id to the tokenizer pad it
-        labels[labels == PT_LOSS_PAD] = self.tokenizer.pad_token_id
-        gens = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
-        gts = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
-        return 1 - np.mean([self.get_off_key_ratio(gen, gt)for gen, gt in zip(gens, gts)])
+        ikrs = []
+        for pred, label in zip(preds, labels):
+            key_tok = label[2]  # expect labels to be well-formed
+            assert self.vocab.type(key_tok) == VocabType.key, \
+                f'Expect key token at 3rd position of label, got {logi(key_tok)}'
+            ikrs.append(self.get_in_key_ratio(pred[label != PT_LOSS_PAD], self.vocab.compact(key_tok)))
+        return np.array(ikrs).mean()
 
     def get_init_key_est(self, gt_token_seq: Union[str, List[str]]):
         tok_lst = gt_token_seq.split() if isinstance(
@@ -71,8 +73,8 @@ class IkrMetric:
         ic(stats_pitch_cls_int)
 
     def get_in_key_ratio(
-            self, preds: List[int], key: Key, enable_heuristic: bool = False,
-        heuristic_thres: int = 5
+            self, preds: List[int], key: Key,
+            enable_heuristic: bool = False, heuristic_thres: int = 5
     ) -> float:
 
         tok_lst = preds.split() if isinstance(preds, str) else preds
@@ -80,9 +82,8 @@ class IkrMetric:
         pitch_lst = list(filterfalse(
             lambda x: self.vocab.type(x) != VocabType.pitch, tok_lst))
         num_toks = len(pitch_lst)
-        # No pitch found, assume every pitch is off-note
-        if num_toks == 0:
-            return 1
+        if num_toks == 0:  # No pitch found, assume every pitch is off-note
+            return 0
         # Process the given key
         key_type, key_name = key_enum2tuple[target_key]
         # Extract midi values for all available pitches
@@ -175,41 +176,46 @@ if __name__ == '__main__':
         ic(exp_out)
         ic(f"Average IKR for {song_nm}: {np.round(np.mean(exp_out), 5)}")
         # ic(im.get_in_key_ratio(text, Key.DMin))
-    check_key_metric()
+    # check_key_metric()
 
     def check_init_key_no_error():
         """
         Pass through all songs in the dataset, make sure no errors raised during training
         """
-        from musicnlp.preprocess import get_dataset
+        from musicnlp.preprocess import get_dataset, KeySampleDataset
 
-        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
-        dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-                  'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
+        # dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
+        #           'meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+        # dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+        #           'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
+        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
+                  'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+        dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
+                  'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
         dnms = [dnm_909, dnm_lmd]
 
         n_sample = None
-        seed = config('random-seed')
-        tokenizer = MusicTokenizer(precision=5)
-        tokenizer.model_max_length = 2048  # TODO: hard-code for now
-        dset = get_dataset(
-            dataset_names=dnms, map_func=lambda x: tokenizer(
-                x['score'], padding='max_length', truncation=True),
-            remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=seed
-        )
+        tokenizer = MusicTokenizer(precision=5, model_max_length=2048)  # TODO: hard-code for now
+        ic(tokenizer)
+        # dset = get_dataset(
+        #     dataset_names=dnms, map_func=lambda x: tokenizer(
+        #         x['score'], padding='max_length', truncation=True),
+        #     remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=seed
+        # )
+        dset = KeySampleDataset.from_hf(dnms, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
         # effectively get the fist tokens of model size, simulating training data-loading
         for split, ds in dset.items():
-            ic(split)
-            for d in tqdm(ds):
+            strt, end = 4900, len(ds)
+            for i in tqdm(range(strt, end), desc=split, unit='sample'):
+                d = ds[i]
                 # ic(d)
                 # text = tokenizer.decode(d['input_ids'])
                 # ic(text)
                 # im.get_init_key_est(text)
-                ids = np.array(d['input_ids']).reshape(
-                    1, -1)  # dummy batch dim
+                ids = np.array(d['input_ids']).reshape(1, -1)  # dummy batch dim
                 # ic(ids.shape)
                 # effectively we're only checking the ground-truth init key part
                 im(ids, ids)
                 # exit(1)
     # check_init_key_no_error()
-    # profile_runtime(check_init_key_no_error)
+    profile_runtime(check_init_key_no_error)
