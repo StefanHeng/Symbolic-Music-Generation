@@ -383,12 +383,12 @@ if __name__ == '__main__':
 
         if 'debug' in md_sz or md_sz == 'tiny':
             # n = None
-            n = 32
+            n = 8
             train_args = dict(
                 per_device_train_batch_size=2,
                 # save_strategy='no',
                 save_strategy='epoch',
-                num_train_epochs=64,
+                num_train_epochs=16,
             )
             my_train_args = dict(
                 save_epochs=16,

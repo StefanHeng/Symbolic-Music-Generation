@@ -87,7 +87,7 @@ class MyProgressCallback(TrainerCallback):
     def on_epoch_begin(self, args, state, control, **kwargs):
         if state.is_local_process_zero:
             # self.training_bar = tqdm(total=state.max_steps)
-            n_ep = _pretty_single('epoch', int(state.epoch), ref={'epoch': state.num_train_epochs})
+            n_ep = _pretty_single('epoch', int(state.epoch+1), ref={'epoch': state.num_train_epochs})
             # self.training_bar.set_description(f'Epoch {n_ep}')
             assert state.max_steps % state.num_train_epochs == 0
             self.step_per_epoch = state.max_steps // state.num_train_epochs
@@ -361,12 +361,9 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     n_ep = state.epoch  # The one originally is rounded, see `Trainer.log`
                     loss, lr = logs['loss'], logs['learning_rate']
                     assert self.out_dict is not None
-                    from icecream import ic
-                    # ic(self.out_dict)
                     ntp_acc_meta = self.out_dict['ntp_acc_meta']
                     # TODO: Potentially support gradient accumulation
                     # ntp_acc_meta = {k: sum(v for v in d[k]) for k, d in ntp_acc_meta.items()}
-                    # ic(ntp_acc_meta)
                     ntp_acc = ntp_acc_meta['matched'] / ntp_acc_meta['total']
                     metrics = {k: self.out_dict[k] for k in self.trainer.train_metrics}
 
@@ -375,7 +372,6 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                         ('loss', loss), ('ntp_acc', ntp_acc)
                     ])
                     self.out_dict.update(metrics)
-                    # ic(self.out_dict)
 
                     # `should_log` in Trainer just prevents the `on_log` call, I only filter console logging
                     should_log = False

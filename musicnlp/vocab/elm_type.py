@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict
+from typing import Tuple, Dict
 from collections import namedtuple
 
 
@@ -51,7 +51,7 @@ key_str2enum: Dict[str, Key] = {
 
 # Dictionary for translating a Key type to a tuple of ints (type, key)
 # where type := major (1) or minor (0) and key := the name of the keyC
-key_enum2tuple: Dict[Key, tuple[int, str]] = {
+key_enum2tuple: Dict[Key, Tuple[int, str]] = {
     Key.CMin: (0, 'C'),
     Key.CsMin: (0, 'C#'),
     Key.DMin: (0, 'D'),
