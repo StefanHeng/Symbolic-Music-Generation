@@ -10,9 +10,9 @@ Sampled conditional generation given first 4 bars of extracted representation, o
 - *Shape of You* by *Ed Sheeran*
 
 
-The reference music MXL are in `original`. Credit from the internet.
+The reference music MXL are in [`original`](https://github.com/StefanHeng/Symbolic-Music-Generation/tree/master/generated-samples/original). Credit from the internet.
 
-You can find the extracted representation as our model ground-truths in `extracted`. 
+You can find the extracted representation as our model ground-truths in [`extracted`](https://github.com/StefanHeng/Symbolic-Music-Generation/tree/master/generated-samples/extracted). 
 
 The rest of the folders include generation results from model variants. 
 
