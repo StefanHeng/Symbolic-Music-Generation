@@ -12,6 +12,7 @@ tb_log/
 plot/
 evaluations/
 requirements, 04.08.22.txt
+**/*.pkl
 
 
 # Byte-compiled / optimized / DLL files

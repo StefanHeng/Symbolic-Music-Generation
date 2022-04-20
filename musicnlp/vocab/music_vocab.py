@@ -32,6 +32,10 @@ def is_common_time_sig(ts: Union[TimeSignature, TsTup]):
     return ts in is_common_time_sig.COM_TS
 
 
+def get_common_time_sig_duration_bound():
+    return max([(numer/denom) for numer, denom in COMMON_TIME_SIGS]) * 4
+
+
 def is_common_tempo(tempo: Union[MetronomeMark, int]):
     if not hasattr(is_common_tempo, 'COM_TEMPO'):  # List of common tempos
         is_common_tempo.COM_TEMPO = set(COMMON_TEMPOS)
@@ -312,25 +316,25 @@ class MusicVocabulary:
                 assert typ == VocabType.key
                 return key_str2enum[tpl.match(tok)['key']]
 
-    def uncompact(self, type: VocabType, compact: Optional[Compact] = None) -> str:
+    def uncompact(self, kind: VocabType, compact: Optional[Compact] = None) -> str:
         """
         Reverse operation of `compact`, returns the music "decoded" string
         """
-        assert type != VocabType.special, ValueError(f'Compact representation for special types not supported')
-        if type == VocabType.duration:
+        assert kind != VocabType.special, ValueError(f'Compact representation for special types not supported')
+        if kind == VocabType.duration:
             assert isinstance(compact, (int, Tuple[int, int]))
             if isinstance(compact, int):
                 return f'{self.cache["pref_dur"]}{compact}'
             else:
                 return f'{self.cache["pref_dur"]}{compact[0]}/{compact[1]}'
-        elif type == VocabType.pitch:
+        elif kind == VocabType.pitch:
             assert isinstance(compact, int)
             if compact == -1:
                 return self.cache['rest']
             else:
                 pch, octave = compact % 12, compact // 12
                 return f'{self.cache["pref_pch"]}{pch}/{octave}'
-        elif type == VocabType.time_sig:
+        elif kind == VocabType.time_sig:
             assert isinstance(compact, tuple)
             return f'{self.cache["pref_time_sig"]}{compact[0]}/{compact[1]}'
         else:  # VocabType.tempo

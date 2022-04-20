@@ -9,7 +9,7 @@ from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
 
-from musicnlp.util import *
+from musicnlp.util.util import *
 from musicnlp.util.data_path import PATH_BASE, DIR_DSET
 
 

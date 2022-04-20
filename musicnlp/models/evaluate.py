@@ -11,8 +11,9 @@ from transformers import ReformerModelWithLMHead
 
 from musicnlp.util import *
 from musicnlp.vocab.music_vocab import VocabType
-from musicnlp.vocab import MusicTokenizer, MusicConverter
+from musicnlp.vocab import MusicTokenizer
 from musicnlp.preprocess import KeyFinder
+from musicnlp.postprocess import MusicConverter
 
 
 def load_trained(model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: str = None):
