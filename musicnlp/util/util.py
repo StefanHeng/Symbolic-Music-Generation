@@ -49,6 +49,12 @@ pd.set_option('display.max_columns', None)
 
 plt.rcParams['figure.constrained_layout.use'] = True
 plt.rcParams['figure.figsize'] = (16, 9)
+plt.rc('text.latex', preamble='\n'.join([
+    r'\usepackage{nicefrac}',
+    r'\usepackage{helvet}',
+    r'\usepackage{sansmath}',  # render math sans-serif
+    r'\sansmath'
+]))
 sns.set_style('darkgrid')
 LN_KWARGS = dict(marker='o', ms=0.3, lw=0.25)
 

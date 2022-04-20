@@ -340,7 +340,6 @@ class MusicVisualize:
             df.rename(columns={k: 'duration'}, inplace=True)
             d_uniq = df.duration.unique()
             bound = min(d_uniq.max(), get_common_time_sig_duration_bound())
-            ic(d_uniq, bound)
 
             df.duration = df.duration.apply(str)
             cat = CategoricalDtype(categories=[str(d) for d in sorted(d_uniq)], ordered=True)
@@ -349,27 +348,30 @@ class MusicVisualize:
             def callback(ax):
                 plt.gcf().canvas.draw()
                 xtick_lbs = ax.get_xticklabels()
-                ic(xtick_lbs)
                 pattern_frac = re.compile(r'^(?P<numer>\d+)/(?P<denom>\d+)$')
+
+                txts = []
                 for t in xtick_lbs:
                     txt = t.get_text()
                     m = pattern_frac.match(txt)
                     if m:
                         numer, denom = int(m.group('numer')), int(m.group('denom'))
+                        assert denom != 1
                         val = numer / denom
-                        from matplotlib import rc
-                        rc('text', usetex=True)
-                        # t.set_usetex(True)
-                        t.set_text(rf'$\displaystyle \frac{{{numer}}}{{{1}}}$')
-                        t.set_text(rf'20sdad')
-                        print('set text', rf'$\displaystyle \frac{{{numer}}}{{{1}}}$')
+                        t.set_usetex(True)
+                        # Directly calling `set_text` doesn't render in `show`
+                        txts.append(rf'$\nicefrac{{{numer}}}{{{denom}}}$')
                     else:
                         val = int(txt)
+                        txts.append(txt)
                     if val > bound:
                         t.set_color(self.color_uncom)
+                ax.set_xticklabels(txts)
             return self.hist_wrapper(
                 data=df, col_name='duration', weights='count', discrete=True, kde=False,
-                title=title, xlabel=xlab, callback=callback, **kwargs
+                title=title, xlabel=xlab,
+                callback=callback,
+                **kwargs
             )
         else:
             counts = Counter()
