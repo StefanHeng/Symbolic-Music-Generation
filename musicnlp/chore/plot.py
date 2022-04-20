@@ -238,7 +238,6 @@ if __name__ == '__main__':
         paths_aug = [md_n_dir2tb_path(directory_name=d) for d in dir_nms_aug]
 
         y = 'ntp_acc'
-        cs = sns.color_palette('husl', n_colors=2 * 2)
         plt.figure(figsize=(9, 4))
         ax = plt.gca()
         s_fact = dict(train=0.95, eval=0.5)
@@ -253,6 +252,7 @@ if __name__ == '__main__':
         plot_tb(df_base, y=y, ylabel='', plot_label='Reformer-base, vanilla', cs=[od_blue], **args)
         plot_tb(df_aug, y=y, ylabel='', plot_label='Reformer-base, key augmentation', cs=[od_purple], **args)
         plt.xlabel('epoch')
+        plt.ylabel('Next-Token Prediction Accuracy (%)')
 
         title = 'Validation Next-Token Prediction Accuracy over Epochs'
         save_fig(title)

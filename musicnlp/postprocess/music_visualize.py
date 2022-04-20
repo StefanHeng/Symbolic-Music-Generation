@@ -1,5 +1,6 @@
 import math
 import json
+import pickle
 from copy import deepcopy
 from typing import List, Dict, Iterable, Callable, Union
 from fractions import Fraction
@@ -37,9 +38,9 @@ def barplot(
         data: pd.DataFrame = None,
         x: Union[Iterable[str], str] = None, y: Union[Iterable[float], str] = None,
         x_order: Iterable[str] = None,
-        orient: str = 'v', with_value: bool = False, width: float = 0.5,
+        orient: str = 'v', with_value: bool = False, width: [float, bool] = 0.5,
         xlabel: str = None, ylabel: str = None, yscale: str = None, title: str = None, show: bool = True,
-        ax=None, palette: str = 'husl', callback: Callable[[plt.Axes], None] = None,
+        ax=None, palette: str = 'husl', callback: Callable[[plt.Axes], None] = None, save: bool = False,
         **kwargs
 ):
     ca(orient=orient)
@@ -53,7 +54,6 @@ def barplot(
     if x_order:
         cat = CategoricalDtype(categories=x_order, ordered=True)  # Enforce ordering in plot
         df['x'] = df['x'].astype(cat, copy=False)
-    ic(df)
     is_vert = orient in ['v', 'vertical']
     x, y = ('x', 'y') if is_vert else ('y', 'x')
     if ax:
@@ -73,6 +73,8 @@ def barplot(
         ax.set_title(title)
     if callback:
         callback(ax)
+    if save:
+        save_fig(title)
     if show:
         plt.show()
     return ax
@@ -88,7 +90,7 @@ class MusicVisualize:
 
     def __init__(
             self, filename: Union[str, List[str]], dataset_name: Union[str, List[str]] = None,
-            color_palette: str = 'husl', hue_by_dataset: bool = True
+            color_palette: str = 'husl', hue_by_dataset: bool = True, cache: str = None,
     ):
         """
         :param filename: Path to a json dataset, or a list of paths, in which case datasets are concatenated
@@ -139,11 +141,21 @@ class MusicVisualize:
         if hue_by_dataset:
             assert dataset_name is not None, f'{logi("dataset_name")} is required for color coding'
         self.hue_by_dataset = hue_by_dataset
+        self.cache = cache
 
     @property
     def df(self) -> pd.DataFrame:
         if self._df is None:
-            self._df = self._get_song_info()
+            if self.cache:
+                if os.path.exists(self.cache):
+                    with open(self.cache, 'rb') as f:
+                        self._df = pickle.load(f)
+                else:
+                    self._df = self._get_song_info()
+                    with open('visualize_df.pkl', 'wb') as f:
+                        pickle.dump(self._df, f)
+            else:
+                self._df = self._get_song_info()
         return self._df
 
     def _get_song_info(self):
@@ -235,22 +247,28 @@ class MusicVisualize:
                 col_name=cnm, title=title, xlabel='Time Signature', yscale='log', kde=False, callback=callback, **kwargs
             )
         else:
+            def callback(ax):
+                plt.gcf().canvas.draw()  # so that labels are rendered
+                xtick_lbs = ax.get_xticklabels()
+                c_bad = hex2rgb('#E06C75', normalize=True)
+                com_tss = [f'{ts[0]}/{ts[1]}' for ts in COMMON_TIME_SIGS]
+                for t in xtick_lbs:  # TODO: fix, with `plt.show()` the colors don't show up, but `savefig()` works
+                    if t.get_text() not in com_tss:
+                        t.set_color(c_bad)
             counter = Counter(self.df.time_sig)
             # sort by duration of the time signature
             tss_uncom = sorted([ts for ts in counter.keys() if ts not in COMMON_TIME_SIGS], key=lambda ts: ts[0]/ts[1])
             tss = COMMON_TIME_SIGS + tss_uncom
             tss_print = [f'{numer}/{denom}' for numer, denom in tss]
-            counts = [counter[ts] for ts in tss]
-            # df = pd.DataFrame(zip(tss_print, counts), columns=['time_sig', 'count', self.key_dnm])
-            # tss, counts = zip(*counter.items())
-            # ic(counter)
-            barplot(
-                # x=tss_print, y=counts,
-                data=self._count_by_dataset('time_sig'), x='time_sig', y='count',
+            df = self._count_by_dataset('time_sig')
+            df['time_sig'] = df['time_sig'].map(lambda ts: f'{ts[0]}/{ts[1]}')  # so that the category ordering works
+            args = dict(
+                data=df, x='time_sig', y='count',
                 hue=self.key_dnm, x_order=tss_print,
-                xlabel='Time Signature', ylabel='count', title=title, yscale='log',
-                **kwargs
+                xlabel='Time Signature', ylabel='count', title=title, yscale='log', width=False, callback=callback
             )
+            args |= kwargs
+            barplot(**args)
 
     def tempo_dist(self):
         def callback(ax):
@@ -267,8 +285,9 @@ class MusicVisualize:
         dnm2counts = defaultdict(Counter)
         for dnm in self.df[self.key_dnm].unique():
             df = self.df[self.df[self.key_dnm] == dnm]
-            for d in df[col_name]:
-                dnm2counts[dnm].update(d)
+            # dnm2counts[dnm].update(df[col_name].value_counts())
+            for d in df[col_name]:  # TODO: optimize
+                dnm2counts[dnm].update((d,))
         return dnm2counts
 
     def _count_by_dataset(self, col_name: str) -> pd.DataFrame:
@@ -289,14 +308,11 @@ class MusicVisualize:
             dfs.append(pd.DataFrame([(k, v, dnm) for k, v in counts.items()], columns=['pitch', 'count', k_dnm]))
         df = pd.concat(dfs, ignore_index=True)
         ma, mi = df.pitch.max(), df.pitch.min()
-        ic(ma, mi)
         assert mi == self.vocab.compact(self.vocab.rest)
 
         def callback(ax):
             plt.gcf().canvas.draw()
             pch_ints = [-1, *range(6, ma + 6, 6)]
-            ic(pch_ints, [self.tokenizer.vocab.pitch_midi2name(p) for p in pch_ints])
-            ic(ax.get_xticks())
             ax.set_xticks(pch_ints, labels=[self.tokenizer.vocab.pitch_midi2name(p) for p in pch_ints])
 
         title, xlab = 'Histogram of pitch across all songs', 'Pitch'
@@ -435,7 +451,7 @@ if __name__ == '__main__':
         # mv.bar_count_dist()
         # mv.tuplet_count_dist()
         # mv.song_duration_dist()
-        mv.time_sig_dist()  # TODO: with bar plot instead?
+        mv.time_sig_dist()
         # mv.tempo_dist()
         # ic(mv.df)
         # mv.note_pitch_dist()
@@ -505,3 +521,10 @@ if __name__ == '__main__':
         vals, title = song_duration()
         save_fig(f'{title}, {now(for_path=True)}')
     # plots_for_presentation()
+
+    def plot_for_report():
+        mv.time_sig_dist(title=None, show=False)  # TODO: with bar plot instead?
+        title = 'Distribution of Time Signature'
+        save_fig(title)
+    # plot_for_report()
+

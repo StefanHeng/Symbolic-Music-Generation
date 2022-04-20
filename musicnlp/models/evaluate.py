@@ -15,15 +15,15 @@ from musicnlp.vocab import MusicTokenizer, MusicConverter
 from musicnlp.preprocess import KeyFinder
 
 
-def load_trained(model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, k: str = None):
+def load_trained(model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: str = None):
     if not hasattr(load_trained, 'key2path'):
         load_trained.key2path = {
             'reformer, 14_32ep': ['reformer', '2022-04-16_16-08-03', 'checkpoint-4802'],
             'reformer, 20_64ep': ['reformer', '2022-04-19_13-48-54', 'checkpoint-6860']
         }
     paths = [PATH_BASE, DIR_PROJ, DIR_MDL]
-    if k:
-        paths.extend(load_trained.key2path[k])
+    if model_key:
+        paths.extend(load_trained.key2path[model_key])
     else:
         paths.append(model_name)
         if isinstance(directory_name, str):
@@ -158,6 +158,10 @@ class MusicGenerator:
             score.show()
 
 
+def get_performance(model):
+    pass
+
+
 if __name__ == '__main__':
     from icecream import ic
 
@@ -170,7 +174,7 @@ if __name__ == '__main__':
     # mdl = load_trained(model_name='reformer', directory_name=dir_nm)
     # save_dir_ = k = 'reformer, 14_32ep'
     save_dir_ = k = 'reformer, 20_64ep'
-    mdl = load_trained(k=k)
+    mdl = load_trained(model_key=k)
     # save_dir_ = 'reformer-base, 14/32ep'
     # ic(get_model_num_trainable_parameter(mdl))
     # mg = MusicGenerator(mdl)
@@ -212,9 +216,9 @@ if __name__ == '__main__':
     # check_why_tie_in_output()
 
     def export_generated():
-        # fnms = ['Merry Go Round of Life', 'Shape of You']
-        fnms = ['Canon piano', 'Shape of You']
-        # fnms = ['Shape of You']
+        # fnms = ['Merry Go Round of Life',  'Faded', 'Piano Sonata', 'Merry Christmas']
+        fnms = ['Piano Sonata']
+        # fnms = ['Canon piano', 'Shape of You']
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
         # gen_args = dict(top_k=32, top_p=0.9)
         gen_args = dict(top_k=32, top_p=0.75)
@@ -227,3 +231,8 @@ if __name__ == '__main__':
                 save=fnm, save_dir=save_dir_
             )
     export_generated()
+
+    def eval_ikr():
+        md_sz = 'debug'
+
+    # eval_ikr()

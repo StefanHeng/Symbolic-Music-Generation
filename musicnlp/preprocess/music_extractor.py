@@ -815,14 +815,14 @@ if __name__ == '__main__':
 
     def toy_example():
         logger = WarnLog()
-        fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        # fnm = 'Faded'
+        # fnm = 'Piano Sonata'
+        fnm = 'Merry Christmas'
+        # fnm = 'Merry Go Round of Life'
+        fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         # fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
         # fnm = music_util.get_my_example_songs('平凡之路', fmt='MXL')
-        # fnm = music_util.get_my_example_songs('Canon')
         # fnm = music_util.get_my_example_songs('Canon piano')
-        # fnm = music_util.get_my_example_songs('canonroc1')
-        # fnm = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/Kool & The Gang - ' \
-        #       'What Would the World Be Without Music Let the Music Take Your Mind Medley.mxl'
         ic(fnm)
         mt = MusicExtractor(warn_logger=logger, verbose=True)
 
@@ -841,9 +841,9 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = mt(fnm, exp='str_join', return_meta=True, return_key=True)
             ic(d_out)
-        # check_mxl_out()
+        check_mxl_out()
         # check_str()
-        check_visualize()
+        # check_visualize()
         # check_return_meta_n_key()
     toy_example()
 
