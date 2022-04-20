@@ -15,12 +15,21 @@ from musicnlp.vocab import MusicTokenizer, MusicConverter
 from musicnlp.preprocess import KeyFinder
 
 
-def load_trained(model_name: str, directory_name:  Union[str, Iterable[str]]):
-    paths = [PATH_BASE, DIR_PROJ, DIR_MDL, model_name]
-    if isinstance(directory_name, str):
-        paths.append(directory_name)
+def load_trained(model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, k: str = None):
+    if not hasattr(load_trained, 'key2path'):
+        load_trained.key2path = {
+            'reformer, 14_32ep': ['reformer', '2022-04-16_16-08-03', 'checkpoint-4802'],
+            'reformer, 20_64ep': ['reformer', '2022-04-19_13-48-54', 'checkpoint-6860']
+        }
+    paths = [PATH_BASE, DIR_PROJ, DIR_MDL]
+    if k:
+        paths.extend(load_trained.key2path[k])
     else:
-        paths.extend(directory_name)
+        paths.append(model_name)
+        if isinstance(directory_name, str):
+            paths.append(directory_name)
+        else:
+            paths.extend(directory_name)
     path = os.path.join(*paths)
     return ReformerModelWithLMHead.from_pretrained(path)
 
@@ -122,8 +131,8 @@ class MusicGenerator:
         d_log = dict(mode=mode, strategy=strategy, args=generate_args | prompt_args, prompt=prompt_colored)
         self.logger.info(f'Generating with {log_dict(d_log)}')
         t = datetime.datetime.now()
-        self.logger.info(f'Model generation finished in {logi(fmt_time(datetime.datetime.now() - t))}')
         output = self.model.generate(**inputs, **args)  # for now, generate one at a time
+        self.logger.info(f'Model generation finished in {logi(fmt_time(datetime.datetime.now() - t))}')
         assert len(output) == 1  # sanity check
         output = output[0]
 
@@ -139,7 +148,8 @@ class MusicGenerator:
             str_args = MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args)
             out_path = self.eval_path
             if save_dir:
-                out_path = os.path.join(save_dir, out_path)
+                out_path = os.path.join(out_path, save_dir)
+                ic('joined', out_path)
                 os.makedirs(out_path, exist_ok=True)
             ic(save_dir, out_path)
             path = os.path.join(out_path, f'{title}, {str_args}, {now(for_path=True)}.mxl')
@@ -156,12 +166,16 @@ if __name__ == '__main__':
     # dir_nm = os.path.join('2022-04-01_09-40-48', 'trained')
     # dir_nm = os.path.join('2022-04-03_11-01-04', 'checkpoint-3712')
     # dir_nm = os.path.join('2022-04-11_00-26-05', 'trained')
-    dir_nm = ['2022-04-16_16-08-03', 'checkpoint-4802']
-    mdl = load_trained(model_name='reformer', directory_name=dir_nm)
-    save_dir_ = 'reformer-base, 14/32ep'
+    # dir_nm = ['2022-04-16_16-08-03', 'checkpoint-4802']
+    # mdl = load_trained(model_name='reformer', directory_name=dir_nm)
+    # save_dir_ = k = 'reformer, 14_32ep'
+    save_dir_ = k = 'reformer, 20_64ep'
+    mdl = load_trained(k=k)
+    # save_dir_ = 'reformer-base, 14/32ep'
     # ic(get_model_num_trainable_parameter(mdl))
     # mg = MusicGenerator(mdl)
-    deprec = True
+    # deprec = True
+    deprec = False
     mg = MusicGenerator(mdl, deprecated=deprec)
 
     def explore_generate_unconditional():
@@ -178,8 +192,8 @@ if __name__ == '__main__':
         fnm = 'Merry Go Round of Life'
         path = music_util.get_my_example_songs(k=fnm, extracted=True)
         # strat = 'greedy', None
-        # strat, gen_args = 'sample', dict(top_k=32, top_p=0.9)
-        strat, gen_args = 'beam', dict(num_beams=4, num_beam_groups=2)
+        strat, gen_args = 'sample', dict(top_k=32, top_p=0.9)
+        # strat, gen_args = 'beam', dict(num_beams=4, num_beam_groups=2)
         prompt_args = dict(path=path, n_bar=4, insert_key=not deprec)
         mg(
             mode='conditional', strategy=strat, generate_args=gen_args, prompt_args=prompt_args, save=fnm,
@@ -200,12 +214,14 @@ if __name__ == '__main__':
     def export_generated():
         # fnms = ['Merry Go Round of Life', 'Shape of You']
         fnms = ['Canon piano', 'Shape of You']
+        # fnms = ['Shape of You']
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
-        gen_args = dict(top_k=32, top_p=0.9)
+        # gen_args = dict(top_k=32, top_p=0.9)
+        gen_args = dict(top_k=32, top_p=0.75)
         n_bar = 4
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True)
-            prompt = dict(path=path, n_bar=n_bar)
+            prompt = dict(path=path, n_bar=n_bar, insert_key=not deprec)
             mg(
                 mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt,
                 save=fnm, save_dir=save_dir_

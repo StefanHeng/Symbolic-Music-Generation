@@ -17,6 +17,8 @@ class CheckArg:
     generation_modes = ['conditional', 'unconditional']
     generation_strategies = ['greedy', 'sample', 'beam']
 
+    plot_orients = ['v', 'h', 'vertical', 'horizontal']
+
     @staticmethod
     def check_mismatch(arg_type: str, arg_value: str, expected_values: List[str]):
         if arg_value not in expected_values:
@@ -51,6 +53,10 @@ class CheckArg:
     def check_generation_strategy(strategy: str):
         CheckArg.check_mismatch('Music Generation Strategy', strategy, CheckArg.generation_strategies)
 
+    @staticmethod
+    def check_plot_orient(orient: str):
+        CheckArg.check_mismatch('Bar Plot Orientation', orient, CheckArg.plot_orients)
+
     def __init__(self):
         self.d_name2func = dict(
             exp=CheckArg.check_extraction_export_type,
@@ -59,7 +65,8 @@ class CheckArg:
             logging_strategy=CheckArg.check_logging_strategy,
             logging_mode=CheckArg.check_logging_mode,
             generation_mode=CheckArg.check_generation_mode,
-            generation_strategy=CheckArg.check_generation_strategy
+            generation_strategy=CheckArg.check_generation_strategy,
+            orient=CheckArg.check_plot_orient
         )
 
     def __call__(self, **kwargs):

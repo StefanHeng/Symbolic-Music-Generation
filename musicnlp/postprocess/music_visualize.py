@@ -1,9 +1,9 @@
 import math
 import json
 from copy import deepcopy
-from typing import List, Dict, Callable, Union
+from typing import List, Dict, Iterable, Callable, Union
 from fractions import Fraction
-from collections import Counter
+from collections import defaultdict, Counter
 
 import numpy as np
 import pandas as pd
@@ -13,9 +13,56 @@ import seaborn as sns
 from tqdm import tqdm
 
 from musicnlp.util import *
-from musicnlp.vocab import COMMON_TEMPOS, MusicVocabulary, MusicTokenizer
+from musicnlp.vocab import COMMON_TEMPOS, COMMON_TIME_SIGS, MusicVocabulary, MusicTokenizer
 from musicnlp.preprocess import WarnLog
 from musicnlp.postprocess import MusicStats
+
+
+def change_bar_width(ax, width: float = 0.5, orient: str = 'v'):
+    """
+    Modifies the bar width of a matplotlib bar plot
+
+    Credit: https://stackoverflow.com/a/44542112/10732321
+    """
+    ca(orient=orient)
+    is_vert = orient in ['v', 'vertical']
+    for patch in ax.patches:
+        current_width = patch.get_width() if is_vert else patch.get_height()
+        diff = current_width - width
+        patch.set_width(width) if is_vert else patch.set_height(width)
+        patch.set_x(patch.get_x() + diff * .5) if is_vert else patch.set_y(patch.get_y() + diff * .5)
+
+
+def barplot(
+        x: Iterable[str], y: Iterable[float], orient: str = 'v', with_value: bool = False, width: float = 0.5,
+        xlabel: str = None, ylabel: str = None, title: str = None, show: bool = True,
+        ax=None, palette=None, callback: Callable[[plt.Axes], None] = None,
+        **kwargs
+):
+    ca(orient=orient)
+    df = pd.DataFrame([dict(x=x_, y=y_) for x_, y_ in zip(x, y)])
+    cat = CategoricalDtype(categories=x, ordered=True)  # Enforce ordering in plot
+    df['x'] = df['x'].astype(cat, copy=False)
+    is_vert = orient in ['v', 'vertical']
+    x, y = ('x', 'y') if is_vert else ('y', 'x')
+    if ax:
+        kwargs['ax'] = ax
+    if palette is not None:
+        kwargs['palette'] = palette
+    ax = sns.barplot(data=df, x=x, y=y, **kwargs)
+    if with_value:
+        ax.bar_label(ax.containers[0])
+    if width:
+        change_bar_width(ax, width, orient=orient)
+    ax.set_xlabel(xlabel) if is_vert else ax.set_ylabel(xlabel)  # if None just clears the label
+    ax.set_ylabel(ylabel) if is_vert else ax.set_xlabel(ylabel)
+    if title:
+        ax.set_title(title)
+    if callback:
+        callback(ax)
+    if show:
+        plt.show()
+    return ax
 
 
 class MusicVisualize:
@@ -24,23 +71,46 @@ class MusicVisualize:
 
     See `preprocess.music_export.py`
     """
-    def __init__(self, filenames: Union[str, List[str]]):
+    def __init__(
+            self, filename: Union[str, List[str]], dataset_name: Union[str, List[str]] = None,
+            color_palette: str = 'husl', hue_by_dataset: bool = True
+    ):
         """
-        :param filenames: Path to a json dataset, or a list of paths, in which case datasets are concatenated
+        :param filename: Path to a json dataset, or a list of paths, in which case datasets are concatenated
             See `preprocess.music_export.py`
+        :param dataset_name: Datasets names, if given, should correspond to filenames
+        :param hue_by_dataset: If true, automatically color-code statistics by dataset name
         """
-        def _load_single(f_: str) -> Dict:
+        def _load_single(f_: str, dnm: str = None) -> Dict:
             with open(f_, 'r') as f:
-                return json.load(f)
+                ds = json.load(f)
+            ds['music'] = ds['music'][:256]  # TODO: debugging
+            if dnm:
+                for s in ds['music']:
+                    s['dataset_name'] = dnm
+                    # ic(s)
+                # ic(ds)
+                # exit(1)
+            return ds
 
         def get_prec(ds: Dict) -> int:
             return get(ds, 'extractor_meta.precision')
 
         self.dset: Dict
-        if isinstance(filenames, str):
-            self.dset = _load_single(filenames)
+        if isinstance(filename, str):
+            if dataset_name:
+                assert isinstance(dataset_name, str), \
+                    f'Dataset name given should be a string for single filename, ' \
+                    f'but got {logi(dataset_name)} with type {logi(type(dataset_name))}'
+            self.dset = _load_single(filename, dataset_name)
         else:
-            dset = [_load_single(f) for f in filenames]
+            if dataset_name:
+                assert isinstance(dataset_name, list), \
+                    f'Dataset name given should be a list for multiple filenames, ' \
+                    f'but got {logi(dataset_name)} with type {logi(type(dataset_name))}'
+            else:
+                dataset_name = [None] * len(filename)
+            dset = [_load_single(f, dnm) for f, dnm in zip(filename, dataset_name)]
             assert all(ds['extractor_meta'] == dset[0]['extractor_meta'] for ds in dset)
             self.dset = dict(
                 music=sum([d['music'] for d in dset], []),
@@ -53,6 +123,10 @@ class MusicVisualize:
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec)
         self._df = None
+        self.color_palette = color_palette
+        if hue_by_dataset:
+            assert dataset_name is not None, f'{logi("dataset_name")} is required for color coding'
+        self.hue_by_dataset = hue_by_dataset
 
     @property
     def df(self) -> pd.DataFrame:
@@ -75,9 +149,15 @@ class MusicVisualize:
             ttc = self.stats.vocab_type_counts(toks)
             # Only 1 per song
             (numer, denom), d['tempo'] = list(ttc['time_sig'].keys())[0], list(ttc['tempo'].keys())[0]
+            # d['time_sig'], d['tempo'] = list(ttc['time_sig'].keys())[0], list(ttc['tempo'].keys())[0]
             d['time_sig'] = f'{numer}/{denom}'
             d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
             d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
+            if any(k == -9 for k in d['weighted_pitch_count']):
+                ic(d['weighted_pitch_count'])
+                ic(toks)
+                ic(d)
+                exit(1)
             return d
         ds = []
         for e in tqdm(entries, desc='Extracting song info', unit='song'):
@@ -85,16 +165,19 @@ class MusicVisualize:
         return pd.DataFrame(ds)
 
     def hist_wrapper(
-            self, col_name: str, title: str, xlabel: str, callback: Callable = None, new_figure=True,
+            self, data: pd.DataFrame = None, col_name: str = None, title: str = None, xlabel: str = None,
+            ylabel: str = None,
+            callback: Callable = None, show=True,
             upper_percentile: float = None,
             **kwargs
     ):
         kwargs = dict(kde=True) | kwargs
-        if not new_figure:
-            assert 'ax' in kwargs, f'If not {logi("new_figure")}, {logi("ax")} must be passed in'
-        ax = sns.histplot(data=self.df, x=col_name, **kwargs)
+        if self.hue_by_dataset:
+            kwargs['hue'] = 'dataset_name'
+        data = data if data is not None else self.df
+        ax = sns.histplot(data=data, x=col_name, palette=self.color_palette, **kwargs)
         plt.xlabel(xlabel)
-        plt.ylabel('count')
+        plt.ylabel(ylabel or 'count')
         if title is not None:
             plt.title(title)
         if upper_percentile:
@@ -104,8 +187,9 @@ class MusicVisualize:
             ax.set_xlim([mi, ma])
         if callback is not None:
             callback(ax)
-        if new_figure:
+        if show:
             plt.show()
+        return ax
 
     def token_length_dist(self, **kwargs):
         args = dict(col_name='n_token', title='Histogram of token length', xlabel='#token')
@@ -114,10 +198,11 @@ class MusicVisualize:
         self.hist_wrapper(**args)
 
     def bar_count_dist(self):
-        self.hist_wrapper(col_name='n_bar', title='Histogram of #bars per song', xlabel='#bars')
+        self.hist_wrapper(col_name='n_bar', title='Histogram of #bars per song', xlabel='#bar')
 
     def tuplet_count_dist(self):
-        self.hist_wrapper(col_name='n_tup', title='Histogram of #tuplets per song', xlabel='#tuplets')
+        title = 'Histogram of #tuplets per song'
+        self.hist_wrapper(col_name='n_tup', title=title, xlabel='#tuplet', upper_percentile=True)
 
     def song_duration_dist(self, **kwargs):
         def callback(ax):
@@ -130,36 +215,66 @@ class MusicVisualize:
             args.update(kwargs)
         self.hist_wrapper(**args)
 
-    def time_sig_dist(self):
+    # def time_sig_dist(self, **kwargs):
         self.hist_wrapper(
             col_name='time_sig', title='Histogram of time signature per song', xlabel='Time Signature', kde=False
         )
+        # counter = Counter(self.df.time_sig)
+        # # sort by duration in a bar
+        # tss_uncom = sorted([ts for ts in counter.keys() if ts not in COMMON_TIME_SIGS], key=lambda ts: ts[0]/ts[1])
+        # tss = COMMON_TIME_SIGS + tss_uncom
+        # tss_print = [f'{numer}/{denom}' for numer, denom in tss]
+        # counts = [counter[ts] for ts in tss]
+        # # tss, counts = zip(*counter.items())
+        # # ic(counter)
+        # ax = barplot(
+        #     x=tss_print, y=counts, xlabel='Time Signature', ylabel='count', title='Histogram of time signature per song',
+        #     show=False, **kwargs
+        # )
+        # plt.show()
 
     def tempo_dist(self):
         def callback(ax):
             ax.set_yscale('log')
-        self.hist_wrapper(
-            col_name='tempo', title='Histogram of tempo per song', xlabel='Tempo/BPM',
-            kde=False, callback=callback
-        )
+            plt.gcf().canvas.draw()  # so that labels are rendered
+            xtick_lbs = ax.get_xticklabels()
+            c_bad = hex2rgb('#E06C75', normalize=True)
+            for t in xtick_lbs:
+                if int(t.get_text()) not in COMMON_TEMPOS:
+                    t.set_color(c_bad)
+        title, xlab = 'Histogram of tempo per song', 'Tempo (bpm)'
+        return self.hist_wrapper(col_name='tempo', title=title, xlabel=xlab, kde=False, callback=callback)
 
     def note_pitch_dist(self, weighted=True):
-        counts = Counter()
-        for d in (self.df.weighted_pitch_count if weighted else self.df.pitch_count):
-            counts.update(d)
-        df = pd.DataFrame([(k, v) for k, v in counts.items()], columns=['pitch', 'count'])
+        dnm2counts = defaultdict(Counter)
+        k_dnm = 'dataset_name'
+        for dnm in self.df[k_dnm].unique():
+            df = self.df[self.df[k_dnm] == dnm]
+            for d in (df.weighted_pitch_count if weighted else df.pitch_count):
+                dnm2counts[dnm].update(d)
+        dfs = []
+        for dnm, counts in dnm2counts.items():
+            dfs.append(pd.DataFrame([(k, v, dnm) for k, v in counts.items()], columns=['pitch', 'count', k_dnm]))
+        df = pd.concat(dfs, ignore_index=True)
         ma, mi = df.pitch.max(), df.pitch.min()
+        ic(ma, mi)
         assert mi == self.vocab.compact(self.vocab.rest)
-        ax = sns.histplot(
-            data=df, x='pitch', weights='count', kde=True,
+
+        def callback(ax):
+            plt.gcf().canvas.draw()
+            pch_ints = [-1, *range(6, ma + 6, 6)]
+            ic(pch_ints, [self.tokenizer.vocab.pitch_midi2name(p) for p in pch_ints])
+            ic(ax.get_xticks())
+            ax.set_xticks(pch_ints, labels=[self.tokenizer.vocab.pitch_midi2name(p) for p in pch_ints])
+
+        title, xlab = 'Histogram of pitch across all songs', 'Pitch'
+        ylab = 'weighted count' if weighted else 'count'
+        return self.hist_wrapper(
+            data=df, col_name='pitch', weights='count',
+            title=title, xlabel=xlab, ylabel=ylab, kde=True, callback=callback,
             bins=ma-mi+1, kde_kws=dict(bw_adjust=0.5)
+            # , stat='density'
         )
-        pch_ints = [-1, *range(6, ma+6, 6)]
-        ax.set_xticks(pch_ints, labels=[self.tokenizer.vocab.pitch_midi2name(p) for p in pch_ints])
-        plt.title('Histogram of pitch across all songs')
-        plt.xlabel('Pitch')
-        plt.ylabel('count, weighted' if weighted else 'count')
-        plt.show()
 
     def note_duration_dist(self):
         """
@@ -168,15 +283,22 @@ class MusicVisualize:
         counts = Counter()
         for d in self.df.duration_count:
             counts.update(d)
-        df = pd.DataFrame([(k, v) for k, v in counts.items()], columns=['duration', 'count'])
-        bound = math.ceil(df.duration.max())
-        cat = CategoricalDtype(categories=self.vocab.get_durations(bound=bound, exp='dur'), ordered=True)
+        # df = pd.DataFrame([(k, v) for k, v in counts.items()], columns=['duration', 'count'])
+        # bound = math.ceil(df.duration.max())
+        # ic(max(counts.keys()), counts.keys())
+        bound = min(max(counts.keys()), 6)  # Hard coded for now, based on common time signature
+
+        # cat = CategoricalDtype(categories=self.vocab.get_durations(bound=bound, exp='dur'), ordered=True)
         # Number of colors needed for an integer group
         # e.g. precision = 5, smallest duration 1/8, needs 4 colors, for [1, 1/2, 1/4, 1/8]
         n_color_1 = (self.prec-2) + 1
         n_color = n_color_1 * bound
-        df.duration = df.duration.astype(cat, copy=False)
-        cs = sns.color_palette(palette='husl', n_colors=n_color)
+        # df.duration = df.duration.astype(cat, copy=False)
+
+        durs_above = sorted([d for d in counts.keys() if d > bound])
+        durs = self.vocab.get_durations(bound=bound, exp='dur')
+        durs_str = durs + durs_above
+        cs = sns.color_palette(palette='husl', n_colors=n_color + len(durs_above))
 
         # Colors are locally ordered by precision, added with shades based on global magnitude
         def get_category_idx(c: Union[int, Fraction]):
@@ -187,12 +309,19 @@ class MusicVisualize:
                 assert idx_local.is_integer()
                 idx_local, group = int(idx_local), math.floor(c)
             return idx_local + n_color_1 * group
-        cs = [cs[get_category_idx(c)] for c in df.duration.cat.categories]
-        sns.barplot(data=df, x='duration', y='count', palette=cs)
-        plt.title('Bar plot of duration across all songs')
-        plt.xlabel('Duration (quarter length)')
-        plt.ylabel('count')
-        plt.show()
+        # cs = [cs[get_category_idx(c)] for c in df.duration.cat.categories]
+        # ic(durs, durs_str, durs_above)
+        cs = [cs[get_category_idx(c)] for c in durs] + [cs[-1] for c in durs_above]
+
+        # ic(cs)
+
+        def callback(ax):
+            ax.set_yscale('log')
+
+        title, xlab = 'Bar plot of duration across all songs', 'Duration (quarter length)'
+        barplot(x=durs_str, y=[counts[d] for d in durs_str], palette=cs,
+                xlabel=xlab, ylabel='count', title=title, callback=callback
+                )
 
     @property
     def n_song(self) -> int:
@@ -250,11 +379,11 @@ if __name__ == '__main__':
 
     import musicnlp.util.music as music_util
 
-    dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01.json'
-    dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
+    fnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01.json'
+    fnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
               'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52.json'
-    dnms = [os.path.join(music_util.get_processed_path(), dnm) for dnm in [dnm_909, dnm_lmd]]
-    mv = MusicVisualize(dnms)
+    fnms = [os.path.join(music_util.get_processed_path(), dnm) for dnm in [fnm_909, fnm_lmd]]
+    mv = MusicVisualize(filename=fnms, dataset_name=['POP909', 'LCS'], hue_by_dataset=True)  # for `LMD-cleaned-subset`
 
     def check_warn():
         df = mv.warn_info(as_counts=True)
@@ -269,17 +398,18 @@ if __name__ == '__main__':
     # check_uncommon_tempos()
 
     def plots():
-        mv.token_length_dist()
+        # mv.token_length_dist(hue='dataset_name')
+        # mv.token_length_dist()
         # mv.bar_count_dist()
         # mv.tuplet_count_dist()
         # mv.song_duration_dist()
-        # mv.time_sig_dist()
+        # mv.time_sig_dist(palette='mako_r')  # TODO: with bar plot instead?
         # mv.tempo_dist()
         # ic(mv.df)
         # mv.note_pitch_dist()
         # mv.note_duration_dist()
-        # mv.warning_type_dist()
-    # plots()
+        mv.warning_type_dist()
+    plots()
 
     fig_sz = (9, 5)
 
@@ -342,4 +472,4 @@ if __name__ == '__main__':
 
         vals, title = song_duration()
         save_fig(f'{title}, {now(for_path=True)}')
-    plots_for_presentation()
+    # plots_for_presentation()

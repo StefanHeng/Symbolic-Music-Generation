@@ -133,10 +133,11 @@ class MusicConverter:
                         meta=(tuple([self.vocab.compact(tok) for tok in toks_p]), self.vocab.compact(tok_d))
                     ))
             elif typ == VocabType.time_sig:
-                lst_out.append(MusicElement(
-                    type=ElmType.time_sig, meta=(self.vocab.compact(tok))))
+                lst_out.append(MusicElement(type=ElmType.time_sig, meta=(self.vocab.compact(tok))))
             elif typ == VocabType.tempo:
                 lst_out.append(MusicElement(type=ElmType.tempo, meta=(self.vocab.compact(tok))))
+            elif typ == VocabType.key:  # ignore
+                pass
             else:
                 assert typ == VocabType.pitch
                 tok_d = next(it, None)
@@ -182,6 +183,8 @@ class MusicConverter:
         e1, e2, lst = lst[0], lst[1], lst[2:]
         assert e1.type == ElmType.time_sig, 'First element must be time signature'
         assert e2.type == ElmType.tempo, 'Second element must be tempo'
+        if lst[0].type == ElmType.key:
+            lst = lst[1:]  # ignore
         if omit_eos:
             lst = [e for e in lst if e.type != ElmType.song_end]
         else:

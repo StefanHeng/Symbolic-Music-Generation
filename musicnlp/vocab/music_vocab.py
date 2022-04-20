@@ -159,7 +159,7 @@ class MusicVocabulary:
         tss = [elm2str(rev(ts))[0] for ts in sorted(rev(ts) for ts in COMMON_TIME_SIGS + MusicVocabulary.UNCOM_TSS)]
         # See music_visualize.py for distribution; TODO: filter out the tempos not found?
         tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS + MusicVocabulary.UNCOM_TPS]
-        pitches = [self.cache['rest']] + [self._note2pch_str(Pitch(midi=i)) for i in range(128)]
+        pitches = [self.cache['rest']] + [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
         keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
 
         # TODO: with music-theory, mod-7 scale degree, vocab size would increase
@@ -224,7 +224,6 @@ class MusicVocabulary:
             assert bound.is_integer()
         dur_slot, denom = 4 / 2 ** self.precision, 2 ** self.precision / 4
         assert denom.is_integer()
-        # denom = int(denom)
         dur_nums = list(range(math.ceil(bound / dur_slot)))
         if exp == 'str':
             from icecream import ic
@@ -235,8 +234,8 @@ class MusicVocabulary:
                 durs += [self._note2dur_str(d) for d in MusicVocabulary.UNCOM_DURS]
             return durs
         else:
-            raise NotImplementedError('Haven\'t factored in uncommon durations')
             assert exp == 'dur'
+            denom = int(denom)
             ret = [Fraction(i+1, denom) for i in dur_nums]
             return [int(f) if f.denominator == 1 else f for f in ret]
 
@@ -304,7 +303,7 @@ class MusicVocabulary:
                     return -1
                 else:
                     pch, octave = MusicVocabulary._get_group2(tok, tpl)
-                    return pch-1 + octave*12  # See `pch2step`
+                    return pch-1 + (octave+1)*12  # See `pch2step`, restore the pitch; +1 cos octave starts from -1
             elif typ == VocabType.time_sig:
                 return MusicVocabulary._get_group2(tok, tpl)
             elif typ == VocabType.tempo:
@@ -395,12 +394,12 @@ class MusicVocabulary:
             r = self.cache['rest']
             return [log_s(r, c='b') if color else r, self._note2dur_str(elm)]
         elif isinstance(elm, Note):
-            return [self._note2pch_str(elm), self._note2dur_str(elm)]
+            return [self.note2pitch_str(elm), self._note2dur_str(elm)]
         elif isinstance(elm, tuple):
             # Sum duration for all tuplets
             bot, eot = self.cache['bot'], self.cache['eot']
             return [colorize(bot)] + [
-                (self._note2pch_str(e)) for e in elm
+                (self.note2pitch_str(e)) for e in elm
             ] + [self._note2dur_str(elm)] + [colorize(eot)]
         elif isinstance(elm, str):
             assert elm in key_str2enum
@@ -422,7 +421,7 @@ class MusicVocabulary:
             s = f'{self.cache["pref_dur"]}{dur.numerator}/{dur.denominator}'
         return log_s(s, c='g') if self.color else s
 
-    def _note2pch_str(self, note: Union[Note, Rest, Pitch]) -> str:
+    def note2pitch_str(self, note: Union[Note, Rest, Pitch]) -> str:
         """
         :param note: A note, tuplet, or a music21.pitch.Pitch
         """
@@ -480,4 +479,12 @@ if __name__ == '__main__':
         for k, v in mv.toks.items():
             ic(k, len(v))
         ic(sum(len(v) for v in mv.toks.values()))
-    check_vocab_size()
+    # check_vocab_size()
+
+    def check_compact_pitch():
+        for i in range(128):
+            pch = Pitch(midi=i)
+            tok = mv.note2pitch_str(pch)
+            ic(i, tok, mv.compact(tok))
+            assert i == mv.compact(tok) == pch.midi
+    check_compact_pitch()
