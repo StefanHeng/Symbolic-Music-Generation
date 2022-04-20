@@ -168,7 +168,7 @@ def save_fig(title, save=True):
         save_fig.path = os.path.join(PATH_BASE, DIR_PROJ, 'plot')
     os.makedirs(save_fig.path, exist_ok=True)
     if save:
-        fnm = f'{title}.png'
+        fnm = f'{title}, {now(for_path=True)}.png'
         plt.savefig(os.path.join(save_fig.path, fnm), dpi=300)
 
 

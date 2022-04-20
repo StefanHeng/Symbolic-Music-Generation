@@ -34,15 +34,26 @@ def change_bar_width(ax, width: float = 0.5, orient: str = 'v'):
 
 
 def barplot(
-        x: Iterable[str], y: Iterable[float], orient: str = 'v', with_value: bool = False, width: float = 0.5,
-        xlabel: str = None, ylabel: str = None, title: str = None, show: bool = True,
-        ax=None, palette=None, callback: Callable[[plt.Axes], None] = None,
+        data: pd.DataFrame = None,
+        x: Union[Iterable[str], str] = None, y: Union[Iterable[float], str] = None,
+        x_order: Iterable[str] = None,
+        orient: str = 'v', with_value: bool = False, width: float = 0.5,
+        xlabel: str = None, ylabel: str = None, yscale: str = None, title: str = None, show: bool = True,
+        ax=None, palette: str = 'husl', callback: Callable[[plt.Axes], None] = None,
         **kwargs
 ):
     ca(orient=orient)
-    df = pd.DataFrame([dict(x=x_, y=y_) for x_, y_ in zip(x, y)])
-    cat = CategoricalDtype(categories=x, ordered=True)  # Enforce ordering in plot
-    df['x'] = df['x'].astype(cat, copy=False)
+    if data is not None:
+        df = data
+        assert isinstance(x, str) and isinstance(y, str)
+        df['x'], df['y'] = df[x], df[y]
+    else:
+        df = pd.DataFrame([dict(x=x_, y=y_) for x_, y_ in zip(x, y)])
+        x_order = x
+    if x_order:
+        cat = CategoricalDtype(categories=x_order, ordered=True)  # Enforce ordering in plot
+        df['x'] = df['x'].astype(cat, copy=False)
+    ic(df)
     is_vert = orient in ['v', 'vertical']
     x, y = ('x', 'y') if is_vert else ('y', 'x')
     if ax:
@@ -56,6 +67,8 @@ def barplot(
         change_bar_width(ax, width, orient=orient)
     ax.set_xlabel(xlabel) if is_vert else ax.set_ylabel(xlabel)  # if None just clears the label
     ax.set_ylabel(ylabel) if is_vert else ax.set_xlabel(ylabel)
+    if yscale:
+        ax.set_yscale(yscale)
     if title:
         ax.set_title(title)
     if callback:
@@ -71,6 +84,8 @@ class MusicVisualize:
 
     See `preprocess.music_export.py`
     """
+    key_dnm = 'dataset_name'
+
     def __init__(
             self, filename: Union[str, List[str]], dataset_name: Union[str, List[str]] = None,
             color_palette: str = 'husl', hue_by_dataset: bool = True
@@ -88,9 +103,6 @@ class MusicVisualize:
             if dnm:
                 for s in ds['music']:
                     s['dataset_name'] = dnm
-                    # ic(s)
-                # ic(ds)
-                # exit(1)
             return ds
 
         def get_prec(ds: Dict) -> int:
@@ -136,7 +148,6 @@ class MusicVisualize:
 
     def _get_song_info(self):
         entries: List[Dict] = self.dset['music']
-        # entries = entries[:256]  # TODO: debugging
 
         def extract_info(d: Dict):
             d = deepcopy(d)
@@ -148,16 +159,11 @@ class MusicVisualize:
             del d['warnings']
             ttc = self.stats.vocab_type_counts(toks)
             # Only 1 per song
-            (numer, denom), d['tempo'] = list(ttc['time_sig'].keys())[0], list(ttc['tempo'].keys())[0]
-            # d['time_sig'], d['tempo'] = list(ttc['time_sig'].keys())[0], list(ttc['tempo'].keys())[0]
-            d['time_sig'] = f'{numer}/{denom}'
+            # (numer, denom), d['tempo'] = list(ttc['time_sig'].keys())[0], list(ttc['tempo'].keys())[0]
+            # d['time_sig'] = f'{numer}/{denom}'
+            d['time_sig'], d['tempo'] = list(ttc['time_sig'].keys())[0], list(ttc['tempo'].keys())[0]
             d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
             d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
-            if any(k == -9 for k in d['weighted_pitch_count']):
-                ic(d['weighted_pitch_count'])
-                ic(toks)
-                ic(d)
-                exit(1)
             return d
         ds = []
         for e in tqdm(entries, desc='Extracting song info', unit='song'):
@@ -166,8 +172,8 @@ class MusicVisualize:
 
     def hist_wrapper(
             self, data: pd.DataFrame = None, col_name: str = None, title: str = None, xlabel: str = None,
-            ylabel: str = None,
-            callback: Callable = None, show=True,
+            ylabel: str = None, yscale: str = None,
+            callback: Callable = None, show=True, save: bool = False,
             upper_percentile: float = None,
             **kwargs
     ):
@@ -185,10 +191,14 @@ class MusicVisualize:
             q = upper_percentile if isinstance(upper_percentile, float) else 99.7  # ~3std
             mi, ma = vs.min(), np.percentile(vs, q=q)
             ax.set_xlim([mi, ma])
+        if yscale:
+            plt.yscale(yscale)
         if callback is not None:
             callback(ax)
         if show:
             plt.show()
+        if save:
+            save_fig(title)
         return ax
 
     def token_length_dist(self, **kwargs):
@@ -215,27 +225,35 @@ class MusicVisualize:
             args.update(kwargs)
         self.hist_wrapper(**args)
 
-    # def time_sig_dist(self, **kwargs):
-        self.hist_wrapper(
-            col_name='time_sig', title='Histogram of time signature per song', xlabel='Time Signature', kde=False
-        )
-        # counter = Counter(self.df.time_sig)
-        # # sort by duration in a bar
-        # tss_uncom = sorted([ts for ts in counter.keys() if ts not in COMMON_TIME_SIGS], key=lambda ts: ts[0]/ts[1])
-        # tss = COMMON_TIME_SIGS + tss_uncom
-        # tss_print = [f'{numer}/{denom}' for numer, denom in tss]
-        # counts = [counter[ts] for ts in tss]
-        # # tss, counts = zip(*counter.items())
-        # # ic(counter)
-        # ax = barplot(
-        #     x=tss_print, y=counts, xlabel='Time Signature', ylabel='count', title='Histogram of time signature per song',
-        #     show=False, **kwargs
-        # )
-        # plt.show()
+    def time_sig_dist(self, kind: str = 'bar', **kwargs):
+        title = 'Distribution of Time Signature'
+        if kind == 'hist':
+            def callback(ax):
+                ax.set_yscale('log')
+            cnm = 'time_sig'
+            self.hist_wrapper(
+                col_name=cnm, title=title, xlabel='Time Signature', yscale='log', kde=False, callback=callback, **kwargs
+            )
+        else:
+            counter = Counter(self.df.time_sig)
+            # sort by duration of the time signature
+            tss_uncom = sorted([ts for ts in counter.keys() if ts not in COMMON_TIME_SIGS], key=lambda ts: ts[0]/ts[1])
+            tss = COMMON_TIME_SIGS + tss_uncom
+            tss_print = [f'{numer}/{denom}' for numer, denom in tss]
+            counts = [counter[ts] for ts in tss]
+            # df = pd.DataFrame(zip(tss_print, counts), columns=['time_sig', 'count', self.key_dnm])
+            # tss, counts = zip(*counter.items())
+            # ic(counter)
+            barplot(
+                # x=tss_print, y=counts,
+                data=self._count_by_dataset('time_sig'), x='time_sig', y='count',
+                hue=self.key_dnm, x_order=tss_print,
+                xlabel='Time Signature', ylabel='count', title=title, yscale='log',
+                **kwargs
+            )
 
     def tempo_dist(self):
         def callback(ax):
-            ax.set_yscale('log')
             plt.gcf().canvas.draw()  # so that labels are rendered
             xtick_lbs = ax.get_xticklabels()
             c_bad = hex2rgb('#E06C75', normalize=True)
@@ -243,7 +261,21 @@ class MusicVisualize:
                 if int(t.get_text()) not in COMMON_TEMPOS:
                     t.set_color(c_bad)
         title, xlab = 'Histogram of tempo per song', 'Tempo (bpm)'
-        return self.hist_wrapper(col_name='tempo', title=title, xlabel=xlab, kde=False, callback=callback)
+        return self.hist_wrapper(col_name='tempo', title=title, xlabel=xlab, yscale='log', kde=False, callback=callback)
+
+    def _count_column(self, col_name: str) -> Dict[str, Counter]:
+        dnm2counts = defaultdict(Counter)
+        for dnm in self.df[self.key_dnm].unique():
+            df = self.df[self.df[self.key_dnm] == dnm]
+            for d in df[col_name]:
+                dnm2counts[dnm].update(d)
+        return dnm2counts
+
+    def _count_by_dataset(self, col_name: str) -> pd.DataFrame:
+        dfs, cols = [], [col_name, 'count', self.key_dnm]
+        for dnm, counts in self._count_column(col_name).items():
+            dfs.append(pd.DataFrame([(k, v, dnm) for k, v in counts.items()], columns=cols))
+        return pd.concat(dfs, ignore_index=True)
 
     def note_pitch_dist(self, weighted=True):
         dnm2counts = defaultdict(Counter)
@@ -403,12 +435,12 @@ if __name__ == '__main__':
         # mv.bar_count_dist()
         # mv.tuplet_count_dist()
         # mv.song_duration_dist()
-        # mv.time_sig_dist(palette='mako_r')  # TODO: with bar plot instead?
+        mv.time_sig_dist()  # TODO: with bar plot instead?
         # mv.tempo_dist()
         # ic(mv.df)
         # mv.note_pitch_dist()
         # mv.note_duration_dist()
-        mv.warning_type_dist()
+        # mv.warning_type_dist()
     plots()
 
     fig_sz = (9, 5)
