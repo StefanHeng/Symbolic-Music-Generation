@@ -34,7 +34,7 @@ __all__ = [
     'vars_', 'get', 'set_', 'it_keys', 'config',
     'compress', 'flatten', 'list_split', 'join_its', 'group_n', 'sample', 'conc_map', 'batched_conc_map',
     'readable_int', 'now', 'fmt_time', 'sec2mmss', 'round_up_1digit', 'profile_runtime',
-    'clip', 'np_index', 'clean_whitespace', 'stem', 'list_is_same_elms', 'save_fig', 'read_pickle',
+    'clip', 'np_index', 'clean_whitespace', 'stem', 'list_is_same_elms', 'save_fig', 'get_plot_path', 'read_pickle',
     'is_on_colab', 'get_model_num_trainable_parameter',
     'log', 'log_s', 'logi', 'is_float', 'log_dict', 'log_dict_nc', 'log_dict_id', 'log_dict_pg', 'log_dict_p',
     'hex2rgb', 'MyTheme', 'MyFormatter', 'get_logger',
@@ -47,8 +47,8 @@ pd.set_option('display.precision', 2)
 pd.set_option('max_colwidth', 40)
 pd.set_option('display.max_columns', None)
 
-plt.rcParams['figure.constrained_layout.use'] = True
-plt.rcParams['figure.figsize'] = (16, 9)
+plt.rc('figure', figsize=(16, 9))
+plt.rc('figure.constrained_layout', use=True)
 plt.rc('text.latex', preamble='\n'.join([
     r'\usepackage{nicefrac}',
     r'\usepackage{helvet}',
@@ -169,13 +169,16 @@ def now(as_str=True, for_path=False):
     return d.strftime(fmt) if as_str else d
 
 
+def get_plot_path() -> str:
+    return os.path.join(PATH_BASE, DIR_PROJ, 'plot')
+
+
 def save_fig(title, save=True):
-    if not hasattr(save_fig, 'path'):
-        save_fig.path = os.path.join(PATH_BASE, DIR_PROJ, 'plot')
-    os.makedirs(save_fig.path, exist_ok=True)
+    plt_path = get_plot_path()
+    os.makedirs(plt_path, exist_ok=True)
     if save:
         fnm = f'{title}, {now(for_path=True)}.png'
-        plt.savefig(os.path.join(save_fig.path, fnm), dpi=300)
+        plt.savefig(os.path.join(plt_path, fnm), dpi=300)
 
 
 def read_pickle(fnm):
@@ -583,7 +586,7 @@ class RecurseLimit:
         self.old_limit = sys.getrecursionlimit()
         sys.setrecursionlimit(self.limit)
 
-    def __exit__(self, type, value, tb):
+    def __exit__(self, kind, value, tb):
         sys.setrecursionlimit(self.old_limit)
 
 
@@ -636,8 +639,8 @@ if __name__ == '__main__':
     # check_group()
 
     st = '/Users/stefanh/Documents/UMich/Research/Music with ' \
-          'NLP/datasets/MXL-eg_out/Alpentrio Tirol - Alpentrio Hitmix: ' \
-          'Alpentrio-Medley   Hast a bisserl Zeit fur mi   Tepperter Bua   Hallo kleine ' \
-          'Traumfrau   Vergiss die Liebe nicht   Ich freu\' mich schon auf dich   Ich ' \
-          'hab was ganz lieb\'s traumt von dir   Geheimnis der Joha... - v0.mxl'
+         'NLP/datasets/MXL-eg_out/Alpentrio Tirol - Alpentrio Hitmix: ' \
+         'Alpentrio-Medley   Hast a bisserl Zeit fur mi   Tepperter Bua   Hallo kleine ' \
+         'Traumfrau   Vergiss die Liebe nicht   Ich freu\' mich schon auf dich   Ich ' \
+         'hab was ganz lieb\'s traumt von dir   Geheimnis der Joha... - v0.mxl'
     ic(clean_whitespace(st))

@@ -1,9 +1,10 @@
+import os
 import re
 import math
 import json
 import pickle
 from copy import deepcopy
-from typing import List, Dict, Iterable, Callable, Any, Union
+from typing import List, Tuple, Dict, Iterable, Callable, Any, Union
 from fractions import Fraction
 from collections import defaultdict, Counter
 
@@ -41,7 +42,7 @@ def change_bar_width(ax, width: float = 0.5, orient: str = 'v'):
 
 def barplot(
         data: pd.DataFrame = None,
-        x: Union[Iterable[str], str] = None, y: Union[Iterable[float], str] = None,
+        x: Union[Iterable, str] = None, y: Union[Iterable[float], str] = None,
         x_order: Iterable[str] = None,
         orient: str = 'v', with_value: bool = False, width: [float, bool] = 0.5,
         xlabel: str = None, ylabel: str = None, yscale: str = None, title: str = None,
@@ -94,6 +95,7 @@ class MusicVisualize:
     """
     key_dnm = 'dataset_name'
     color_uncom = hex2rgb('#E06C75', normalize=True)
+    pattern_frac = re.compile(r'^(?P<numer>\d+)/(?P<denom>\d+)$')
 
     def __init__(
             self, filename: Union[str, List[str]], dataset_name: Union[str, List[str]] = None,
@@ -155,12 +157,13 @@ class MusicVisualize:
         if self._df is None:
             if self.cache:
                 fnm = f'{self.cache}.pkl'
-                if os.path.exists(fnm):
-                    with open(fnm, 'rb') as f:
+                path = os.path.join(get_plot_path(), 'cache', fnm)
+                if os.path.exists(path):
+                    with open(path, 'rb') as f:
                         self._df = pickle.load(f)
                 else:
                     self._df = self._get_song_info()
-                    with open(fnm, 'wb') as f:
+                    with open(path, 'wb') as f:
                         pickle.dump(self._df, f)
             else:
                 self._df = self._get_song_info()
@@ -264,9 +267,18 @@ class MusicVisualize:
             plt.gcf().canvas.draw()  # so that labels are rendered
             xtick_lbs = ax.get_xticklabels()
             com_tss = [f'{ts[0]}/{ts[1]}' for ts in COMMON_TIME_SIGS]
-            for t in xtick_lbs:  # TODO: fix, with `plt.show()` the colors don't show up, but `savefig()` works
-                if t.get_text() not in com_tss:
+            for t in xtick_lbs:
+                txt = t.get_text()
+                if '/' in txt:
+                    numer, denom = MusicVisualize._parse_frac(txt)
+                    t.set_usetex(True)
+                    t.set_text(MusicVisualize._frac2tex_frac(numer, denom))
+                else:
+                    t.set_text(txt)
+                if txt not in com_tss:
                     t.set_color(self.color_uncom)
+            ax.set_xticks(ax.get_xticks())  # Hack to force rendering for `show`, TODO: better ways?
+            ax.set_xticklabels([t.get_text() for t in xtick_lbs])
         title = 'Distribution of Time Signature'
         if kind == 'hist':
             c_nm, xlab = 'time_sig_str', 'Time Signature'
@@ -291,8 +303,9 @@ class MusicVisualize:
             for t in xtick_lbs:
                 if int(t.get_text()) not in COMMON_TEMPOS:
                     t.set_color(self.color_uncom)
+            ax.set_xticklabels([t.get_text() for t in xtick_lbs])  # Hack
         title, xlab = 'Distribution of Tempo', 'Tempo (bpm)'
-        args = dict(col_name='tempo', title=title, xlabel=xlab, yscale='log', kde=False, callback=callback) | kwargs
+        args = dict(col_name='tempo', title=title, xlabel=xlab, kde=False, callback=callback) | kwargs
         return self.hist_wrapper(**args)
 
     def _count_column(self, col_name: str) -> Dict[str, Counter]:
@@ -329,6 +342,17 @@ class MusicVisualize:
             title=title, xlabel=xlab, kde=True, callback=callback, **kwargs
         )
 
+    @staticmethod
+    def _parse_frac(s: str) -> Tuple[int, int]:
+        m = MusicVisualize.pattern_frac.match(s)
+        assert m
+        return int(m.group('numer')), int(m.group('denom'))
+
+    @staticmethod
+    def _frac2tex_frac(numer, denom) -> str:
+        assert denom != 1
+        return rf'$\nicefrac{{{numer}}}{{{denom}}}$'
+
     def note_duration_dist(self, kind='hist', **kwargs):
         """
         Tuplet notes contribute to a single duration, i.e. all quantized durations
@@ -348,36 +372,34 @@ class MusicVisualize:
             def callback(ax):
                 plt.gcf().canvas.draw()
                 xtick_lbs = ax.get_xticklabels()
-                pattern_frac = re.compile(r'^(?P<numer>\d+)/(?P<denom>\d+)$')
 
-                txts = []
                 for t in xtick_lbs:
                     txt = t.get_text()
-                    m = pattern_frac.match(txt)
-                    if m:
-                        numer, denom = int(m.group('numer')), int(m.group('denom'))
-                        assert denom != 1
+                    if '/' in txt:
+                        numer, denom = MusicVisualize._parse_frac(txt)
                         val = numer / denom
                         t.set_usetex(True)
-                        # Directly calling `set_text` doesn't render in `show`
-                        txts.append(rf'$\nicefrac{{{numer}}}{{{denom}}}$')
+                        t.set_text(MusicVisualize._frac2tex_frac(numer, denom))
                     else:
                         val = int(txt)
-                        txts.append(txt)
+                        t.set_text(txt)
                     if val > bound:
                         t.set_color(self.color_uncom)
-                ax.set_xticklabels(txts)
+                ax.set_xticks(ax.get_xticks())  # disables warning
+                ax.set_xticklabels([t.get_text() for t in xtick_lbs])  # Hack
             return self.hist_wrapper(
                 data=df, col_name='duration', weights='count', discrete=True, kde=False,
                 title=title, xlabel=xlab,
                 callback=callback,
                 **kwargs
             )
-        else:
+        else:  # TODO: doesn't look good
             counts = Counter()
             for d in self.df.duration_count:
                 counts.update(d)
             bound = min(max(counts.keys()), get_common_time_sig_duration_bound())
+            assert bound.is_integer()
+            bound = int(bound)
 
             # Number of colors needed for an integer group
             # e.g. precision = 5, smallest duration 1/8, needs 4 colors, for [1, 1/2, 1/4, 1/8]
@@ -444,7 +466,7 @@ class MusicVisualize:
         typ = 'per song' if average else 'in total'
         plt.xlabel(f'count {typ}')
         if title is None:
-            title = 'Bar plot of warning type, ordered by severity, across all songs'
+            title = 'Distribution of Warnings during extraction, ordered by severity'
         if title != 'None':
             plt.title(title)
         if show:
@@ -452,8 +474,6 @@ class MusicVisualize:
 
 
 if __name__ == '__main__':
-    import os
-
     from icecream import ic
 
     import musicnlp.util.music as music_util
@@ -481,16 +501,14 @@ if __name__ == '__main__':
 
     def plots():
         args = dict(stat='density', upper_percentile=True)
-        # mv.token_length_dist()
-        # mv.bar_count_dist(stat='density', upper_percentile=True, kde_kws=dict(gridsize=2048))
+        mv.token_length_dist(**args)
+        # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
-        # mv.time_sig_dist(kind='hist', save=True)
-        # mv.time_sig_dist(kind='bar')
-        # mv.tempo_dist()
+        # mv.time_sig_dist()
+        # mv.tempo_dist(stat='density')
         # mv.note_pitch_dist(stat='density')
-        mv.note_duration_dist(stat='density')
-        # mv.note_duration_dist(stat='density', save=True)
+        # mv.note_duration_dist(stat='density')
         # mv.warning_type_dist()
     plots()
 
