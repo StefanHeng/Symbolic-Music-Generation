@@ -76,13 +76,9 @@ class MusicExport:
                 # Should not exceed 255 limit, see `musicnlp.util.music.py
                 fl_nm_single_out = os.path.join(path_out, f'Music Export - {stem(fl_nm)}.json')
                 if save_each and os.path.exists(fl_nm_single_out):  # File already processed, ignore
-                    # if pbar:
-                    #     pbar.update(1)
                     return
                 else:
                     ret = extractor(fl_nm, exp=exp, return_meta=True)
-                    # if pbar:
-                    #     pbar.update(1)
                     if save_each:
                         d_out = dict(encoding_type=exp, extractor_meta=extractor.meta, music=ret, mxl_path=fl_nm)
                         with open(fl_nm_single_out, 'w') as f_:
@@ -98,7 +94,6 @@ class MusicExport:
                 pbar = tqdm(total=len(filenames), desc='Extracting music', unit='song')
 
             bsz = (isinstance(parallel, int) and parallel) or 32
-            # lst_out = batched_conc_map(batched_map, filenames, batch_size=bsz)
             lst_out = batched_conc_map(call_single, filenames, batch_size=bsz, with_tqdm=pbar)
             pbar.close()
         else:

@@ -79693,6 +79693,14 @@
                 "sample",
                 "beam"
             ]
+        },
+        {
+            "display_name": "Distribution Plot Type",
+            "attr_name": "dist_plot_type",
+            "accepted_values": [
+                "bar",
+                "hist"
+            ]
         }
     ]
 }

@@ -67,6 +67,10 @@ config_dict: dict = {
             display_name='Generation Strategy', attr_name='generation_strategy',
             accepted_values=['greedy', 'sample', 'beam']
         ),
+        dict(
+            display_name='Distribution Plot Type', attr_name='dist_plot_type',
+            accepted_values=['bar', 'hist']
+        )
     ]
 }
 

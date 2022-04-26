@@ -4,7 +4,7 @@ import math
 import json
 import pickle
 from copy import deepcopy
-from typing import List, Tuple, Dict, Iterable, Callable, Any, Union
+from typing import List, Tuple, Dict, Callable, Union
 from fractions import Fraction
 from collections import defaultdict, Counter
 
@@ -24,68 +24,6 @@ from musicnlp.vocab import (
 )
 from musicnlp.preprocess import WarnLog
 from musicnlp.postprocess.music_stats import MusicStats
-
-
-def change_bar_width(ax, width: float = 0.5, orient: str = 'v'):
-    """
-    Modifies the bar width of a matplotlib bar plot
-
-    Credit: https://stackoverflow.com/a/44542112/10732321
-    """
-    ca(orient=orient)
-    is_vert = orient in ['v', 'vertical']
-    for patch in ax.patches:
-        current_width = patch.get_width() if is_vert else patch.get_height()
-        diff = current_width - width
-        patch.set_width(width) if is_vert else patch.set_height(width)
-        patch.set_x(patch.get_x() + diff * .5) if is_vert else patch.set_y(patch.get_y() + diff * .5)
-
-
-def barplot(
-        data: pd.DataFrame = None,
-        x: Union[Iterable, str] = None, y: Union[Iterable[float], str] = None,
-        x_order: Iterable[str] = None,
-        orient: str = 'v', with_value: bool = False, width: [float, bool] = 0.5,
-        xlabel: str = None, ylabel: str = None, yscale: str = None, title: str = None,
-        ax=None, palette: Union[str, List, Any] = 'husl', callback: Callable[[plt.Axes], None] = None,
-        save: bool = False, show: bool = True,
-        **kwargs
-):
-    ca(orient=orient)
-    if data is not None:
-        df = data
-        assert isinstance(x, str) and isinstance(y, str)
-        df['x'], df['y'] = df[x], df[y]
-    else:
-        df = pd.DataFrame([dict(x=x_, y=y_) for x_, y_ in zip(x, y)])
-        x_order = x
-    if x_order is not None:
-        cat = CategoricalDtype(categories=x_order, ordered=True)  # Enforce ordering in plot
-        df['x'] = df['x'].astype(cat, copy=False)
-    is_vert = orient in ['v', 'vertical']
-    x, y = ('x', 'y') if is_vert else ('y', 'x')
-    if ax:
-        kwargs['ax'] = ax
-    if palette is not None:
-        kwargs['palette'] = palette
-    ax = sns.barplot(data=df, x=x, y=y, **kwargs)
-    if with_value:
-        ax.bar_label(ax.containers[0])
-    if width:
-        change_bar_width(ax, width, orient=orient)
-    ax.set_xlabel(xlabel) if is_vert else ax.set_ylabel(xlabel)  # if None just clears the label
-    ax.set_ylabel(ylabel) if is_vert else ax.set_xlabel(ylabel)
-    if yscale:
-        ax.set_yscale(yscale)
-    if title:
-        ax.set_title(title)
-    if callback:
-        callback(ax)
-    if save:
-        save_fig(title)
-    if show:
-        plt.show()
-    return ax
 
 
 class MusicVisualize:
@@ -264,6 +202,7 @@ class MusicVisualize:
         self.hist_wrapper(**args)
 
     def time_sig_dist(self, kind: str = 'hist', **kwargs):
+        ca(dist_plot_type=kind)
         def callback(ax):
             plt.gcf().canvas.draw()  # so that labels are rendered
             xtick_lbs = ax.get_xticklabels()
@@ -359,6 +298,7 @@ class MusicVisualize:
         """
         Tuplet notes contribute to a single duration, i.e. all quantized durations
         """
+        ca(dist_plot_type=kind)
         title, xlab = 'Distribution of Note Duration', 'Duration (quarter length)'
         if kind == 'hist':
             k = 'duration_count'
@@ -422,7 +362,7 @@ class MusicVisualize:
                     assert idx_local.is_integer()
                     idx_local, group = int(idx_local), math.floor(c)
                 return idx_local + n_color_per_group * group
-            cs = [cs[get_category_idx(c)] for c in durs] + [cs[-1] for c in durs_above]
+            cs = [cs[get_category_idx(c)] for c in durs] + [cs[-1] for _ in durs_above]
             y = [counts[d] for d in durs_str]
             barplot(x=durs_str, y=y, palette=cs, xlabel=xlab, ylabel='count', yscale='log', title=title)
 
@@ -508,11 +448,11 @@ if __name__ == '__main__':
         # mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
         # mv.time_sig_dist()
-        mv.tempo_dist(stat='density')
+        # mv.tempo_dist(stat='density')
         # mv.note_pitch_dist(stat='density')
         # mv.note_duration_dist(stat='density')
-        # mv.warning_type_dist()
-    plots()
+        mv.warning_type_dist()
+    # plots()
 
     fig_sz = (9, 5)
 
@@ -583,3 +523,7 @@ if __name__ == '__main__':
         save_fig(title)
     # plot_for_report()
 
+    def check_bar_plots():
+        # mv.time_sig_dist(kind='bar')
+        mv.note_duration_dist(kind='hist')
+    check_bar_plots()
