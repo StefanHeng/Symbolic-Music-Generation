@@ -1,8 +1,8 @@
-import os
 import re
 import glob
 import itertools
 import statistics
+from os.path import join as os_join
 from typing import List, Tuple, Dict, Sequence, Any, Union
 from collections import defaultdict
 
@@ -13,6 +13,7 @@ from tensorflow.core.util import event_pb2
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from stefutil import *
 from musicnlp.util import *
 
 
@@ -31,7 +32,7 @@ def parse_tensorboard(path) -> Dict[str, pd.DataFrame]:
             value=float(evt.summary.value[0].simple_value),
         )
 
-    fnms = list(glob.iglob(os.path.join(path, '**/events.out.tfevents*'), recursive=True))
+    fnms = list(glob.iglob(os_join(path, '**/events.out.tfevents*'), recursive=True))
     assert len(fnms) == 1, f'Expect one events.out.tfevents file, found {logi(len(fnms))}'
     fnm = fnms[0]
     events = [event_pb2.Event.FromString(rec.numpy()) for rec in tf.data.TFRecordDataset(fnm)]
@@ -151,7 +152,7 @@ def plot_tb(
 
 
 def md_n_dir2tb_path(model_name: str = 'reformer', directory_name: str = None) -> str:
-    return os.path.join(BASE_PATH, PROJ_DIR, MODEL_DIR, model_name, directory_name)
+    return os_join(BASE_PATH, PROJ_DIR, MODEL_DIR, model_name, directory_name)
 
 
 if __name__ == '__main__':

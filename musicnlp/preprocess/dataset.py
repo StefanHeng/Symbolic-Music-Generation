@@ -1,11 +1,12 @@
 import os
 import json
+from os.path import join as os_join
 from typing import List, Dict, Callable, Union
 
 import datasets
 from datasets import Dataset, DatasetDict
 
-from musicnlp.util import *
+from stefutil import *
 import musicnlp.util.music as music_util
 from musicnlp.vocab import VocabType, MusicTokenizer
 
@@ -21,7 +22,7 @@ def get_dataset(
     If multiple dataset names are given, the datasets are stacked
     """
     def load_single(dnm: str) -> Union[Dataset, DatasetDict]:
-        return datasets.load_from_disk(os.path.join(music_util.get_processed_path(), 'processed', dnm))
+        return datasets.load_from_disk(os_join(music_util.get_processed_path(), 'processed', dnm))
     if isinstance(dataset_names, (list, tuple)):
         dset = [load_single(dnm) for dnm in dataset_names]
         if isinstance(dset[0], DatasetDict):
@@ -68,7 +69,7 @@ class KeySampleDataset:
     """
     def __init__(self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None):
         if isinstance(dataset, str):
-            self.dset = datasets.load_from_disk(os.path.join(music_util.get_processed_path(), 'processed', dataset))
+            self.dset = datasets.load_from_disk(os_join(music_util.get_processed_path(), 'processed', dataset))
         else:
             self.dset = dataset
         # per Dataset creation from my dictionary representation, the `keys` field is the same dictionary with
@@ -106,7 +107,7 @@ class KeySampleDataset:
         assert self.tokenizer.vocab.type(toks[0]) == VocabType.time_sig  # sanity check data well-formed
         assert self.tokenizer.vocab.type(toks[1]) == VocabType.tempo
 
-        key_tok = self.tokenizer.vocab(sample(item['keys']))[0]
+        key_tok = self.tokenizer.vocab(pt_sample(item['keys']))[0]
         toks.insert(2, key_tok)
 
         return self.tokenizer(toks, padding='max_length', truncation=True, is_split_into_words=True)
@@ -116,9 +117,11 @@ if __name__ == '__main__':
     import transformers
     from icecream import ic
 
+    from musicnlp.util import *
+
     ic.lineWrapWidth = 1024
 
-    seed = config('random-seed')
+    seed = sconfig('random-seed')
     transformers.set_seed(seed)  # to test key sampling
 
     def check_combined_dset():

@@ -5,6 +5,7 @@ Proposed method: on compact melody & bass representation for autoregressive musi
 import os
 import json
 import math
+from os.path import join as os_join
 from copy import deepcopy
 from typing import List, Tuple, Dict, Union
 from collections import OrderedDict
@@ -17,6 +18,7 @@ from transformers import Trainer
 from transformers.training_args import OptimizerNames
 import datasets
 
+from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
 import musicnlp.util.models as model_util
@@ -148,7 +150,7 @@ def get_train_and_my_train_args(
     """
     if not hasattr(get_train_and_my_train_args, 'default_args'):
         get_train_and_my_train_args.default_args = dict(
-            output_dir=os.path.join(BASE_PATH, PROJ_DIR, MODEL_DIR, model_name, now(for_path=True)),
+            output_dir=os_join(BASE_PATH, PROJ_DIR, MODEL_DIR, model_name, now(for_path=True)),
             do_train=True,
             do_eval=True,
             evaluation_strategy='epoch',
@@ -353,7 +355,7 @@ if __name__ == '__main__':
     # check_model_size()
 
     def train(resume_from_checkpoint: str = None):
-        seed = config('random-seed')
+        seed = sconfig('random-seed')
 
         md_nm = 'reformer'
         md_sz = 'debug'
@@ -414,8 +416,8 @@ if __name__ == '__main__':
             trainer.train(resume_from_checkpoint)
         else:
             trainer.train()
-        trainer.save_model(os.path.join(trainer.args.output_dir, 'trained'))
+        trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
     train()
 
-    # checkpoint_path = os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
+    # checkpoint_path = os_join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
     # train(resume_from_checkpoint=checkpoint_path)

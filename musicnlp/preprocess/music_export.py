@@ -1,6 +1,7 @@
 import os
 import glob
 import json
+from os.path import join as os_join
 from typing import List, Dict, Optional, Union
 
 import pandas as pd
@@ -74,7 +75,7 @@ class MusicExport:
             try:
                 call_single.processed_count += 1  # Potential data race?
                 # Should not exceed 255 limit, see `musicnlp.util.music.py
-                fl_nm_single_out = os.path.join(path_out, f'Music Export - {stem(fl_nm)}.json')
+                fl_nm_single_out = os_join(path_out, f'Music Export - {stem(fl_nm)}.json')
                 if save_each and os.path.exists(fl_nm_single_out):  # File already processed, ignore
                     return
                 else:
@@ -109,7 +110,7 @@ class MusicExport:
                 output_filename += f', dnm={dnm_}'
             meta = MusicExtractor.meta2fnm_meta(extractor.meta)
             output_filename += f', n={len(filenames)}, meta={meta}, {now(for_path=True)}'
-            output_filename = os.path.join(path_out, f'{output_filename}.json')
+            output_filename = os_join(path_out, f'{output_filename}.json')
             with open(output_filename, 'w') as f:
                 # TODO: Knowing the extracted dict, expand only the first few levels??
                 json.dump(dict(encoding_type=exp, extractor_meta=extractor.meta, music=lst_out), f, indent=4)
@@ -138,7 +139,7 @@ class MusicExport:
 
         meta = MusicExtractor.meta2fnm_meta(meta)
         output_filename = f'{output_filename}, n={len(filenames)}, meta={meta}, {now(for_path=True)}'
-        with open(os.path.join(path_out, f'{output_filename}.json'), 'w') as f:
+        with open(os_join(path_out, f'{output_filename}.json'), 'w') as f:
             json.dump(d_out, f)  # no indent saves disk space
         return d_out
 
@@ -153,7 +154,7 @@ class MusicExport:
         :param path_out: Dataset export path
         :param split_args: arguments for datasets.Dataset.
         """
-        with open(os.path.join(path_out, f'{fnm}.json')) as f:
+        with open(os_join(path_out, f'{fnm}.json')) as f:
             dset = json.load(f)
         songs, meta = dset['music'], dset['extractor_meta']
         d_info = dict(json_filename=fnm, extractor_meta=meta)
@@ -171,9 +172,9 @@ class MusicExport:
         )
         if split_args:
             dset = dset.train_test_split(**split_args)
-        path = os.path.join(path_out, 'processed')
+        path = os_join(path_out, 'processed')
         os.makedirs(path, exist_ok=True)
-        dset.save_to_disk(os.path.join(path, fnm))
+        dset.save_to_disk(os_join(path, fnm))
         return dset
 
 
@@ -215,7 +216,7 @@ if __name__ == '__main__':
             filenames: Union[str, List[str]] = 'LMD-cleaned-subset',
             save_dir: str = 'LMD-cleaned_subset save single 04-09_21-51'
     ):
-        path_out = os.path.join(music_util.get_processed_path(), 'intermediate', save_dir)
+        path_out = os_join(music_util.get_processed_path(), 'intermediate', save_dir)
         # parallel = 3
         parallel = 64
         me(
@@ -227,7 +228,7 @@ if __name__ == '__main__':
     # export2json_save_each(filenames=music_util.get_cleaned_song_paths('LMD-cleaned-subset', fmt='mxl')[3000:])
 
     def combine_single_json_songs(singe_song_dir: str, output_fnm: str):
-        fnms = sorted(glob.iglob(os.path.join(music_util.get_processed_path(), 'intermediate', singe_song_dir, '*.json')))
+        fnms = sorted(glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, '*.json')))
         songs = me.combine_saved_songs(filenames=fnms, output_filename=output_fnm)
         ic(songs.keys(), len(songs['music']))
     # combine_single_json_songs(
@@ -276,10 +277,10 @@ if __name__ == '__main__':
         # dir_nm = 'POP909 save single 04-10_02.15'
         dir_nm = 'LMD-cleaned_subset save single 04-09_21-51'
         dir_nm_out = f'{dir_nm}, add key'
-        path = os.path.join(music_util.get_processed_path(), 'intermediate', dir_nm)
-        path_out = os.path.join(music_util.get_processed_path(), 'intermediate', dir_nm_out)
+        path = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
+        path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_out)
         os.makedirs(path_out, exist_ok=True)
-        fnms = sorted(glob.iglob(os.path.join(path, '*.json')))
+        fnms = sorted(glob.iglob(os_join(path, '*.json')))
 
         nm = 'Insert Key Back'
         logger = get_logger(nm)
@@ -289,11 +290,11 @@ if __name__ == '__main__':
 
         def song_title2path(title: str) -> str:
             # Needed cos the original json files may not be processed on my local computer
-            return os.path.join(BASE_PATH, DSET_DIR, dir_nm_dset, f'{title}.mxl')
+            return os_join(BASE_PATH, DSET_DIR, dir_nm_dset, f'{title}.mxl')
 
         def call_single(fl_nm: str):
             try:
-                fnm_out = os.path.join(path_out, f'{stem(fl_nm)}.json')
+                fnm_out = os_join(path_out, f'{stem(fl_nm)}.json')
                 if not os.path.exists(fnm_out):
                     with open(fl_nm, 'r') as f:
                         song = json.load(f)
@@ -325,8 +326,8 @@ if __name__ == '__main__':
         """
         dir_nm = 'LMD-cleaned_subset save single 04-09_21-51, add key'
         # dir_nm = 'POP909 save single 04-10_02.15, add key'
-        path = os.path.join(music_util.get_processed_path(), 'intermediate', dir_nm)
-        fnms = sorted(glob.iglob(os.path.join(path, '*.json')))
+        path = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
+        fnms = sorted(glob.iglob(os_join(path, '*.json')))
         # ic(len(fnms))
         # exit(1)
 
@@ -348,7 +349,7 @@ if __name__ == '__main__':
         # output_fnm = f'{PKG_NM} music extraction, dnm=POP909'
         output_fnm = f'{PKG_NM} music extraction, dnm=LMD-cleaned-subset'
         fnms = sorted(
-            glob.iglob(os.path.join(music_util.get_processed_path(), 'intermediate', dir_nm, '*.json')))
+            glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', dir_nm, '*.json')))
         songs = me.combine_saved_songs(filenames=fnms, output_filename=output_fnm)
         ic(songs.keys(), len(songs['music']))
     # combine_single_json_songs_with_key()
@@ -361,7 +362,7 @@ if __name__ == '__main__':
 
     def check_dset_with_key_features():
         dnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
-        dset = datasets.load_from_disk(os.path.join(music_util.get_processed_path(), 'processed', dnm))
+        dset = datasets.load_from_disk(os_join(music_util.get_processed_path(), 'processed', dnm))
         feat_keys = dset.features['keys']
         ic(type(feat_keys))
         ic(dset[:4]['keys'])

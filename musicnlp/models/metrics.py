@@ -5,7 +5,7 @@ from collections import Counter
 import numpy as np
 import music21
 
-from musicnlp.util import *
+from stefutil import *
 from musicnlp.util.train import PT_LOSS_PAD
 from musicnlp.vocab import VocabType, MusicTokenizer
 from musicnlp.vocab.elm_type import *
@@ -128,8 +128,8 @@ class IkrMetric:
 
 
 if __name__ == '__main__':
-    import os
     import json
+    from os.path import join as os_join
 
     from tqdm import tqdm
     from icecream import ic
@@ -146,7 +146,7 @@ if __name__ == '__main__':
         # exp = 'str_join'
         exp = 'id'
         score = me(fnm, exp=exp)
-        with open(os.path.join(music_util.get_processed_path(), f'{song_name}.json'), 'w') as f:
+        with open(os_join(music_util.get_processed_path(), f'{song_name}.json'), 'w') as f:
             json.dump(dict(score=score), f, indent=2)
     # write_eg_song_json(song_nm)
 
@@ -164,7 +164,7 @@ if __name__ == '__main__':
     def check_key_metric():
         # text = music_util.get_extracted_song_eg(
         # k='平凡之路')  # this one has tuplets
-        with open(os.path.join(music_util.get_processed_path(), f'{song_nm}.json'), 'r') as f:
+        with open(os_join(music_util.get_processed_path(), f'{song_nm}.json'), 'r') as f:
             text = json.load(f)['score']
         # Get keys from Key_Finder
         fnm = music_util.get_my_example_songs(song_nm, fmt='MXL')

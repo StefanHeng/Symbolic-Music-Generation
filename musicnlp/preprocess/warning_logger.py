@@ -31,7 +31,7 @@ class WarnLog:
     BarNoteGap = 'Gap in extracted Bar Notes'
     ExcecTupNote = 'Excessive Tuplet Chord Notes'
     EmptyStrt, EmptyEnd = 'Beginning Empty Bars', 'Ending Empty Bars'
-    TYPES = [  # Warning types, ordered by severity
+    types = [  # Warning types, ordered by severity
         EmptyStrt, EmptyEnd,
         MultTempo, MultTimeSig,
         MissTempo,
@@ -44,11 +44,35 @@ class WarnLog:
         RestInTup,
         ExcecTupNote,
         TupNoteQuant,
-        TupNoteOvl,
         NoteNotQuant,
+        TupNoteOvl,
         InvBarDur,
         BarNoteGap
     ]
+    type2severity = {
+        EmptyStrt: 1,
+        EmptyEnd: 1,
+        MultTempo: 2,
+        MultTimeSig: 2,
+        MissTempo: 3,
+        IncTimeSig: 3,
+        UncomTimeSig: 3,
+        UncomTempo: 3,
+        HighPchOvl: 6,
+        HighPchOvlTup: 6,
+        LowPchMakeup: 6,
+        LowPchMakeupRmv: 6,
+        InvTupSz: 6,
+        InvTupDur: 6,
+        InvTupDurSv: 8,
+        RestInTup: 8,
+        ExcecTupNote: 8,
+        TupNoteQuant: 8,
+        NoteNotQuant: 10,
+        TupNoteOvl: 12,
+        InvBarDur: 12,
+        BarNoteGap: 16
+    }
 
     def __init__(self, name=f'Music Extraction Warn Log', verbose=True):
         self.warnings: List[Dict] = []
@@ -139,7 +163,7 @@ class WarnLog:
         assert 'warn_name' in warn_
         nm, args = warn_['warn_name'], warn_
 
-        assert nm in WarnLog.TYPES
+        assert nm in WarnLog.types
         if nm == WarnLog.MultTimeSig:
             assert 'time_sigs' in args
         elif nm == WarnLog.MultTempo:

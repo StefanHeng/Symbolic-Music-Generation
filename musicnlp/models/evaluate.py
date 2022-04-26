@@ -2,6 +2,7 @@
 Generate from trained reformer, no seed per `hash_seed`
 """
 import os
+from os.path import join as os_join
 import datetime
 from typing import Dict, Iterable, Any, Union
 from collections import OrderedDict
@@ -9,6 +10,7 @@ from collections import OrderedDict
 import torch
 from transformers import ReformerModelWithLMHead
 
+from stefutil import *
 from musicnlp.util import *
 from musicnlp.vocab.music_vocab import VocabType
 from musicnlp.vocab import MusicTokenizer
@@ -31,7 +33,7 @@ def load_trained(model_name: str = None, directory_name:  Union[str, Iterable[st
             paths.append(directory_name)
         else:
             paths.extend(directory_name)
-    path = os.path.join(*paths)
+    path = os_join(*paths)
     return ReformerModelWithLMHead.from_pretrained(path)
 
 
@@ -52,9 +54,6 @@ class MusicGenerator:
         self.tokenizer = MusicTokenizer(model_max_length=self.max_len, deprecated=deprecated)
         self.vocab = self.tokenizer.vocab
         self.converter = MusicConverter()
-
-        self.eval_path = os.path.join(BASE_PATH, PROJ_DIR, 'evaluations')
-        os.makedirs(self.eval_path, exist_ok=True)
 
         self.logger = get_logger('Music Generator')
 
@@ -94,7 +93,7 @@ class MusicGenerator:
             path = prompt_args.get('path', None)
             assert path, f'A path to a song must be provided to {logi("prompt_args")} to extract key ' \
                          f'when key is not already provided'
-            key = sample(KeyFinder(path).find_key(return_type='dict'))  # just sample a key for generation, TODO?
+            key = pt_sample(KeyFinder(path).find_key(return_type='dict'))  # just sample a key for generation, TODO?
         if mode == 'unconditional':
             # TODO: sample the time signature and tempos?
             prompt = [self.vocab.uncompact(VocabType.time_sig, (4, 4)), self.vocab.uncompact(VocabType.tempo, 120)]
@@ -133,7 +132,7 @@ class MusicGenerator:
         self.logger.info(f'Generating with {log_dict(d_log)}')
         t = datetime.datetime.now()
         output = self.model.generate(**inputs, **args)  # for now, generate one at a time
-        self.logger.info(f'Model generation finished in {logi(fmt_time(datetime.datetime.now() - t))}')
+        self.logger.info(f'Model generation finished in {logi(fmt_delta(datetime.datetime.now() - t))}')
         assert len(output) == 1  # sanity check
         output = output[0]
 
@@ -149,11 +148,11 @@ class MusicGenerator:
             str_args = MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args)
             out_path = self.eval_path
             if save_dir:
-                out_path = os.path.join(out_path, save_dir)
+                out_path = os_join(out_path, save_dir)
                 ic('joined', out_path)
                 os.makedirs(out_path, exist_ok=True)
             ic(save_dir, out_path)
-            path = os.path.join(out_path, f'{title}, {str_args}, {now(for_path=True)}.mxl')
+            path = os_join(out_path, f'{title}, {str_args}, {now(for_path=True)}.mxl')
             score.write(fmt='mxl', fp=path, makeNotation=False)
         else:
             score.show()
@@ -168,9 +167,9 @@ if __name__ == '__main__':
 
     import musicnlp.util.music as music_util
 
-    # dir_nm = os.path.join('2022-04-01_09-40-48', 'trained')
-    # dir_nm = os.path.join('2022-04-03_11-01-04', 'checkpoint-3712')
-    # dir_nm = os.path.join('2022-04-11_00-26-05', 'trained')
+    # dir_nm = os_join('2022-04-01_09-40-48', 'trained')
+    # dir_nm = os_join('2022-04-03_11-01-04', 'checkpoint-3712')
+    # dir_nm = os_join('2022-04-11_00-26-05', 'trained')
     # dir_nm = ['2022-04-16_16-08-03', 'checkpoint-4802']
     # mdl = load_trained(model_name='reformer', directory_name=dir_nm)
     # save_dir_ = k = 'reformer, 14_32ep'

@@ -2,6 +2,7 @@ import os
 import re
 import json
 import math
+from os.path import join as os_join
 from enum import Enum
 from typing import List, Tuple, Set, Dict, Iterator, Optional, Union
 from fractions import Fraction
@@ -207,7 +208,7 @@ class MusicVocabulary:
         )
         if save:
             fnm = f'{self.__class__.__qualname__}, n={len(self.enc)}, prec={self.precision}, {now(for_path=True)}'
-            path = os.path.join(music_util.get_processed_path(), f'{fnm}.json')
+            path = os_join(music_util.get_processed_path(), f'{fnm}.json')
             with open(path, 'w') as f:
                 json.dump(d_out, f, indent=4)
         return d_out

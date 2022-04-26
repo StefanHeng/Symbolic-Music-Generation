@@ -7,6 +7,7 @@ import os
 import math
 import datetime
 import itertools
+from os.path import join as os_join
 from copy import deepcopy
 from typing import List, Tuple, Dict, Iterable, Iterator, Union, Any
 from fractions import Fraction
@@ -758,7 +759,7 @@ class MusicExtractor:
             # fmt = 'musicxml'
             # sometimes file-writes via `mxl` couldn't be read by MuseScore
             mode_str = 'melody only' if self.mode == 'melody' else 'full'
-            path = os.path.join(BASE_PATH, DSET_DIR, dir_nm, f'{title}, {mode_str}.{fmt}')
+            path = os_join(BASE_PATH, DSET_DIR, dir_nm, f'{title}, {mode_str}.{fmt}')
             # disable all `music21` modifications, I should have handled all the edge cases
             scr_out.write(fmt=fmt, fp=path, makeNotation=False)
         else:
@@ -934,7 +935,7 @@ if __name__ == '__main__':
         """
         dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
                   'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
-        path = os.path.join(music_util.get_processed_path(), f'{dnm_lmd}.json')
+        path = os_join(music_util.get_processed_path(), f'{dnm_lmd}.json')
         ic(path)
         with open(path, 'r') as f:
             dset: Dict = json.load(f)

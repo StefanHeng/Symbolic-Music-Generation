@@ -1,8 +1,10 @@
 """
 Data Loader for pytorch
+
+obsolete, see `musicnlp.preprocess.datasets.py`
 """
 
-import os
+from os.path import join as os_join
 import json
 import itertools
 
@@ -17,7 +19,7 @@ ID_PAD = tokenizer['encoder']['[PAD]']
 
 class MelodyLoader:
     # File path for decoded song ids
-    SONG_FP = os.path.join(music_util.get_processed_path(), 'Song-ids.json')
+    SONG_FP = os_join(music_util.get_processed_path(), 'Song-ids.json')
 
     def __init__(self, pad=True):
         """

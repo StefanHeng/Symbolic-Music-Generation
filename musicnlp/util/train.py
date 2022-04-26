@@ -1,6 +1,7 @@
 import os
 import re
 import math
+from os.path import join as os_join
 from typing import Dict, Callable
 import datetime
 import collections
@@ -264,10 +265,10 @@ class ColoredPrinterCallback(TrainerCallback):
 
         self.logger = get_logger(self.name)
         self.logger_fl = get_logger(
-            name=self.name, typ='file-write', file_path=os.path.join(self.output_dir, f'{self.log_fnm}.log')
+            name=self.name, typ='file-write', file_path=os_join(self.output_dir, f'{self.log_fnm}.log')
         )
         if self.report2tb:
-            self.writer = SummaryWriter(os.path.join(self.output_dir, f'tb - {self.log_fnm}'))
+            self.writer = SummaryWriter(os_join(self.output_dir, f'tb - {self.log_fnm}'))
 
         conf = self.trainer.model.config_dict.to_dict()
         train_args = self.trainer.args.to_dict()

@@ -3,6 +3,7 @@ import re
 import math
 import json
 import pickle
+from os.path import join as os_join
 from copy import deepcopy
 from typing import List, Tuple, Dict, Callable, Union
 from fractions import Fraction
@@ -20,10 +21,19 @@ from musicnlp.util import *
 from musicnlp.util.music_lib import Dur
 from musicnlp.vocab import (
     COMMON_TEMPOS, COMMON_TIME_SIGS, get_common_time_sig_duration_bound,
-    MusicVocabulary, MusicTokenizer
+    MusicVocabulary, MusicTokenizer, key_str2enum
 )
 from musicnlp.preprocess import WarnLog
 from musicnlp.postprocess.music_stats import MusicStats
+
+
+def df_col2cat_col(df: pd.DataFrame, col_name: str, categories: List[str]) -> pd.DataFrame:
+    """
+    Enforced ordered categories to a column, the dataframe is modified in-place
+    """
+    cat = CategoricalDtype(categories=categories, ordered=True)  # Enforce order by definition
+    df[col_name] = df[col_name].astype(cat, copy=False)
+    return df
 
 
 class MusicVisualize:
@@ -49,7 +59,6 @@ class MusicVisualize:
         def _load_single(f_: str, dnm: str = None) -> Dict:
             with open(f_, 'r') as f:
                 ds = json.load(f)
-            # ds['music'] = ds['music'][:256]  # TODO: debugging
             if dnm:
                 for s in ds['music']:
                     s['dataset_name'] = dnm
@@ -96,7 +105,7 @@ class MusicVisualize:
         if self._df is None:
             if self.cache:
                 fnm = f'{self.cache}.pkl'
-                path = os.path.join(u.plot_path, 'cache', fnm)
+                path = os_join(u.plot_path, 'cache', fnm)
                 if os.path.exists(path):
                     with open(path, 'rb') as f:
                         self._df = pickle.load(f)
@@ -112,8 +121,7 @@ class MusicVisualize:
             )
             tss = COMMON_TIME_SIGS + tss_uncom
             tss_print = [f'{numer}/{denom}' for numer, denom in tss]
-            cat = CategoricalDtype(categories=tss_print, ordered=True)
-            self.df['time_sig_str'] = self.df['time_sig_str'].astype(cat, copy=False)
+            df_col2cat_col(self.df, 'time_sig_str', tss_print)
         return self._df
 
     def _get_song_info(self):
@@ -134,6 +142,8 @@ class MusicVisualize:
             d['time_sig_str'] = f'{numer}/{denom}'
             d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
             d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
+            # ic(d)
+            # exit(1)
             return d
         ds = []
         for e in tqdm(entries, desc='Extracting song info', unit='song'):
@@ -202,7 +212,6 @@ class MusicVisualize:
         self.hist_wrapper(**args)
 
     def time_sig_dist(self, kind: str = 'hist', **kwargs):
-        ca(dist_plot_type=kind)
         def callback(ax):
             plt.gcf().canvas.draw()  # so that labels are rendered
             xtick_lbs = ax.get_xticklabels()
@@ -219,6 +228,7 @@ class MusicVisualize:
                     t.set_color(self.color_uncom)
             ax.set_xticks(ax.get_xticks())  # Hack to force rendering for `show`, TODO: better ways?
             ax.set_xticklabels([t.get_text() for t in xtick_lbs])
+        ca(dist_plot_type=kind)
         title = 'Distribution of Time Signature'
         if kind == 'hist':
             c_nm, xlab = 'time_sig_str', 'Time Signature'
@@ -249,13 +259,26 @@ class MusicVisualize:
         args = dict(col_name='tempo', title=title, xlabel=xlab, kde=False, callback=callback) | kwargs
         return self.hist_wrapper(**args)
 
+    def key_dist(self, **kwargs):
+        k = 'keys'
+        df = self._count_by_dataset(k)
+        df.rename(columns={k: 'key'}, inplace=True)
+        df_col2cat_col(df, 'key', categories=list(key_str2enum.keys()))
+
+        title, xlab = 'Distribution of Key, weighted by confidence', 'Key'
+        args = dict(data=df, col_name='key', weights='count', kde_kws=dict(bw_adjust=0.25), title=title, xlabel=xlab)
+        args |= kwargs
+        return self.hist_wrapper(**args)
+
     def _count_column(self, col_name: str) -> Dict[str, Counter]:
         dnm2counts = defaultdict(Counter)
         for dnm in self.df[self.key_dnm].unique():
             df = self.df[self.df[self.key_dnm] == dnm]
-            # dnm2counts[dnm].update(df[col_name].value_counts())
-            for d in df[col_name]:  # TODO: optimize
-                dnm2counts[dnm].update(d if isinstance(d, dict) else (d,))
+            if isinstance(next(iter(df[col_name])), dict):
+                for d in df[col_name]:
+                    dnm2counts[dnm].update(d)
+            else:  # TODO: didn't check
+                dnm2counts[dnm].update(df[col_name].value_counts())
         return dnm2counts
 
     def _count_by_dataset(self, col_name: str) -> pd.DataFrame:
@@ -308,8 +331,7 @@ class MusicVisualize:
             bound = min(d_uniq.max(), get_common_time_sig_duration_bound())
 
             df.duration = df.duration.apply(str)
-            cat = CategoricalDtype(categories=[str(d) for d in sorted(d_uniq)], ordered=True)
-            df.duration = df.duration.astype(cat, copy=False)
+            df_col2cat_col(df, 'duration', [str(d) for d in sorted(d_uniq)])
 
             def callback(ax):
                 plt.gcf().canvas.draw()
@@ -397,9 +419,7 @@ class MusicVisualize:
 
     def warning_type_dist(self, average=True, title: str = None, show=True, bar_kwargs: Dict = None):
         df = self.warn_info()
-        cat = CategoricalDtype(categories=WarnLog.TYPES, ordered=True)
-        assert not df.type.isnull().values.any()
-        df.type = df.type.astype(cat, copy=False)
+        df_col2cat_col(df, 'type', WarnLog.types)
         if bar_kwargs is None:
             bar_kwargs = dict()
         ax = sns.barplot(data=df, y='type', x='average_count' if average else 'total_count', **bar_kwargs)
@@ -420,10 +440,12 @@ if __name__ == '__main__':
 
     import musicnlp.util.music as music_util
 
-    fnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01.json'
-    fnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-              'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52.json'
-    fnms = [os.path.join(music_util.get_processed_path(), dnm) for dnm in [fnm_909, fnm_lmd]]
+    dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
+              'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+    dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
+              'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
+    fnms = [os_join(music_util.get_processed_path(), f'{dnm}.json') for dnm in [dnm_909, dnm_lmd]]
+    # cnm = None
     cnm = 'music visualize cache'
     # for `LMD-cleaned-subset`
     mv = MusicVisualize(filename=fnms, dataset_name=['POP909', 'LCS'], hue_by_dataset=True, cache=cnm)
@@ -449,10 +471,11 @@ if __name__ == '__main__':
         # mv.song_duration_dist(**args)
         # mv.time_sig_dist()
         # mv.tempo_dist(stat='density')
+        mv.key_dist(stat='density')
         # mv.note_pitch_dist(stat='density')
         # mv.note_duration_dist(stat='density')
-        mv.warning_type_dist()
-    # plots()
+        # mv.warning_type_dist()
+    plots()
 
     fig_sz = (9, 5)
 
@@ -526,4 +549,4 @@ if __name__ == '__main__':
     def check_bar_plots():
         # mv.time_sig_dist(kind='bar')
         mv.note_duration_dist(kind='hist')
-    check_bar_plots()
+    # check_bar_plots()

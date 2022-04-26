@@ -5,6 +5,7 @@ import os
 import json
 import math
 import functools
+from os.path import join as os_join
 from copy import deepcopy
 from typing import List, Tuple, Dict, Callable, Union, Any
 from warnings import warn
@@ -13,6 +14,7 @@ from fractions import Fraction
 import numpy as np
 import music21 as m21
 
+from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.music as music_util
 from musicnlp.util.data_path import BASE_PATH, DSET_DIR
@@ -382,7 +384,7 @@ class MxlMelodyExtractor:
 
                         # Insert notes in `soprano` by offset
                         obj.bars[pnm].remove(list(voices))
-                        obj.bars[pnm].insert(flatten([e.offset, e] for e in soprano))
+                        obj.bars[pnm].insert(sum([[e.offset, e] for e in soprano], start=[]))
                     else:
                         del_pnms.append(pnm)
                         warn(f'Soprano not found in bar [{bar.number}], channel [{pnm}] - Bar removed')
@@ -488,7 +490,7 @@ class MxlMelodyExtractor:
                 for idx, (t, bar) in enumerate(zip(tempos_by_bar, bars))
             ]
             return tempos_with_dur
-        tempos, weights = zip(*flatten(_mean_tempo(bars) for bars in bars_with_tempo.values()))
+        tempos, weights = zip(*sum([_mean_tempo(bars) for bars in bars_with_tempo.values()], start=[]))
         return np.average(np.array(tempos), weights=np.array(weights))
 
     class Tokenizer:
@@ -839,9 +841,9 @@ class MxlMelodyExtractor:
 
         title = f'{self.score_title}, bar with max pitch'
         if exp == 'mxl':
-            dir_nm = config(f'{DSET_DIR}.MXL_EG.dir_nm')
+            dir_nm = sconfig(f'{DSET_DIR}.MXL_EG.dir_nm')
             dir_nm = f'{dir_nm}_out'
-            scr.write(fmt='mxl', fp=os.path.join(BASE_PATH, DSET_DIR, dir_nm, f'{title}.mxl'), makeNotation=False)
+            scr.write(fmt='mxl', fp=os_join(BASE_PATH, DSET_DIR, dir_nm, f'{title}.mxl'), makeNotation=False)
         elif exp == 'symbol':
             # Get time signature for each bar
             lst_bar_n_ts = bars2lst_bar_n_ts(part[m21.stream.Measure])
@@ -858,7 +860,7 @@ class MxlMelodyExtractor:
     def encoding2score(self, ids, save=False):
         bars = self.tokenizer.decode(ids, time_sigs='infer')
         # Set default tempo
-        bars[0].insert(m21.tempo.MetronomeMark(number=config('Melody-Extraction.output.BPM')))
+        bars[0].insert(m21.tempo.MetronomeMark(number=sconfig('Melody-Extraction.output.BPM')))
         part = m21.stream.Part()
         instr = m21.instrument.Piano()
         bars[0].insert(m21.meter.TimeSignature('12/8'))
@@ -873,10 +875,10 @@ class MxlMelodyExtractor:
         scr.append(part)
 
         if save:
-            dir_nm = config(f'{DSET_DIR}.MXL_EG.dir_nm')
+            dir_nm = sconfig(f'{DSET_DIR}.MXL_EG.dir_nm')
             dir_nm = f'{dir_nm}_out'
             scr.write(
-                fmt='mxl', fp=os.path.join(BASE_PATH, DSET_DIR, dir_nm, f'{scr.metadata.title}.mxl'), makeNotation=False
+                fmt='mxl', fp=os_join(BASE_PATH, DSET_DIR, dir_nm, f'{scr.metadata.title}.mxl'), makeNotation=False
             )
         else:
             scr.show()
@@ -983,7 +985,7 @@ def extract(dnms: List[str], exp='json') -> List[Dict[str, Any]]:
     log(f'{count_suc} songs encoded', c='g')
     if exp == 'json':
         fnm = 'Song-ids'
-        with open(os.path.join(BASE_PATH, DSET_DIR, config(f'{DSET_DIR}.my.dir_nm'), f'{fnm}.json'), 'w') as f:
+        with open(os_join(BASE_PATH, DSET_DIR, sconfig(f'{DSET_DIR}.my.dir_nm'), f'{fnm}.json'), 'w') as f:
             json.dump(songs, f, indent=4)
     return songs
 
@@ -1056,7 +1058,7 @@ if __name__ == '__main__':
 
     def check_encoding_export():
         fnm = 'Song-ids'
-        with open(os.path.join(config('path-export'), f'{fnm}.json'), 'r') as f:
+        with open(os_join(sconfig('path-export'), f'{fnm}.json'), 'r') as f:
             songs = json.load(f)
             ic(len(songs), songs[0])
     # check_encoding_export()
