@@ -6,7 +6,7 @@ import pandas as pd
 import sty
 from music21.meter import TimeSignature
 
-from musicnlp.util import *
+from stefutil import *
 from musicnlp.util.music_lib import Dur, TsTup
 
 

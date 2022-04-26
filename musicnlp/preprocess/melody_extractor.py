@@ -15,7 +15,7 @@ import music21 as m21
 
 from musicnlp.util import *
 import musicnlp.util.music as music_util
-from musicnlp.util.data_path import PATH_BASE, DIR_DSET
+from musicnlp.util.data_path import BASE_PATH, DSET_DIR
 from musicnlp.util.music_lib import *
 
 
@@ -839,9 +839,9 @@ class MxlMelodyExtractor:
 
         title = f'{self.score_title}, bar with max pitch'
         if exp == 'mxl':
-            dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
+            dir_nm = config(f'{DSET_DIR}.MXL_EG.dir_nm')
             dir_nm = f'{dir_nm}_out'
-            scr.write(fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}.mxl'), makeNotation=False)
+            scr.write(fmt='mxl', fp=os.path.join(BASE_PATH, DSET_DIR, dir_nm, f'{title}.mxl'), makeNotation=False)
         elif exp == 'symbol':
             # Get time signature for each bar
             lst_bar_n_ts = bars2lst_bar_n_ts(part[m21.stream.Measure])
@@ -873,10 +873,10 @@ class MxlMelodyExtractor:
         scr.append(part)
 
         if save:
-            dir_nm = config(f'{DIR_DSET}.MXL_EG.dir_nm')
+            dir_nm = config(f'{DSET_DIR}.MXL_EG.dir_nm')
             dir_nm = f'{dir_nm}_out'
             scr.write(
-                fmt='mxl', fp=os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{scr.metadata.title}.mxl'), makeNotation=False
+                fmt='mxl', fp=os.path.join(BASE_PATH, DSET_DIR, dir_nm, f'{scr.metadata.title}.mxl'), makeNotation=False
             )
         else:
             scr.show()
@@ -983,7 +983,7 @@ def extract(dnms: List[str], exp='json') -> List[Dict[str, Any]]:
     log(f'{count_suc} songs encoded', c='g')
     if exp == 'json':
         fnm = 'Song-ids'
-        with open(os.path.join(PATH_BASE, DIR_DSET, config(f'{DIR_DSET}.my.dir_nm'), f'{fnm}.json'), 'w') as f:
+        with open(os.path.join(BASE_PATH, DSET_DIR, config(f'{DSET_DIR}.my.dir_nm'), f'{fnm}.json'), 'w') as f:
             json.dump(songs, f, indent=4)
     return songs
 

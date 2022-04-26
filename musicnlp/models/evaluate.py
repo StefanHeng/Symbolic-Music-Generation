@@ -22,7 +22,7 @@ def load_trained(model_name: str = None, directory_name:  Union[str, Iterable[st
             'reformer, 14_32ep': ['reformer', '2022-04-16_16-08-03', 'checkpoint-4802'],
             'reformer, 20_64ep': ['reformer', '2022-04-19_13-48-54', 'checkpoint-6860']
         }
-    paths = [PATH_BASE, DIR_PROJ, DIR_MDL]
+    paths = [BASE_PATH, PROJ_DIR, MODEL_DIR]
     if model_key:
         paths.extend(load_trained.key2path[model_key])
     else:
@@ -53,7 +53,7 @@ class MusicGenerator:
         self.vocab = self.tokenizer.vocab
         self.converter = MusicConverter()
 
-        self.eval_path = os.path.join(PATH_BASE, DIR_PROJ, 'evaluations')
+        self.eval_path = os.path.join(BASE_PATH, PROJ_DIR, 'evaluations')
         os.makedirs(self.eval_path, exist_ok=True)
 
         self.logger = get_logger('Music Generator')

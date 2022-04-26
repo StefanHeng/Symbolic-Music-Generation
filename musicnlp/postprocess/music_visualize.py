@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 
+from stefutil import *
 from musicnlp.util import *
 from musicnlp.util.music_lib import Dur
 from musicnlp.vocab import (
@@ -157,7 +158,7 @@ class MusicVisualize:
         if self._df is None:
             if self.cache:
                 fnm = f'{self.cache}.pkl'
-                path = os.path.join(get_plot_path(), 'cache', fnm)
+                path = os.path.join(u.plot_path, 'cache', fnm)
                 if os.path.exists(path):
                     with open(path, 'rb') as f:
                         self._df = pickle.load(f)
@@ -303,6 +304,7 @@ class MusicVisualize:
             for t in xtick_lbs:
                 if int(t.get_text()) not in COMMON_TEMPOS:
                     t.set_color(self.color_uncom)
+            ax.set_xticks(ax.get_xticks())
             ax.set_xticklabels([t.get_text() for t in xtick_lbs])  # Hack
         title, xlab = 'Distribution of Tempo', 'Tempo (bpm)'
         args = dict(col_name='tempo', title=title, xlabel=xlab, kde=False, callback=callback) | kwargs
@@ -501,12 +503,12 @@ if __name__ == '__main__':
 
     def plots():
         args = dict(stat='density', upper_percentile=True)
-        mv.token_length_dist(**args)
+        # mv.token_length_dist(**args)
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
         # mv.time_sig_dist()
-        # mv.tempo_dist(stat='density')
+        mv.tempo_dist(stat='density')
         # mv.note_pitch_dist(stat='density')
         # mv.note_duration_dist(stat='density')
         # mv.warning_type_dist()

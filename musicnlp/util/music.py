@@ -9,12 +9,13 @@ from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
 
+from stefutil import *
 from musicnlp.util.util import *
-from musicnlp.util.data_path import PATH_BASE, DIR_DSET
+from musicnlp.util.data_path import BASE_PATH, DSET_DIR
 
 
 def get_processed_path():
-    return os.path.join(PATH_BASE, DIR_DSET, config('datasets.my.dir_nm'))
+    return os.path.join(BASE_PATH, DSET_DIR, sconfig('datasets.my.dir_nm'))
 
 
 def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False):
@@ -26,12 +27,12 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
     if extracted:
         assert fmt == 'mxl', 'Only support extracted for MXL files'
     dset_nm = f'{fmt}-eg'
-    d_dset = config(f'{DIR_DSET}.{dset_nm}')
+    d_dset = sconfig(f'{DSET_DIR}.{dset_nm}')
     key_dir = 'dir_nm'
     if extracted:
         key_dir = f'{key_dir}_extracted'
     dir_nm = d_dset[key_dir]
-    path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, d_dset[f'song_fmt_{fmt}'])
+    path = os.path.join(BASE_PATH, DSET_DIR, dir_nm, d_dset[f'song_fmt_{fmt}'])
     paths = sorted(glob.iglob(path, recursive=True))
     if k is not None:
         assert isinstance(k, (int, str)), \
@@ -86,10 +87,10 @@ def convert_dataset(dataset_name: str = 'POP909'):
     dnms = ['POP909', 'LMD-cleaned']
     assert dataset_name in dnms, f'Unsupported dataset name: expect one of {logi(dnms)}, got {logi(dataset_name)}'
 
-    path_exp = os.path.join(PATH_BASE, DIR_DSET, dataset_name)
+    path_exp = os.path.join(BASE_PATH, DSET_DIR, dataset_name)
     os.makedirs(path_exp, exist_ok=True)
     if dataset_name == 'POP909':
-        path = os.path.join(PATH_BASE, DIR_DSET, 'POP909-Dataset', dataset_name)
+        path = os.path.join(BASE_PATH, DSET_DIR, 'POP909-Dataset', dataset_name)
         df = pd.read_excel(os.path.join(path, 'index.xlsx'))
         paths = sorted(glob.iglob(os.path.join(path, '*/*.mid'), recursive=True))
         for i, p in enumerate(tqdm(paths)):
@@ -97,8 +98,8 @@ def convert_dataset(dataset_name: str = 'POP909'):
             fnm = f'{rec["artist"]} - {rec["name"]}.mid'
             copyfile(p, os.path.join(path_exp, fnm))
     elif dataset_name == 'LMD-cleaned':
-        d_dset = config(f'datasets.{dataset_name}')
-        path_ori = os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'])
+        d_dset = sconfig(f'datasets.{dataset_name}')
+        path_ori = os.path.join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
         fnms = sorted(glob.iglob(os.path.join(path_ori, d_dset['song_fmt_mid'])))
 
         # empirically seen as a problem: some files are essentially the same title, ending in different numbers
@@ -150,7 +151,7 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
     Expects `convert_dataset` called first
     """
     # this folder contains all MIDI files that can be converted to MXL, on my machine
-    path = os.path.join(PATH_BASE, DIR_DSET, 'LMD-cleaned_valid')
+    path = os.path.join(BASE_PATH, DSET_DIR, 'LMD-cleaned_valid')
     # <artist> - <title>(.<version>)?.mid
     pattern = re.compile(r'^(?P<artist>.*) - (?P<title>.*)(\.(?P<version>[1-9]\d*))?\.mid$')
     d_song2fnms: Dict[Tuple[str, str], Dict[int, str]] = defaultdict(dict)
@@ -173,13 +174,13 @@ def get_cleaned_song_paths(dataset_name: str, fmt='mid') -> List[str]:
     :return: List of music file paths in my cleaned file system structure
     """
     lmd_c_s = 'LMD-cleaned-subset'
-    dataset_names = list(config('datasets').keys()) + [lmd_c_s]
+    dataset_names = list(sconfig('datasets').keys()) + [lmd_c_s]
     assert dataset_name in dataset_names, \
         f'Invalid dataset name: {logi(dataset_name)}, expected one of {logi(dataset_names)}'
     fmts = ['mid', 'mxl']
     assert fmt in fmts, f'Invalid format: {logi(fmt)}, expected one of {logi(fmts)}'
 
-    path = os.path.join(PATH_BASE, DIR_DSET)
+    path = os.path.join(BASE_PATH, DSET_DIR)
 
     if dataset_name == lmd_c_s:
         fnms = get_lmd_cleaned_subset_fnms()
@@ -193,14 +194,9 @@ def get_cleaned_song_paths(dataset_name: str, fmt='mid') -> List[str]:
                 return os.path.join(path, dir_nm, f'{stem(fnm)}.{fmt}')
         return [map_fnm(fnm) for fnm in fnms]
     else:
-        d_dset = config(f'datasets.{dataset_name}')
+        d_dset = sconfig(f'datasets.{dataset_name}')
         dir_nm = d_dset['dir_nm']
         path = os.path.join(path, dir_nm, d_dset[f'song_fmt_{fmt}'])
-        # from icecream import ic
-        # ic(path)
-        # ic(os.listdir(os.path.join(PATH_BASE, DIR_DSET, dir_nm)))
-        # ic(len(sorted(glob.iglob(path, recursive=True))))
-        # exit(1)
         return sorted(glob.iglob(path, recursive=True))
 
 

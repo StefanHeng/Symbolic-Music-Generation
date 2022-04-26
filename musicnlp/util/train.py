@@ -12,8 +12,8 @@ from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
 from tqdm import tqdm
 
-from musicnlp.util.util import *
-from musicnlp.util.check_args import ca
+from stefutil import *
+
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
 
@@ -269,7 +269,7 @@ class ColoredPrinterCallback(TrainerCallback):
         if self.report2tb:
             self.writer = SummaryWriter(os.path.join(self.output_dir, f'tb - {self.log_fnm}'))
 
-        conf = self.trainer.model.config.to_dict()
+        conf = self.trainer.model.config_dict.to_dict()
         train_args = self.trainer.args.to_dict()
         meta = self.trainer.model_meta
         self.logger.info(f'Training started with model {log_dict(meta)}, {log_dict_pg(conf)} '
@@ -282,7 +282,7 @@ class ColoredPrinterCallback(TrainerCallback):
 
     def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
         self.t_end = datetime.datetime.now()
-        t = fmt_time(self.t_end - self.t_strt)
+        t = fmt_delta(self.t_end - self.t_strt)
         self.logger.info(f'Training completed in {logi(t)} ')
         self.logger_fl.info(f'Training completed in {t} ')
         self.mode = 'eval'

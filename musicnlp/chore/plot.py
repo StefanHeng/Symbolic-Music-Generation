@@ -151,7 +151,7 @@ def plot_tb(
 
 
 def md_n_dir2tb_path(model_name: str = 'reformer', directory_name: str = None) -> str:
-    return os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, directory_name)
+    return os.path.join(BASE_PATH, PROJ_DIR, MODEL_DIR, model_name, directory_name)
 
 
 if __name__ == '__main__':

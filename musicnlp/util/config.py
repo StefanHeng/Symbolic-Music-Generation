@@ -1,26 +1,17 @@
 import os
 import re
 import glob
+from os.path import join as os_join
 from typing import Dict, List, Union
 
 import pandas as pd
 
-from musicnlp.util.data_path import PATH_BASE, DIR_DSET
-from musicnlp.util.util import *
+from stefutil import *
+from musicnlp.util.data_path import BASE_PATH, DSET_DIR
 
 
-d_allie = dict(
-    dir_nm='Allie-Chord-Embedding',
-    nm='Allie-Chord-Embedding',
-    nm_data='full_song_objects.pickle'
-)
-fnm = os.path.join(PATH_BASE, DIR_DSET, d_allie['dir_nm'], d_allie['nm_data'])
-d_allie['n_entry'] = len(read_pickle(fnm)[0])
-
-
-config: dict = {
+config_dict: dict = {
     'datasets': {
-        'Allie-Chords': d_allie,
         # for LMD datasets, see https://colinraffel.com/projects/lmd/
         'LMD-matched': dict(
             nm='The Lakh MIDI Dataset, Matched',
@@ -59,14 +50,32 @@ config: dict = {
         )
     },
     'random-seed': 77,
+    'check-arg': [
+        dict(
+            display_name='Extraction Export Type', attr_name='exp',
+            accepted_values=['mxl', 'str', 'id', 'str_join', 'visualize']
+        ),
+        dict(display_name='Music File Format', attr_name='fmt', accepted_values=['mid', 'mxl']),
+        dict(display_name='Music Key Type', attr_name='key_type', accepted_values=['list', 'enum', 'dict']),
+        dict(display_name='Train Logging Strategy', attr_name='log_strategy', accepted_values=['epoch', 'steps', 'no']),
+        dict(display_name='Train Logging Mode', attr_name='log_mode', accepted_values=['train', 'eval']),
+        dict(
+            display_name='Generation Mode', attr_name='generation_mode',
+            accepted_values=['conditional', 'unconditional']
+        ),
+        dict(
+            display_name='Generation Strategy', attr_name='generation_strategy',
+            accepted_values=['greedy', 'sample', 'beam']
+        ),
+    ]
 }
 
 
-for k in it_keys(config[DIR_DSET]):    # Accommodate other OS
-    k = f'{DIR_DSET}.{k}'
-    val = get(config, k)
+for k in it_keys(config_dict['datasets']):    # Accommodate other OS
+    k = f'{DSET_DIR}.{k}'
+    val = get(config_dict, k)
     if k[k.rfind('.')+1:] == 'dir_nm':
-        set_(config, k, os.path.join(*val.list_split('/')))
+        set_(config_dict, k, os_join(*val.split('/')))
 
 
 def get_stats(songs: List[Dict]):
@@ -81,15 +90,15 @@ def get_dataset_meta(dataset_name: str):
     dnms = ['POP909', 'LMD-cleaned']
     assert dataset_name in dnms, f'Unsupported dataset name: expect one of {logi(dnms)}, got {logi(dataset_name)}'
     if dataset_name == 'POP909':
-        path = os.path.join(PATH_BASE, DIR_DSET, 'POP909-Dataset', dataset_name)  # the original path
-        df = pd.read_excel(os.path.join(path, 'index.xlsx'))
+        path = os_join(BASE_PATH, DSET_DIR, 'POP909-Dataset', dataset_name)  # the original path
+        df = pd.read_excel(os_join(path, 'index.xlsx'))
 
         def map_single(d: Dict):
             return dict(artist=d['artist'], title=d['name'])
         songs = [map_single(d) for d in df.T.to_dict().values()]
     else:
-        d_dset = config['datasets'][dataset_name]
-        path_ori = os.path.join(PATH_BASE, DIR_DSET, d_dset['dir_nm'])
+        d_dset = config_dict['datasets'][dataset_name]
+        path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
 
         pattern_title = re.compile(r'^(?P<title>.*)\.(?P<version>[1-9]\d*).mid$')  # <title>.<version>.mid
 
@@ -110,24 +119,24 @@ def get_dataset_meta(dataset_name: str):
                 return dict(artist=artist, title=title_cleaned, original_title=title)
             else:
                 return dict(artist=artist, title=title)
-        songs = [path2song(p_) for p_ in glob.glob(os.path.join(path_ori, d_dset['song_fmt_mid']))]
+        songs = [path2song(p_) for p_ in glob.glob(os_join(path_ori, d_dset['song_fmt_mid']))]
     songs = sorted(songs, key=lambda s: (s['artist'], s['title']))  # sort by artist, then title
     return dict(songs=songs) | get_stats(songs)
 
 
 for dnm in ['POP909', 'LMD-cleaned']:
-    config['datasets'][dnm]['meta'] = get_dataset_meta(dnm)
+    config_dict['datasets'][dnm]['meta'] = get_dataset_meta(dnm)
 
 
 if __name__ == '__main__':
     import json
-    from data_path import *
+    from data_path import PROJ_DIR, PKG_NM
 
     from icecream import ic
 
     fl_nm = 'config.json'
-    # ic(config)
+    ic(config_dict)
     # print(config)
     open(fl_nm, 'a').close()  # Create file in OS
-    with open(os.path.join(PATH_BASE, DIR_PROJ, PKG_NM, 'util', fl_nm), 'w') as f:
-        json.dump(config, f, indent=4)
+    with open(os_join(BASE_PATH, PROJ_DIR, PKG_NM, 'util', fl_nm), 'w') as f:
+        json.dump(config_dict, f, indent=4)

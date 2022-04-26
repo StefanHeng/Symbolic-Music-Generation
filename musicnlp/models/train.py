@@ -148,7 +148,7 @@ def get_train_and_my_train_args(
     """
     if not hasattr(get_train_and_my_train_args, 'default_args'):
         get_train_and_my_train_args.default_args = dict(
-            output_dir=os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, now(for_path=True)),
+            output_dir=os.path.join(BASE_PATH, PROJ_DIR, MODEL_DIR, model_name, now(for_path=True)),
             do_train=True,
             do_eval=True,
             evaluation_strategy='epoch',

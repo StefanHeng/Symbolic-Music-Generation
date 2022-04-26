@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import music21 as m21
 
-from musicnlp.util import *
+from stefutil import *
 from musicnlp.util.music_lib import *
 import musicnlp.util.music as music_util
 from musicnlp.vocab.elm_type import Key, key_str2enum
@@ -182,7 +182,7 @@ class MusicVocabulary:
         self.toks['pitch'] = pitches
         self.toks['duration'] = self.get_durations(exp='str')
         self.enc: Dict[str, int] = {  # Back2back index as ids
-            tok: id_ for id_, tok in enumerate(join_its(toks for toks in self.toks.values()))
+            tok: id_ for id_, tok in enumerate(chain_its(toks for toks in self.toks.values()))
         }
         self.dec = {v: k for k, v in self.enc.items()}
         assert len(self.enc) == len(self.dec)  # Sanity check: no id collision

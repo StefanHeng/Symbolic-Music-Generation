@@ -15,8 +15,9 @@ from collections import defaultdict, Counter, OrderedDict
 import numpy as np
 import music21 as m21
 
+from stefutil import *
 from musicnlp.util import *
-from musicnlp.util.data_path import PATH_BASE, DIR_DSET
+from musicnlp.util.data_path import BASE_PATH, DSET_DIR
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import COMMON_TEMPOS, COMMON_TIME_SIGS, is_common_tempo, is_common_time_sig, MusicVocabulary
 from musicnlp.preprocess.warning_logger import WarnLog
@@ -432,7 +433,7 @@ class MusicExtractor:
                     exit(1)
             elm = next(it, None)
         if bar.hasVoices():  # Join all voices to notes
-            lst.extend(join_its(self.expand_bar(v, time_sig, number=number) for v in bar.voices))
+            lst.extend(chain_its(self.expand_bar(v, time_sig, number=number) for v in bar.voices))
             # for v in bar.voices:
             #     lst.extend(self.expand_bar(v, time_sig, number=number))
         if not keep_chord:  # sanity check
@@ -487,7 +488,7 @@ class MusicExtractor:
         def is_empty_bars(bars: tuple[Measure]):
             def bar2elms(b: Measure):
                 def stream2elms(stm: Union[Measure, Voice]):
-                    return list(join_its((stm[Note], stm[Rest], stm[Chord])))  # Get all relevant notes
+                    return list(chain_its((stm[Note], stm[Rest], stm[Chord])))  # Get all relevant notes
                 elms = stream2elms(b)
                 if b.hasVoices():
                     elms += sum((stream2elms(v) for v in b.voices), start=[])
@@ -752,12 +753,12 @@ class MusicExtractor:
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
                 lst_note=[list(flatten_notes(notes)) for notes in lst_notes]
             )
-            dir_nm = config(f'{DIR_DSET}.mxl-eg.dir_nm_extracted')
+            dir_nm = sconfig(f'{DSET_DIR}.mxl-eg.dir_nm_extracted')
             fmt = 'mxl'
             # fmt = 'musicxml'
             # sometimes file-writes via `mxl` couldn't be read by MuseScore
             mode_str = 'melody only' if self.mode == 'melody' else 'full'
-            path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}, {mode_str}.{fmt}')
+            path = os.path.join(BASE_PATH, DSET_DIR, dir_nm, f'{title}, {mode_str}.{fmt}')
             # disable all `music21` modifications, I should have handled all the edge cases
             scr_out.write(fmt=fmt, fp=path, makeNotation=False)
         else:
@@ -786,7 +787,7 @@ class MusicExtractor:
                 else:
                     scr_out = ' '.join(toks)
         if self.verbose and self.warn_logger is not None:
-            t = fmt_time(datetime.datetime.now() - t_strt)
+            t = fmt_delta(datetime.datetime.now() - t_strt)
             self.logger.info(f'{logi(title)} extraction completed in {log_s(t, c="y")} '
                              f'with warnings {log_dict(self.warn_logger.tracked())}')
         ret = scr_out
@@ -817,8 +818,8 @@ if __name__ == '__main__':
         logger = WarnLog()
         # fnm = 'Faded'
         # fnm = 'Piano Sonata'
-        fnm = 'Merry Christmas'
-        # fnm = 'Merry Go Round of Life'
+        # fnm = 'Merry Christmas'
+        fnm = 'Merry Go Round of Life'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         # fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
         # fnm = music_util.get_my_example_songs('平凡之路', fmt='MXL')
@@ -841,9 +842,9 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = mt(fnm, exp='str_join', return_meta=True, return_key=True)
             ic(d_out)
-        check_mxl_out()
+        # check_mxl_out()
         # check_str()
-        # check_visualize()
+        check_visualize()
         # check_return_meta_n_key()
     toy_example()
 

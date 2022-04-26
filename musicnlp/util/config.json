@@ -1,11 +1,5 @@
 {
     "datasets": {
-        "Allie-Chords": {
-            "dir_nm": "Allie-Chord-Embedding",
-            "nm": "Allie-Chord-Embedding",
-            "nm_data": "full_song_objects.pickle",
-            "n_entry": 87481
-        },
         "LMD-matched": {
             "nm": "The Lakh MIDI Dataset, Matched",
             "dir_nm": "Lakh-MIDI-Dataset/LMD-Matched"
@@ -79636,5 +79630,69 @@
             "dir_nm": "MNLP-Combined"
         }
     },
-    "random-seed": 77
+    "random-seed": 77,
+    "check-arg": [
+        {
+            "display_name": "Extraction Export Type",
+            "attr_name": "exp",
+            "accepted_values": [
+                "mxl",
+                "str",
+                "id",
+                "str_join",
+                "visualize"
+            ]
+        },
+        {
+            "display_name": "Music File Format",
+            "attr_name": "fmt",
+            "accepted_values": [
+                "mid",
+                "mxl"
+            ]
+        },
+        {
+            "display_name": "Music Key Type",
+            "attr_name": "key_type",
+            "accepted_values": [
+                "list",
+                "enum",
+                "dict"
+            ]
+        },
+        {
+            "display_name": "Train Logging Strategy",
+            "attr_name": "log_strategy",
+            "accepted_values": [
+                "epoch",
+                "steps",
+                "no"
+            ]
+        },
+        {
+            "display_name": "Train Logging Mode",
+            "attr_name": "log_mode",
+            "accepted_values": [
+                "train",
+                "eval"
+            ]
+        },
+        {
+            "display_name": "Generation Mode",
+            "attr_name": "generation_mode",
+            "accepted_values": [
+                "conditional",
+                "unconditional"
+            ]
+        },
+        {
+            "display_name": "Generation Strategy",
+            "attr_name": "generation_strategy",
+            "accepted_values": [
+                "greedy",
+                "sample",
+                "beam"
+            ]
+        }
+    ]
 }

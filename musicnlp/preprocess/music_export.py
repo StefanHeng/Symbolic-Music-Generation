@@ -7,6 +7,7 @@ import pandas as pd
 import datasets
 from tqdm import tqdm
 
+from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.music as music_util
 from music_extractor import MusicExtractor
@@ -32,7 +33,7 @@ class MusicExport:
             filenames: Union[List[str], str],
             output_filename=f'{PKG_NM} music extraction', path_out=music_util.get_processed_path(),
             extractor_args: Dict = None, exp='str_join',
-            parallel: Union[bool, int] = False, disable_tqdm: bool = False, save_each: bool = False,
+            parallel: Union[bool, int] = False, with_tqdm: bool = False, save_each: bool = False,
     ):
         """
         Writes encoded files to JSON file
@@ -48,9 +49,7 @@ class MusicExport:
             Intended for processing large datasets & saving intermediate processed data,
                 instead of keeping all of them in memory
         """
-        exp_opns = ['str', 'id', 'str_join']
-        if exp not in exp_opns:
-            raise ValueError(f'Unexpected export mode - got {logi(exp)}, expect one of {logi(exp_opns)}')
+        ca.check_mismatch('Music Extraction Export Type', exp, accepted_values=['str', 'id', 'str_join'])
         os.makedirs(path_out, exist_ok=True)
 
         ext_args = dict(  # `save_memory` so that warnings are for each song
@@ -64,7 +63,7 @@ class MusicExport:
         if isinstance(filenames, str):  # Dataset name provided
             dnm_ = filenames
             filenames = music_util.get_cleaned_song_paths(filenames, fmt='mxl')
-            # filenames = filenames[3000:]
+            filenames = filenames[:20]  # Debugging
         self.logger.info(f'Extracting {logi(len(filenames))} songs with {log_dict(dict(save_each=save_each))}... ')
 
         pbar = None
@@ -77,37 +76,35 @@ class MusicExport:
                 # Should not exceed 255 limit, see `musicnlp.util.music.py
                 fl_nm_single_out = os.path.join(path_out, f'Music Export - {stem(fl_nm)}.json')
                 if save_each and os.path.exists(fl_nm_single_out):  # File already processed, ignore
-                    if pbar:
-                        pbar.update(1)
+                    # if pbar:
+                    #     pbar.update(1)
                     return
                 else:
                     ret = extractor(fl_nm, exp=exp, return_meta=True)
+                    # if pbar:
+                    #     pbar.update(1)
                     if save_each:
-                        if pbar:
-                            pbar.update(1)
                         d_out = dict(encoding_type=exp, extractor_meta=extractor.meta, music=ret, mxl_path=fl_nm)
                         with open(fl_nm_single_out, 'w') as f_:
                             json.dump(d_out, f_, indent=4)
                     else:
-                        assert not pbar
                         return ret
             except Exception as e:
                 self.logger.error(f'Failed to extract {logi(fl_nm)}, {logi(e)}')  # Abruptly stop the process
                 raise ValueError(f'Failed to extract {logi(fl_nm)}')
 
         if parallel:
-            if not disable_tqdm:
+            if with_tqdm:
                 pbar = tqdm(total=len(filenames), desc='Extracting music', unit='song')
 
-            def batched_map(fnms_, s, e):
-                return [call_single(fnms_[i]) for i in range(s, e)]
             bsz = (isinstance(parallel, int) and parallel) or 32
-            lst_out = batched_conc_map(batched_map, filenames, batch_size=bsz)
+            # lst_out = batched_conc_map(batched_map, filenames, batch_size=bsz)
+            lst_out = batched_conc_map(call_single, filenames, batch_size=bsz, with_tqdm=pbar)
             pbar.close()
         else:
             lst_out = []
             gen = enumerate(filenames)
-            if not disable_tqdm:
+            if with_tqdm:
                 gen = tqdm(gen, total=len(filenames), desc='Extracting music', unit='song')
             for i_fl, fnm in gen:
                 lst_out.append(call_single(fnm))
@@ -190,7 +187,7 @@ if __name__ == '__main__':
 
     ic.lineWrapWidth = 400
 
-    seed = config('random-seed')
+    seed = sconfig('random-seed')
 
     me = MusicExport()
     # me = MusicExport(verbose=True)
@@ -209,8 +206,8 @@ if __name__ == '__main__':
     def check_lower_threshold():
         # th = 4**5  # this number we can fairly justify
         th = 1  # The most aggressive, for the best speed, not sure about losing quality
-        me('LMD-cleaned-subset', parallel=3, extractor_args=dict(greedy_tuplet_pitch_threshold=th))
-    # check_lower_threshold()
+        me('LMD-cleaned-subset', parallel=3, extractor_args=dict(greedy_tuplet_pitch_threshold=th), with_tqdm=True)
+    check_lower_threshold()
 
     def export2json():
         dnm = 'POP909'
@@ -270,7 +267,7 @@ if __name__ == '__main__':
         ic(dset)
         ic(len(dset['train']), len(dset['test']))
         ic(dset['train'][:3], dset['test'][:3])
-    json2dset_with_split()
+    # json2dset_with_split()
 
     def fix_insert_key():
         """
@@ -297,7 +294,7 @@ if __name__ == '__main__':
 
         def song_title2path(title: str) -> str:
             # Needed cos the original json files may not be processed on my local computer
-            return os.path.join(PATH_BASE, DIR_DSET, dir_nm_dset, f'{title}.mxl')
+            return os.path.join(BASE_PATH, DSET_DIR, dir_nm_dset, f'{title}.mxl')
 
         def call_single(fl_nm: str):
             try:
