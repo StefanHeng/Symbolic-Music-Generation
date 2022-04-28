@@ -1,6 +1,7 @@
 import pickle
 import logging
 from os.path import join as os_join
+from typing import Tuple
 
 import colorama
 
@@ -85,4 +86,4 @@ if __name__ == '__main__':
          'Alpentrio-Medley   Hast a bisserl Zeit fur mi   Tepperter Bua   Hallo kleine ' \
          'Traumfrau   Vergiss die Liebe nicht   Ich freu\' mich schon auf dich   Ich ' \
          'hab was ganz lieb\'s traumt von dir   Geheimnis der Joha... - v0.mxl'
-    ic(clean_whitespace(st))
+    # ic(clean_whitespace(st))

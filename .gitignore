@@ -10,6 +10,7 @@ models, on pop909 only/
 runs/
 tb_log/
 plot/
+eval/
 evaluations/
 requirements, 04.08.22.txt
 **/*.pkl

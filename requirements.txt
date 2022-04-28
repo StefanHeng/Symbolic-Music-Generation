@@ -155,7 +155,7 @@ smart-open==5.2.1
 SoundFile==0.10.3.post1
 soupsieve==2.3.2.post1
 stack-data==0.2.0
-stefutils==0.1.6
+stefutils==0.1.9
 sty==1.0.4
 tensorboard==2.8.0
 tensorboard-data-server==0.6.1

@@ -11,7 +11,6 @@ from collections import defaultdict, Counter
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import CategoricalDtype
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
@@ -25,15 +24,6 @@ from musicnlp.vocab import (
 )
 from musicnlp.preprocess import WarnLog
 from musicnlp.postprocess.music_stats import MusicStats
-
-
-def df_col2cat_col(df: pd.DataFrame, col_name: str, categories: List[str]) -> pd.DataFrame:
-    """
-    Enforced ordered categories to a column, the dataframe is modified in-place
-    """
-    cat = CategoricalDtype(categories=categories, ordered=True)  # Enforce order by definition
-    df[col_name] = df[col_name].astype(cat, copy=False)
-    return df
 
 
 class MusicVisualize:
@@ -56,6 +46,39 @@ class MusicVisualize:
         :param dataset_name: Datasets names, if given, should correspond to filenames
         :param hue_by_dataset: If true, automatically color-code statistics by dataset name
         """
+        self.dset: Dict
+        self.prec, self.tokenizer, self.vocab, self.states = None, None, None, None
+        self._df = None
+        self.cache = cache
+        if cache:
+            fnm = f'{self.cache}.pkl'
+            path = os_join(u.plot_path, 'cache', fnm)
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
+                    d = pickle.load(f)
+                    self.dset, self._df = d['dset'], d['df']
+            else:
+                self.dset = MusicVisualize._get_dset(filename, dataset_name)
+                self._df = self._get_song_info()
+                with open(path, 'wb') as f:
+                    pickle.dump(dict(dset=self.dset, df=self._df), f)
+        else:
+            self.dset = MusicVisualize._get_dset(filename, dataset_name)
+        self._set_meta()
+
+        self.color_palette = color_palette
+        if hue_by_dataset:
+            assert dataset_name is not None, f'{logi("dataset_name")} is required for color coding'
+        self.hue_by_dataset = hue_by_dataset
+
+    @property
+    def df(self) -> pd.DataFrame:
+        if self._df is None:
+            self._df = self._get_song_info()
+        return self._df
+
+    @staticmethod
+    def _get_dset(filename, dataset_name):
         def _load_single(f_: str, dnm: str = None) -> Dict:
             with open(f_, 'r') as f:
                 ds = json.load(f)
@@ -63,17 +86,12 @@ class MusicVisualize:
                 for s in ds['music']:
                     s['dataset_name'] = dnm
             return ds
-
-        def get_prec(ds: Dict) -> int:
-            return get(ds, 'extractor_meta.precision')
-
-        self.dset: Dict
         if isinstance(filename, str):
             if dataset_name:
                 assert isinstance(dataset_name, str), \
                     f'Dataset name given should be a string for single filename, ' \
                     f'but got {logi(dataset_name)} with type {logi(type(dataset_name))}'
-            self.dset = _load_single(filename, dataset_name)
+            return _load_single(filename, dataset_name)
         else:
             if dataset_name:
                 assert isinstance(dataset_name, list), \
@@ -83,46 +101,19 @@ class MusicVisualize:
                 dataset_name = [None] * len(filename)
             dset = [_load_single(f, dnm) for f, dnm in zip(filename, dataset_name)]
             assert all(ds['extractor_meta'] == dset[0]['extractor_meta'] for ds in dset)
-            self.dset = dict(
+            return dict(
                 music=sum([d['music'] for d in dset], []),
                 extractor_meta=dset[0]['extractor_meta']
             )
 
+    def _set_meta(self):
+        def get_prec(ds: Dict) -> int:
+            return get(ds, 'extractor_meta.precision')
         self.prec = get_prec(self.dset)
         assert self.prec >= 2
         self.tokenizer = MusicTokenizer(precision=self.prec)
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec)
-        self._df = None
-        self.color_palette = color_palette
-        if hue_by_dataset:
-            assert dataset_name is not None, f'{logi("dataset_name")} is required for color coding'
-        self.hue_by_dataset = hue_by_dataset
-        self.cache = cache
-
-    @property
-    def df(self) -> pd.DataFrame:
-        if self._df is None:
-            if self.cache:
-                fnm = f'{self.cache}.pkl'
-                path = os_join(u.plot_path, 'cache', fnm)
-                if os.path.exists(path):
-                    with open(path, 'rb') as f:
-                        self._df = pickle.load(f)
-                else:
-                    self._df = self._get_song_info()
-                    with open(path, 'wb') as f:
-                        pickle.dump(self._df, f)
-            else:
-                self._df = self._get_song_info()
-
-            tss_uncom = sorted([  # sort by duration of the time signature
-                ts for ts in self.df.time_sig.unique() if ts not in COMMON_TIME_SIGS], key=lambda ts: ts[0]/ts[1]
-            )
-            tss = COMMON_TIME_SIGS + tss_uncom
-            tss_print = [f'{numer}/{denom}' for numer, denom in tss]
-            df_col2cat_col(self.df, 'time_sig_str', tss_print)
-        return self._df
 
     def _get_song_info(self):
         entries: List[Dict] = self.dset['music']
@@ -140,10 +131,10 @@ class MusicVisualize:
             d['tempo'] = list(ttc['tempo'].keys())[0]
             d['time_sig'] = (numer, denom) = list(ttc['time_sig'].keys())[0]
             d['time_sig_str'] = f'{numer}/{denom}'
+            d['keys_unweighted'] = {k: 1 for k in d['keys']}  # to fit into `_count_by_dataset`
+
             d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
             d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
-            # ic(d)
-            # exit(1)
             return d
         ds = []
         for e in tqdm(entries, desc='Extracting song info', unit='song'):
@@ -174,8 +165,11 @@ class MusicVisualize:
             q = upper_percentile if isinstance(upper_percentile, float) else 99.7  # ~3std
             mi, ma = vs.min(), np.percentile(vs, q=q)
             ax.set_xlim([mi, ma])
-        if upper_percentile or args.get('stat', None) == 'density':
-            ylab_default = 'density'
+        stat = args.get('stat', None)
+        if upper_percentile or stat in ['density', 'percent']:
+            ylab_default = stat
+            if stat == 'percent':
+                ylab_default = f'{ylab_default} (%)'
         plt.ylabel(ylabel or ylab_default)
         if yscale:
             plt.yscale(yscale)
@@ -231,6 +225,12 @@ class MusicVisualize:
         ca(dist_plot_type=kind)
         title = 'Distribution of Time Signature'
         if kind == 'hist':
+            tss_uncom = sorted([  # sort by duration of the time signature
+                ts for ts in self.df.time_sig.unique() if ts not in COMMON_TIME_SIGS], key=lambda ts: ts[0]/ts[1]
+            )
+            tss = COMMON_TIME_SIGS + tss_uncom
+            tss_print = [f'{numer}/{denom}' for numer, denom in tss]
+            df_col2cat_col(self.df, 'time_sig_str', tss_print)
             c_nm, xlab = 'time_sig_str', 'Time Signature'
             self.hist_wrapper(
                 col_name=c_nm, title=title, xlabel=xlab, yscale='log', kde=False, callback=callback, **kwargs
@@ -259,13 +259,29 @@ class MusicVisualize:
         args = dict(col_name='tempo', title=title, xlabel=xlab, kde=False, callback=callback) | kwargs
         return self.hist_wrapper(**args)
 
-    def key_dist(self, **kwargs):
-        k = 'keys'
+    def key_dist(self, weighted=True, **kwargs):
+        key_pattern = re.compile(r'^(?P<key>[A-G])(?P<shift>[#b])?(?P<class>.*)$')
+        cls2cls_compact = dict(Major='maj', Minor='mi')
+
+        def key2key_compact(key: str) -> str:
+            m = key_pattern.match(key)
+            assert m is not None
+            k_, sh, cls = m.group('key'), m.group('shift'), m.group('class')
+            if sh:
+                k_ = f'{k_}{sh}'
+            return f'{k_}{cls2cls_compact[cls]}'
+        keys = list(key_str2enum.keys())
+        key2key_compact = {k: key2key_compact(k) for k in keys}
+
+        k = 'keys' if weighted else 'keys_unweighted'
         df = self._count_by_dataset(k)
         df.rename(columns={k: 'key'}, inplace=True)
-        df_col2cat_col(df, 'key', categories=list(key_str2enum.keys()))
+        df_col2cat_col(df, 'key', categories=keys)
+        df.key = df.key.apply(lambda k: key2key_compact[k])
 
-        title, xlab = 'Distribution of Key, weighted by confidence', 'Key'
+        title, xlab = 'Distribution of Key', 'Key'
+        if weighted:
+            title = f'{title}, weighted by confidence'
         args = dict(data=df, col_name='key', weights='count', kde_kws=dict(bw_adjust=0.25), title=title, xlabel=xlab)
         args |= kwargs
         return self.hist_wrapper(**args)
@@ -417,22 +433,26 @@ class MusicVisualize:
             df['average_count'] = df.apply(lambda x: x.total_count/self.n_song, axis=1)
         return df
 
-    def warning_type_dist(self, average=True, title: str = None, show=True, bar_kwargs: Dict = None):
+    def warning_type_dist(self, average=True, title: str = None, **kwargs):
         df = self.warn_info()
         df_col2cat_col(df, 'type', WarnLog.types)
-        if bar_kwargs is None:
-            bar_kwargs = dict()
-        ax = sns.barplot(data=df, y='type', x='average_count' if average else 'total_count', **bar_kwargs)
-        ax.set_xscale('log')
-        plt.ylabel('Warning type')
         typ = 'per song' if average else 'in total'
-        plt.xlabel(f'count {typ}')
+
+        severities = [WarnLog.type2severity[t] for t in WarnLog.types]
+        cs = vals2colors(severities, color_palette='mako_r')
+
         if title is None:
-            title = 'Distribution of Warnings during extraction, ordered by severity'
-        if title != 'None':
-            plt.title(title)
-        if show:
-            plt.show()
+            title = 'Distribution of Warnings during Music Extraction'
+        elif title == 'none':
+            title = None
+        barplot(
+            data=df, x='type', y='average_count', title=title, xlabel='Warning Type', ylabel=f'count {typ}',
+            palette=cs, yscale='log',
+            orient='h', **kwargs
+        )
+        # TODO: set left to log scale and right to linear scale?
+        # https://stackoverflow.com/questions/21746491/combining-a-log-and-linear-scale-in-matplotlib/21870368
+        # solution here is real complicated
 
 
 if __name__ == '__main__':
@@ -464,16 +484,16 @@ if __name__ == '__main__':
     # check_uncommon_tempos()
 
     def plots():
-        args = dict(stat='density', upper_percentile=True)
+        args = dict(stat='percent', upper_percentile=True)
         # mv.token_length_dist(**args)
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
         # mv.time_sig_dist()
-        # mv.tempo_dist(stat='density')
-        mv.key_dist(stat='density')
-        # mv.note_pitch_dist(stat='density')
-        # mv.note_duration_dist(stat='density')
+        # mv.tempo_dist(stat='percent')
+        # mv.key_dist(stat='percent')
+        mv.note_pitch_dist(stat='percent')
+        # mv.note_duration_dist(stat='percent')
         # mv.warning_type_dist()
     plots()
 
