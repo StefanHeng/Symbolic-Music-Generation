@@ -270,7 +270,7 @@ class ColoredPrinterCallback(TrainerCallback):
         if self.report2tb:
             self.writer = SummaryWriter(os_join(self.output_dir, f'tb - {self.log_fnm}'))
 
-        conf = self.trainer.model.config_dict.to_dict()
+        conf = self.trainer.model.config.to_dict()
         train_args = self.trainer.args.to_dict()
         meta = self.trainer.model_meta
         self.logger.info(f'Training started with model {log_dict(meta)}, {log_dict_pg(conf)} '
@@ -337,7 +337,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
         return self.pattern_eval_key.match(key).group('key')
 
     def _log(self, d_log, mode='train', to_console=True):
-        ca(logging_mode=mode)
+        ca(log_mode=mode)
         d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log.items()}
         d_log_write = pretty_log_dict(d_log_write, ref=self.train_meta)
         if to_console:

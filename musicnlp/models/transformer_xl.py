@@ -4,7 +4,18 @@ import torch
 from transformers import TransfoXLLMHeadModel
 from transformers.file_utils import ModelOutput
 
-from musicnlp.util.models import MusicTransformerMixin
+from musicnlp.models.models import MusicTransformerMixin
+
+
+# TODO
+"""
+
+    xl={
+        'debug': dict(d_model=8),
+        'debug-large': dict(d_model=512),
+        'small': dict(d_model=1024)
+    },
+    """
 
 
 class MyTransfoXLLMHeadModelOutput(ModelOutput):

@@ -2,7 +2,6 @@
 Proposed method: on compact melody & bass representation for autoregressive music generation
     Trying Transformer-XL, Reformer
 """
-import os
 import json
 import math
 from os.path import join as os_join
@@ -10,9 +9,8 @@ from copy import deepcopy
 from typing import List, Tuple, Dict, Union
 from collections import OrderedDict
 
-import numpy as np
 import torch
-from transformers import TransfoXLConfig, ReformerConfig, ReformerModelWithLMHead
+from transformers import TransfoXLConfig, ReformerModelWithLMHead
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
 from transformers import Trainer
 from transformers.training_args import OptimizerNames
@@ -21,10 +19,12 @@ import datasets
 from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
-import musicnlp.util.models as model_util
+import musicnlp.models.models as model_util
 from musicnlp.vocab import MusicTokenizer
 from musicnlp.preprocess import get_dataset, KeySampleDataset
-from musicnlp.models import architecture, metrics
+from musicnlp.models import MyReformerConfig
+from musicnlp.trainer import metrics
+from musicnlp import models
 
 
 def get_model_n_tokenizer(
@@ -32,106 +32,22 @@ def get_model_n_tokenizer(
 ) -> Tuple[MusicTokenizer, Union[model_util.MusicTransformerMixin, torch.nn.Module], OrderedDict]:
     assert model_name in ['xl', 'reformer'], f'Unknown model_name: {model_name}'
 
-    tokenizer_ = MusicTokenizer(precision=prec)  # needed for reformer config
-    if not hasattr(get_model_n_tokenizer, 'd_config'):
-        layer_pair = ['local', 'lsh']
-        get_model_n_tokenizer.d_config = dict(
-            xl={
-                'debug': dict(d_model=8),
-                'debug-large': dict(d_model=512),
-                'small': dict(d_model=1024)
-            },
-            reformer={
-                'debug': dict(
-                    max_position_embeddings=64, axial_pos_shape=(8, 8),
-                    hidden_size=128, feed_forward_size=128*4, axial_pos_embds_dim=(32, 96),
-                    # note attention head size in config is per head
-                    num_attention_heads=8, attention_head_size=int(128/8),
-                    # effectively 6 layers as default config; going even smaller produces an error
-                    attn_layers=layer_pair*3
-                ),
-                'debug-large': dict(
-                    max_position_embeddings=512, axial_pos_shape=(16, 32),
-                    hidden_size=128, feed_forward_size=128*4, axial_pos_embds_dim=(32, 96),
-                    # note attention head size in config is per head
-                    num_attention_heads=8, attention_head_size=int(128/8),
-                    # effectively 6 layers as default config; going even smaller produces an error
-                    attn_layers=layer_pair*3
-                ),
-                # overall, given hidden size, keep
-                #   feed_forward_size = 4 x hidden size
-                #   attention_head_size = hidden_size
-                'tiny': dict(
-                    max_position_embeddings=1024, axial_pos_shape=(32, 32),
-                    hidden_size=256, feed_forward_size=256*4, axial_pos_embds_dim=(64, 192),
-                    # note attention head size in config is per head
-                    num_attention_heads=8, attention_head_size=int(256/8),
-                    # effectively 6 layers as default config; going even smaller produces an error
-                    attn_layers=layer_pair*3
-                ),
-                'small': dict(
-                    max_position_embeddings=2048, axial_pos_shape=(32, 64),
-                    hidden_size=512, feed_forward_size=512*4, axial_pos_embds_dim=(128, 512-128),
-                    num_attention_heads=8, attention_head_size=int(512/8),
-                    attn_layers=layer_pair*3
-                ),
-                'base': dict(
-                    max_position_embeddings=2048, axial_pos_shape=(32, 64),
-                    hidden_size=768, feed_forward_size=768*4, axial_pos_embds_dim=(192, 768-192),
-                    num_attention_heads=12, attention_head_size=int(768/12),
-                    attn_layers=layer_pair*6,
-                    num_hashes=2  # for better accuracy
-                ),
-                'large': dict(
-                    max_position_embeddings=2048, axial_pos_shape=(32, 64),  # TODO: support token length 4096?
-                    hidden_size=1024, feed_forward_size=1024*4, axial_pos_embds_dim=(256, 1024-256),
-                    num_attention_heads=16, attention_head_size=int(1024/16),
-                    attn_layers=layer_pair*12,
-                    num_hashes=2
-                )
-            }
-        )
-        d_ref = get_model_n_tokenizer.d_config['reformer']
-        for k in d_ref.keys():
-            d_ref[k].update(dict(  # default config for all reformer config
-                is_decoder=True,
-                num_buckets=None,
-                eos_token_id=tokenizer_.eos_token_id,
-                pad_token_id=tokenizer_.pad_token_id,
-                vocab_size=tokenizer_.vocab_size
-            ))
+    tokenizer = MusicTokenizer(precision=prec)  # needed for reformer config
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
-            'xl': (TransfoXLConfig, architecture.MyTransfoXLLMHeadModel),
-            'reformer': (ReformerConfig, ReformerModelWithLMHead)
+            'xl': (TransfoXLConfig, models.MyTransfoXLLMHeadModel),
+            'reformer': (MyReformerConfig, ReformerModelWithLMHead)
         }
     cls_config, cls_model = get_model_n_tokenizer.d_nm2cls[model_name]
-    config_ = cls_config()
-    config_.update(get_model_n_tokenizer.d_config[model_name][model_size])
-    if model_config is not None:
-        config_.update(model_config)
-    tokenizer_.model_max_length = max_length = model_util.config2model_size(config_)
-    model_meta = OrderedDict([
-        ('model name', cls_model.__qualname__),
-        ('max length', max_length)
-    ])
-    if isinstance(config_, ReformerConfig):
-        model_meta.update(dict(
-            axial_pos_shape=config_.axial_pos_shape,
-            n_layer=len(config_.attn_layers),
-            hidden_size=config_.hidden_size, ff_size=config_.feed_forward_size,
-            attention_shape=f'{config_.num_attention_heads}x{config_.attention_head_size}',
-        ))
+    config = cls_config(model_size=model_size, tokenizer=tokenizer, **(model_config or dict()))
+    # to set the correct model config for reformer, now take care of `max_length` for tokenizer
+    tokenizer.model_max_length = max_length = config.model_max_length
+    model_meta = OrderedDict({'model name': cls_model.__qualname__, 'max length': max_length})
+    if model_name == 'reformer':
+        model_meta.update(config.model_meta)
     else:
         raise NotImplementedError(f'xl')
-
-    d_ref = get_model_n_tokenizer.d_config['reformer']
-    for k in d_ref.keys():
-        aps, mpe = d_ref[k]['axial_pos_shape'], d_ref[k]['max_position_embeddings']
-        assert len(aps) == 2 and np.prod(aps) == mpe, \
-            'the product of `axial_pos_shape` must be `max_position_embeddings`'
-    # to set the correct model config for reformer, now take care of `max_length` for tokenizer
-    return tokenizer_, cls_model(config=config_), model_meta  # Initialize all weights from scratch
+    return tokenizer, cls_model(config=config), model_meta  # Initialize all weights from scratch
 
 
 def get_train_and_my_train_args(
@@ -274,7 +190,7 @@ def get_train_and_my_train_args(
     assert args['logging_strategy'] == 'steps'  # for my own internal logging to run
     assert args['disable_tqdm']  # Always use my own tqdm, see `musicnlp.util.train.MyTrainer`
     logging_strategy = my_args['logging_strategy']
-    ca(logging_strategy=logging_strategy)
+    ca(log_strategy=logging_strategy)
     if logging_strategy == 'epoch':
         my_args['logging_steps'] = steps_per_epoch
     args = {k: v for k, v in args.items() if v is not None}
@@ -363,7 +279,7 @@ if __name__ == '__main__':
         # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
-        ic(md_sz)
+        ic(md_nm, md_sz)
 
         if md_nm != 'reformer':
             transformers.set_seed(seed)
