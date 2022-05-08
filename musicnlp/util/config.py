@@ -13,6 +13,11 @@ from musicnlp.util.data_path import BASE_PATH, DSET_DIR
 config_dict: dict = {
     'datasets': {
         # for LMD datasets, see https://colinraffel.com/projects/lmd/
+        'LMD': dict(
+            nm='The Lakh MIDI Dataset, Full',
+            dir_nm='lmd_full',
+            song_fmt_mid='**/*.mid',
+        ),
         'LMD-matched': dict(
             nm='The Lakh MIDI Dataset, Matched',
             dir_nm='Lakh-MIDI-Dataset/LMD-Matched'
@@ -32,16 +37,21 @@ config_dict: dict = {
             dir_nm='MIDI-eg',
             song_fmt_mid='*.mid'
         ),
-        'mxl-eg': dict(
-            nm='Some hand-selected MXL samples',
-            dir_nm='MXL-eg',
-            dir_nm_extracted='MXL-eg_out',
-            song_fmt_mxl='*.mxl'
+        'MAESTRO': dict(
+            nm='The MAESTRO Dataset v3.0.0',
+            dir_nm='maestro-v3.0.0',
+            song_fmt_mid='**/*.midi',
         ),
         'POP909': dict(
             nm='POP909 Dataset for Music Arrangement Generation',
             dir_nm='POP909',
             song_fmt_mid='*.mid',
+            song_fmt_mxl='*.mxl'
+        ),
+        'mxl-eg': dict(
+            nm='Some hand-selected MXL samples',
+            dir_nm='MXL-eg',
+            dir_nm_extracted='MXL-eg_out',
             song_fmt_mxl='*.mxl'
         ),
         'my': dict(

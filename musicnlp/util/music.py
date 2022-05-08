@@ -85,8 +85,7 @@ def convert_dataset(dataset_name: str = 'POP909'):
     Convert datasets in their original sources to my own file system hierarchy & names
         A directory of `midi` files, with title and artist as file name
     """
-    dnms = ['POP909', 'LMD-cleaned']
-    assert dataset_name in dnms, f'Unsupported dataset name: expect one of {logi(dnms)}, got {logi(dataset_name)}'
+    ca.cache_mismatch('Dataset Name', dataset_name, ['POP909', 'LMD-cleaned', 'LMD'])
 
     path_exp = os_join(BASE_PATH, DSET_DIR, dataset_name)
     os.makedirs(path_exp, exist_ok=True)
@@ -101,7 +100,7 @@ def convert_dataset(dataset_name: str = 'POP909'):
     elif dataset_name == 'LMD-cleaned':
         d_dset = sconfig(f'datasets.{dataset_name}')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
-        fnms = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid'])))
+        paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid'])))
 
         # empirically seen as a problem: some files are essentially the same title, ending in different numbers
         # See `ValueError` below
@@ -132,14 +131,59 @@ def convert_dataset(dataset_name: str = 'POP909'):
             assert len(fnm_) <= os_lim
             return fnm_
         fnms_written = set()
-        for p in tqdm(fnms, desc=f'Converting {dataset_name}', unit='song'):
+        for p in tqdm(paths, desc=f'Converting {dataset_name}', unit='song'):
             fnm = path2fnm(p)
             if fnm in fnms_written:
                 raise ValueError(f'Duplicate file name because of truncation: path {logi(p)} modified to {logi(fnm)}')
             fnms_written.add(fnm)
             copyfile(p, os_join(path_exp, fnm))
-        assert len(fnms_written) == len(fnms)
+        assert len(fnms_written) == len(paths)
         print(f'{logi(path2fnm.count_too_long)} files were truncated to {logi(os_lim)} characters')
+    elif dataset_name == 'LMD':
+        d_dset = sconfig(f'datasets.{dataset_name}')
+        path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
+        paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
+        n_digit = len(str(len(paths)))
+        group_sz = int(1e4)
+        n_digit_group = len(str(group_sz))
+        for i, p in enumerate(tqdm(paths)):
+            # storing 170k songs in a single folder makes prohibitively slow FS rendering
+            group = i // group_sz
+            path = os_join(path_exp, f'{group:0{n_digit_group}}')
+            os.makedirs(path, exist_ok=True)
+            fnm = f'{i:>0{n_digit}}.mid'
+            copyfile(p, os_join(path, fnm))
+    elif dataset_name == 'MAESTRO':
+        d_dset = sconfig(f'datasets.{dataset_name}')
+        path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
+        # ic(path_ori)
+        # ic(os.listdir(path_ori))
+        paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
+        # ic(len(paths))
+        # with open(os_join(path_ori, 'maestro-v3.0.0.json'), 'r') as f:
+        #     meta = json.load(f)
+        # ic(len(meta), type(meta))
+        # df = pd.DataFrame(meta)
+        df = pd.read_csv(os_join(path_ori, 'maestro-v3.0.0.csv'))
+        assert len(paths) == len(df)
+        # ic(df)
+        c_ver = defaultdict(int)
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            fnm_ori = os_join(path_ori, row.midi_filename)
+            # ic(fnm_ori)
+            composer = row.canonical_composer.replace('/', '&')
+            title = row.canonical_title.replace('/', ':')
+            # wicked case in the dataset: title all the same apart from capitalization
+            title = ' '.join([w.capitalize() for w in title.split()])
+            fnm = f'{composer} - {title}'
+            count = c_ver[fnm]
+            c_ver[fnm] += 1
+            if count > 0:
+                fnm = f'{fnm}, v{count}'
+            # ic(fnm)
+            # if os.path.exists(os_join(path_exp, f'{fnm}.mid')):
+            #     raise ValueError(f'Duplicate file name: {fnm}')
+            copyfile(fnm_ori, os_join(path_exp, f'{fnm}.mid'))
 
 
 def get_lmd_cleaned_subset_fnms() -> List[str]:
@@ -215,6 +259,8 @@ if __name__ == '__main__':
     # check_fl_nms()
 
     # convert_dataset('LMD-cleaned')
+    # convert_dataset('LMD')
+    convert_dataset('MAESTRO')
 
     # import music21 as m21
     # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
@@ -257,4 +303,4 @@ if __name__ == '__main__':
         # fnms = get_lmd_cleaned_subset_fnms()
         fnms = get_cleaned_song_paths('LMD-cleaned-subset')
         ic(len(fnms), fnms[:20])
-    get_lmd_subset()
+    # get_lmd_subset()

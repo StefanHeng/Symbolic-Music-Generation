@@ -159,6 +159,10 @@ class MusicGenerator:
 
 
 def get_performance(model):
+    """
+    Get NTP IKR on the eval set
+    """
+    # TODO
     pass
 
 

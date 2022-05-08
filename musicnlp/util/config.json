@@ -1,5 +1,10 @@
 {
     "datasets": {
+        "LMD": {
+            "nm": "The Lakh MIDI Dataset, Full",
+            "dir_nm": "lmd_full",
+            "song_fmt_mid": "**/*.mid"
+        },
         "LMD-matched": {
             "nm": "The Lakh MIDI Dataset, Matched",
             "dir_nm": "Lakh-MIDI-Dataset/LMD-Matched"
@@ -75970,11 +75975,10 @@
             "dir_nm": "MIDI-eg",
             "song_fmt_mid": "*.mid"
         },
-        "mxl-eg": {
-            "nm": "Some hand-selected MXL samples",
-            "dir_nm": "MXL-eg",
-            "dir_nm_extracted": "MXL-eg_out",
-            "song_fmt_mxl": "*.mxl"
+        "MAESTRO": {
+            "nm": "The MAESTRO Dataset v3.0.0",
+            "dir_nm": "maestro-v3.0.0",
+            "song_fmt_mid": "**/*.midi"
         },
         "POP909": {
             "nm": "POP909 Dataset for Music Arrangement Generation",
@@ -79624,6 +79628,12 @@
                 "n_artist": 462,
                 "n_song": 909
             }
+        },
+        "mxl-eg": {
+            "nm": "Some hand-selected MXL samples",
+            "dir_nm": "MXL-eg",
+            "dir_nm_extracted": "MXL-eg_out",
+            "song_fmt_mxl": "*.mxl"
         },
         "my": {
             "nm": "Music with NLP, Project output",
