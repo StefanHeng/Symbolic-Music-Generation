@@ -10,7 +10,7 @@ from typing import List, Tuple, Dict, Union
 from collections import OrderedDict
 
 import torch
-from transformers import TransfoXLConfig, ReformerModelWithLMHead
+from transformers import TransfoXLConfig, ReformerModelWithLMHead, TransfoXLLMHeadModel
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
 from transformers import Trainer
 from transformers.training_args import OptimizerNames
@@ -22,9 +22,8 @@ import musicnlp.util.train as train_util
 import musicnlp.models.models as model_util
 from musicnlp.vocab import MusicTokenizer
 from musicnlp.preprocess import get_dataset, KeySampleDataset
-from musicnlp.models import MyReformerConfig
+from musicnlp.models import MyReformerConfig, MyTransfoXLConfig
 from musicnlp.trainer import metrics
-from musicnlp import models
 
 
 def get_model_n_tokenizer(
@@ -35,7 +34,7 @@ def get_model_n_tokenizer(
     tokenizer = MusicTokenizer(precision=prec)  # needed for reformer config
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
-            'xl': (TransfoXLConfig, models.MyTransfoXLLMHeadModel),
+            'xl': (MyTransfoXLConfig, TransfoXLLMHeadModel),
             'reformer': (MyReformerConfig, ReformerModelWithLMHead)
         }
     cls_config, cls_model = get_model_n_tokenizer.d_nm2cls[model_name]
