@@ -87,33 +87,22 @@ class MyProgressCallback(TrainerCallback):
 
     def on_epoch_begin(self, args, state, control, **kwargs):
         if state.is_local_process_zero:
-            # self.training_bar = tqdm(total=state.max_steps)
             n_ep = _pretty_single('epoch', int(state.epoch+1), ref={'epoch': state.num_train_epochs})
-            # self.training_bar.set_description(f'Epoch {n_ep}')
             assert state.max_steps % state.num_train_epochs == 0
             self.step_per_epoch = state.max_steps // state.num_train_epochs
             self.training_bar = tqdm(total=self.step_per_epoch, desc=f'Epoch {n_ep}')
         self.current_step = 0
 
     def on_train_begin(self, args, state, control, **kwargs):
-        # if state.is_local_process_zero:
-        #     self.training_bar = tqdm(total=state.max_steps)
-        # self.current_step = 0
         pass
 
     def on_epoch_end(self, args, state, control, **kwargs):
         if state.is_local_process_zero:
-        #     self.training_bar.update(state.num_steps)
-        #     self.training_bar.refresh()
             self.training_bar.close()
             self.training_bar = None
 
     def on_step_end(self, args, state, control, **kwargs):
         if state.is_local_process_zero:
-            # self.training_bar.update(state.global_step - self.current_step)
-            # self.current_step = state.global_step
-            # self.training_bar.update(self.step_per_epoch - state.global_step % self.step_per_epoch)
-            # self.current_step = state.global_step % self.step_per_epoch
             self.training_bar.update(1)
 
     def on_prediction_step(self, args, state, control, eval_dataloader=None, **kwargs):
@@ -136,9 +125,6 @@ class MyProgressCallback(TrainerCallback):
 
     def on_train_end(self, args, state, control, **kwargs):
         pass
-        # if state.is_local_process_zero:
-        #     self.training_bar.close()
-        #     self.training_bar = None
 
 
 class MyTrainer(Trainer):
