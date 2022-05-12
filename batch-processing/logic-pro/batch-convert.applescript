@@ -21,16 +21,9 @@ end tell
 
 activate application "Logic Pro X"
 
-#repeat with f in songs
-#	log f
-#	set fileName to name of (info for f)
-#	log remove_extension(fileName)
-#end repeat
-
 repeat with f in songs
 	log f
 	tell application "Logic Pro X"
-		#		open file "Macintosh HD:Users:stefanh:Documents:UMich:Research:Music with NLP:datasets:LMD-cleaned_broken:Nirvana - Been a Son.mid"
 		open file f
 	end tell
 	
@@ -45,10 +38,7 @@ repeat with f in songs
 		delay 0.6 # sometimes the dialog takes longer to load
 		
 		tell window "Save MusicXML File as:"
-			#			set fnm to name of (info for f)
-			#			set fnm to remove_extension(fnm)
 			keystroke fnm
-			#			tell application "System Events" to keystroke fileText
 			delay 0.3
 			
 			keystroke tab # open `go to`
@@ -59,14 +49,12 @@ repeat with f in songs
 			key up command
 			delay 0.3
 			
-			#set filesavepath to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken"
 			keystroke dir_process
-			delay 0.3
+			delay 0.4
 			
 			keystroke return
-			delay 0.2
-			
 			click button "Save"
+			delay 0.4 # delay needed as some songs are long
 		end tell
 		
 		perform action "AXRaise" of window 1 # bring Score Editor window to front	
