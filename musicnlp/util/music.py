@@ -156,21 +156,12 @@ def convert_dataset(dataset_name: str = 'POP909'):
     elif dataset_name == 'MAESTRO':
         d_dset = sconfig(f'datasets.{dataset_name}')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
-        # ic(path_ori)
-        # ic(os.listdir(path_ori))
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
-        # ic(len(paths))
-        # with open(os_join(path_ori, 'maestro-v3.0.0.json'), 'r') as f:
-        #     meta = json.load(f)
-        # ic(len(meta), type(meta))
-        # df = pd.DataFrame(meta)
         df = pd.read_csv(os_join(path_ori, 'maestro-v3.0.0.csv'))
         assert len(paths) == len(df)
-        # ic(df)
         c_ver = defaultdict(int)
         for i, row in tqdm(df.iterrows(), total=len(df)):
             fnm_ori = os_join(path_ori, row.midi_filename)
-            # ic(fnm_ori)
             composer = row.canonical_composer.replace('/', '&')
             title = row.canonical_title.replace('/', ':')
             # wicked case in the dataset: title all the same apart from capitalization
@@ -180,9 +171,6 @@ def convert_dataset(dataset_name: str = 'POP909'):
             c_ver[fnm] += 1
             if count > 0:
                 fnm = f'{fnm}, v{count}'
-            # ic(fnm)
-            # if os.path.exists(os_join(path_exp, f'{fnm}.mid')):
-            #     raise ValueError(f'Duplicate file name: {fnm}')
             copyfile(fnm_ori, os_join(path_exp, f'{fnm}.mid'))
 
 
@@ -260,7 +248,7 @@ if __name__ == '__main__':
 
     # convert_dataset('LMD-cleaned')
     # convert_dataset('LMD')
-    convert_dataset('MAESTRO')
+    # convert_dataset('MAESTRO')
 
     # import music21 as m21
     # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
@@ -304,3 +292,34 @@ if __name__ == '__main__':
         fnms = get_cleaned_song_paths('LMD-cleaned-subset')
         ic(len(fnms), fnms[:20])
     # get_lmd_subset()
+
+    def mv_lp_not_processed():
+        """
+        Some files are not processed properly, e.g. missing xml, incorrect file name
+        Pick out those and move to a different folder to process again
+
+        See `batch-processing.logi-pro.batch-convert`
+        """
+        import shutil
+        logger = get_logger('Get not Converted Files')
+        # dnm = 'POP909, LP'
+        dnm = 'MAESTRO'
+        path_processed = os_join(u.dset_path, dnm)
+        path_to_process = f'{path_processed}, todo'
+        os.makedirs(path_to_process, exist_ok=True)
+        path_mids = sorted(glob.iglob(os_join(path_processed, '*.mid')))
+        logger.info(f'{logi(len(path_mids))} MIDI files should have been converted')
+        for path in path_mids:
+            path_xml = path.replace('.mid', '.xml')
+            if not os.path.exists(path_xml):
+                fnm = stem(path)
+                logger.info(f'{logi(fnm)} not converted, moved to TODO folder')
+                shutil.move(path, os_join(path_to_process, f'{fnm}.mid'))
+        path_xmls = sorted(glob.iglob(os_join(path_processed, '*.xml')))
+        for path in path_xmls:
+            path_mid = path.replace('.xml', '.mid')
+            if not os.path.exists(path_mid):
+                fnm = stem(path)
+                os.remove(path)
+                logger.info(f'Original MIDI for {logi(fnm)} not found, removed')
+    mv_lp_not_processed()

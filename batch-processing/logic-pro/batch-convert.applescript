@@ -1,6 +1,8 @@
-# Batch processing a folder of midi files 
+# Batch processing a folder of midi files
 # intended for a folder containing midi files only
-set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken, test/"
+# set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken, test/"
+# set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/POP909, LP, todo/"
+set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MAESTRO, todo/"
 
 # taken from https://stackoverflow.com/a/12535220/10732321
 on remove_extension(this_name)
@@ -35,13 +37,17 @@ repeat with f in songs
 		delay 0.2
 		
 		click menu item "Score as MusicXMLÉ" of menu 1 of menu item "Export" of menu 1 of menu bar item "File" of menu bar 1
-		delay 0.6 # sometimes the dialog takes longer to load
+		delay 0.9 # sometimes the dialog takes longer to load
 		
 		tell window "Save MusicXML File as:"
-			keystroke fnm
+			#			keystroke fnm
+			set the clipboard to fnm # cos keystroke doesn't work with Chinese characters 
+			key down command # pasting is also faster than typing
+			keystroke "v"
+			key up command
 			delay 0.3
 			
-			keystroke tab # open `go to`
+			keystroke tab # open `go to` to set the save path
 			key down shift
 			key down command
 			keystroke "g"
@@ -49,15 +55,20 @@ repeat with f in songs
 			key up command
 			delay 0.3
 			
-			keystroke dir_process
+			#			keystroke dir_process
+			set the clipboard to dir_process
+			key down command
+			keystroke "v"
+			key up command
 			delay 0.4
 			
 			keystroke return
 			click button "Save"
-			delay 0.4 # delay needed as some songs are long
 		end tell
+		delay 1.5 # delay needed as some songs are long
 		
-		perform action "AXRaise" of window 1 # bring Score Editor window to front	
+		perform action "AXRaise" of window 1 # bring Score Editor window to front
+		delay 0.2
 		key down command # close Score window
 		keystroke "w"
 		key up command

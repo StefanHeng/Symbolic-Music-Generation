@@ -15,6 +15,7 @@ evaluations/
 requirements, 04.08.22.txt
 **/*.pkl
 cache/
+test-lang*
 
 
 # Byte-compiled / optimized / DLL files
