@@ -185,7 +185,10 @@ class MyTrainer(Trainer):
                 d_log.update({k: f(preds, labels_) for k, f in self.train_metrics.items()})
 
             # CLM, predicting the next token given current, so shift
-            preds, labels_ = preds[:, :-1], labels_[:, 1:]
+            is_xl_output = preds.size(1) == labels_.size(1) - 1  # seems already shifted
+            if not is_xl_output:
+                preds = preds[:, :-1]
+            labels_ = labels_[:, 1:]
             msk_not_pad = labels_ != PT_LOSS_PAD  # Consider only the actual tokens for accuracy
             preds_non_pad, labels_non_pad = preds[msk_not_pad], labels_[msk_not_pad]
             matches: torch.Tensor = (preds_non_pad == labels_non_pad)

@@ -52,6 +52,8 @@ class MyReformerConfig(ReformerConfig):
             is_decoder=True,
             num_buckets=None  # have reformer decide
         ))
+    # from icecream import ic
+    # ic(presets)
 
     def __init__(self, model_size: str = 'base', tokenizer: MusicTokenizer = None, **kwargs):
         d_config = MyReformerConfig.presets[model_size]
@@ -72,7 +74,7 @@ class MyReformerConfig(ReformerConfig):
             'the product of `axial_pos_shape` must be `max_position_embeddings`'
 
     @property
-    def model_max_length(self) -> int:
+    def max_length_(self) -> int:  # max_length is taken for HF model generation
         return self.max_position_embeddings
 
     @property

@@ -299,27 +299,39 @@ if __name__ == '__main__':
         Pick out those and move to a different folder to process again
 
         See `batch-processing.logi-pro.batch-convert`
+
+        Files to process are in `todo`, move the processed ones back to default folder
+
+        After batch-convert terminates, check for the files processed in last session
         """
         import shutil
         logger = get_logger('Get not Converted Files')
         # dnm = 'POP909, LP'
-        dnm = 'MAESTRO'
+        # dnm = 'MAESTRO'
+        dnm = 'LMD/00000'
         path_processed = os_join(u.dset_path, dnm)
         path_to_process = f'{path_processed}, todo'
-        os.makedirs(path_to_process, exist_ok=True)
-        path_mids = sorted(glob.iglob(os_join(path_processed, '*.mid')))
+        os.makedirs(path_processed, exist_ok=True)
+        path_mids = sorted(glob.iglob(os_join(path_to_process, '*.mid')))
         logger.info(f'{logi(len(path_mids))} MIDI files should have been converted')
+        count = 0
         for path in path_mids:
             path_xml = path.replace('.mid', '.xml')
-            if not os.path.exists(path_xml):
+            if os.path.exists(path_xml):
                 fnm = stem(path)
-                logger.info(f'{logi(fnm)} not converted, moved to TODO folder')
-                shutil.move(path, os_join(path_to_process, f'{fnm}.mid'))
-        path_xmls = sorted(glob.iglob(os_join(path_processed, '*.xml')))
+                logger.info(f'{logi(fnm)} converted, moved to processed folder')
+                shutil.move(path, os_join(path_processed, f'{fnm}.mid'))  # move to processed folder
+                shutil.move(path_xml, os_join(path_processed, f'{fnm}.xml'))
+                count += 1
+        logger.info(f'{logi(count)} MIDIs converted in the last session')
+        count = 0
+        path_xmls = sorted(glob.iglob(os_join(path_to_process, '*.xml')))
         for path in path_xmls:
             path_mid = path.replace('.xml', '.mid')
             if not os.path.exists(path_mid):
                 fnm = stem(path)
                 os.remove(path)
                 logger.info(f'Original MIDI for {logi(fnm)} not found, removed')
+                count += 1
+        logger.info(f'{logi(count)} converted xml with unknown origin in the last session removed')
     mv_lp_not_processed()

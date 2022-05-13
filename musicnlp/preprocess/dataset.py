@@ -44,7 +44,7 @@ def get_dataset(
         if isinstance(dset, Dataset):
             dset = dset.select(range(n_sample))
         else:  # dict
-            dset = DatasetDict({k: v.select(range(n_sample)) for k, v in dset.items()})
+            dset = DatasetDict({k: v.select(range(min(n_sample, len(v)))) for k, v in dset.items()})
     if map_func is not None:
         num_proc = None
         n_cpu = os.cpu_count()
