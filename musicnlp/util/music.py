@@ -145,11 +145,10 @@ def convert_dataset(dataset_name: str = 'POP909'):
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
         n_digit = len(str(len(paths)))
         group_sz = int(1e4)
-        n_digit_group = len(str(group_sz))
         for i, p in enumerate(tqdm(paths)):
             # storing 170k songs in a single folder makes prohibitively slow FS rendering
             def num2padded(n_: int):
-                return f'{n_:0{n_digit_group}}'
+                return f'{n_:0{n_digit}}'
             i_grp = i // group_sz
             strt, end = i_grp * group_sz, min((i_grp + 1) * group_sz, len(paths))
             path = os_join(path_exp, f'{num2padded(strt)}-{num2padded(end)}')
@@ -251,7 +250,7 @@ if __name__ == '__main__':
     # check_fl_nms()
 
     # convert_dataset('LMD-cleaned')
-    convert_dataset('LMD')
+    # convert_dataset('LMD')
     # convert_dataset('MAESTRO')
 
     # import music21 as m21
@@ -312,7 +311,7 @@ if __name__ == '__main__':
         logger = get_logger('Get not Converted Files')
         # dnm = 'POP909, LP'
         # dnm = 'MAESTRO'
-        dnm = 'LMD/00000'
+        dnm = 'LMD/000000-010000'
         # dnm = 'LMD-cleaned_broken'
         path_processed = os_join(u.dset_path, dnm)
         path_to_process = f'{path_processed}, todo'
