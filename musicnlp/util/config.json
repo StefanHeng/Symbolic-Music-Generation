@@ -2,20 +2,20 @@
     "datasets": {
         "LMD": {
             "nm": "The Lakh MIDI Dataset, Full",
-            "dir_nm": "lmd_full",
+            "dir_nm": "original/lmd_full",
             "song_fmt_mid": "**/*.mid"
         },
         "LMD-matched": {
             "nm": "The Lakh MIDI Dataset, Matched",
-            "dir_nm": "Lakh-MIDI-Dataset/LMD-Matched"
+            "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Matched"
         },
         "LMD-aligned": {
             "nm": "The Lakh MIDI Dataset, Aligned",
-            "dir_nm": "Lakh-MIDI-Dataset/LMD-Aligned"
+            "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Aligned"
         },
         "LMD-cleaned": {
             "nm": "The Lakh MIDI Dataset, Cleaned",
-            "dir_nm": "Lakh-MIDI-Dataset/LMD-Cleaned",
+            "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Cleaned",
             "song_fmt_mid": "**/*.mid",
             "song_fmt_mxl": "**/*.mxl",
             "meta": {
@@ -75970,19 +75970,14 @@
                 "n_song": 10291
             }
         },
-        "midi-eg": {
-            "nm": "Some hand-selected MIDI samples",
-            "dir_nm": "MIDI-eg",
-            "song_fmt_mid": "*.mid"
-        },
         "MAESTRO": {
             "nm": "The MAESTRO Dataset v3.0.0",
-            "dir_nm": "maestro-v3.0.0",
+            "dir_nm": "original/maestro-v3.0.0",
             "song_fmt_mid": "**/*.midi"
         },
         "POP909": {
             "nm": "POP909 Dataset for Music Arrangement Generation",
-            "dir_nm": "POP909",
+            "dir_nm": "original/POP909",
             "song_fmt_mid": "*.mid",
             "song_fmt_mxl": "*.mxl",
             "meta": {
@@ -79628,6 +79623,11 @@
                 "n_artist": 462,
                 "n_song": 909
             }
+        },
+        "midi-eg": {
+            "nm": "Some hand-selected MIDI samples",
+            "dir_nm": "MIDI-eg",
+            "song_fmt_mid": "*.mid"
         },
         "mxl-eg": {
             "nm": "Some hand-selected MXL samples",

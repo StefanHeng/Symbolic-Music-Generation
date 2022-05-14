@@ -15,38 +15,38 @@ config_dict: dict = {
         # for LMD datasets, see https://colinraffel.com/projects/lmd/
         'LMD': dict(
             nm='The Lakh MIDI Dataset, Full',
-            dir_nm='lmd_full',
+            dir_nm='original/lmd_full',
             song_fmt_mid='**/*.mid',
         ),
         'LMD-matched': dict(
             nm='The Lakh MIDI Dataset, Matched',
-            dir_nm='Lakh-MIDI-Dataset/LMD-Matched'
+            dir_nm='original/Lakh-MIDI-Dataset/LMD-Matched'
         ),
         'LMD-aligned': dict(
             nm='The Lakh MIDI Dataset, Aligned',
-            dir_nm='Lakh-MIDI-Dataset/LMD-Aligned'
+            dir_nm='original/Lakh-MIDI-Dataset/LMD-Aligned'
         ),
         'LMD-cleaned': dict(
             nm='The Lakh MIDI Dataset, Cleaned',
-            dir_nm='Lakh-MIDI-Dataset/LMD-Cleaned',
+            dir_nm='original/Lakh-MIDI-Dataset/LMD-Cleaned',
             song_fmt_mid='**/*.mid',
             song_fmt_mxl='**/*.mxl'
+        ),
+        'MAESTRO': dict(
+            nm='The MAESTRO Dataset v3.0.0',
+            dir_nm='original/maestro-v3.0.0',
+            song_fmt_mid='**/*.midi',
+        ),
+        'POP909': dict(
+            nm='POP909 Dataset for Music Arrangement Generation',
+            dir_nm='original/POP909',
+            song_fmt_mid='*.mid',
+            song_fmt_mxl='*.mxl'
         ),
         'midi-eg': dict(
             nm='Some hand-selected MIDI samples',
             dir_nm='MIDI-eg',
             song_fmt_mid='*.mid'
-        ),
-        'MAESTRO': dict(
-            nm='The MAESTRO Dataset v3.0.0',
-            dir_nm='maestro-v3.0.0',
-            song_fmt_mid='**/*.midi',
-        ),
-        'POP909': dict(
-            nm='POP909 Dataset for Music Arrangement Generation',
-            dir_nm='POP909',
-            song_fmt_mid='*.mid',
-            song_fmt_mxl='*.mxl'
         ),
         'mxl-eg': dict(
             nm='Some hand-selected MXL samples',
@@ -89,7 +89,7 @@ for k in it_keys(config_dict['datasets']):    # Accommodate other OS
     k = f'{DSET_DIR}.{k}'
     val = get(config_dict, k)
     if k[k.rfind('.')+1:] == 'dir_nm':
-        set_(config_dict, k, os_join(*val.split('/')))
+        set_(config_dict, k, os_join(*val.split('/')))  # string are in macOS separator
 
 
 def get_stats(songs: List[Dict]):
@@ -104,7 +104,7 @@ def get_dataset_meta(dataset_name: str):
     dnms = ['POP909', 'LMD-cleaned']
     assert dataset_name in dnms, f'Unsupported dataset name: expect one of {logi(dnms)}, got {logi(dataset_name)}'
     if dataset_name == 'POP909':
-        path = os_join(BASE_PATH, DSET_DIR, 'POP909-Dataset', dataset_name)  # the original path
+        path = os_join(BASE_PATH, DSET_DIR, 'original/POP909-Dataset', dataset_name)  # the original path
         df = pd.read_excel(os_join(path, 'index.xlsx'))
 
         def map_single(d: Dict):
@@ -147,6 +147,7 @@ if __name__ == '__main__':
     from data_path import PROJ_DIR, PKG_NM
 
     from icecream import ic
+    ic.lineWrapWidth = 512
 
     fl_nm = 'config.json'
     ic(config_dict)

@@ -110,11 +110,11 @@ def convert_dataset(dataset_name: str = 'POP909'):
             if not hasattr(path2fnm, 'count_too_long'):
                 path2fnm.count_too_long = 0
             paths_last = p_.split(os.sep)[-2:]
-            artist, title = paths_last
-            title = title[:-4]  # remove `.mid`
-            title, v = lmd_cleaned_title2title_n_ver(title)
+            artist, title_ = paths_last
+            title_ = title_[:-4]  # remove `.mid`
+            title_, v = lmd_cleaned_title2title_n_ver(title_)
 
-            fnm_ = clean_whitespace(f'{artist} - {title}')
+            fnm_ = clean_whitespace(f'{artist} - {title_}')
             assert len(clean_whitespace(artist)) - 3 <= my_lim, \
                 f'Artist name {logi(artist)} is too long for OS file write'
             if len(fnm_) > my_lim:
@@ -148,8 +148,11 @@ def convert_dataset(dataset_name: str = 'POP909'):
         n_digit_group = len(str(group_sz))
         for i, p in enumerate(tqdm(paths)):
             # storing 170k songs in a single folder makes prohibitively slow FS rendering
-            group = i // group_sz
-            path = os_join(path_exp, f'{group:0{n_digit_group}}')
+            def num2padded(n_: int):
+                return f'{n_:0{n_digit_group}}'
+            i_grp = i // group_sz
+            strt, end = i_grp * group_sz, min((i_grp + 1) * group_sz, len(paths))
+            path = os_join(path_exp, f'{num2padded(strt)}-{num2padded(end)}')
             os.makedirs(path, exist_ok=True)
             fnm = f'{i:>0{n_digit}}.mid'
             copyfile(p, os_join(path, fnm))
@@ -157,6 +160,7 @@ def convert_dataset(dataset_name: str = 'POP909'):
         d_dset = sconfig(f'datasets.{dataset_name}')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
+        ic(len(paths))
         df = pd.read_csv(os_join(path_ori, 'maestro-v3.0.0.csv'))
         assert len(paths) == len(df)
         c_ver = defaultdict(int)
@@ -247,7 +251,7 @@ if __name__ == '__main__':
     # check_fl_nms()
 
     # convert_dataset('LMD-cleaned')
-    # convert_dataset('LMD')
+    convert_dataset('LMD')
     # convert_dataset('MAESTRO')
 
     # import music21 as m21
@@ -309,29 +313,32 @@ if __name__ == '__main__':
         # dnm = 'POP909, LP'
         # dnm = 'MAESTRO'
         dnm = 'LMD/00000'
+        # dnm = 'LMD-cleaned_broken'
         path_processed = os_join(u.dset_path, dnm)
         path_to_process = f'{path_processed}, todo'
         os.makedirs(path_processed, exist_ok=True)
         path_mids = sorted(glob.iglob(os_join(path_to_process, '*.mid')))
         logger.info(f'{logi(len(path_mids))} MIDI files should have been converted')
         count = 0
+        # output_format = 'xml'
+        output_format = 'mxl'
         for path in path_mids:
-            path_xml = path.replace('.mid', '.xml')
+            path_xml = path.replace('.mid', f'.{output_format}')
             if os.path.exists(path_xml):
                 fnm = stem(path)
                 logger.info(f'{logi(fnm)} converted, moved to processed folder')
                 shutil.move(path, os_join(path_processed, f'{fnm}.mid'))  # move to processed folder
-                shutil.move(path_xml, os_join(path_processed, f'{fnm}.xml'))
+                shutil.move(path_xml, os_join(path_processed, f'{fnm}.{output_format}'))
                 count += 1
         logger.info(f'{logi(count)} MIDIs converted in the last session')
         count = 0
-        path_xmls = sorted(glob.iglob(os_join(path_to_process, '*.xml')))
+        path_xmls = sorted(glob.iglob(os_join(path_to_process, f'*.{output_format}')))
         for path in path_xmls:
-            path_mid = path.replace('.xml', '.mid')
+            path_mid = path.replace(f'.{output_format}', '.mid')
             if not os.path.exists(path_mid):
                 fnm = stem(path)
                 os.remove(path)
                 logger.info(f'Original MIDI for {logi(fnm)} not found, removed')
                 count += 1
         logger.info(f'{logi(count)} converted xml with unknown origin in the last session removed')
-    mv_lp_not_processed()
+    # mv_lp_not_processed()

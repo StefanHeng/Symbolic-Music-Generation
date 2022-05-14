@@ -3,7 +3,8 @@
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken, test/"
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/POP909, LP, todo/"
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MAESTRO, todo/"
-set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD/00000, todo/"
+# set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD/00000, todo/"
+set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken, todo/"
 
 
 # taken from https://stackoverflow.com/a/12535220/10732321
@@ -80,7 +81,7 @@ repeat with f in songs
 		key up command
 		
 		click menu item "Close Project" of menu 1 of menu bar item "File" of menu bar 1 # close current file		
-		delay 0.1
+		delay 0.2
 		click button "Don’t Save" of window 1
 		# keystroke space
 	end tell

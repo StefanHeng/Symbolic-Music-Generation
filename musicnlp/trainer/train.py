@@ -49,14 +49,14 @@ class TrainArgs:
     model_name2preset = {
         'transf-xl': {
             'debug': dict(
-                batch_size=2,
+                batch_size=4,
                 learning_rate=3e-4,
                 weight_decay=0,
                 lr_scheduler_type=SchedulerType.CONSTANT,
                 num_train_epochs=16,
             ),
             'debug-large': dict(
-                batch_size=2,
+                batch_size=4,
                 learning_rate=3e-4,
                 weight_decay=0,
                 lr_scheduler_type=SchedulerType.CONSTANT,
@@ -111,15 +111,6 @@ class TrainArgs:
             )
         }
     }
-    # d_xl = model_name2preset['transf-xl']
-    # for k in d_xl.keys():
-    #     # `fp16` Doesn't work per `TransfoXL.forward`:
-    #     # `index_copy_(): self and source expected to have the same dtype,
-    #     # but got (self) Float and (source) Half`
-    #     d_xl[k].update(dict(fp16=False, gradient_checkpointing=False))  # Doesn't work for `TransfoXL`
-    # d_ref = model_name2preset['reformer']
-    # for k in d_ref.keys():
-    #     d_ref[k].update(dict(gradient_checkpointing=False))  # Not supported for `Reformer`
 
     def __init__(self, model_name: str, model_size: str):
         self.model_name, self.model_size = model_name, model_size
@@ -217,15 +208,18 @@ class ComputeMetrics:
 
         Will be the outputs on eval dataset, see `Trainer.compute_metrics`
         """
-        predictions, labels = eval_pred
-        predictions = predictions.argmax(axis=-1)
-        d_metric = dict(ikr=self.ikr(predictions, labels)) if self.augment_key else dict()
+        preds, labels = eval_pred
+        is_xl_output = preds.shape[1] == labels.shape[1] - 1  # seems already shifted
+        preds = preds.argmax(axis=-1)
+        d_metric = dict(ikr=self.ikr(preds, labels)) if self.augment_key else dict()
 
-        predictions, labels = predictions[:, :-1], labels[:, 1:]  # since CLM
-        labels, predictions = labels.flatten(), predictions.flatten()
+        if not is_xl_output:
+            preds = preds[:, :-1]
+        labels = labels[:, 1:]  # shift for CLM
+        labels, preds = labels.flatten(), preds.flatten()
         msk_non_pad = (labels != train_util.PT_LOSS_PAD)
-        labels, predictions = labels[msk_non_pad], predictions[msk_non_pad]
-        d_metric['ntp_acc'] = self.acc.compute(predictions=predictions, references=labels)['accuracy']
+        labels, preds = labels[msk_non_pad], preds[msk_non_pad]
+        d_metric['ntp_acc'] = self.acc.compute(predictions=preds, references=labels)['accuracy']
         return d_metric
 
 
@@ -350,7 +344,7 @@ if __name__ == '__main__':
         md_nm = 'transf-xl'
         transformers.set_seed(seed)
         md_sz = 'debug'
-        n = 256
+        n = 8
 
         dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
                   'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
@@ -361,6 +355,7 @@ if __name__ == '__main__':
             model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n,
             train_args=train_args, my_train_args=my_train_args
         )
-        ic(type(mdl))
-        trainer.train()
+        # ignore so that `None` don't get detached
+        ignore_keys_for_eval = ['losses', 'mems', 'hidden_states', 'attentions']
+        trainer.train(ignore_keys_for_eval=ignore_keys_for_eval)
     train_xl()
