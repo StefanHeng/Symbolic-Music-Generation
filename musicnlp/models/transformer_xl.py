@@ -23,7 +23,7 @@ class MyTransfoXLConfig(TransfoXLConfig):
         'base': dict(d_model=768, n_head=12, n_layer=12),
         'large': dict(d_model=1024, n_head=16, n_layer=18)
     }
-    size2max_length = dict(debug=256, tiny=512, small=1024, base=2048, large=2048)
+    size2max_length = dict(debug=64, tiny=512, small=1024, base=2048, large=2048)
 
     for k, d_config in presets.items():
         hd_sz, n_head = d_config['d_model'], d_config['n_head']
@@ -32,8 +32,9 @@ class MyTransfoXLConfig(TransfoXLConfig):
             d_embed=hd_sz,  # saves a projection layer when hidden size is embedding size
             d_inner=hd_sz * 4,
             d_head=hd_sz // n_head,  # ensure dim_head x #head == hidden size
-            mem_len=512,  # TODO: if i understand correctly this is segment length?
-            div_val=1  # intended that adaptive softmax is not needed, given the small Music vocab size
+            mem_len=32 if 'debug' in k else 512,  # TODO: if i understand correctly this is segment length?
+            # intended that adaptive softmax is effectively not needed, given the small Music vocab size
+            div_val=1, cutoffs=[]
         ))
         # Don't understand `proj_share_all_but_first` and it's not used in modeling
         # `adaptive` is not really configurable
@@ -127,7 +128,11 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel, MusicTransformerMixin):
         if labels is None:
             prediction_scores = softmax_output.view(bsz, tgt_len, -1)
         else:
-            prediction_scores = softmax_output.view(bsz, tgt_len-1, -1)  # TODO: the output size is different somehow?
+            # Run softmax again to get vocabulary logits
+            # Not most efficient but less error-prone
+            with torch.no_grad():
+                sm_out = self.crit(pred_hid)
+            prediction_scores = sm_out.view(bsz, tgt_len, -1)
         # ========================== End of modified ==========================
 
         if labels is not None:

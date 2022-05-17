@@ -16,7 +16,7 @@ from musicnlp.util.data_path import BASE_PATH, DSET_DIR
 
 
 def get_processed_path():
-    return os_join(BASE_PATH, DSET_DIR, sconfig('datasets.my.dir_nm'))
+    return os_join(u.dset_path, sconfig('datasets.my.dir_nm'))
 
 
 def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False):
@@ -311,7 +311,7 @@ if __name__ == '__main__':
         logger = get_logger('Get not Converted Files')
         # dnm = 'POP909, LP'
         # dnm = 'MAESTRO'
-        dnm = 'LMD/000000-010000'
+        dnm = 'LMD/020000-030000'
         # dnm = 'LMD-cleaned_broken'
         path_processed = os_join(u.dset_path, dnm)
         path_to_process = f'{path_processed}, todo'
@@ -340,4 +340,4 @@ if __name__ == '__main__':
                 logger.info(f'Original MIDI for {logi(fnm)} not found, removed')
                 count += 1
         logger.info(f'{logi(count)} converted xml with unknown origin in the last session removed')
-    # mv_lp_not_processed()
+    mv_lp_not_processed()

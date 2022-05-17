@@ -49,11 +49,11 @@ class TrainArgs:
     model_name2preset = {
         'transf-xl': {
             'debug': dict(
-                batch_size=4,
-                learning_rate=3e-4,
+                batch_size=2,
+                learning_rate=1e-3,
                 weight_decay=0,
                 lr_scheduler_type=SchedulerType.CONSTANT,
-                num_train_epochs=16,
+                num_train_epochs=64,
             ),
             'debug-large': dict(
                 batch_size=4,
@@ -344,12 +344,12 @@ if __name__ == '__main__':
         md_nm = 'transf-xl'
         transformers.set_seed(seed)
         md_sz = 'debug'
-        n = 8
+        n = 4
 
         dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
                   'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
         dnms = [dnm_909]
-        train_args = None
+        train_args = dict(learning_rate=3e-3)
         my_train_args = None
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n,

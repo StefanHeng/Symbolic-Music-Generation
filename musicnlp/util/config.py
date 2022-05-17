@@ -56,7 +56,7 @@ config_dict: dict = {
         ),
         'my': dict(
             nm='Music with NLP, Project output',
-            dir_nm='MNLP-Combined'
+            dir_nm='processed'
         )
     },
     'random-seed': 77,

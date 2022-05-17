@@ -22,7 +22,7 @@ def get_dataset(
     If multiple dataset names are given, the datasets are stacked
     """
     def load_single(dnm: str) -> Union[Dataset, DatasetDict]:
-        return datasets.load_from_disk(os_join(music_util.get_processed_path(), 'processed', dnm))
+        return datasets.load_from_disk(os_join(music_util.get_processed_path(), 'hf', dnm))
     if isinstance(dataset_names, (list, tuple)):
         dset = [load_single(dnm) for dnm in dataset_names]
         if isinstance(dset[0], DatasetDict):

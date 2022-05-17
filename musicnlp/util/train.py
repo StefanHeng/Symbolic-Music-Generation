@@ -4,53 +4,17 @@ import math
 from os.path import join as os_join
 from typing import Dict, Callable
 import datetime
-import collections
 from collections import OrderedDict
 
 import pandas as pd
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
-from tqdm import tqdm
 
 from stefutil import *
 
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
-
-
-def _pretty_single(key: str, val, ref: Dict = None):
-    if key in ['step', 'epoch']:
-        k = next(iter(k for k in ref.keys() if key in k))
-        lim = ref[k]
-        assert isinstance(val, (int, float))
-        len_lim = len(str(lim))
-        if isinstance(val, int):
-            s_val = f'{val:>{len_lim}}'
-        else:
-            fmt = f'%{len_lim+4}.3f'
-            s_val = fmt % val
-        return f'{s_val}/{lim}'  # Pad integer
-    elif 'loss' in key:
-        return f'{round(val, 4):7.4f}'
-    elif any(k in key for k in ('acc', 'recall', 'auc', 'ikr')):  # custom in-key-ratio metric
-        def _single(v):
-            return f'{round(v * 100, 2):6.2f}' if v is not None else '-'
-
-        if isinstance(val, list):
-            return [_single(v) for v in val]
-        elif isinstance(val, dict):
-            return {k: _single(v) for k, v in val.items()}
-        else:
-            return _single(val)
-    elif 'learning_rate' in key or 'lr' in key:
-        return f'{round(val, 7):.3e}'
-    else:
-        return val
-
-
-def pretty_log_dict(d_log: Dict, ref: Dict = None):
-    return {k: _pretty_single(k, v, ref=ref) for k, v in d_log.items()}
 
 
 def meta2fnm_meta(meta: Dict) -> Dict:
@@ -62,69 +26,6 @@ def meta2fnm_meta(meta: Dict) -> Dict:
             'parameter_count': 'n_param'
         }
     return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
-
-
-class MyProgressCallback(TrainerCallback):
-    """
-    My modification to the HF progress callback
-
-    1. Effectively remove all logging, keep only the progress bar w.r.t. this callback
-    2. Train tqdm for each epoch only
-    3. Option to disable progress bar for evaluation
-
-    Expects to start from whole epochs
-    """
-
-    def __init__(self, train_only: bool = False):
-        """
-        :param train_only: If true, disable progress bar for evaluation
-        """
-        self.training_bar = None
-        self.prediction_bar = None
-        self.train_only = train_only
-        self.step_per_epoch = None
-        self.current_step = None
-
-    def on_epoch_begin(self, args, state, control, **kwargs):
-        if state.is_local_process_zero:
-            n_ep = _pretty_single('epoch', int(state.epoch+1), ref={'epoch': state.num_train_epochs})
-            assert state.max_steps % state.num_train_epochs == 0
-            self.step_per_epoch = state.max_steps // state.num_train_epochs
-            self.training_bar = tqdm(total=self.step_per_epoch, desc=f'Epoch {n_ep}')
-        self.current_step = 0
-
-    def on_train_begin(self, args, state, control, **kwargs):
-        pass
-
-    def on_epoch_end(self, args, state, control, **kwargs):
-        if state.is_local_process_zero:
-            self.training_bar.close()
-            self.training_bar = None
-
-    def on_step_end(self, args, state, control, **kwargs):
-        if state.is_local_process_zero:
-            self.training_bar.update(1)
-
-    def on_prediction_step(self, args, state, control, eval_dataloader=None, **kwargs):
-        if not self.train_only:
-            if state.is_local_process_zero and isinstance(eval_dataloader.dataset, collections.abc.Sized):
-                if self.prediction_bar is None:
-                    self.prediction_bar = tqdm(total=len(eval_dataloader), leave=self.training_bar is None)
-                self.prediction_bar.update(1)
-
-    def on_evaluate(self, args, state, control, **kwargs):
-        if not self.train_only:
-            if state.is_local_process_zero:
-                if self.prediction_bar is not None:
-                    self.prediction_bar.close()
-                self.prediction_bar = None
-
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        if state.is_local_process_zero and self.training_bar is not None:
-            _ = logs.pop("total_flos", None)
-
-    def on_train_end(self, args, state, control, **kwargs):
-        pass
 
 
 class MyTrainer(Trainer):
@@ -248,6 +149,7 @@ class ColoredPrinterCallback(TrainerCallback):
         self.name = f'{name} Training'
         self.logger, self.logger_fl, self.writer = None, None, None
         self.report2tb = report2tb
+        self.prettier = MlPrettier(ref=self.train_meta, metric_keys=['acc', 'recall', 'auc', 'ikr'])
 
     def on_train_begin(self, args: TrainingArguments, state, control, **kwargs):
         self.mode = 'train'
@@ -293,7 +195,7 @@ class ColoredPrinterCallback(TrainerCallback):
                     self.writer.add_scalar('Train/learning_rate', lr, step)
 
                     # out_console, out_write = self.out_dict2str(logs, return_wo_color=True)  # TODO: didn't test
-                    logs = pretty_log_dict(logs, ref=self.train_meta)
+                    logs = self.prettier(logs)
                     self.logger.info(log_dict(logs))
                     self.logger_fl.info(log_dict_nc(logs))
                 else:
@@ -328,7 +230,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
     def _log(self, d_log, mode='train', to_console=True):
         ca(log_mode=mode)
         d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log.items()}
-        d_log_write = pretty_log_dict(d_log_write, ref=self.train_meta)
+        d_log_write = self.prettier(d_log_write)
         if to_console:
             self.logger.info(log_dict(d_log_write))
         self.logger_fl.info(log_dict_nc(d_log_write))
@@ -432,7 +334,7 @@ class ClmAccCallback(ColoredPrinterCallback):
                 del self.out_dict_tr[self.k_acc]
                 self.out_dict_tr['learning_rate'] = logs['learning_rate']
                 self.out_dict_tr['train_loss'] = logs['loss']
-                self.logger.info(pretty_log_dict(self.out_dict_tr))
+                self.logger.info(self.prettier(self.out_dict_tr))
                 self.out_dict_tr = None  # Rest for next global step
             elif any('runtime' in k for k in logs.keys()):
                 self.logger.info(log_dict(logs) if isinstance(logs, dict) else logs)
