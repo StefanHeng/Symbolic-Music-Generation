@@ -205,9 +205,12 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
     return [d[min(d)] for d in d_song2fnms.values()]
 
 
-def get_cleaned_song_paths(dataset_name: str, fmt='mid') -> List[str]:
+def get_cleaned_song_paths(dataset_name: str, fmt='mxl') -> List[str]:
     """
     :return: List of music file paths in my cleaned file system structure
+
+    xml converted from MIDI files
+        Default conversion with MuseScore, fallback to Logic Pro
     """
     lmd_c_s = 'LMD-cleaned-subset'
     dataset_names = list(sconfig('datasets').keys()) + [lmd_c_s]
@@ -216,36 +219,36 @@ def get_cleaned_song_paths(dataset_name: str, fmt='mid') -> List[str]:
     fmts = ['mid', 'mxl']
     assert fmt in fmts, f'Invalid format: {logi(fmt)}, expected one of {logi(fmts)}'
 
-    path = os_join(BASE_PATH, DSET_DIR)
-
     if dataset_name == lmd_c_s:
         fnms = get_lmd_cleaned_subset_fnms()
         dir_nm = 'LMD-cleaned_valid'
 
         if fmt == 'mid':
             def map_fnm(fnm: str) -> str:
-                return os_join(path, dir_nm, fnm)
+                return os_join(u.dset_path, dir_nm, fnm)
         else:  # 'mxl'
             def map_fnm(fnm: str) -> str:
-                return os_join(path, dir_nm, f'{stem(fnm)}.{fmt}')
+                return os_join(u.dset_path, dir_nm, f'{stem(fnm)}.{fmt}')
         return [map_fnm(fnm) for fnm in fnms]
     else:
-        d_dset = sconfig(f'datasets.{dataset_name}')
+        d_dset = sconfig(f'datasets.{dataset_name}.converted')
         dir_nm = d_dset['dir_nm']
-        path = os_join(path, dir_nm, d_dset[f'song_fmt_{fmt}'])
+        dir_nm = f'{dir_nm}, MS'  # for now just assume MS only, TODO: add fallback MXLs
+        path = os_join(u.dset_path, dir_nm, d_dset[f'song_fmt_{fmt}'])
         return sorted(glob.iglob(path, recursive=True))
 
 
 if __name__ == '__main__':
     from icecream import ic
 
-    ic.lineWrapWidth = 150
+    ic.lineWrapWidth = 512
 
     def check_fl_nms():
-        dnm = 'POP909'
-        fnms = get_cleaned_song_paths(dnm)
+        # dnm = 'POP909'
+        dnm = 'MAESTRO'
+        fnms = get_cleaned_song_paths(dnm, fmt='mid')
         ic(len(fnms), fnms[:20])
-        fnms = get_cleaned_song_paths(dnm, fmt='song_fmt_exp')
+        fnms = get_cleaned_song_paths(dnm, fmt='mxl')
         ic(len(fnms), fnms[:20])
     # check_fl_nms()
 

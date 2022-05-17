@@ -15,33 +15,57 @@ config_dict: dict = {
         # for LMD datasets, see https://colinraffel.com/projects/lmd/
         'LMD': dict(
             nm='The Lakh MIDI Dataset, Full',
-            dir_nm='original/lmd_full',
-            song_fmt_mid='**/*.mid',
+            original=dict(
+                dir_nm='original/lmd_full',
+                song_fmt_mid='**/*.mid',
+            ),
+            converted=dict(
+                song_fmt_mid='**/*.mid',
+                song_fmt_mxl='**/*.mxl',
+                dir_nm='converted/LMD'
+            )
         ),
         'LMD-matched': dict(
             nm='The Lakh MIDI Dataset, Matched',
-            dir_nm='original/Lakh-MIDI-Dataset/LMD-Matched'
+            original=dict(
+                dir_nm='original/Lakh-MIDI-Dataset/LMD-Matched'
+            )
         ),
         'LMD-aligned': dict(
             nm='The Lakh MIDI Dataset, Aligned',
-            dir_nm='original/Lakh-MIDI-Dataset/LMD-Aligned'
+            original=dict(
+                dir_nm='original/Lakh-MIDI-Dataset/LMD-Aligned'
+            )
         ),
         'LMD-cleaned': dict(
             nm='The Lakh MIDI Dataset, Cleaned',
-            dir_nm='original/Lakh-MIDI-Dataset/LMD-Cleaned',
-            song_fmt_mid='**/*.mid',
-            song_fmt_mxl='**/*.mxl'
+            original=dict(
+                dir_nm='original/Lakh-MIDI-Dataset/LMD-Cleaned',
+                song_fmt_mid='**/*.mid',
+            ),
+            converted=dict(song_fmt_mid='**.mid', song_fmt_mxl='*.mxl')
         ),
         'MAESTRO': dict(
             nm='The MAESTRO Dataset v3.0.0',
-            dir_nm='original/maestro-v3.0.0',
-            song_fmt_mid='**/*.midi',
+            original=dict(
+                dir_nm='original/maestro-v3.0.0',
+                song_fmt_mid='**/*.midi',
+            ),
+            converted=dict(
+                song_fmt_mid='*.mid',
+                song_fmt_mxl='*.mxl',
+                dir_nm='converted/MAESTRO'
+            )
         ),
         'POP909': dict(
             nm='POP909 Dataset for Music Arrangement Generation',
             dir_nm='original/POP909',
-            song_fmt_mid='*.mid',
-            song_fmt_mxl='*.mxl'
+            original=dict(song_fmt_mid='*.mid'),
+            converted=dict(
+                song_fmt_mid='*.mid',
+                song_fmt_mxl='*.mxl',
+                dir_nm='converted/POP909'
+            )
         ),
         'midi-eg': dict(
             nm='Some hand-selected MIDI samples',
@@ -111,7 +135,7 @@ def get_dataset_meta(dataset_name: str):
             return dict(artist=d['artist'], title=d['name'])
         songs = [map_single(d) for d in df.T.to_dict().values()]
     else:
-        d_dset = config_dict['datasets'][dataset_name]
+        d_dset = get(config_dict, f'datasets.{dataset_name}.original')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
 
         pattern_title = re.compile(r'^(?P<title>.*)\.(?P<version>[1-9]\d*).mid$')  # <title>.<version>.mid
@@ -139,7 +163,7 @@ def get_dataset_meta(dataset_name: str):
 
 
 for dnm in ['POP909', 'LMD-cleaned']:
-    config_dict['datasets'][dnm]['meta'] = get_dataset_meta(dnm)
+    set_(config_dict, f'datasets.{dnm}.meta', get_dataset_meta(dnm))
 
 
 if __name__ == '__main__':

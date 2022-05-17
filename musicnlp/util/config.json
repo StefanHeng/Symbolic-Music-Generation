@@ -2,22 +2,38 @@
     "datasets": {
         "LMD": {
             "nm": "The Lakh MIDI Dataset, Full",
-            "dir_nm": "original/lmd_full",
-            "song_fmt_mid": "**/*.mid"
+            "original": {
+                "dir_nm": "original/lmd_full",
+                "song_fmt_mid": "**/*.mid"
+            },
+            "converted": {
+                "song_fmt_mid": "**/*.mid",
+                "song_fmt_mxl": "**/*.mxl",
+                "dir_nm": "converted/LMD"
+            }
         },
         "LMD-matched": {
             "nm": "The Lakh MIDI Dataset, Matched",
-            "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Matched"
+            "original": {
+                "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Matched"
+            }
         },
         "LMD-aligned": {
             "nm": "The Lakh MIDI Dataset, Aligned",
-            "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Aligned"
+            "original": {
+                "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Aligned"
+            }
         },
         "LMD-cleaned": {
             "nm": "The Lakh MIDI Dataset, Cleaned",
-            "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Cleaned",
-            "song_fmt_mid": "**/*.mid",
-            "song_fmt_mxl": "**/*.mxl",
+            "original": {
+                "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Cleaned",
+                "song_fmt_mid": "**/*.mid"
+            },
+            "converted": {
+                "song_fmt_mid": "**.mid",
+                "song_fmt_mxl": "*.mxl"
+            },
             "meta": {
                 "songs": [
                     {
@@ -75972,14 +75988,27 @@
         },
         "MAESTRO": {
             "nm": "The MAESTRO Dataset v3.0.0",
-            "dir_nm": "original/maestro-v3.0.0",
-            "song_fmt_mid": "**/*.midi"
+            "original": {
+                "dir_nm": "original/maestro-v3.0.0",
+                "song_fmt_mid": "**/*.midi"
+            },
+            "converted": {
+                "song_fmt_mid": "*.mid",
+                "song_fmt_mxl": "*.mxl",
+                "dir_nm": "converted/MAESTRO"
+            }
         },
         "POP909": {
             "nm": "POP909 Dataset for Music Arrangement Generation",
             "dir_nm": "original/POP909",
-            "song_fmt_mid": "*.mid",
-            "song_fmt_mxl": "*.mxl",
+            "original": {
+                "song_fmt_mid": "*.mid"
+            },
+            "converted": {
+                "song_fmt_mid": "*.mid",
+                "song_fmt_mxl": "*.mxl",
+                "dir_nm": "converted/POP909"
+            },
             "meta": {
                 "songs": [
                     {
