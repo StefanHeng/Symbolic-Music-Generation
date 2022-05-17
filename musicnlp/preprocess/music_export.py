@@ -81,8 +81,8 @@ class MusicExport:
             filenames: Union[List[str], str],
             output_filename=f'{PKG_NM} music extraction', path_out=music_util.get_processed_path(),
             extractor_args: Dict = None, exp='str_join',
-            parallel: Union[bool, int] = False, with_tqdm: bool = False, save_each: bool = False,
-            parallel_mode: str = 'thread'
+            save_each: bool = False, with_tqdm: Union[bool, Dict] = False,
+            parallel: Union[bool, int] = False, parallel_mode: str = 'thread'
     ):
         """
         Writes encoded files to JSON file
@@ -100,6 +100,9 @@ class MusicExport:
         """
         strt = datetime.datetime.now()
         ca.check_mismatch('Music Extraction Export Type', exp, accepted_values=['str', 'id', 'str_join'])
+        ca.check_mismatch('Music Extraction Parallel Mode', parallel_mode, accepted_values=[
+            'thread', 'process', 'thread-in-process'
+        ])
         if save_each:
             path_out = os_join(path_out, 'intermediate')
         os.makedirs(path_out, exist_ok=True)
@@ -115,32 +118,36 @@ class MusicExport:
         if isinstance(filenames, str):  # Dataset name provided
             dnm_ = filenames
             filenames = music_util.get_cleaned_song_paths(filenames, fmt='mxl')
-            filenames = filenames[:64]  # Debugging
-        self.logger.info(f'Extracting {logi(len(filenames))} songs with {log_dict(dict(save_each=save_each))}... ')
+            filenames = filenames[:256]  # TODO: Debugging
+        d_log = dict(save_each=save_each, with_tqdm=with_tqdm, parallel=parallel, parallel_mode=parallel_mode)
+        n_song = len(filenames)
+        self.logger.info(f'Extracting {logi(n_song)} songs with {log_dict(d_log)}... ')
 
         pbar = None
 
-        with_tqdm = False  # TODO: debugging
-        parallel_mode = 'process'
-        log2console = not with_tqdm or parallel_mode == 'process'
-        ic(log2console)
+        log2console = not with_tqdm  # TODO: not working when `mode` is `process`
         export_single = SingleExport(path_out, save_each, self.logger, extractor, exp, log2console=log2console)
 
-        # TODO: debugging
-        # import concurrent.futures
-        # with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-        #     ret = executor.map(export_single, filenames)
-        # ic(list(ret))
-        # exit(1)
-
         if parallel:
-            if with_tqdm:
-                pbar = tqdm(total=len(filenames), desc='Extracting music', unit='song')
-
             bsz = (isinstance(parallel, int) and parallel) or 32
-            lst_out = batched_conc_map(export_single, filenames, batch_size=bsz, with_tqdm=pbar, mode=parallel_mode)
-            if pbar:
-                pbar.close()
+            tqdm_args = dict(desc='Extracting music', total=n_song)
+            if parallel_mode == 'thread':  # able to log on element-level
+                if with_tqdm:
+                    tqdm_args.update(dict(unit='songs'))
+                    pbar = tqdm(**tqdm_args)
+                lst_out = batched_conc_map(export_single, filenames, batch_size=bsz, with_tqdm=pbar, mode=parallel_mode)
+                if pbar:
+                    pbar.close()
+            elif parallel_mode == 'process':  # only able to log at batch-level
+                if with_tqdm:
+                    if isinstance(with_tqdm, dict):
+                        tqdm_args.update(with_tqdm)
+                    tqdm_args.update(dict(unit='ba', chunksize=bsz))
+                # don't have to go through my own batched map
+                lst_out = conc_map(export_single, filenames, with_tqdm=tqdm_args, mode=parallel_mode)
+            else:
+                assert parallel_mode == 'thread-in-process'
+                # TODO
         else:
             lst_out = []
             gen = enumerate(filenames)
@@ -251,7 +258,10 @@ if __name__ == '__main__':
         th = 1  # The most aggressive, for the best speed, not sure about losing quality
         dnm = 'POP909'
         # dnm = 'LMD-cleaned-subset'
-        me(dnm, parallel=8, extractor_args=dict(greedy_tuplet_pitch_threshold=th), with_tqdm=True)
+        # pl_md = 'thread'
+        pl_md = 'process'
+        # pl_md = 'thread-in-process'
+        me(dnm, parallel=8, extractor_args=dict(greedy_tuplet_pitch_threshold=th), with_tqdm=True, parallel_mode=pl_md)
     check_lower_threshold()
 
     def export2json():

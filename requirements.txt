@@ -68,7 +68,7 @@ scipy==1.8.0
 seaborn==0.11.2
 six @ file:///tmp/build/80754af9/six_1644875935023/work
 sklearn==0.0
-stefutils==0.4.2
+stefutils==0.6.0
 sty==1.0.4
 tensorboard==2.9.0
 tensorboard-data-server==0.6.1
