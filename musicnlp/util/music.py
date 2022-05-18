@@ -314,7 +314,7 @@ if __name__ == '__main__':
         logger = get_logger('Get not Converted Files')
         # dnm = 'POP909, LP'
         # dnm = 'MAESTRO'
-        dnm = 'LMD/020000-030000'
+        dnm = 'LMD/030000-040000'
         # dnm = 'LMD-cleaned_broken'
         path_processed = os_join(u.dset_path, dnm)
         path_to_process = f'{path_processed}, todo'

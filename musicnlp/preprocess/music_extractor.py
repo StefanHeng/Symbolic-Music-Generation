@@ -233,10 +233,10 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # if number == 408:
-        #     ic('in expand_bar', number)
+        # if number == 47:
+        #     # ic('in expand_bar', number)
         #     bar.show()
-        # if number > 408:
+        # if number > 47:
         #     exit(1)
         while elm is not None:
             full_nm = getattr(elm, 'fullName', None)
@@ -254,6 +254,8 @@ class MusicExtractor:
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
                         break
+                if number == 47:
+                    ic(elms_tup)
 
                 # Consecutive tuplet notes => (potentially multiple) groups
                 it_tup = iter(elms_tup)
@@ -367,6 +369,8 @@ class MusicExtractor:
                                 offset += n.duration.quarterLength
                             assert notes_not_overlapping(fixed_tup)  # sanity check
                             lst[idx_tup] = tuple(fixed_tup)  # Override the original tuplet
+                    if number == 47:
+                        ic(lst[idx_tup_strt:])
                     for tup in lst[idx_tup_strt:]:
                         n_rest = sum(isinstance(n, Rest) for n in tup)
                         if n_rest != 0:
@@ -405,6 +409,8 @@ class MusicExtractor:
                                     tups_new.append(notes_max_pitch)
                                 else:
                                     tups_new.extend(list(itertools.product(*opns)))
+                            else:  # keep the tuplet group
+                                tups_new.append(tup)
                         if has_chord:  # Replace prior triplet groups
                             lst = lst[:idx_tup_strt] + tups_new
                 elm = elm_
@@ -414,7 +420,7 @@ class MusicExtractor:
             elif isinstance(elm, Chord):
                 if keep_chord:
                     lst.append(elm)
-                else:
+                else:  # TODO: to make things faster, can I keep just the top note?
                     # notes = deepcopy(elm.notes)  # TODO: do I need this?
                     notes = list(elm.notes)
                     for n in notes:
@@ -436,6 +442,13 @@ class MusicExtractor:
                 all(not isinstance(n_, Chord) for n_ in n) if isinstance(n, tuple) else (not isinstance(n, Chord))
                 for n in lst
             )
+        if number == 47:
+            ic(lst, list(bar))
+            notes = list(bar)[1:]
+            # for n in notes:
+            #     strt, end = get_offset(n), get_end_qlen(n)
+            #     ic(n, n.fullName, strt, end)
+            # exit(1)
         return lst
 
     def __call__(
@@ -559,8 +572,13 @@ class MusicExtractor:
                         ic(n)
                         exit(1)
                 groups[n_.offset].append(n)
-            # if number == 408:
-            #     ic(groups)
+            if number == 47:
+                ic(groups)
+                for k, notes in groups.items():
+                    ic(k)
+                    for n in notes:
+                        strt, end = get_offset(n), get_end_qlen(n)
+                        ic(n, strt, end)
 
             def sort_groups():
                 for offset, ns in groups.items():  # sort by pitch then by duration, in-place for speed
@@ -726,12 +744,18 @@ class MusicExtractor:
                     n.duration.consolidate()
 
         for i, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
-            if not is_valid_bar_notes(notes, time_sig):
-                ic(i, notes)
-                for n in notes:
-                    qlen = n.duration.quarterLength
-                    ic(n.fullName, n.offset, qlen)
-                exit(1)
+            # if not is_valid_bar_notes(notes, time_sig):
+                # ic(i, notes, time_sig)
+                # for n in flatten_notes(notes):
+                #     qlen = n.duration.quarterLength
+                #     ic(n.fullName, n.offset, qlen)
+            dur_bar = time_sig.numerator / time_sig.denominator * 4
+            # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
+            pos_dur = is_notes_pos_duration(notes)
+            no_ovl = notes_not_overlapping(notes)
+            match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
+                                         abs_tol=1e-6)
+            ic(pos_dur, no_ovl, match_bar_dur, dur_bar)
         for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
             assert is_valid_bar_notes(notes, time_sig)
         # lst_notes = lst_notes[:22]  # breaks when including bar index 21
@@ -898,11 +922,13 @@ if __name__ == '__main__':
     # fix_find_song_with_error()
 
     def check_edge_case():
-        dnm = 'POP909'
+        # dnm = 'POP909'
+        dnm = 'MAESTRO'
         path = u.dset_path
         dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
         dir_nm = f'{dir_nm}, MS'
-        fnm = '汪峰 - 春天里.mxl'
+        # fnm = '汪峰 - 春天里.mxl'
+        fnm = 'Franz Schubert - Impromptu Op. 142 No. 3 In B-flat Major.mxl'
         path = os_join(path, dir_nm, fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))

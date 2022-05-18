@@ -115,8 +115,6 @@ class MusicExport:
         ca.check_mismatch('Music Extraction Parallel Mode', parallel_mode, accepted_values=[
             'thread', 'process', 'thread-in-process'
         ])
-        if save_each:
-            path_out = os_join(path_out, 'intermediate')
         os.makedirs(path_out, exist_ok=True)
 
         ext_args = dict(  # `save_memory` so that warnings are for each song
@@ -281,12 +279,19 @@ if __name__ == '__main__':
     # check_lower_threshold()
 
     def export2json():
-        dnm = 'POP909'
+        # dnm = 'POP909'
+        dnm = 'MAESTRO'
+        path_out = os_join(music_util.get_processed_path(), 'intermediate', f'{now(for_path=True)}_{dnm}')
         # dnm = 'LMD-cleaned-subset'
         # me(dnm)
-        pl_md = 'thread-in-process'
+        # pl_md = 'thread'
+        pl_md = 'process'  # seems to be the fastest
+        # pl_md = 'thread-in-process'  # ~20% slower
         args = dict(greedy_tuplet_pitch_threshold=1)
-        me(dnm, parallel=32, extractor_args=args, with_tqdm=True, save_each=True, parallel_mode=pl_md)
+        me(
+            dnm, extractor_args=args, path_out=path_out, save_each=True,
+            parallel=32, with_tqdm=True, parallel_mode=pl_md
+        )
     export2json()
 
     def export2json_save_each(

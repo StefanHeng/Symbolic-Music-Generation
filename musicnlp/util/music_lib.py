@@ -45,6 +45,7 @@ __all__ = [
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
     'is_drum_track',
     'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes', 'fill_with_rest',
+    'get_offset', 'get_end_qlen',
     'notes_have_gap', 'notes_not_overlapping', 'is_notes_pos_duration', 'is_valid_bar_notes',
     'get_score_skeleton', 'insert_ts_n_tp_to_part', 'make_score'
 ]
@@ -367,22 +368,22 @@ def unroll_notes(notes: List[ExtNote]) -> List[ExtNote]:
         return notes
 
 
-def _get_end_qlen(note: ExtNote):
+def get_end_qlen(note: ExtNote):
     """
     :return: Ending time in quarter length
     """
     if isinstance(note, tuple):
-        return _get_end_qlen(note[-1])
+        return get_end_qlen(note[-1])
     else:
         return note.offset + note.duration.quarterLength
 
 
-def _get_offset(note: ExtNote) -> float:
+def get_offset(note: ExtNote) -> float:
     """
     :return: Starting time in quarter length
     """
     if isinstance(note, tuple):
-        return _get_offset(note[0])
+        return get_offset(note[0])
     else:
         return note.offset
 
@@ -402,10 +403,10 @@ def fill_with_rest(notes: List[ExtNote]) -> Tuple[List[ExtNote], List[Tuple[floa
     it = iter(notes)
     note = next(it, None)
     lst, meta = [note] if note else [], []
-    last_end = _get_end_qlen(note)
+    last_end = get_end_qlen(note)
     note = next(it, None)
     while note is not None:
-        new_begin = _get_offset(note)
+        new_begin = get_offset(note)
         assert last_end <= new_begin  # verify input
         if last_end < new_begin:  # Found gap
             strt, end = last_end, new_begin
@@ -415,7 +416,7 @@ def fill_with_rest(notes: List[ExtNote]) -> Tuple[List[ExtNote], List[Tuple[floa
             lst.append(r)
         lst.append(note)
 
-        last_end = _get_end_qlen(note)  # prep for next iter
+        last_end = get_end_qlen(note)  # prep for next iter
         note = next(it, None)
     return lst, meta
 
@@ -423,15 +424,15 @@ def fill_with_rest(notes: List[ExtNote]) -> Tuple[List[ExtNote], List[Tuple[floa
 def notes_have_gap(notes: List[ExtNote]) -> bool:
     it = flatten_notes(notes)
     note = next(it, None)
-    last_end = _get_end_qlen(note)
+    last_end = get_end_qlen(note)
     note = next(it, None)
     while note is not None:
-        new_begin = _get_offset(note)
+        new_begin = get_offset(note)
         diff = new_begin - last_end
         assert diff >= 0  # verify no overlap
         if diff - eps > 0:
             return True
-        last_end = _get_end_qlen(note)
+        last_end = get_end_qlen(note)
         note = next(it, None)
     return False
 
@@ -442,13 +443,13 @@ def notes_not_overlapping(notes: Iterable[ExtNote]) -> bool:
     """
     notes = flatten_notes(notes)
     note = next(notes, None)
-    end = _get_end_qlen(note)
+    end = get_end_qlen(note)
     note = next(notes, None)
     while note is not None:
         # Current note should begin, after the previous one ends
         # Since numeric representation of one-third durations, aka tuplets
         if (end-eps) <= note.offset:
-            end = _get_end_qlen(note)
+            end = get_end_qlen(note)
             note = next(notes, None)
         else:
             return False
