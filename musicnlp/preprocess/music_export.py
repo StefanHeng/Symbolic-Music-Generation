@@ -128,7 +128,7 @@ class MusicExport:
         if isinstance(filenames, str):  # Dataset name provided
             dnm_ = filenames
             filenames = music_util.get_cleaned_song_paths(filenames, fmt='mxl')
-            filenames = filenames[:16]  # TODO: Debugging
+            # filenames = filenames[:16]  # TODO: Debugging
         d_log = dict(save_each=save_each, with_tqdm=with_tqdm, parallel=parallel, parallel_mode=parallel_mode)
         n_song = len(filenames)
         self.logger.info(f'Extracting {logi(n_song)} songs with {log_dict(d_log)}... ')
@@ -262,7 +262,7 @@ if __name__ == '__main__':
         # me(dnm, parallel=False)
         me(dnm, parallel=False, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
     # check_sequential()
-    profile_runtime(check_sequential)
+    # profile_runtime(check_sequential)
 
     def check_parallel():
         me('LMD-cleaned-subset', parallel=3)
@@ -278,6 +278,16 @@ if __name__ == '__main__':
         pl_md = 'thread-in-process'
         me(dnm, parallel=8, extractor_args=dict(greedy_tuplet_pitch_threshold=th), with_tqdm=True, parallel_mode=pl_md)
     # check_lower_threshold()
+
+    def check_export_json_error():
+        dnm = 'MAESTRO'
+        dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
+        dir_nm = f'{dir_nm}, MS'
+        # fnm = 'Franz Liszt - Après Une Lecture De Dante: Fantasia Quasi Sonata, S.161, No. 7.mxl'
+        fnm = 'Johann Sebastian Bach - Prelude And Fugue In E Major, Wtc I, Bwv 854.mxl'
+        path = os_join(u.dset_path, dir_nm, fnm)
+        me([path], extractor_args=dict(greedy_tuplet_pitch_threshold=1))
+    check_export_json_error()
 
     def export2json():
         # dnm = 'POP909'

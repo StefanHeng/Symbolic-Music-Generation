@@ -46,7 +46,7 @@ __all__ = [
     'is_drum_track',
     'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes', 'fill_with_rest',
     'get_offset', 'get_end_qlen',
-    'notes_have_gap', 'notes_not_overlapping', 'is_notes_pos_duration', 'is_valid_bar_notes',
+    'notes_have_gap', 'notes_overlapping', 'is_notes_pos_duration', 'is_valid_bar_notes',
     'get_score_skeleton', 'insert_ts_n_tp_to_part', 'make_score'
 ]
 
@@ -62,7 +62,7 @@ ExtNote = Union[Note, Rest, Chord, Tuple[Union[Note, Rest]]]
 SNote = Union[Note, Rest]  # Single note
 Dur = Union[float, Fraction]
 TsTup = Tuple[int, int]
-eps = 1e-6  # for music21 duration equality comparison
+eps = 1e-8  # for music21 duration equality comparison
 
 
 TupletNameMeta = namedtuple('TupletNameMeta', field_names=['tuplet_string', 'n_note'])
@@ -348,7 +348,7 @@ def unroll_notes(notes: List[ExtNote]) -> List[ExtNote]:
 
     .. note:: Original notes unmodified
     """
-    if notes_not_overlapping(notes):
+    if not notes_overlapping(notes):
         return notes
     else:
         notes_ = list(flatten_notes(notes))
@@ -391,18 +391,25 @@ def get_offset(note: ExtNote) -> float:
         return note.offset
 
 
-def fill_with_rest(notes: Iterable[ExtNote]) -> Tuple[List[ExtNote], List[Tuple[float, float]]]:
+def _serialize(num: Union[Fraction, float]) -> Union[str, float]:
+    return f'{num.numerator}/{num.denominator}' if isinstance(num, Fraction) else num
+
+
+def fill_with_rest(
+        notes: Iterable[ExtNote], serializable: bool = True
+) -> Tuple[List[ExtNote], List[Tuple[float, float]]]:
     """
     Fill the missing time with rests
 
     :param notes: List of notes in non-overlapping sequential order
         Intended for filling quantized notes during music extraction
             This process is already part of `notes2quantized_notes`
+    :param serializable: If True, `Fraction`s in unfilled ranges will be converted to string
+        Intended for json output
     :return: 2 tuple of (notes with rests added, list of 2-tuple of (start, end) of missing time)
 
     .. note:: Tuplet group is treated as a whole
     """
-
     it = iter(notes)
     note = next(it, None)
     lst, meta = [note] if note else [], []
@@ -413,10 +420,12 @@ def fill_with_rest(notes: Iterable[ExtNote]) -> Tuple[List[ExtNote], List[Tuple[
         assert last_end <= new_begin  # verify input
         if last_end < new_begin:  # Found gap
             strt, end = last_end, new_begin
-            meta.append((strt, end))
             r = Rest(duration=Duration(quarterLength=end-strt))
             r.offset = strt
             lst.append(r)
+            if serializable:
+                strt, end = _serialize(strt), _serialize(end)
+            meta.append((strt, end))
         lst.append(note)
 
         last_end = get_end_qlen(note)  # prep for next iter
@@ -424,7 +433,7 @@ def fill_with_rest(notes: Iterable[ExtNote]) -> Tuple[List[ExtNote], List[Tuple[
     return lst, meta
 
 
-def notes_have_gap(notes: Iterable[ExtNote]) -> bool:
+def notes_have_gap(notes: Iterable[ExtNote], enforce_no_overlap: bool = True) -> bool:
     it = flatten_notes(notes)
     note = next(it, None)
     last_end = get_end_qlen(note)
@@ -432,7 +441,8 @@ def notes_have_gap(notes: Iterable[ExtNote]) -> bool:
     while note is not None:
         new_begin = get_offset(note)
         diff = new_begin - last_end
-        assert diff >= 0  # verify no overlap
+        if enforce_no_overlap and diff+eps < 0:
+            raise ValueError(f'Notes overlap: {note}')
         if diff - eps > 0:
             return True
         last_end = get_end_qlen(note)
@@ -440,9 +450,9 @@ def notes_have_gap(notes: Iterable[ExtNote]) -> bool:
     return False
 
 
-def notes_not_overlapping(notes: Iterable[ExtNote]) -> bool:
+def notes_overlapping(notes: Iterable[ExtNote]) -> bool:
     """
-    :return True if notes don't overlap, given the start time and duration
+    :return True if notes overlap, given the start time and duration
     """
     notes = flatten_notes(notes)
     note = next(notes, None)
@@ -455,8 +465,8 @@ def notes_not_overlapping(notes: Iterable[ExtNote]) -> bool:
             end = get_end_qlen(note)
             note = next(notes, None)
         else:
-            return False
-    return True
+            return True
+    return False
 
 
 def is_notes_pos_duration(notes: Iterable[ExtNote]) -> bool:
@@ -467,7 +477,7 @@ def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature) -> boo
     dur_bar = time_sig.numerator / time_sig.denominator * 4
     # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
     pos_dur = is_notes_pos_duration(notes)
-    no_ovl = notes_not_overlapping(notes)
+    no_ovl = not notes_overlapping(notes)
     have_gap = notes_have_gap(notes)
     match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=1e-6)
     return pos_dur and no_ovl and (not have_gap) and match_bar_dur

@@ -394,7 +394,7 @@ class MxlMelodyExtractor:
                 assert not bar.hasVoices()
                 notes = bar.notes  # TODO: include rest
                 assert notes.isSorted
-                assert notes_not_overlapping(notes)
+                assert notes_overlapping(notes)
 
                 def chord2note(c):
                     return max(c.notes, key=lambda n_: n_.pitch.frequency)

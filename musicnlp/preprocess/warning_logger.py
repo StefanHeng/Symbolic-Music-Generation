@@ -18,9 +18,11 @@ class WarnLog:
     """
     MultTempo, MultTimeSig = 'Multiple Tempos', 'Multiple Time Signatures'
     MissTempo = 'Missing Tempo'
-    InvTupSz, TupNoteOvl = 'Invalid Tuplet Size', 'Tuplet Notes Overlap'
+    InvTupSz = 'Invalid Tuplet Size'
+    TupNoteOvlOut, TupNoteOvlIn = 'Output Tuplet Notes Overlap', 'Input Tuplet Notes Overlap'
     # InvTupNt = 'Invalid Tuplet Notes'
     InvTupDur, InvTupDurSv = 'Invalid Tuplet Durations', 'Invalid Tuplet Durations, Severe'
+    LowTupDur = 'Tuplet Group Duration Too Low'
     RestInTup = 'Rest in Tuplet'
     HighPchOvl, HighPchOvlTup = 'Higher Pitch Overlap', 'Higher Pitch Overlap with Triplet'
     LowPchMakeup, LowPchMakeupRmv = 'Lower Pitch Makeup', 'Lower Pitch Makeup Removed'
@@ -28,6 +30,7 @@ class WarnLog:
     UncomTempo = 'Uncommon Mean Tempo'
     NoteNotQuant, TupNoteQuant = 'Notes Beyond Quantization', 'Tuplet Notes Quantizable'
     InvBarDur = 'Invalid Bar Notes Duration'
+    TupNoteGap = 'Gap Observed in Consecutive Tuplets'
     BarNoteGap = 'Gap in extracted Bar Notes'
     ExcecTupNote = 'Excessive Tuplet Chord Notes'
     EmptyStrt, EmptyEnd = 'Beginning Empty Bars', 'Ending Empty Bars'
@@ -40,12 +43,15 @@ class WarnLog:
         LowPchMakeup, LowPchMakeupRmv,
         InvTupSz,
         InvTupDur, InvTupDurSv,
+        LowTupDur,
         # InvTupNt,
         RestInTup,
         ExcecTupNote,
         TupNoteQuant,
+        TupNoteGap,
         NoteNotQuant,
-        TupNoteOvl,
+        TupNoteOvlIn,
+        TupNoteOvlOut,
         InvBarDur,
         BarNoteGap
     ]
@@ -64,12 +70,15 @@ class WarnLog:
         LowPchMakeupRmv: 6,
         InvTupSz: 6,
         InvTupDur: 6,
+        LowTupDur: 6,
         InvTupDurSv: 8,
         RestInTup: 8,
         ExcecTupNote: 8,
         TupNoteQuant: 8,
+        TupNoteGap: 8,
+        TupNoteOvlIn: 8,
         NoteNotQuant: 10,
-        TupNoteOvl: 12,
+        TupNoteOvlOut: 12,
         InvBarDur: 12,
         BarNoteGap: 16
     }
@@ -133,11 +142,20 @@ class WarnLog:
                   'by higher pitch note at bar#{bar_num} - makeup note removed'
         elif warn_nm == WarnLog.InvBarDur:
             msg = '{warn_name}: Note duration don\'t add up to bar max duration at bar#{bar_num}'
+        elif warn_nm == WarnLog.LowTupDur:
+            msg = '{warn_name}: Total Duration for tuplet group too small for quantization in bar#{bar_num}: ' \
+                  'time_sig: {time_sig}, precision {precision}, tuplet note ranges {filled_ranges}'
+        elif warn_nm == WarnLog.TupNoteGap:
+            msg = '{warn_name}: Gap in time with no notes observed in tuplet group in bar#{bar_num}: ' \
+                  'time_sig: {time_sig}, tuplet note ranges {filled_ranges}'
         elif warn_nm == WarnLog.BarNoteGap:
             msg = '{warn_name}: Slots with no extracted note found in bar#{bar_num}: ' \
                   'time_sig: {time_sig}, precision {precision}, unfilled ranges {unfilled_ranges}'
-        elif warn_nm == WarnLog.TupNoteOvl:
-            msg = '{warn_name}: Notes inside tuplet group are overlapping at bar#{bar_num} ' \
+        elif warn_nm == WarnLog.TupNoteOvlIn:
+            msg = '{warn_name}: Notes inside tuplet group from score are overlapping at bar#{bar_num}: ' \
+                  'tuplet note ranges {filled_ranges}'
+        elif warn_nm == WarnLog.TupNoteOvlOut:
+            msg = '{warn_name}: Notes inside tuplet group extracted are overlapping at bar#{bar_num} ' \
                   '- Note durations will be equally distributed'
         elif warn_nm == WarnLog.NoteNotQuant:
             msg = '{warn_name}: Note durations smaller than quantized slot at bar#{bar_num} ' \
@@ -175,17 +193,22 @@ class WarnLog:
         elif nm in [
             # WarnLog.InvTupNt,
             WarnLog.InvTupDur, WarnLog.InvTupDurSv,
-            WarnLog.NoteNotQuant, WarnLog.TupNoteQuant, WarnLog.TupNoteOvl,
+            WarnLog.NoteNotQuant, WarnLog.TupNoteQuant, WarnLog.TupNoteOvlOut,
             WarnLog.InvBarDur
         ]:
             assert all(k in args for k in ['bar_num', 'offsets', 'durations'])
             if nm == WarnLog.InvBarDur:
                 assert 'time_sig' in args
+        elif nm == WarnLog.LowTupDur:
+            assert all(k in args for k in ['bar_num', 'time_sig', 'precision', 'filled_ranges'])
+        elif nm == WarnLog.TupNoteOvlIn:
+            assert all(k in args for k in ['bar_num', 'filled_ranges'])
+        elif nm == WarnLog.TupNoteGap:
+            assert all(k in args for k in ['bar_num', 'time_sig', 'filled_ranges'])
         elif nm == WarnLog.BarNoteGap:
             assert all(k in args for k in ['bar_num', 'time_sig', 'precision', 'unfilled_ranges'])
         elif nm == WarnLog.RestInTup:
             assert all(k in args for k in ['bar_num', 'n_rest', 'n_note'])
-
         elif nm in [WarnLog.HighPchOvl, WarnLog.HighPchOvlTup, WarnLog.LowPchMakeup, WarnLog.LowPchMakeupRmv]:
             assert 'bar_num' in args
         elif nm == WarnLog.UncomTimeSig:

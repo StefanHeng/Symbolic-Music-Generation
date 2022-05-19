@@ -172,6 +172,7 @@ class MusicExtractor:
             ]
             idxs_ends = [(idxs[0], idxs[-1]) for idxs in missing_idxs]
             starts_n_spans = [(i_strt*dur_slot, (i_end-i_strt+1) * dur_slot) for i_strt, i_end in idxs_ends]
+            # This will definitely not produce `Fraction`s, which is problematic for json output, see `music_export`
 
             self.log_warn(dict(
                 warn_name=WarnLog.BarNoteGap, bar_num=number, time_sig=(time_sig.numerator, time_sig.denominator),
@@ -209,7 +210,7 @@ class MusicExtractor:
         #         qLen = n.duration.quarterLength
         #         ic(n, n.offset, qLen)
         #     # ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
-        assert notes_not_overlapping(notes_out)  # Sanity check
+        assert not notes_overlapping(notes_out)  # Sanity check
         assert sum(note2dur(n) for n in notes_out) == dur_bar
         return notes_out
 
@@ -229,17 +230,21 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # if number == 104:
-        #     # ic('in expand_bar', number)
-        #     bar.show()
-        # if number > 104:
+        if number == 36:
+            ic('in expand_bar', number, len(bar))
+            # notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
+            # for n in notes:
+            #     strt, end = get_offset(n), get_end_qlen(n)
+            #     ic(n, n.fullName, strt, end)
+            # bar.show()
+        # if number > 26:
         #     exit(1)
         while elm is not None:
-            # full_nm = getattr(elm, 'fullName', None)
             # this is the bottleneck; just care about duration; Explicitly ignore voice
             full_nm = not isinstance(elm, Voice) and getattr(elm.duration, 'fullName', None)
             if full_nm and tuplet_postfix in full_nm:
                 tup_str, n_tup = fullname2tuplet_meta(full_nm)
+                n_ignored, tup_ignored = 0, False  # for sanity check, see below (`LowTupDur`)
 
                 elms_tup: List[Union[Rest, Note, Chord]] = [elm]
                 elm_ = next(it, None)
@@ -247,12 +252,26 @@ class MusicExtractor:
                     # For poor transcription quality, skip over non-note elements in the middle
                     if isinstance(elm_, (m21.clef.Clef, MetronomeMark, m21.bar.Barline)):
                         elm_ = next(it, None)
-                    # elif tup_str in elm_.fullName:
                     elif tup_str in elm_.duration.fullName:  # Look for all elements of the same `n_tup`
                         elms_tup.append(elm_)
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
                         break
+                for n in elms_tup:
+                    strt, end = get_offset(n), get_end_qlen(n)
+                    ic(n, n.fullName, strt, end)
+
+                def get_filled_ranges():  # cache
+                    if not hasattr(get_filled_ranges, 'filled_ranges'):
+                        get_filled_ranges.filled_ranges = [(get_offset(n), get_end_qlen(n)) for n in elms_tup]
+                    return get_filled_ranges.filled_ranges
+                if notes_overlapping(elms_tup):
+                    self.log_warn(dict(warn_name=WarnLog.TupNoteOvlIn, bar_num=number, filled_ranges=get_filled_ranges()))
+                if notes_have_gap(elms_tup, enforce_no_overlap=False):
+                    self.log_warn(dict(
+                        warn_name=WarnLog.TupNoteGap, bar_num=number,
+                        time_sig=(time_sig.numerator, time_sig.denominator), filled_ranges=get_filled_ranges()
+                    ))
 
                 # Consecutive tuplet notes => (potentially multiple) groups
                 it_tup = iter(elms_tup)
@@ -300,6 +319,7 @@ class MusicExtractor:
                             assert not is_8th(dur)  # Add such tuplet notes anyway, set a valid quantized length
                             warn_nm = WarnLog.InvTupDur
                             offsets, durs = notes2offset_duration(elms_tup[idx_next_strt:])
+                            curr_ignored = False
                             if not self.dur_within_prec(dur):  # Enforce it by changing the durations
                                 warn_nm = WarnLog.InvTupDurSv
 
@@ -310,26 +330,37 @@ class MusicExtractor:
                                     round_by_factor(dur, 2**-self.prec), time_sig.numerator/time_sig.denominator*4
                                 )
                                 n_tup_last = len(elms_tup[idx_next_strt:])
-                                dur_ea = dur / n_tup_last
-                                strt = elms_tup[idx_next_strt].offset
-                                for i in range(idx_next_strt, idx_next_strt+n_tup_last):
-                                    elms_tup[i].offset = strt
-                                    dur_ = m21.duration.Duration(quarterLength=dur_ea)
-                                    elms_tup[i].duration = dur_
-                                    if isinstance(elms_tup[i], Chord):
-                                        cd = elms_tup[i]
-                                        for i_n in range(len(cd.notes)):  # Broadcast duration to notes inside
-                                            elms_tup[i].notes[i_n].duration = dur_
-                                    strt += dur_ea
-                            lst.append(tuple(elms_tup[idx_next_strt:]))
-                            tup_added = True
+                                if dur > 0:
+                                    dur_ea = dur / n_tup_last
+                                    strt = elms_tup[idx_next_strt].offset
+                                    for i in range(idx_next_strt, idx_next_strt+n_tup_last):
+                                        elms_tup[i].offset = strt
+                                        dur_ = m21.duration.Duration(quarterLength=dur_ea)
+                                        elms_tup[i].duration = dur_
+                                        if isinstance(elms_tup[i], Chord):
+                                            cd = elms_tup[i]
+                                            for i_n in range(len(cd.notes)):  # Broadcast duration to notes inside
+                                                elms_tup[i].notes[i_n].duration = dur_
+                                        strt += dur_ea
+                                else:  # total duration for the group is way too small, ignore
+                                    n_ignored += n_tup_last
+                                    tup_ignored = curr_ignored = True
+                                    self.log_warn(dict(
+                                        warn_name=WarnLog.LowTupDur, bar_num=number,
+                                        time_sig=(time_sig.numerator, time_sig.denominator),
+                                        precision=self.prec,
+                                        filled_ranges=get_filled_ranges()
+                                    ))
+                            if not curr_ignored:
+                                lst.append(tuple(elms_tup[idx_next_strt:]))
+                                tup_added = True
                             self.log_warn(dict(warn_name=warn_nm, bar_num=number, offsets=offsets, durations=durs))
                     idx += 1
                     e_tup = next(it_tup, None)
                 # All triple notes with the same `n_tup` are added
-                assert tup_added
-                if not is_single_tup:
-                    assert sum(len(tup) for tup in lst[idx_tup_strt:]) == len(elms_tup)
+                assert tup_added or tup_ignored
+                if not is_single_tup:  # sanity check all notes are processed
+                    assert sum(len(tup) for tup in lst[idx_tup_strt:]) + n_ignored == len(elms_tup)
 
                     for tup in lst[idx_tup_strt:]:
                         ln = len(tup)
@@ -339,10 +370,10 @@ class MusicExtractor:
                     # Enforce no overlap in each triplet group
                     for idx_tup, tup in enumerate(lst[idx_tup_strt:], start=idx_tup_strt):
                         tup: tuple[Union[Note, Rest]]
-                        if not notes_not_overlapping(tup):
+                        if notes_overlapping(tup):
                             offsets, durs = notes2offset_duration(tup)
                             self.log_warn(dict(
-                                warn_name=WarnLog.TupNoteOvl, bar_num=number, offsets=offsets, durations=durs
+                                warn_name=WarnLog.TupNoteOvlOut, bar_num=number, offsets=offsets, durations=durs
                             ))
                             # A really severe case, should rarely happen
                             # TODO: how about just remove this group?
@@ -364,7 +395,7 @@ class MusicExtractor:
                                 n.offset = offset
                                 fixed_tup.append(n)
                                 offset += n.duration.quarterLength
-                            assert notes_not_overlapping(fixed_tup)  # sanity check
+                            assert not notes_overlapping(fixed_tup)  # sanity check
                             lst[idx_tup] = tuple(fixed_tup)  # Override the original tuplet
                     for tup in lst[idx_tup_strt:]:
                         n_rest = sum(isinstance(n, Rest) for n in tup)
@@ -430,6 +461,11 @@ class MusicExtractor:
                     print('unexpected type')
                     exit(1)
             elm = next(it, None)
+        if not is_notes_pos_duration(lst):
+            ic(type(bar))
+            ic(lst, list(bar))
+            # bar.show()
+        assert is_notes_pos_duration(lst)
         if bar.hasVoices():  # Join all voices to notes
             lst.extend(chain_its(self.expand_bar(v, time_sig, number=number) for v in bar.voices))
         if not keep_chord:  # sanity check
@@ -547,7 +583,7 @@ class MusicExtractor:
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
-            # ic(i_bar)
+            ic(i_bar)
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
@@ -556,8 +592,13 @@ class MusicExtractor:
             for n in notes:
                 n_ = n[0] if isinstance(n, tuple) else n
                 groups[n_.offset].append(n)
-            # if number == 104:
-            #     ic(groups)
+            if number == 26:
+                ic(groups)
+                for k, notes in groups.items():
+                    for n in notes:
+                        strt, end = get_offset(n), get_end_qlen(n)
+                        ic(n, strt, end)
+                        ic(note2pitch(n))
 
             def sort_groups():
                 for offset, ns in groups.items():  # sort by pitch then by duration, in-place for speed
@@ -658,7 +699,7 @@ class MusicExtractor:
                 self.log_warn(dict(  # can be due to removing lower-pitched tuplets
                     warn_name=WarnLog.InvBarDur, bar_num=number, offsets=offsets, durations=durs, time_sig=time_sig
                 ))
-            if not notes_not_overlapping(notes_out):
+            if notes_overlapping(notes_out):
                 # Convert tuplet to single note by duration, pitch doesn't matter, prep for overlap check
                 def tup2note(t: tuple[Note]):
                     note = Note()
@@ -667,12 +708,12 @@ class MusicExtractor:
                     note.duration = Duration(quarterLength=q_len_max)
                     return note
                 notes_out_ = [tup2note(n) if isinstance(n, tuple) else n for n in notes_out]  # Temporary, for checking
-                assert notes_not_overlapping(notes_out_)  # The source of overlapping should be inside tuplet
+                assert not notes_overlapping(notes_out_)  # The source of overlapping should be inside tuplet
                 for tup__ in notes_out:
-                    if isinstance(tup__, tuple) and not notes_not_overlapping(tup__):
+                    if isinstance(tup__, tuple) and notes_overlapping(tup__):
                         offsets, durs = notes2offset_duration(tup__)
                         self.log_warn(dict(
-                            warn_name=WarnLog.TupNoteOvl, bar_num=number, offsets=offsets, durations=durs
+                            warn_name=WarnLog.TupNoteOvlOut, bar_num=number, offsets=offsets, durations=durs
                         ))
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
 
@@ -722,6 +763,17 @@ class MusicExtractor:
                 if not isinstance(n, tuple):  # ignore tuplet durations as `consolidate` doesn't consider tuplets
                     # Merges complex durations into one for MXL output
                     n.duration.consolidate()
+        # for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):  # Final check before output
+        #     if i_bar == 172:
+        #         ic(i_bar)
+        #         for n in notes:
+        #             strt, end = get_offset(n), get_end_qlen(n)
+        #             ic(n, strt, end)
+        #         no_ovl = notes_not_overlapping(notes)
+        #         ic(no_ovl)
+        #         have_gap = notes_have_gap(notes)
+        #         ic(have_gap)
+            # exit(1)
         for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
             assert is_valid_bar_notes(notes, time_sig)
         if exp == 'mxl':  # TODO: didn't test
@@ -887,7 +939,9 @@ if __name__ == '__main__':
         dir_nm = f'{dir_nm}, MS'
         # fnm = '汪峰 - 春天里.mxl'
         # fnm = 'Franz Schubert - Impromptu Op. 142 No. 3 In B-flat Major.mxl'
-        fnm = 'Alban Berg - Sonata Op. 1, v2.mxl'
+        # fnm = 'Alban Berg - Sonata Op. 1, v2.mxl'
+        # fnm = 'Franz Liszt - Tarantelle Di Bravura, S. 386.mxl'
+        fnm = 'Johann Sebastian Bach - Prelude And Fugue In E Major, Wtc I, Bwv 854.mxl'
         path = os_join(u.dset_path, dir_nm, fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
