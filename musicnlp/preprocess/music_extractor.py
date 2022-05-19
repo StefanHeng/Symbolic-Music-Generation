@@ -3,7 +3,6 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 
 See `melody_extractor` for the old version.
 """
-import os
 import math
 import datetime
 import itertools
@@ -127,7 +126,7 @@ class MusicExtractor:
 
         Expect tuplets to be fully quantized before call - intended for triplets to be untouched after call
         """
-        # ic('in quantize', number)
+        ic('in quantize', number)
         dur_slot = 4 * 2**-self.prec  # In quarter length
         dur_bar = (time_sig.numerator/time_sig.denominator*4)
         n_slots = dur_bar / dur_slot
@@ -182,6 +181,8 @@ class MusicExtractor:
         offset = 0
         notes_out = []
         for i, n in compress(idxs_note):
+            if number == 965:
+                ic(i, n)
             if i is None:  # In case note missing, fill with Rest
                 note_dummy = Rest(duration=m21.duration.Duration(quarterLength=n * dur_slot))
                 note_dummy.offset = offset
@@ -205,9 +206,10 @@ class MusicExtractor:
                     notes_out.append(nt)
                 offset += note2dur(nt)
 
-        # if number in [23, 61]:
-        #     # ic(notes)
-        #     ic(notes_out)
+        if number == 965:
+            ic(notes)
+            ic(notes_out)
+            # exit(1)
         #     # for n in flatten_notes(notes):
         #     for n in flatten_notes(notes_out):
         #         qLen = n.duration.quarterLength
@@ -254,8 +256,6 @@ class MusicExtractor:
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
                         break
-                if number == 47:
-                    ic(elms_tup)
 
                 # Consecutive tuplet notes => (potentially multiple) groups
                 it_tup = iter(elms_tup)
@@ -369,8 +369,6 @@ class MusicExtractor:
                                 offset += n.duration.quarterLength
                             assert notes_not_overlapping(fixed_tup)  # sanity check
                             lst[idx_tup] = tuple(fixed_tup)  # Override the original tuplet
-                    if number == 47:
-                        ic(lst[idx_tup_strt:])
                     for tup in lst[idx_tup_strt:]:
                         n_rest = sum(isinstance(n, Rest) for n in tup)
                         if n_rest != 0:
@@ -442,13 +440,6 @@ class MusicExtractor:
                 all(not isinstance(n_, Chord) for n_ in n) if isinstance(n, tuple) else (not isinstance(n, Chord))
                 for n in lst
             )
-        if number == 47:
-            ic(lst, list(bar))
-            notes = list(bar)[1:]
-            # for n in notes:
-            #     strt, end = get_offset(n), get_end_qlen(n)
-            #     ic(n, n.fullName, strt, end)
-            # exit(1)
         return lst
 
     def __call__(
@@ -572,13 +563,8 @@ class MusicExtractor:
                         ic(n)
                         exit(1)
                 groups[n_.offset].append(n)
-            if number == 47:
+            if number == 965:
                 ic(groups)
-                for k, notes in groups.items():
-                    ic(k)
-                    for n in notes:
-                        strt, end = get_offset(n), get_end_qlen(n)
-                        ic(n, strt, end)
 
             def sort_groups():
                 for offset, ns in groups.items():  # sort by pitch then by duration, in-place for speed
@@ -663,8 +649,8 @@ class MusicExtractor:
 
             with RecurseLimit(2**14):
                 notes_out = get_notes_out()
-            # if number == 22:
-            #     ic(notes_out)
+            if number == 965:
+                ic(notes_out)
             #     assert is_notes_pos_duration(notes_out)
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
@@ -696,16 +682,29 @@ class MusicExtractor:
                             warn_name=WarnLog.TupNoteOvl, bar_num=number, offsets=offsets, durations=durs
                         ))
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
+        ic('after clean tup', lst_notes[965])
 
         # Enforce quantization
         dur_slot = 4 / 2**self.prec  # quarterLength by quantization precision
 
+        def val_within_prec(val: float) -> bool:
+            return (val / dur_slot).is_integer()
+
         def note_within_prec(note):
-            return (note2dur(note) / dur_slot).is_integer()
+            return val_within_prec(note2dur(note)) and val_within_prec(get_offset(note))
 
         def notes_within_prec(notes_):
             return all(note_within_prec(n__) for n__ in notes_)
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
+            if i_bar == 965:
+                ic(notes_within_prec(notes))
+                for n in notes:
+                    strt, end = get_offset(n), get_end_qlen(n)
+                    ic(n, strt, end)
+                ic(dur_slot)
+                for n in notes:
+                    ic((note2dur(n) / dur_slot))
+                # exit(1)
             if not notes_within_prec(notes):
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
                 # if i_bar == 61:
@@ -720,6 +719,8 @@ class MusicExtractor:
                     precision=self.prec, unfilled_ranges=unfilled_ranges
                 ))
         # Now, triplets fixed to equal duration by `notes2quantized_notes`
+        ic('after quant', lst_notes[965])
+        # exit(1)
 
         def trip_n_quant2notes(notes_: List[Union[Rest, Note, tuple[Note]]], num_bar: int):
             lst = []
@@ -737,34 +738,20 @@ class MusicExtractor:
             return lst
         lst_notes = [trip_n_quant2notes(notes, num_bar=i) for i, notes in enumerate(lst_notes)]
 
+        for i, notes in enumerate(lst_notes):
+            if i == 965:
+                ic(notes)
+                for n in notes:
+                    if not isinstance(n, tuple):
+                        ic(n.duration)
+                # exit(1)
         for notes in lst_notes:
             for n in notes:
                 if not isinstance(n, tuple):  # ignore tuplet durations as `consolidate` doesn't consider tuplets
                     # Merges complex durations into one for MXL output
                     n.duration.consolidate()
-
-        for i, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
-            # if not is_valid_bar_notes(notes, time_sig):
-                # ic(i, notes, time_sig)
-                # for n in flatten_notes(notes):
-                #     qlen = n.duration.quarterLength
-                #     ic(n.fullName, n.offset, qlen)
-            dur_bar = time_sig.numerator / time_sig.denominator * 4
-            # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
-            pos_dur = is_notes_pos_duration(notes)
-            no_ovl = notes_not_overlapping(notes)
-            match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
-                                         abs_tol=1e-6)
-            ic(pos_dur, no_ovl, match_bar_dur, dur_bar)
         for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
             assert is_valid_bar_notes(notes, time_sig)
-        # lst_notes = lst_notes[:22]  # breaks when including bar index 21
-        # bar_wicked = lst_notes[21]
-        # ic(lst_notes[20], lst_notes[21])
-        # ic(bar_wicked, len(bar_wicked))
-        # for e in bar_wicked:
-        #     name, qLen = e.fullName, e.duration.quarterLength
-        #     ic(name, e.offset, qLen, e.duration)
         if exp == 'mxl':  # TODO: didn't test
             scr_out = make_score(
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
@@ -933,29 +920,42 @@ if __name__ == '__main__':
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
         me(path, exp='mxl')
-    check_edge_case()
+    # check_edge_case()
 
     def check_edge_case_batched():
+        dnm = 'MAESTRO'
+        path = u.dset_path
+        dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
+        dir_nm = f'{dir_nm}, MS'
         # broken_files = ['Grandi - Dolcissimo amore', 'John Elton - Burn Down the Mission']
         # broken_files = ['Battiato - Segnali di vita', 'Billy Joel - The River of Dreams']
         # broken_files = ['Pooh - Anni senza fiato', 'Nirvana - Been a Son']
-        broken_files = [
-            'Daniele - Io vivo come te',
-            'Drupi - Voglio una donna',
-            'Flamingos - I Only Have Eyes for You',
-            'Ozzy Osbourne - Mr. Crowley',
-            'Ricky Martin - Jaleo (Spanglish)'
-        ]
+        # broken_files = [
+        #     'Daniele - Io vivo come te',
+        #     'Drupi - Voglio una donna',
+        #     'Flamingos - I Only Have Eyes for You',
+        #     'Ozzy Osbourne - Mr. Crowley',
+        #     'Ricky Martin - Jaleo (Spanglish)'
+        # ]
         # broken_fl = broken_files[0]
         # broken_fl = 'U2 - The Electric Co.'
+        broken_files = [
+            'Franz Schubert - Sonata In A Major, D. 959 (complete), v2.mxl',
+            'Franz Liszt - Après Une Lecture De Dante: Fantasia Quasi Sonata, S.161, No. 7.mxl',
+            'Franz Liszt - Transcendental Etude No. 10 In F Minor.mxl',
+            'Franz Liszt - Grandes Études De Paganini, No. 3 "la Campanella.mxl',
+            'Claude Debussy - Pour Le Piano (complete).mxl',
+            'Franz Schubert - Sonata In B-flat Major, D960, v9.mxl',
+            'Frédéric Chopin - Etude Op. 10 No. 4 In C-sharp Minor.mxl'
+        ]
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
         for broken_fl in broken_files:
-            path = f'/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/{broken_fl}.mxl'
+            path = os_join(path, dir_nm, broken_fl)
             ic(path)
             print(me(path, exp='visualize'))
             # me(path, exp='mxl')
-    # check_edge_case_batched()
+    check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """

@@ -388,7 +388,7 @@ def get_offset(note: ExtNote) -> float:
         return note.offset
 
 
-def fill_with_rest(notes: List[ExtNote]) -> Tuple[List[ExtNote], List[Tuple[float, float]]]:
+def fill_with_rest(notes: Iterable[ExtNote]) -> Tuple[List[ExtNote], List[Tuple[float, float]]]:
     """
     Fill the missing time with rests
 
@@ -421,7 +421,7 @@ def fill_with_rest(notes: List[ExtNote]) -> Tuple[List[ExtNote], List[Tuple[floa
     return lst, meta
 
 
-def notes_have_gap(notes: List[ExtNote]) -> bool:
+def notes_have_gap(notes: Iterable[ExtNote]) -> bool:
     it = flatten_notes(notes)
     note = next(it, None)
     last_end = get_end_qlen(note)
@@ -465,8 +465,9 @@ def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature) -> boo
     # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
     pos_dur = is_notes_pos_duration(notes)
     no_ovl = notes_not_overlapping(notes)
+    have_gap = notes_have_gap(notes)
     match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=1e-6)
-    return pos_dur and no_ovl and match_bar_dur
+    return pos_dur and no_ovl and (not have_gap) and match_bar_dur
 
 
 def get_score_skeleton(title: str = None, composer: str = PKG_NM, mode: str = 'melody') -> Score:
