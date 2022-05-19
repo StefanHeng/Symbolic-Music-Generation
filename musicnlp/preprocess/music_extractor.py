@@ -126,7 +126,7 @@ class MusicExtractor:
 
         Expect tuplets to be fully quantized before call - intended for triplets to be untouched after call
         """
-        ic('in quantize', number)
+        # ic('in quantize', number)
         dur_slot = 4 * 2**-self.prec  # In quarter length
         dur_bar = (time_sig.numerator/time_sig.denominator*4)
         n_slots = dur_bar / dur_slot
@@ -181,8 +181,6 @@ class MusicExtractor:
         offset = 0
         notes_out = []
         for i, n in compress(idxs_note):
-            if number == 965:
-                ic(i, n)
             if i is None:  # In case note missing, fill with Rest
                 note_dummy = Rest(duration=m21.duration.Duration(quarterLength=n * dur_slot))
                 note_dummy.offset = offset
@@ -193,9 +191,6 @@ class MusicExtractor:
                 nt = note2note_cleaned(notes[i], q_len=n*dur_slot, for_output=True)  # last not processing before output
                 if isinstance(nt, tuple):
                     dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
-                    # if number == 61:
-                    #     ic('in quantize tuplet', nt)
-                    #     ic(dur_ea)
                     note_tups_out = []
                     for i_, nt_tup in enumerate(nt):
                         nt_tup.offset = offset + dur_ea * i_
@@ -206,10 +201,9 @@ class MusicExtractor:
                     notes_out.append(nt)
                 offset += note2dur(nt)
 
-        if number == 965:
-            ic(notes)
-            ic(notes_out)
-            # exit(1)
+        # if number == 965:
+        #     ic(notes)
+        #     ic(notes_out)
         #     # for n in flatten_notes(notes):
         #     for n in flatten_notes(notes_out):
         #         qLen = n.duration.quarterLength
@@ -235,13 +229,15 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # if number == 47:
+        # if number == 104:
         #     # ic('in expand_bar', number)
         #     bar.show()
-        # if number > 47:
+        # if number > 104:
         #     exit(1)
         while elm is not None:
-            full_nm = getattr(elm, 'fullName', None)
+            # full_nm = getattr(elm, 'fullName', None)
+            # this is the bottleneck; just care about duration; Explicitly ignore voice
+            full_nm = not isinstance(elm, Voice) and getattr(elm.duration, 'fullName', None)
             if full_nm and tuplet_postfix in full_nm:
                 tup_str, n_tup = fullname2tuplet_meta(full_nm)
 
@@ -251,7 +247,8 @@ class MusicExtractor:
                     # For poor transcription quality, skip over non-note elements in the middle
                     if isinstance(elm_, (m21.clef.Clef, MetronomeMark, m21.bar.Barline)):
                         elm_ = next(it, None)
-                    elif tup_str in elm_.fullName:  # Look for all elements of the same `n_tup`
+                    # elif tup_str in elm_.fullName:
+                    elif tup_str in elm_.duration.fullName:  # Look for all elements of the same `n_tup`
                         elms_tup.append(elm_)
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
@@ -558,13 +555,9 @@ class MusicExtractor:
             groups: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in notes:
                 n_ = n[0] if isinstance(n, tuple) else n
-                if isinstance(n, tuple):
-                    if any(isinstance(nn, Chord) for nn in n):
-                        ic(n)
-                        exit(1)
                 groups[n_.offset].append(n)
-            if number == 965:
-                ic(groups)
+            # if number == 104:
+            #     ic(groups)
 
             def sort_groups():
                 for offset, ns in groups.items():  # sort by pitch then by duration, in-place for speed
@@ -649,8 +642,8 @@ class MusicExtractor:
 
             with RecurseLimit(2**14):
                 notes_out = get_notes_out()
-            if number == 965:
-                ic(notes_out)
+            # if number == 965:
+            #     ic(notes_out)
             #     assert is_notes_pos_duration(notes_out)
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
@@ -682,7 +675,6 @@ class MusicExtractor:
                             warn_name=WarnLog.TupNoteOvl, bar_num=number, offsets=offsets, durations=durs
                         ))
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
-        ic('after clean tup', lst_notes[965])
 
         # Enforce quantization
         dur_slot = 4 / 2**self.prec  # quarterLength by quantization precision
@@ -696,19 +688,8 @@ class MusicExtractor:
         def notes_within_prec(notes_):
             return all(note_within_prec(n__) for n__ in notes_)
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
-            if i_bar == 965:
-                ic(notes_within_prec(notes))
-                for n in notes:
-                    strt, end = get_offset(n), get_end_qlen(n)
-                    ic(n, strt, end)
-                ic(dur_slot)
-                for n in notes:
-                    ic((note2dur(n) / dur_slot))
-                # exit(1)
             if not notes_within_prec(notes):
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
-                # if i_bar == 61:
-                #     ic(lst_notes[i_bar])
                 assert notes_within_prec(lst_notes[i_bar])  # Sanity check implementation
                 offsets, durs = notes2offset_duration(notes)
                 self.log_warn(dict(warn_name=WarnLog.NoteNotQuant, bar_num=i_bar, offsets=offsets, durations=durs))
@@ -719,8 +700,6 @@ class MusicExtractor:
                     precision=self.prec, unfilled_ranges=unfilled_ranges
                 ))
         # Now, triplets fixed to equal duration by `notes2quantized_notes`
-        ic('after quant', lst_notes[965])
-        # exit(1)
 
         def trip_n_quant2notes(notes_: List[Union[Rest, Note, tuple[Note]]], num_bar: int):
             lst = []
@@ -738,13 +717,6 @@ class MusicExtractor:
             return lst
         lst_notes = [trip_n_quant2notes(notes, num_bar=i) for i, notes in enumerate(lst_notes)]
 
-        for i, notes in enumerate(lst_notes):
-            if i == 965:
-                ic(notes)
-                for n in notes:
-                    if not isinstance(n, tuple):
-                        ic(n.duration)
-                # exit(1)
         for notes in lst_notes:
             for n in notes:
                 if not isinstance(n, tuple):  # ignore tuplet durations as `consolidate` doesn't consider tuplets
@@ -911,20 +883,19 @@ if __name__ == '__main__':
     def check_edge_case():
         # dnm = 'POP909'
         dnm = 'MAESTRO'
-        path = u.dset_path
         dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
         dir_nm = f'{dir_nm}, MS'
         # fnm = '汪峰 - 春天里.mxl'
-        fnm = 'Franz Schubert - Impromptu Op. 142 No. 3 In B-flat Major.mxl'
-        path = os_join(path, dir_nm, fnm)
+        # fnm = 'Franz Schubert - Impromptu Op. 142 No. 3 In B-flat Major.mxl'
+        fnm = 'Alban Berg - Sonata Op. 1, v2.mxl'
+        path = os_join(u.dset_path, dir_nm, fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
         me(path, exp='mxl')
-    # check_edge_case()
+    check_edge_case()
 
     def check_edge_case_batched():
         dnm = 'MAESTRO'
-        path = u.dset_path
         dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
         dir_nm = f'{dir_nm}, MS'
         # broken_files = ['Grandi - Dolcissimo amore', 'John Elton - Burn Down the Mission']
@@ -943,7 +914,7 @@ if __name__ == '__main__':
             'Franz Schubert - Sonata In A Major, D. 959 (complete), v2.mxl',
             'Franz Liszt - Après Une Lecture De Dante: Fantasia Quasi Sonata, S.161, No. 7.mxl',
             'Franz Liszt - Transcendental Etude No. 10 In F Minor.mxl',
-            'Franz Liszt - Grandes Études De Paganini, No. 3 "la Campanella.mxl',
+            'Franz Liszt - Grandes Études De Paganini, No. 3 "la Campanella", S.141:3, v1.mxl',
             'Claude Debussy - Pour Le Piano (complete).mxl',
             'Franz Schubert - Sonata In B-flat Major, D960, v9.mxl',
             'Frédéric Chopin - Etude Op. 10 No. 4 In C-sharp Minor.mxl'
@@ -951,11 +922,11 @@ if __name__ == '__main__':
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
         for broken_fl in broken_files:
-            path = os_join(path, dir_nm, broken_fl)
+            path = os_join(u.dset_path, dir_nm, broken_fl)
             ic(path)
             print(me(path, exp='visualize'))
             # me(path, exp='mxl')
-    check_edge_case_batched()
+    # check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """

@@ -128,7 +128,7 @@ class MusicExport:
         if isinstance(filenames, str):  # Dataset name provided
             dnm_ = filenames
             filenames = music_util.get_cleaned_song_paths(filenames, fmt='mxl')
-            filenames = filenames[:2048]  # TODO: Debugging
+            filenames = filenames[:16]  # TODO: Debugging
         d_log = dict(save_each=save_each, with_tqdm=with_tqdm, parallel=parallel, parallel_mode=parallel_mode)
         n_song = len(filenames)
         self.logger.info(f'Extracting {logi(n_song)} songs with {log_dict(d_log)}... ')
@@ -257,11 +257,12 @@ if __name__ == '__main__':
 
     def check_sequential():
         # dnm = 'LMD-cleaned-subset'
-        dnm = 'POP909'
+        # dnm = 'POP909'
+        dnm = 'MAESTRO'
         # me(dnm, parallel=False)
         me(dnm, parallel=False, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
     # check_sequential()
-    # profile_runtime(check_sequential)
+    profile_runtime(check_sequential)
 
     def check_parallel():
         me('LMD-cleaned-subset', parallel=3)
@@ -292,7 +293,7 @@ if __name__ == '__main__':
             dnm, extractor_args=args, path_out=path_out, save_each=True,
             parallel=32, with_tqdm=True, parallel_mode=pl_md
         )
-    export2json()
+    # export2json()
 
     def export2json_save_each(
             filenames: Union[str, List[str]] = 'LMD-cleaned-subset',

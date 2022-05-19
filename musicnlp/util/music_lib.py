@@ -144,6 +144,9 @@ def note2pitch(note: ExtNote):
     elif isinstance(note, Note):
         return note.pitch.frequency
     else:
+        if not isinstance(note, Rest):
+            from icecream import ic
+            ic(note, note.duration.fullName)
         assert isinstance(note, Rest)
         return 0  # `Rest` given pitch frequency of 0
 
