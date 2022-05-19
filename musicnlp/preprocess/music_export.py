@@ -94,7 +94,7 @@ class MusicExport:
             output_filename=f'{PKG_NM} music extraction', path_out=music_util.get_processed_path(),
             extractor_args: Dict = None, exp='str_join',
             save_each: bool = False, with_tqdm: Union[bool, Dict] = False,
-            parallel: Union[bool, int] = False, parallel_mode: str = 'thread'
+            parallel: Union[bool, int] = False, parallel_mode: str = 'thread', n_worker: int = os.cpu_count()
     ):
         """
         Writes encoded files to JSON file
@@ -127,7 +127,7 @@ class MusicExport:
         dnm_ = None
         if isinstance(filenames, str):  # Dataset name provided
             dnm_ = filenames
-            filenames = music_util.get_cleaned_song_paths(filenames, fmt='mxl')
+            filenames = music_util.get_converted_song_paths(filenames, fmt='mxl')
             # filenames = filenames[:16]  # TODO: Debugging
         d_log = dict(save_each=save_each, with_tqdm=with_tqdm, parallel=parallel, parallel_mode=parallel_mode)
         n_song = len(filenames)
@@ -135,7 +135,7 @@ class MusicExport:
 
         pbar = None
 
-        log2console = not with_tqdm  # TODO: not working when `mode` is `process`
+        log2console = not with_tqdm  # TODO: not working when multiprocessing
         export_single = SingleExport(path_out, save_each, self.logger, extractor, exp, log2console=log2console)
 
         if parallel:
@@ -145,7 +145,9 @@ class MusicExport:
                 if with_tqdm:
                     tqdm_args.update(dict(unit='song'))
                     pbar = tqdm(**tqdm_args)
-                lst_out = batched_conc_map(export_single, filenames, batch_size=bsz, with_tqdm=pbar, mode=parallel_mode)
+                lst_out = batched_conc_map(
+                    export_single, filenames, batch_size=bsz, with_tqdm=pbar, mode=parallel_mode, n_worker=n_worker
+                )
                 if pbar:
                     pbar.close()
             elif parallel_mode == 'process':  # only able to log at batch-level
@@ -154,14 +156,16 @@ class MusicExport:
                         tqdm_args.update(with_tqdm)
                     tqdm_args.update(dict(unit='song', chunksize=bsz))
                 # don't have to go through my own batched map
-                lst_out = conc_map(export_single, filenames, with_tqdm=tqdm_args, mode=parallel_mode)
+                lst_out = conc_map(
+                    export_single, filenames, with_tqdm=tqdm_args, mode=parallel_mode, n_worker=n_worker
+                )
             else:
                 assert parallel_mode == 'thread-in-process'
                 total = math.ceil(n_song / bsz)
                 tqdm_args.update(dict(unit='ba', total=total))
                 it = list(group_n(filenames, bsz))
                 fn = ThreadedBatchedExport(export_single)
-                lst_out = conc_map(fn, it, with_tqdm=tqdm_args, mode='process')
+                lst_out = conc_map(fn, it, with_tqdm=tqdm_args, mode='process', n_worker=n_worker)
         else:
             lst_out = []
             gen = enumerate(filenames)
@@ -257,8 +261,8 @@ if __name__ == '__main__':
 
     def check_sequential():
         # dnm = 'LMD-cleaned-subset'
-        # dnm = 'POP909'
-        dnm = 'MAESTRO'
+        dnm = 'POP909'
+        # dnm = 'MAESTRO'
         # me(dnm, parallel=False)
         me(dnm, parallel=False, extractor_args=dict(greedy_tuplet_pitch_threshold=1))
     # check_sequential()
@@ -284,14 +288,15 @@ if __name__ == '__main__':
         dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
         dir_nm = f'{dir_nm}, MS'
         # fnm = 'Franz Liszt - Après Une Lecture De Dante: Fantasia Quasi Sonata, S.161, No. 7.mxl'
-        fnm = 'Johann Sebastian Bach - Prelude And Fugue In E Major, Wtc I, Bwv 854.mxl'
+        # fnm = 'Johann Sebastian Bach - Prelude And Fugue In E Major, Wtc I, Bwv 854.mxl'
+        fnm = 'Franz Liszt - Études D\'exécution Transcendante, No. 5, "feux Follets" S.139:5.mxl'
         path = os_join(u.dset_path, dir_nm, fnm)
         me([path], extractor_args=dict(greedy_tuplet_pitch_threshold=1))
-    check_export_json_error()
+    # check_export_json_error()
 
     def export2json():
-        # dnm = 'POP909'
-        dnm = 'MAESTRO'
+        dnm = 'POP909'
+        # dnm = 'MAESTRO'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', f'{now(for_path=True)}_{dnm}')
         # dnm = 'LMD-cleaned-subset'
         # me(dnm)
@@ -301,9 +306,9 @@ if __name__ == '__main__':
         args = dict(greedy_tuplet_pitch_threshold=1)
         me(
             dnm, extractor_args=args, path_out=path_out, save_each=True,
-            parallel=32, with_tqdm=True, parallel_mode=pl_md
+            parallel=32, with_tqdm=True, parallel_mode=pl_md, n_worker=16
         )
-    # export2json()
+    export2json()
 
     def export2json_save_each(
             filenames: Union[str, List[str]] = 'LMD-cleaned-subset',

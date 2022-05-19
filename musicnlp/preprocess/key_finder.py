@@ -233,7 +233,7 @@ if __name__ == '__main__':
         Make sure calling KeyFinder on any song in the dataset terminates properly, and at least 1 key returned
         """
         dnm = 'POP909'
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')
+        fnms = music_util.get_converted_song_paths(dnm, fmt='mxl')
         # fnms = fnms[:20]  # TODO: debugging
         # for fnm in tqdm(fnms):
         #     keys = KeyFinder(fnm).find_key(return_type='enum')

@@ -957,7 +957,7 @@ def extract(dnms: List[str], exp='json') -> List[Dict[str, Any]]:
     count = 0
     count_suc = 0
     songs = []
-    fnms = {dnm: music_util.get_cleaned_song_paths(dnm, fmt='song_fmt_exp') for dnm in dnms}
+    fnms = {dnm: music_util.get_converted_song_paths(dnm, fmt='song_fmt_exp') for dnm in dnms}
     n_songs = sum(len(e) for e in fnms.values())
     n = len(str(n_songs))
     for dnm, fnms in fnms.items():
@@ -1033,7 +1033,7 @@ if __name__ == '__main__':
     def encode_a_few():
         # n = 2**6
         dnm = 'POP909'
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='song_fmt_exp')
+        fnms = music_util.get_converted_song_paths(dnm, fmt='song_fmt_exp')
         # for idx, fnm in enumerate(fnms):
         for idx, fnm in enumerate(fnms[66+136+289:]):
             ic(idx, stem(fnm))

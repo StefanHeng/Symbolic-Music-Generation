@@ -1,7 +1,8 @@
 import pickle
 import logging
 from os.path import join as os_join
-from typing import Tuple
+from typing import Tuple, Union
+from fractions import Fraction
 
 import colorama
 
@@ -9,7 +10,7 @@ from stefutil import *
 from musicnlp.util.data_path import BASE_PATH, PROJ_DIR, PKG_NM, DSET_DIR, MODEL_DIR
 
 
-__all__ = ['sconfig', 'u', 'save_fig', 'read_pickle']
+__all__ = ['sconfig', 'u', 'save_fig', 'serialize_frac', 'read_pickle']
 
 
 sconfig = StefConfig(config_file=os_join(BASE_PATH, PROJ_DIR, PKG_NM, 'util', 'config.json')).__call__
@@ -20,6 +21,10 @@ save_fig = u.save_fig
 
 for d in sconfig('check-arg'):
     ca.cache_mismatch(**d)
+
+
+def serialize_frac(num: Union[Fraction, float]) -> Union[str, float]:
+    return f'{num.numerator}/{num.denominator}' if isinstance(num, Fraction) else num
 
 
 def read_pickle(fnm):

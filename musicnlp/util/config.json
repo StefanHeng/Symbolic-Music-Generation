@@ -10,6 +10,9 @@
                 "song_fmt_mid": "**/*.mid",
                 "song_fmt_mxl": "**/*.mxl",
                 "dir_nm": "converted/LMD"
+            },
+            "meta": {
+                "n_song": 178561
             }
         },
         "LMD-matched": {
@@ -79691,6 +79694,14 @@
             ]
         },
         {
+            "display_name": "Music File Conversion Backend",
+            "attr_name": "backend",
+            "accepted_values": [
+                "MS",
+                "LP"
+            ]
+        },
+        {
             "display_name": "Music Key Type",
             "attr_name": "key_type",
             "accepted_values": [
@@ -79739,6 +79750,22 @@
             "accepted_values": [
                 "bar",
                 "hist"
+            ]
+        },
+        {
+            "display_name": "Dataset Name",
+            "attr_name": "dataset_name",
+            "accepted_values": [
+                "LMD",
+                "LMD-matched",
+                "LMD-aligned",
+                "LMD-cleaned",
+                "MAESTRO",
+                "POP909",
+                "midi-eg",
+                "mxl-eg",
+                "my",
+                "LMD-cleaned-subset"
             ]
         }
     ]

@@ -391,10 +391,6 @@ def get_offset(note: ExtNote) -> float:
         return note.offset
 
 
-def _serialize(num: Union[Fraction, float]) -> Union[str, float]:
-    return f'{num.numerator}/{num.denominator}' if isinstance(num, Fraction) else num
-
-
 def fill_with_rest(
         notes: Iterable[ExtNote], serializable: bool = True
 ) -> Tuple[List[ExtNote], List[Tuple[float, float]]]:
@@ -424,7 +420,7 @@ def fill_with_rest(
             r.offset = strt
             lst.append(r)
             if serializable:
-                strt, end = _serialize(strt), _serialize(end)
+                strt, end = serialize_frac(strt), serialize_frac(end)
             meta.append((strt, end))
         lst.append(note)
 

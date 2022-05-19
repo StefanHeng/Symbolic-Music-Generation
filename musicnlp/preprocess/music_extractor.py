@@ -230,8 +230,8 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        if number == 36:
-            ic('in expand_bar', number, len(bar))
+        # if number == 36:
+        #     ic('in expand_bar', number, len(bar))
             # notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
             # for n in notes:
             #     strt, end = get_offset(n), get_end_qlen(n)
@@ -257,13 +257,12 @@ class MusicExtractor:
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
                         break
-                for n in elms_tup:
-                    strt, end = get_offset(n), get_end_qlen(n)
-                    ic(n, n.fullName, strt, end)
 
                 def get_filled_ranges():  # cache
                     if not hasattr(get_filled_ranges, 'filled_ranges'):
-                        get_filled_ranges.filled_ranges = [(get_offset(n), get_end_qlen(n)) for n in elms_tup]
+                        get_filled_ranges.filled_ranges = [
+                            (serialize_frac(get_offset(n)), serialize_frac(get_end_qlen(n))) for n in elms_tup
+                        ]
                     return get_filled_ranges.filled_ranges
                 if notes_overlapping(elms_tup):
                     self.log_warn(dict(warn_name=WarnLog.TupNoteOvlIn, bar_num=number, filled_ranges=get_filled_ranges()))
@@ -461,10 +460,6 @@ class MusicExtractor:
                     print('unexpected type')
                     exit(1)
             elm = next(it, None)
-        if not is_notes_pos_duration(lst):
-            ic(type(bar))
-            ic(lst, list(bar))
-            # bar.show()
         assert is_notes_pos_duration(lst)
         if bar.hasVoices():  # Join all voices to notes
             lst.extend(chain_its(self.expand_bar(v, time_sig, number=number) for v in bar.voices))
@@ -583,7 +578,7 @@ class MusicExtractor:
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
         for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
-            ic(i_bar)
+            # ic(i_bar)
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
@@ -592,13 +587,12 @@ class MusicExtractor:
             for n in notes:
                 n_ = n[0] if isinstance(n, tuple) else n
                 groups[n_.offset].append(n)
-            if number == 26:
-                ic(groups)
-                for k, notes in groups.items():
-                    for n in notes:
-                        strt, end = get_offset(n), get_end_qlen(n)
-                        ic(n, strt, end)
-                        ic(note2pitch(n))
+            # if number == 26:
+            #     ic(groups)
+            #     for k, notes in groups.items():
+            #         for n in notes:
+            #             strt, end = get_offset(n), get_end_qlen(n)
+            #             ic(n, strt, end)
 
             def sort_groups():
                 for offset, ns in groups.items():  # sort by pitch then by duration, in-place for speed
@@ -845,7 +839,8 @@ if __name__ == '__main__':
         # fnm = 'Faded'
         # fnm = 'Piano Sonata'
         # fnm = 'Merry Christmas'
-        fnm = 'Merry Go Round of Life'
+        # fnm = 'Merry Go Round of Life'
+        fnm = '易燃易爆炸'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         # fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
         # fnm = music_util.get_my_example_songs('平凡之路', fmt='MXL')
@@ -868,17 +863,17 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             ic(d_out)
-        # check_mxl_out()
+        check_mxl_out()
         # check_str()
-        check_visualize()
+        # check_visualize()
         # check_return_meta_n_key()
-    # toy_example()
+    toy_example()
 
     def encode_a_few():
         # dnm = 'POP909'
         dnm = 'LMD-cleaned-subset'
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[641:]  # this one too long fnm
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[:10]
+        fnms = music_util.get_converted_song_paths(dnm, fmt='mxl')[641:]  # this one too long fnm
+        fnms = music_util.get_converted_song_paths(dnm, fmt='mxl')[:10]
         # ic(len(fnms), fnms[:5])
 
         # idx = [idx for idx, fnm in enumerate(fnms) if '恋爱ing' in fnm][0]
@@ -895,7 +890,7 @@ if __name__ == '__main__':
     def profile():
         def func():
             dnm = 'LMD-cleaned-subset'
-            fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[:10]
+            fnms = music_util.get_converted_song_paths(dnm, fmt='mxl')[:10]
             me = MusicExtractor(warn_logger=True, verbose=False, greedy_tuplet_pitch_threshold=1)
             for i_fl, fnm in enumerate(fnms):
                 ic(i_fl)
@@ -946,7 +941,7 @@ if __name__ == '__main__':
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
         me(path, exp='mxl')
-    check_edge_case()
+    # check_edge_case()
 
     def check_edge_case_batched():
         dnm = 'MAESTRO'

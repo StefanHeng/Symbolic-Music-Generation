@@ -8,7 +8,7 @@ from typing import Tuple, List, Dict, Union
 from collections import defaultdict
 
 import pandas as pd
-from tqdm import tqdm
+from tqdm.auto import tqdm, trange
 
 from stefutil import *
 from musicnlp.util.util import *
@@ -80,7 +80,34 @@ def lmd_cleaned_title2title_n_ver(title: str) -> Tuple[str, int]:
     return title, v
 
 
-def convert_dataset(dataset_name: str = 'POP909'):
+class Ordinal2Fnm:
+    """
+    Convert an ordinal to a filesystem name
+
+    A nested directory to save file system rendering
+
+    Intended for LMD file cleaning
+        storing 170k songs in a single folder makes prohibitively slow FS rendering
+    """
+    def __init__(self, total: int, group_size: int = 1e4, ext='mid'):
+        self.total, self.grp_sz = total, group_size
+        self.n_digit = len(str(total))
+
+        self.ext = ext
+
+    def __call__(self, i: int, return_dir: bool = False) -> Union[str, Tuple[str, str]]:
+        i_grp = i // self.grp_sz
+        strt, end = i_grp * self.grp_sz, min((i_grp + 1) * self.grp_sz, self.total)
+        dir_nm = f'{self._num2padded(strt)}-{self._num2padded(end)}'
+        fnm = f'{i:>0{self.n_digit}}.{self.ext}'
+        fnm = os_join(dir_nm, fnm)
+        return (fnm, dir_nm) if return_dir else fnm
+
+    def _num2padded(self, n_: int):
+        return f'{n_:0{self.n_digit}}'
+
+
+def clean_dataset_paths(dataset_name: str = 'POP909'):
     """
     Convert datasets in their original sources to my own file system hierarchy & names
         A directory of `midi` files, with title and artist as file name
@@ -143,17 +170,12 @@ def convert_dataset(dataset_name: str = 'POP909'):
         d_dset = sconfig(f'datasets.{dataset_name}')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
-        n_digit = len(str(len(paths)))
-        group_sz = int(1e4)
+        o2f = Ordinal2Fnm(total=len(paths), group_size=int(1e4))
+
         for i, p in enumerate(tqdm(paths)):
-            # storing 170k songs in a single folder makes prohibitively slow FS rendering
-            def num2padded(n_: int):
-                return f'{n_:0{n_digit}}'
-            i_grp = i // group_sz
-            strt, end = i_grp * group_sz, min((i_grp + 1) * group_sz, len(paths))
-            path = os_join(path_exp, f'{num2padded(strt)}-{num2padded(end)}')
+            fnm, dir_nm = o2f(i, return_dir=True)
+            path = os_join(path_exp, dir_nm)
             os.makedirs(path, exist_ok=True)
-            fnm = f'{i:>0{n_digit}}.mid'
             copyfile(p, os_join(path, fnm))
     elif dataset_name == 'MAESTRO':
         d_dset = sconfig(f'datasets.{dataset_name}')
@@ -184,7 +206,7 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
         Only one unique artist-song is picked among the many versions
             Resolve by just taking the first one
 
-    Expects `convert_dataset` called first
+    Expects `clean_dataset_paths` called first
     """
     # this folder contains all MIDI files that can be converted to MXL, on my machine
     path = os_join(BASE_PATH, DSET_DIR, 'LMD-cleaned_valid')
@@ -205,21 +227,24 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
     return [d[min(d)] for d in d_song2fnms.values()]
 
 
-def get_cleaned_song_paths(dataset_name: str, fmt='mxl') -> List[str]:
+def get_converted_song_paths(dataset_name: str, fmt='mxl', backend: str = 'MS') -> List[str]:
     """
-    :return: List of music file paths in my cleaned file system structure
+    :param dataset_name: dataset name
+    :param fmt: song file format, one of ['mid', 'mxl']
+        `mxl`s are converted from MIDI files
+    :param backend: midi to MXL conversion backend, one of ['MS', 'LP', 'all'] for MuseScore or Logic Pro
+        This determines the stored path
+        `all` is relevant for LMD only, see `get_lmd_conversion_meta`
+        If `all`, the conversion from both backends are combined
+    :return: List of music file paths in my converted file system structure, see `clean_dataset_paths`
 
     xml converted from MIDI files
         Default conversion with MuseScore, fallback to Logic Pro
     """
-    lmd_c_s = 'LMD-cleaned-subset'
-    dataset_names = list(sconfig('datasets').keys()) + [lmd_c_s]
-    assert dataset_name in dataset_names, \
-        f'Invalid dataset name: {logi(dataset_name)}, expected one of {logi(dataset_names)}'
-    fmts = ['mid', 'mxl']
-    assert fmt in fmts, f'Invalid format: {logi(fmt)}, expected one of {logi(fmts)}'
+    ca(dataset_name=dataset_name, fmt=fmt)
+    ca.check_mismatch('Conversion Backend', backend, ['MS', 'LP', 'all'])
 
-    if dataset_name == lmd_c_s:
+    if dataset_name == 'LMD-cleaned-subset':
         fnms = get_lmd_cleaned_subset_fnms()
         dir_nm = 'LMD-cleaned_valid'
 
@@ -233,9 +258,51 @@ def get_cleaned_song_paths(dataset_name: str, fmt='mxl') -> List[str]:
     else:
         d_dset = sconfig(f'datasets.{dataset_name}.converted')
         dir_nm = d_dset['dir_nm']
-        dir_nm = f'{dir_nm}, MS'  # for now just assume MS only, TODO: add fallback MXLs
-        path = os_join(u.dset_path, dir_nm, d_dset[f'song_fmt_{fmt}'])
-        return sorted(glob.iglob(path, recursive=True))
+        if backend == 'all':
+            fls_ms = get_converted_song_paths(dataset_name, fmt=fmt, backend='MS')
+            fls_lp = get_converted_song_paths(dataset_name, fmt=fmt, backend='LP')
+            return sorted(fls_ms + fls_lp, key=lambda f: stem(f))
+        else:
+            dir_nm = f'{dir_nm}, {backend}'
+            path = os_join(u.dset_path, dir_nm, d_dset[f'song_fmt_{fmt}'])
+            ic(path, len(sorted(glob.iglob(path, recursive=True))))
+            return sorted(glob.iglob(path, recursive=True))
+
+
+def get_lmd_conversion_meta():
+    """
+    Converting POP909 and MAESTRO all terminated without error in MuseScore
+
+    But many broken files in LMD that can't be read by MuseScore, those files fall back to Logic Pro conversion
+        We don't start with Logic Pro conversion for lack of batch processing support
+    Still, a subset of files can't be converted with Logic Pro
+    """
+    dnm = 'LMD'
+    n_song = sconfig(f'datasets.{dnm}.meta.n_song')
+    dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
+    ic(n_song, dir_nm)
+    set_converted = get_converted_song_paths(dataset_name=dnm, fmt='mxl', backend='all')
+    ic(len(set_converted))
+    lst_meta = []
+    o2f = Ordinal2Fnm(total=n_song, group_size=int(1e4), ext='mxl')
+    for i in trange(n_song, desc='Scanning converted files', unit='fl'):  # ensure go through every file
+        fnm = o2f(i)
+        # default conversion store location
+        path_ms, path_lp = os_join(u.dset_dir, f'{dir_nm}, MS', fnm), os_join(u.dset_path, f'{dir_nm}, LP', fnm)
+        _path_ms, _path_lp = os_join(u.base_path, path_ms), os_join(u.base_path, path_lp)
+        if os.path.exists(_path_ms):
+            lst_meta.append(dict(file_name=fnm, backend='MS', path=path_ms, status='converted'))
+        elif os.path.exists(_path_lp):
+            lst_meta.append(dict(file_name=fnm, backend='LP', path=path_lp, status='converted'))
+            set_converted.remove(_path_lp)
+        else:
+            # the original `mid` file should still be there to mark error
+            path_broken = _path_lp.replace(f'{dnm}, LP', f'{dnm}, broken').replace('.mxl', '.mid')
+            assert os.path.exists(path_broken)
+            lst_meta.append(dict(file_name=fnm, backend='NA', path='NA', status='error'))
+    assert len(set_converted) == 0  # sanity check no converted file is missed
+    df = pd.DataFrame(lst_meta)
+    ic(df)
 
 
 if __name__ == '__main__':
@@ -246,15 +313,15 @@ if __name__ == '__main__':
     def check_fl_nms():
         # dnm = 'POP909'
         dnm = 'MAESTRO'
-        fnms = get_cleaned_song_paths(dnm, fmt='mid')
+        fnms = get_converted_song_paths(dnm, fmt='mid')
         ic(len(fnms), fnms[:20])
-        fnms = get_cleaned_song_paths(dnm, fmt='mxl')
+        fnms = get_converted_song_paths(dnm, fmt='mxl')
         ic(len(fnms), fnms[:20])
     # check_fl_nms()
 
-    # convert_dataset('LMD-cleaned')
-    # convert_dataset('LMD')
-    # convert_dataset('MAESTRO')
+    # clean_dataset_paths('LMD-cleaned')
+    # clean_dataset_paths('LMD')
+    # clean_dataset_paths('MAESTRO')
 
     # import music21 as m21
     # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
@@ -295,7 +362,7 @@ if __name__ == '__main__':
 
     def get_lmd_subset():
         # fnms = get_lmd_cleaned_subset_fnms()
-        fnms = get_cleaned_song_paths('LMD-cleaned-subset')
+        fnms = get_converted_song_paths('LMD-cleaned-subset')
         ic(len(fnms), fnms[:20])
     # get_lmd_subset()
 
@@ -343,4 +410,6 @@ if __name__ == '__main__':
                 logger.info(f'Original MIDI for {logi(fnm)} not found, removed')
                 count += 1
         logger.info(f'{logi(count)} converted xml with unknown origin in the last session removed')
-    mv_lp_not_processed()
+    # mv_lp_not_processed()
+
+    get_lmd_conversion_meta()
