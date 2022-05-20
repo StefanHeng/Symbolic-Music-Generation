@@ -313,7 +313,7 @@ if __name__ == '__main__':
             pattern = os_join(u.dset_path, 'converted', dnm, dir_nm, '*.mxl')
             return sorted(glob.iglob(pattern, recursive=True))
         paths = sum([get_lmd_paths(d) for d in [
-            '000000-010000',
+            # '000000-010000',
             '010000-020000',
             '020000-030000',
             '030000-040000',
@@ -324,7 +324,8 @@ if __name__ == '__main__':
             # dnm,
             paths,
             extractor_args=args, path_out=path_out, save_each=True,
-            parallel=64, with_tqdm=True, parallel_mode=pl_md, n_worker=16
+            parallel=64, with_tqdm=True, parallel_mode=pl_md,
+            # n_worker=16
         )
     export2json()
 

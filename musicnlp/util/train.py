@@ -77,6 +77,8 @@ class MyTrainer(Trainer):
 
         # ========================== Begin of added ==========================
         inputs: Dict[str, torch.Tensor]
+        from icecream import ic
+        ic(inputs.keys())
         # don't need to calculate NTP acc here for eval, see `compute_ntp_acc`
         if self.is_in_train and self.clm_acc_logging and 'labels' in inputs:
             preds = outputs.logits.detach().argmax(axis=-1)

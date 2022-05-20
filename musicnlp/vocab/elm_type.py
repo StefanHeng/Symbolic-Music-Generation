@@ -3,6 +3,12 @@ from typing import Tuple, Dict
 from collections import namedtuple
 
 
+__all__ = [
+    'ElmType', 'MusicElement',
+    'Key', 'key_str2enum', 'key_enum2tuple', 'key_str2ordinal', 'key_ordinal2str', 'key_ordinal2key_enum'
+]
+
+
 class ElmType(Enum):
     bar_start, song_end, time_sig, tempo, key, note, tuplets = list(range(7))
 
@@ -78,6 +84,11 @@ key_enum2tuple: Dict[Key, Tuple[int, str]] = {
     Key.BMaj: (1, 'B')
 }
 
+# for passing key during vanilla training to monitor IKR
+key_str2ordinal: Dict[str, int] = {k: i for i, k in enumerate(key_str2enum.keys())}
+key_ordinal2str: Dict[int, str] = {i: k for k, i in key_str2ordinal.items()}
+key_ordinal2key_enum: Dict[int, Key] = {i: key_str2ordinal[k] for k, i in key_str2ordinal.items()}
+
 # This does not take ENHARMONICS into account
 # TODO: Fix this by adding COMPLETE ENHARMONIC relations
 key_offset_dict: Dict[str, int] = {
@@ -104,8 +115,7 @@ MINOR_OFFKEY_OFFSET_IDX = [1, 4, 6, 9, 11]
 OFFKEY_OFFSET = [MINOR_OFFKEY_OFFSET_IDX, MAJOR_OFFKEY_OFFSET_IDX]
 
 # an intermediate representation, for conversion between music string & MXL
-MusicElement = namedtuple(typename='MusicElement', field_names=[
-                          'type', 'meta'], defaults=[None, None])
+MusicElement = namedtuple(typename='MusicElement', field_names=['type', 'meta'], defaults=[None, None])
 
 
 if __name__ == '__main__':

@@ -772,7 +772,7 @@ class MusicExtractor:
         #         for n in notes:
         #             strt, end = get_offset(n), get_end_qlen(n)
         #             ic(n, strt, end)
-        # 
+        #
         #         dur_bar = time_sig.numerator / time_sig.denominator * 4
         #         pos_dur = is_notes_pos_duration(notes)
         #         no_ovl = not notes_overlapping(notes)
@@ -1022,23 +1022,33 @@ if __name__ == '__main__':
         #     # '002436.mxl',
         #     '002197.mxl'
         # ]
+        # broken_files = [
+        #     # '002669.mxl',
+        #     # '002810.mxl',
+        #     # '002577.mxl',
+        #     # '003335.mxl',
+        #     # '002888.mxl',
+        #     # '003768.mxl',
+        #     # '003659.mxl',
+        #     # '004368.mxl',
+        #     # '004929.mxl',
+        #     # '004564.mxl',
+        #     # '004875.mxl',
+        #     # '004331.mxl',
+        #     # '004645.mxl',
+        #     '004464.mxl'
+        # ]
         broken_files = [
-            # '002669.mxl',
-            # '002810.mxl',
-            # '002577.mxl',
-            # '003335.mxl',
-            # '002888.mxl',
-            # '003768.mxl',
-            # '003659.mxl',
-            # '004368.mxl',
-            # '004929.mxl',
-            # '004564.mxl',
-            # '004875.mxl',
-            # '004331.mxl',
-            # '004645.mxl',
-            '004464.mxl'
+            # '010853.mxl',
+            # '010994.mxl',
+            # '011076.mxl',
+            # '011299.mxl',
+            # '011487.mxl',
+            # '011896.mxl',
+            # '011804.mxl'
         ]
-        grp_nm = '000000-010000'
+        # grp_nm = '000000-010000'
+        grp_nm = '010000-020000'
         broken_files = [os_join(grp_nm, f) for f in broken_files]
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 

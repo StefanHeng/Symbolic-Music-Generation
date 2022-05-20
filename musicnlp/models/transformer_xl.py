@@ -78,6 +78,7 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel, MusicTransformerMixin):
     """
     def forward(
         self,
+        key_scores=None,  # not used, passed down for IKR computation
         input_ids=None,
         mems=None,
         head_mask=None,

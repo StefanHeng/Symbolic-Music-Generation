@@ -119,13 +119,13 @@ if __name__ == '__main__':
 
     from musicnlp.util import *
 
-    ic.lineWrapWidth = 1024
+    ic.lineWrapWidth = 512
 
     seed = sconfig('random-seed')
     transformers.set_seed(seed)  # to test key sampling
 
     def check_combined_dset():
-        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
+        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
         dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
                   'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
         # dset_ = get_dataset(dnm_909)
@@ -149,4 +149,20 @@ if __name__ == '__main__':
         for i in range(16):
             ids = tr[i]['input_ids']
             ic(len(ids), tokenizer.decode(ids)[:100])
-    check_key_sample_data_loading()
+    # check_key_sample_data_loading()
+
+    def check_keys_stored_in_dset():
+        """
+        For vanilla training when key isn't passed in, also want to get key of the song to monitor IKR
+
+        Explore how to pass key in
+        """
+        dnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+        path = os_join(music_util.get_processed_path(), 'hf', dnm)
+        os.listdir(path)
+        dset = datasets.load_from_disk(path)
+        ic(dset)
+        tr = dset['train']
+        ic(tr[:2])
+    check_keys_stored_in_dset()
+

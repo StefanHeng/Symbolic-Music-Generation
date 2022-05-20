@@ -19,7 +19,7 @@ from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
 import musicnlp.models.models as model_util
-from musicnlp.vocab import MusicTokenizer
+from musicnlp.vocab import MusicTokenizer, key_ordinal2str
 from musicnlp.preprocess import get_dataset, KeySampleDataset
 from musicnlp.models import MyReformerConfig, MyTransfoXLConfig, MyTransfoXLLMHeadModel
 from musicnlp.trainer import metrics
@@ -196,11 +196,9 @@ def get_train_and_my_train_args(
 
 
 class ComputeMetrics:
-    def __init__(self, tokenizer: MusicTokenizer, augment_key: bool = True):
+    def __init__(self, tokenizer: MusicTokenizer):
         self.acc = datasets.load_metric('accuracy')
-        # so that no error if small #bars for now; TODO
-        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, n_init_bars=2) if augment_key else None
-        self.augment_key = augment_key
+        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, n_init_bars=2)
 
     def __call__(self, eval_pred):
         """
@@ -211,7 +209,7 @@ class ComputeMetrics:
         preds, labels = eval_pred
         is_xl_output = preds.shape[1] == labels.shape[1] - 1  # seems already shifted
         preds = preds.argmax(axis=-1)
-        d_metric = dict(ikr=self.ikr(preds, labels)) if self.augment_key else dict()
+        d_metric = dict(ikr=self.ikr(preds, labels))
 
         if not is_xl_output:
             preds = preds[:, :-1]
@@ -236,9 +234,18 @@ def get_all_setup(
         # For now, just do non-deterministic sampling for eval set too, TODO?
         dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
     else:
+        n_key = len(key_ordinal2str)
+        def map_fn(samples):
+            ret = tokenizer(samples['score'], padding='max_length', truncation=True)
+            keys: List[Dict[str, Optional[float]]] = samples['keys']
+            # convert to a tensor format to eventually pass down to `compute_loss` and `compute_metrics`
+            # -1 for metric computation to ignore
+            ret['key_scores'] = [[(d[key_ordinal2str[i]] or -1) for i in range(n_key)] for d in keys]
+            return ret
+
         dset = get_dataset(
             dataset_names=dataset_names,
-            map_func=lambda d: tokenizer(d['score'], padding='max_length', truncation=True),
+            map_func=map_fn,
             remove_columns=['title', 'score', 'keys'], n_sample=n_sample  # i.e. keep the input ids only
         )
     tr, vl = dset['train'], dset['test']
@@ -249,11 +256,11 @@ def get_all_setup(
 
     # clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
     clm_acc_logging = True
-    cm = ComputeMetrics(tokenizer, augment_key=aug_key)
+    cm = ComputeMetrics(tokenizer)
     trainer_ = train_util.MyTrainer(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
-        train_metrics=dict(ikr=cm.ikr) if aug_key else dict(),  # TODO: calculate IRK when key not given?
+        train_metrics=dict(ikr=cm.ikr),  # TODO: calculate IRK when key not given?
         model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
         train_dataset=tr, eval_dataset=vl, compute_metrics=cm
     )
