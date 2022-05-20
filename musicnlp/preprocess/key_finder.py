@@ -1,13 +1,15 @@
-"""Given a piece in musicxml format, return the key of the piece
+"""
+Given a piece in musicxml format, return the key of the piece
  using the Krumhansl-Schmuckler key-finding algorithm.
  TODO:What if there are some other good algos?
- It still would not realize all 24 keys!(only 12)"""
+ It still would not realize all 24 keys!(only 12)
+ """
 from typing import List, Tuple, Dict, Union
 
 import numpy as np
 import music21 as m21
 
-from musicnlp.util import *
+from stefutil import *
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import Key
 

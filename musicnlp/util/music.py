@@ -265,7 +265,6 @@ def get_converted_song_paths(dataset_name: str, fmt='mxl', backend: str = 'MS') 
         else:
             dir_nm = f'{dir_nm}, {backend}'
             path = os_join(u.dset_path, dir_nm, d_dset[f'song_fmt_{fmt}'])
-            ic(path, len(sorted(glob.iglob(path, recursive=True))))
             return sorted(glob.iglob(path, recursive=True))
 
 
@@ -280,9 +279,7 @@ def get_lmd_conversion_meta():
     dnm = 'LMD'
     n_song = sconfig(f'datasets.{dnm}.meta.n_song')
     dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
-    ic(n_song, dir_nm)
     set_converted = get_converted_song_paths(dataset_name=dnm, fmt='mxl', backend='all')
-    ic(len(set_converted))
     lst_meta = []
     o2f = Ordinal2Fnm(total=n_song, group_size=int(1e4), ext='mxl')
     for i in trange(n_song, desc='Scanning converted files', unit='fl'):  # ensure go through every file
@@ -299,7 +296,8 @@ def get_lmd_conversion_meta():
             # the original `mid` file should still be there to mark error
             path_broken = _path_lp.replace(f'{dnm}, LP', f'{dnm}, broken').replace('.mxl', '.mid')
             assert os.path.exists(path_broken)
-            lst_meta.append(dict(file_name=fnm, backend='NA', path='NA', status='error'))
+            # note all drums is also considered empty
+            lst_meta.append(dict(file_name=fnm, backend='NA', path='NA', status='error/empty'))
     assert len(set_converted) == 0  # sanity check no converted file is missed
     df = pd.DataFrame(lst_meta)
     ic(df)
@@ -366,12 +364,12 @@ if __name__ == '__main__':
         ic(len(fnms), fnms[:20])
     # get_lmd_subset()
 
-    def mv_lp_not_processed():
+    def mv_backend_not_processed():
         """
         Some files are not processed properly, e.g. missing xml, incorrect file name
         Pick out those and move to a different folder to process again
 
-        See `batch-processing.logi-pro.batch-convert`
+        See `batch-processing`
 
         Files to process are in `todo`, move the processed ones back to default folder
 
@@ -381,10 +379,11 @@ if __name__ == '__main__':
         logger = get_logger('Get not Converted Files')
         # dnm = 'POP909, LP'
         # dnm = 'MAESTRO'
-        dnm = 'LMD/040000-050000'
+        dnm = 'LMD, MS/040000-050000'
         # dnm = 'LMD-cleaned_broken'
-        path_processed = os_join(u.dset_path, dnm)
+        path_processed = os_join(u.dset_path, 'converted', dnm)
         path_to_process = f'{path_processed}, todo'
+        ic(path_processed)
         os.makedirs(path_processed, exist_ok=True)
         path_mids = sorted(glob.iglob(os_join(path_to_process, '*.mid')))
         logger.info(f'{logi(len(path_mids))} MIDI files should have been converted')
@@ -410,6 +409,6 @@ if __name__ == '__main__':
                 logger.info(f'Original MIDI for {logi(fnm)} not found, removed')
                 count += 1
         logger.info(f'{logi(count)} converted xml with unknown origin in the last session removed')
-    # mv_lp_not_processed()
+    mv_backend_not_processed()
 
-    get_lmd_conversion_meta()
+    # get_lmd_conversion_meta()

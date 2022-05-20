@@ -42,6 +42,7 @@ __all__ = [
     'time_sig2n_slots',
     'eps', 'is_int', 'is_8th', 'quarter_len2fraction',
     'note2pitch', 'note2dur', 'note2note_cleaned', 'notes2offset_duration',
+    'time_sig2bar_dur',
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
     'is_drum_track',
     'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes', 'fill_with_rest',
@@ -221,6 +222,13 @@ def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[fl
     return offsets, durs
 
 
+def time_sig2bar_dur(time_sig: TimeSignature) -> float:
+    """
+    :return: Duration of a bar in given time signature, in quarter length
+    """
+    return time_sig.numerator / time_sig.denominator * 4
+
+
 def fullname2tuplet_meta(fullname: str) -> TupletNameMeta:
     post, pref2n = tuplet_postfix, tuplet_prefix2n_note
     pref = fullname[:fullname.find(post)].split()[-1]
@@ -392,7 +400,7 @@ def get_offset(note: ExtNote) -> float:
 
 
 def fill_with_rest(
-        notes: Iterable[ExtNote], serializable: bool = True
+        notes: Iterable[ExtNote], serializable: bool = True, duration: Dur = None,
 ) -> Tuple[List[ExtNote], List[Tuple[float, float]]]:
     """
     Fill the missing time with rests
@@ -402,6 +410,7 @@ def fill_with_rest(
             This process is already part of `notes2quantized_notes`
     :param serializable: If True, `Fraction`s in unfilled ranges will be converted to string
         Intended for json output
+    :param duration: If given, notes are filled up until this ending time
     :return: 2 tuple of (notes with rests added, list of 2-tuple of (start, end) of missing time)
 
     .. note:: Tuplet group is treated as a whole
@@ -410,26 +419,32 @@ def fill_with_rest(
     note = next(it, None)
     lst, meta = [note] if note else [], []
     last_end = get_end_qlen(note)
+
+    def fill(strt, end):
+        r = Rest(duration=Duration(quarterLength=end-strt))
+        r.offset = strt
+        lst.append(r)
+        if serializable:
+            strt, end = serialize_frac(strt), serialize_frac(end)
+        meta.append((strt, end))
     note = next(it, None)
     while note is not None:
         new_begin = get_offset(note)
         assert last_end <= new_begin  # verify input
         if last_end < new_begin:  # Found gap
-            strt, end = last_end, new_begin
-            r = Rest(duration=Duration(quarterLength=end-strt))
-            r.offset = strt
-            lst.append(r)
-            if serializable:
-                strt, end = serialize_frac(strt), serialize_frac(end)
-            meta.append((strt, end))
+            fill(last_end, new_begin)
         lst.append(note)
 
         last_end = get_end_qlen(note)  # prep for next iter
         note = next(it, None)
+    if duration:
+        diff = duration - last_end
+        if diff - eps > 0:
+            fill(last_end, duration)
     return lst, meta
 
 
-def notes_have_gap(notes: Iterable[ExtNote], enforce_no_overlap: bool = True) -> bool:
+def notes_have_gap(notes: Iterable[ExtNote], enforce_no_overlap: bool = True, duration: Dur = None) -> bool:
     it = flatten_notes(notes)
     note = next(it, None)
     last_end = get_end_qlen(note)
@@ -443,6 +458,8 @@ def notes_have_gap(notes: Iterable[ExtNote], enforce_no_overlap: bool = True) ->
             return True
         last_end = get_end_qlen(note)
         note = next(it, None)
+    if duration and (duration - last_end - eps) > 0:
+        return True
     return False
 
 
@@ -470,7 +487,7 @@ def is_notes_pos_duration(notes: Iterable[ExtNote]) -> bool:
 
 
 def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature) -> bool:
-    dur_bar = time_sig.numerator / time_sig.denominator * 4
+    dur_bar = time_sig2bar_dur(time_sig)
     # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
     pos_dur = is_notes_pos_duration(notes)
     no_ovl = not notes_overlapping(notes)

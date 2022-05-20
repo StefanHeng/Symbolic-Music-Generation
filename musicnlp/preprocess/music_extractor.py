@@ -8,8 +8,9 @@ import datetime
 import itertools
 from os.path import join as os_join
 from copy import deepcopy
-from typing import List, Tuple, Dict, Iterable, Iterator, Union, Any
+from typing import List, Tuple, Dict, Iterable, Union, Any
 from fractions import Fraction
+from dataclasses import dataclass
 from collections import defaultdict, Counter, OrderedDict
 
 import numpy as np
@@ -22,6 +23,13 @@ from musicnlp.util.music_lib import *
 from musicnlp.vocab import COMMON_TEMPOS, COMMON_TIME_SIGS, is_common_tempo, is_common_time_sig, MusicVocabulary
 from musicnlp.preprocess.warning_logger import WarnLog
 from musicnlp.preprocess.key_finder import KeyFinder
+
+
+@dataclass
+class BarInfo:
+    bars: Union[Tuple[Measure], List[Measure]]
+    time_sig: TimeSignature
+    tempo: MetronomeMark
 
 
 class MusicExtractor:
@@ -75,11 +83,15 @@ class MusicExtractor:
         m, p, t = d['mode'], d['precision'], d['greedy_tuplet_pitch_threshold']
         return log_dict_p({'mode': m, 'prec': p, 'th': t})
 
-    def it_bars(self, scr: Score) -> Iterator[Tuple[Tuple[Measure], TimeSignature, MetronomeMark]]:
+    def it_bars(self, scr: Score) -> Iterable[BarInfo]:
         """
         Unroll a score by time, with the time signatures of each bar
         """
         parts = list(scr.parts)
+        ic(parts)
+        instrs = list(parts[0][m21.instrument.Instrument])
+        ic(instrs)
+        exit(1)
         ignore = [is_drum_track(p_) for p_ in parts]
 
         time_sig, tempo = None, None
@@ -107,7 +119,7 @@ class MusicExtractor:
             elif idx == 0:
                 self.log_warn(dict(warn_name=WarnLog.MissTempo))
                 tempo = MetronomeMark(number=120)  # set as default
-            yield [b for ignore, b in zip(ignore, bars) if not ignore], time_sig, tempo
+            yield BarInfo(bars=[b for ignore, b in zip(ignore, bars) if not ignore], time_sig=time_sig, tempo=tempo)
 
     def log_warn(self, log_d: Dict):
         if self.warn_logger is not None:
@@ -232,11 +244,11 @@ class MusicExtractor:
         elm = next(it, None)
         # if number == 36:
         #     ic('in expand_bar', number, len(bar))
-            # notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
-            # for n in notes:
-            #     strt, end = get_offset(n), get_end_qlen(n)
-            #     ic(n, n.fullName, strt, end)
-            # bar.show()
+        #     notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
+        #     for n in notes:
+        #         strt, end = get_offset(n), get_end_qlen(n)
+        #         ic(n, n.fullName, strt, end)
+        #     bar.show()
         # if number > 26:
         #     exit(1)
         while elm is not None:
@@ -504,9 +516,9 @@ class MusicExtractor:
         if title.endswith('.mxl'):
             title = title[:-4]
 
-        lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(self.it_bars(song))
-        assert len(lst_bar_info) > 0, 'No bars found song'
-        assert all(len(bar_info[0]) > 0 for bar_info in lst_bar_info), \
+        lst_bar_info = list(self.it_bars(song))
+        assert len(lst_bar_info) > 0, 'No bars found in song'
+        assert all(len(bar_info.bars) > 0 for bar_info in lst_bar_info), \
             f'No notes found at all times, most likely the song contains {logi("drum tracks")} only - ' \
             f'Terminating as extraction output would be empty'
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
@@ -523,14 +535,14 @@ class MusicExtractor:
             return all(all(isinstance(e, Rest) for e in bar2elms(b)) for b in bars)
         empty_warns = []
         idx = 0
-        while is_empty_bars(lst_bar_info[idx][0]):  # grab the all the bars at current number
+        while is_empty_bars(lst_bar_info[idx].bars):
             idx += 1
         idx_strt_last_empty = idx-1
         if idx_strt_last_empty != -1:  # 2-tuple, 0-indexed, inclusive on both ends
             empty_warns.append(dict(warn_name=WarnLog.EmptyStrt, bar_range=(0, idx_strt_last_empty)))
 
         idx = n_bars_ori-1
-        while is_empty_bars(lst_bar_info[idx][0]):
+        while is_empty_bars(lst_bar_info[idx].bars):
             idx -= 1
         idx_end_1st_empty = idx+1
         if idx_end_1st_empty != n_bars_ori:
@@ -538,7 +550,7 @@ class MusicExtractor:
         lst_bar_info = lst_bar_info[idx_strt_last_empty+1:idx_end_1st_empty]
 
         lst_bars_, time_sigs, tempos = zip(*(
-            (bars, time_sig, tempo) for bars, time_sig, tempo in lst_bar_info
+            (bi.bars, bi.time_sig, bi.tempo) for bi in lst_bar_info
         ))
         # Pick 1st bar arbitrarily
         secs = round(sum(t.durationToSeconds(bars[0].duration) for t, bars in zip(tempos, lst_bars_)))
@@ -563,7 +575,7 @@ class MusicExtractor:
             ))
         if not is_common_tempo(mean_tempo):
             self.log_warn(dict(
-                warn_name=WarnLog.UncomTempo, tempo_expect=COMMON_TEMPOS, time_sig_got=mean_tempo
+                warn_name=WarnLog.UncomTempo, tempo_expect=COMMON_TEMPOS, tempo_got=mean_tempo
             ))
         for warn_dict in empty_warns:  # Postpone warning message until after logging song info
             self.log_warn(warn_dict)
@@ -577,7 +589,8 @@ class MusicExtractor:
 
         lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
-        for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
+        for i_bar, bi in enumerate(lst_bar_info):
+            bars, time_sig, tempo = bi.bars, bi.time_sig, bi.tempo
             # ic(i_bar)
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             assert number == i_bar
@@ -679,7 +692,6 @@ class MusicExtractor:
                 notes_out = get_notes_out()
             # if number == 965:
             #     ic(notes_out)
-            #     assert is_notes_pos_duration(notes_out)
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
             #   e.g. tiny-duration notes shifts all subsequent notes
@@ -723,13 +735,14 @@ class MusicExtractor:
         def notes_within_prec(notes_):
             return all(note_within_prec(n__) for n__ in notes_)
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
+            dur = time_sig2bar_dur(time_sig)
             if not notes_within_prec(notes):
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
                 assert notes_within_prec(lst_notes[i_bar])  # Sanity check implementation
                 offsets, durs = notes2offset_duration(notes)
                 self.log_warn(dict(warn_name=WarnLog.NoteNotQuant, bar_num=i_bar, offsets=offsets, durations=durs))
-            elif notes_have_gap(notes):
-                lst_notes[i_bar], unfilled_ranges = fill_with_rest(notes)
+            elif notes_have_gap(notes, duration=dur):
+                lst_notes[i_bar], unfilled_ranges = fill_with_rest(notes, duration=dur)
                 self.log_warn(dict(
                     warn_name=WarnLog.BarNoteGap, bar_num=i_bar, time_sig=(time_sig.numerator, time_sig.denominator),
                     precision=self.prec, unfilled_ranges=unfilled_ranges
@@ -757,17 +770,21 @@ class MusicExtractor:
                 if not isinstance(n, tuple):  # ignore tuplet durations as `consolidate` doesn't consider tuplets
                     # Merges complex durations into one for MXL output
                     n.duration.consolidate()
-        # for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):  # Final check before output
-        #     if i_bar == 172:
+        # for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
+        #     if not is_valid_bar_notes(notes, time_sig):
         #         ic(i_bar)
         #         for n in notes:
         #             strt, end = get_offset(n), get_end_qlen(n)
         #             ic(n, strt, end)
-        #         no_ovl = notes_not_overlapping(notes)
-        #         ic(no_ovl)
+        # 
+        #         dur_bar = time_sig.numerator / time_sig.denominator * 4
+        #         pos_dur = is_notes_pos_duration(notes)
+        #         no_ovl = not notes_overlapping(notes)
         #         have_gap = notes_have_gap(notes)
-        #         ic(have_gap)
-            # exit(1)
+        #         match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
+        #                                      abs_tol=1e-6)
+        #         ic(pos_dur, no_ovl, (not have_gap), match_bar_dur)
+        #         exit(1)
         for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
             assert is_valid_bar_notes(notes, time_sig)
         if exp == 'mxl':  # TODO: didn't test
@@ -867,7 +884,7 @@ if __name__ == '__main__':
         # check_str()
         # check_visualize()
         # check_return_meta_n_key()
-    toy_example()
+    # toy_example()
 
     def encode_a_few():
         # dnm = 'POP909'
@@ -944,7 +961,8 @@ if __name__ == '__main__':
     # check_edge_case()
 
     def check_edge_case_batched():
-        dnm = 'MAESTRO'
+        # dnm = 'MAESTRO'
+        dnm = 'LMD'
         dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
         dir_nm = f'{dir_nm}, MS'
         # broken_files = ['Grandi - Dolcissimo amore', 'John Elton - Burn Down the Mission']
@@ -959,15 +977,73 @@ if __name__ == '__main__':
         # ]
         # broken_fl = broken_files[0]
         # broken_fl = 'U2 - The Electric Co.'
+        # broken_files = [
+        #     'Franz Schubert - Sonata In A Major, D. 959 (complete), v2.mxl',
+        #     'Franz Liszt - Après Une Lecture De Dante: Fantasia Quasi Sonata, S.161, No. 7.mxl',
+        #     'Franz Liszt - Transcendental Etude No. 10 In F Minor.mxl',
+        #     'Franz Liszt - Grandes Études De Paganini, No. 3 "la Campanella", S.141:3, v1.mxl',
+        #     'Claude Debussy - Pour Le Piano (complete).mxl',
+        #     'Franz Schubert - Sonata In B-flat Major, D960, v9.mxl',
+        #     'Frédéric Chopin - Etude Op. 10 No. 4 In C-sharp Minor.mxl'
+        # ]
+        # broken_files = [
+        #     # '000065.mxl',
+        #     # '000431.mxl',
+        #     # '000523.mxl',
+        #     # '000338.mxl',
+        #     # '000562.mxl',
+        #     # '000122.mxl',
+        #     # '000211.mxl',
+        #     # '000284.mxl',
+        #     # '000721.mxl',
+        #     # '000186.mxl',
+        #     # '000822.mxl',
+        #     # '000709.mxl',
+        #     # '001139.mxl',
+        #     # '001176.mxl',
+        #     # '001240.mxl',
+        #     # '001489.mxl',
+        #     # '001154.mxl',
+        #     # '001617.mxl',
+        #     # '001128.mxl',
+        #     # '001097.mxl',
+        #     # '001317.mxl',
+        #     # '001909.mxl',
+        #     '001764.mxl',
+        #     '001549.mxl',
+        #     '001803.mxl'
+        # ]
+        # broken_files = [
+        #     # '000123.mxl',
+        #     # '000455.mxl',
+        #     # '001144.mxl',
+        #     '001282.mxl',
+        #     # '001216.mxl'
+        # ]
+        # broken_files = [
+        #     # '001219.mxl',
+        #     # '002380.mxl',
+        #     # '002436.mxl',
+        #     '002197.mxl'
+        # ]
         broken_files = [
-            'Franz Schubert - Sonata In A Major, D. 959 (complete), v2.mxl',
-            'Franz Liszt - Après Une Lecture De Dante: Fantasia Quasi Sonata, S.161, No. 7.mxl',
-            'Franz Liszt - Transcendental Etude No. 10 In F Minor.mxl',
-            'Franz Liszt - Grandes Études De Paganini, No. 3 "la Campanella", S.141:3, v1.mxl',
-            'Claude Debussy - Pour Le Piano (complete).mxl',
-            'Franz Schubert - Sonata In B-flat Major, D960, v9.mxl',
-            'Frédéric Chopin - Etude Op. 10 No. 4 In C-sharp Minor.mxl'
+            # '002669.mxl',
+            # '002810.mxl',
+            # '002577.mxl',
+            # '003335.mxl',
+            # '002888.mxl',
+            # '003768.mxl',
+            # '003659.mxl',
+            # '004368.mxl',
+            '004929.mxl',
+            '004564.mxl',
+            '004875.mxl',
+            '004331.mxl',
+            '004645.mxl',
+            '004464.mxl'
         ]
+        grp_nm = '000000-010000'
+        broken_files = [os_join(grp_nm, f) for f in broken_files]
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
         for broken_fl in broken_files:
@@ -975,7 +1051,7 @@ if __name__ == '__main__':
             ic(path)
             print(me(path, exp='visualize'))
             # me(path, exp='mxl')
-    # check_edge_case_batched()
+    check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """

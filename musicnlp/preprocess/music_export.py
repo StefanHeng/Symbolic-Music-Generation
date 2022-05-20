@@ -48,11 +48,11 @@ class SingleExport:
                     self.logger.info(f'{logi(self.processed_count)}:{logi(fnm_)} already processed, skipping...')
                 return
             else:
-                ret = self.extractor(fl_nm, exp=self.exp, return_meta=True)
+                ret = self.extractor(fl_nm, exp=self.exp, return_meta=True, return_key=True)
                 if self.log2console:
                     self.logger.info(f'{logi(self.processed_count)}:{logi(fnm_)} processing finished ')
                 if self.save_each:
-                    d_out = dict(encoding_type=self.exp, extractor_meta=self.extractor.meta, music=ret, mxl_path=fl_nm)
+                    d_out = dict(encoding_type=self.exp, extractor_meta=self.extractor.meta, music=ret)
                     with open(fl_nm_single_out, 'w') as f_:
                         json.dump(d_out, f_, indent=4)
                 else:
@@ -229,7 +229,7 @@ class MusicExport:
         songs, meta = dset['music'], dset['extractor_meta']
         d_info = dict(json_filename=fnm, extractor_meta=meta)
 
-        expected_col_names = {'score', 'title', 'keys'}
+        expected_col_names = {'score', 'title', 'song_path', 'keys'}
 
         def prep_entry(d: Dict) -> Dict:
             del d['warnings']
@@ -242,7 +242,7 @@ class MusicExport:
         )
         if split_args:
             dset = dset.train_test_split(**split_args)
-        path = os_join(path_out, 'processed')
+        path = os_join(path_out, 'hf')
         os.makedirs(path, exist_ok=True)
         dset.save_to_disk(os_join(path, fnm))
         return dset
@@ -295,18 +295,36 @@ if __name__ == '__main__':
     # check_export_json_error()
 
     def export2json():
-        dnm = 'POP909'
+        # dnm = 'POP909'
         # dnm = 'MAESTRO'
-        path_out = os_join(music_util.get_processed_path(), 'intermediate', f'{now(for_path=True)}_{dnm}')
+        # dnm = 'LMD, MS/000000-010000'
+        dnm = 'LMD, MS'
+        # dir_nm_ = f'{now(for_path=True)}_{dnm}'
+        dir_nm_ = '2022-05-20_09-39-16_LMD, MS'
+        path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         # dnm = 'LMD-cleaned-subset'
         # me(dnm)
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
         # pl_md = 'thread-in-process'  # ~20% slower
         args = dict(greedy_tuplet_pitch_threshold=1)
+
+        def get_lmd_paths(dir_nm: str) -> List[str]:
+            pattern = os_join(u.dset_path, 'converted', dnm, dir_nm, '*.mxl')
+            return sorted(glob.iglob(pattern, recursive=True))
+        paths = sum([get_lmd_paths(d) for d in [
+            '000000-010000',
+            '010000-020000',
+            '020000-030000',
+            '030000-040000',
+            '040000-050000'
+        ]], start=[])
+        ic(len(paths))
         me(
-            dnm, extractor_args=args, path_out=path_out, save_each=True,
-            parallel=32, with_tqdm=True, parallel_mode=pl_md, n_worker=16
+            # dnm,
+            paths,
+            extractor_args=args, path_out=path_out, save_each=True,
+            parallel=64, with_tqdm=True, parallel_mode=pl_md, n_worker=16
         )
     export2json()
 
@@ -325,23 +343,25 @@ if __name__ == '__main__':
     # export2json_save_each(filenames='POP909', save_dir='POP909 save single 04-10_02.15')
     # export2json_save_each(filenames=music_util.get_cleaned_song_paths('LMD-cleaned-subset', fmt='mxl')[3000:])
 
-    def combine_single_json_songs(singe_song_dir: str, output_fnm: str):
+    def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
         fnms = sorted(glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, '*.json')))
-        songs = me.combine_saved_songs(filenames=fnms, output_filename=output_fnm)
+        out_fnm = f'{PKG_NM} music extraction, dnm={dataset_name}'
+        songs = me.combine_saved_songs(filenames=fnms, output_filename=out_fnm)
         ic(songs.keys(), len(songs['music']))
-    # combine_single_json_songs(
-    #     singe_song_dir='POP909 save single 04-10_02.15',
-    #     output_fnm=f'{PKG_NM} music extraction, dnm=POP909'
-    # )
+    # combine_single_json_songs(singe_song_dir='POP909 save single 04-10_02.15', dataset_name='POP909')
     # combine_single_json_songs(
     #     singe_song_dir='LMD-cleaned_subset save single 04-09_21-51',
-    #     output_fnm=f'{PKG_NM} music extraction, dnm=LMD-cleaned-subset'
+    #     dataset_name='LMD-cleaned_subset'
     # )
+    # combine_single_json_songs(singe_song_dir='2022-05-19_15-33-10_POP909', dataset_name='POP909')
+    # combine_single_json_songs(singe_song_dir='2022-05-19_14-11-05_MAESTRO', dataset_name='MAESTRO')
 
     def json2dset():
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-22 19-00-40'
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
+        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-19_16-57-30'
+        # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-19_16-59-05'
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
     # json2dset()
