@@ -83,7 +83,7 @@ instrs_drum = (
     m21.instrument.BongoDrums,
     m21.instrument.CongaDrum,
     m21.instrument.SnareDrum,
-    m21.instrument.SteelDrum,
+    # m21.instrument.SteelDrum,  # we can work with this as it's `PitchedPercussion`
     m21.instrument.TenorDrum,
 )
 

@@ -88,10 +88,6 @@ class MusicExtractor:
         Unroll a score by time, with the time signatures of each bar
         """
         parts = list(scr.parts)
-        ic(parts)
-        instrs = list(parts[0][m21.instrument.Instrument])
-        ic(instrs)
-        exit(1)
         ignore = [is_drum_track(p_) for p_ in parts]
 
         time_sig, tempo = None, None
@@ -1035,11 +1031,11 @@ if __name__ == '__main__':
             # '003768.mxl',
             # '003659.mxl',
             # '004368.mxl',
-            '004929.mxl',
-            '004564.mxl',
-            '004875.mxl',
-            '004331.mxl',
-            '004645.mxl',
+            # '004929.mxl',
+            # '004564.mxl',
+            # '004875.mxl',
+            # '004331.mxl',
+            # '004645.mxl',
             '004464.mxl'
         ]
         grp_nm = '000000-010000'
