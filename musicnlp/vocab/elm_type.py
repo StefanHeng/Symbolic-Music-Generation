@@ -5,7 +5,8 @@ from collections import namedtuple
 
 __all__ = [
     'ElmType', 'MusicElement',
-    'Key', 'key_str2enum', 'key_enum2tuple', 'key_str2ordinal', 'key_ordinal2str', 'key_ordinal2key_enum'
+    'Key', 'key_str2enum', 'key_enum2tuple', 'key_str2ordinal', 'key_ordinal2str', 'key_ordinal2key_enum',
+    'key_offset_dict', 'OFFKEY_OFFSET'
 ]
 
 

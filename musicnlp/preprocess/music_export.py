@@ -313,11 +313,11 @@ if __name__ == '__main__':
             pattern = os_join(u.dset_path, 'converted', dnm, dir_nm, '*.mxl')
             return sorted(glob.iglob(pattern, recursive=True))
         paths = sum([get_lmd_paths(d) for d in [
-            # '000000-010000',
-            '010000-020000',
-            '020000-030000',
-            '030000-040000',
-            '040000-050000'
+            '000000-010000',
+            # '010000-020000',
+            # '020000-030000',
+            # '030000-040000',
+            # '040000-050000'
         ]], start=[])
         ic(len(paths))
         me(
@@ -354,15 +354,15 @@ if __name__ == '__main__':
     #     singe_song_dir='LMD-cleaned_subset save single 04-09_21-51',
     #     dataset_name='LMD-cleaned_subset'
     # )
-    # combine_single_json_songs(singe_song_dir='2022-05-19_15-33-10_POP909', dataset_name='POP909')
-    # combine_single_json_songs(singe_song_dir='2022-05-19_14-11-05_MAESTRO', dataset_name='MAESTRO')
+    # combine_single_json_songs(singe_song_dir='2022-05-19_17-07-40_POP909', dataset_name='POP909')
+    # combine_single_json_songs(singe_song_dir='2022-05-19_17-20-29_MAESTRO', dataset_name='MAESTRO')
 
     def json2dset():
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-22 19-00-40'
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-19_16-57-30'
-        # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-19_16-59-05'
+        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+        fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
         dset = me.json2dataset(fnm)
         ic(dset, dset[:5])
     # json2dset()
@@ -374,10 +374,12 @@ if __name__ == '__main__':
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
         # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
         #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
+        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
         # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
         #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
         # for 10k data in the LMD-cleaned subset dataset, this is like 200 songs, should be good enough
+        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+        fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
         ic(dset)
         ic(len(dset['train']), len(dset['test']))
