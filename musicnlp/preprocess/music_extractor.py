@@ -88,6 +88,10 @@ class MusicExtractor:
         Unroll a score by time, with the time signatures of each bar
         """
         parts = list(scr.parts)
+        # ic(parts)
+        # instrs = list(parts[0][m21.instrument.Instrument])
+        # ic(instrs)
+        # exit(1)
         ignore = [is_drum_track(p_) for p_ in parts]
 
         time_sig, tempo = None, None
@@ -238,14 +242,14 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # if number == 36:
+        # if number == 62:
         #     ic('in expand_bar', number, len(bar))
         #     notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
         #     for n in notes:
         #         strt, end = get_offset(n), get_end_qlen(n)
         #         ic(n, n.fullName, strt, end)
-        #     bar.show()
-        # if number > 26:
+            # bar.show()
+        # if number > 62:
         #     exit(1)
         while elm is not None:
             # this is the bottleneck; just care about duration; Explicitly ignore voice
@@ -596,17 +600,33 @@ class MusicExtractor:
             for n in notes:
                 n_ = n[0] if isinstance(n, tuple) else n
                 groups[n_.offset].append(n)
-            # if number == 26:
-            #     ic(groups)
-            #     for k, notes in groups.items():
-            #         for n in notes:
-            #             strt, end = get_offset(n), get_end_qlen(n)
-            #             ic(n, strt, end)
 
             def sort_groups():
                 for offset, ns in groups.items():  # sort by pitch then by duration, in-place for speed
                     ns.sort(key=lambda nt: (note2pitch(nt), note2dur(nt)))
             sort_groups()
+
+            def _fix_edge_case():
+                if number == 62 and time_sig.numerator == 8 and time_sig.denominator == 4 and 4.0 in groups:
+                    # for LMD::027213
+                    # the original file is broken, with a note beginning at 4 and ending at 12 for bar duration of 8
+                    # ic('here')
+                    _notes_out = []
+                    for _n in groups[4.0]:
+                        s, e = get_offset(_n), get_end_qlen(_n)
+                        if s == 4.0 and e == 12.0:
+                            continue
+                        _notes_out.append(_n)
+                    groups[4.0] = _notes_out
+            _fix_edge_case()
+
+            # if number == 62:
+            #     ic(groups)
+            #     for k, notes in groups.items():
+            #         ic(k)
+            #         for n in notes:
+            #             strt, end = get_offset(n), get_end_qlen(n)
+            #             ic(n, strt, end)
 
             def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
                 # if number == 22:
@@ -779,7 +799,7 @@ class MusicExtractor:
         #         have_gap = notes_have_gap(notes)
         #         match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
         #                                      abs_tol=1e-6)
-        #         ic(pos_dur, no_ovl, (not have_gap), match_bar_dur)
+        #         ic(pos_dur, no_ovl, (not have_gap), match_bar_dur, dur_bar)
         #         exit(1)
         for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
             assert is_valid_bar_notes(notes, time_sig)
@@ -950,11 +970,14 @@ if __name__ == '__main__':
         # fnm = 'Alban Berg - Sonata Op. 1, v2.mxl'
         # fnm = 'Franz Liszt - Tarantelle Di Bravura, S. 386.mxl'
         fnm = 'Johann Sebastian Bach - Prelude And Fugue In E Major, Wtc I, Bwv 854.mxl'
-        path = os_join(u.dset_path, dir_nm, fnm)
+        # path = os_join(u.dset_path, dir_nm, fnm)
+        # path = '/Users/stefanhg/Desktop/Untitled 186.xml'
+        path = '/Users/stefanhg/Desktop/027213.musicxml'
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
         me(path, exp='mxl')
     # check_edge_case()
+    # exit(1)
 
     def check_edge_case_batched():
         # dnm = 'MAESTRO'
@@ -1008,21 +1031,15 @@ if __name__ == '__main__':
         #     '001764.mxl',
         #     '001549.mxl',
         #     '001803.mxl'
-        # ]
-        # broken_files = [
         #     # '000123.mxl',
         #     # '000455.mxl',
         #     # '001144.mxl',
         #     '001282.mxl',
         #     # '001216.mxl'
-        # ]
-        # broken_files = [
         #     # '001219.mxl',
         #     # '002380.mxl',
         #     # '002436.mxl',
         #     '002197.mxl'
-        # ]
-        # broken_files = [
         #     # '002669.mxl',
         #     # '002810.mxl',
         #     # '002577.mxl',
@@ -1038,17 +1055,95 @@ if __name__ == '__main__':
         #     # '004645.mxl',
         #     '004464.mxl'
         # ]
+        # broken_files = [
+        #     # '010853.mxl',
+        #     # '010994.mxl',
+        #     # '011076.mxl',
+        #     # '011299.mxl',
+        #     # '011487.mxl',
+        #     # '011896.mxl',
+        #     '011804.mxl'
+        # ]
+        # broken_files = [
+        #     # '003348.mxl',
+        #     # '005398.mxl',
+        #     # '005098.mxl',
+        #     # '005340.mxl',
+        #     # '005475.mxl',
+        #     # '005973.mxl',
+        #     # '005747.mxl',
+        #     # '006624.mxl',
+        #     '006144.mxl'
+        #     # '006095.mxl',
+        #     # '006637.mxl',
+        #     # '006890.mxl',
+        #     # '006825.mxl',
+        #     # '007025.mxl',
+        #     # '005444.mxl',
+        #     # '007156.mxl',
+        #     # '007860.mxl',
+        #     # '007326.mxl',
+        #     # '008092.mxl',
+        #     # '008605.mxl',
+        #     # '008816.mxl',
+        #     # '008567.mxl',
+        #     '008696.mxl',
+        #     # '008816.mxl',
+        #     # '009399.mxl',
+        #     # '009353.mxl',
+        #     # '009483.mxl',
+        #     '009858.mxl'
+        # ]
         broken_files = [
-            # '010853.mxl',
-            # '010994.mxl',
-            # '011076.mxl',
-            # '011299.mxl',
-            # '011487.mxl',
-            # '011896.mxl',
-            # '011804.mxl'
+            # '020396.mxl',
+            # '020145.mxl',
+            # '020358.mxl',
+            # '020557.mxl',
+            # '020846.mxl',
+            # '020683.mxl',
+            # '021209.mxl',
+            # '020831.mxl',
+            # '020257.mxl',
+            # '021341.mxl',
+            # '021777.mxl',
+            # '021912.mxl',
+            # '022179.mxl',
+            # '022490.mxl',
+            # '022986.mxl',
+            # '022860.mxl',
+            # '022744.mxl',
+            # '022576.mxl',
+            # '021939.mxl',
+            # '020182.mxl',
+            # '023977.mxl',
+            # '023616.mxl',
+            # '024091.mxl',
+            # '020846.mxl',
+            # '021912.mxl',
+            # '024327.mxl',
+            # '024653.mxl',
+            # '024592.mxl',
+            # '025049.mxl',
+            # '025591.mxl',
+            # '025250.mxl',
+            # '026051.mxl',
+            # '025967.mxl',
+            # '024661.mxl',
+            # '024609.mxl',
+            # '026132.mxl',
+            # '026884.mxl',
+            # '027213.mxl',
+            # '026751.mxl',
+            # '027607.mxl',
+            # '027966.mxl',
+            # '026884.mxl',
+            # '027980.mxl',
+            # '028717.mxl',
+            '028285.mxl',
         ]
         # grp_nm = '000000-010000'
-        grp_nm = '010000-020000'
+        # grp_nm = '010000-020000'
+        grp_nm = '020000-030000'
         broken_files = [os_join(grp_nm, f) for f in broken_files]
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 

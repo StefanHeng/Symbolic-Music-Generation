@@ -377,11 +377,18 @@ if __name__ == '__main__':
         """
         import shutil
         logger = get_logger('Get not Converted Files')
+        # dnm = 'LMD-cleaned_broken'
         # dnm = 'POP909, LP'
         # dnm = 'MAESTRO'
-        dnm = 'LMD, MS/040000-050000'
-        # dnm = 'LMD-cleaned_broken'
-        path_processed = os_join(u.dset_path, 'converted', dnm)
+        # dnm = 'LMD, MS/040000-050000'
+        # path_processed = os_join(u.dset_path, 'converted', dnm)
+        """
+        Among group of 10k files in a folder for conversion, MS in Mac produces ~100 broken songs, 
+        but MS in Win consistently produces ~150 broken songs, pass them through Mac again, 
+        and some of the files can be converted now...  
+        """
+        dnm = 'LMD, broken, Win/060000-070000'
+        path_processed = os_join(u.dset_path, dnm)
         path_to_process = f'{path_processed}, todo'
         ic(path_processed)
         os.makedirs(path_processed, exist_ok=True)

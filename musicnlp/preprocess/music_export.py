@@ -300,7 +300,7 @@ if __name__ == '__main__':
         # dnm = 'LMD, MS/000000-010000'
         dnm = 'LMD, MS'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
-        dir_nm_ = '2022-05-20_09-39-16_LMD, MS'
+        dir_nm_ = '2022-05-20_09-39-16_LMD, MS/020000-030000'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         # dnm = 'LMD-cleaned-subset'
         # me(dnm)
@@ -313,9 +313,9 @@ if __name__ == '__main__':
             pattern = os_join(u.dset_path, 'converted', dnm, dir_nm, '*.mxl')
             return sorted(glob.iglob(pattern, recursive=True))
         paths = sum([get_lmd_paths(d) for d in [
-            '000000-010000',
+            # '000000-010000',
             # '010000-020000',
-            # '020000-030000',
+            '020000-030000',
             # '030000-040000',
             # '040000-050000'
         ]], start=[])
