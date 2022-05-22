@@ -29,6 +29,7 @@ class IkrMetric:
         self.vocab = tokenizer.vocab
         self.n_init_bars = n_init_bars
 
+
         ca.check_mismatch('Training Mode for IKR', mode, ['vanilla', 'key-aug'])
         self.mode = mode
 
