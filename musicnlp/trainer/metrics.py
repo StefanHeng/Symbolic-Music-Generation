@@ -16,10 +16,21 @@ class IkrMetric:
     Vectorized metric of matched keys per pitch, based on `_get_off_key_ratio`
     """
 
-    def __init__(self, tokenizer: MusicTokenizer, n_init_bars: int = 4):
+    def __init__(self, tokenizer: MusicTokenizer, n_init_bars: int = 4, mode: str = 'vanilla'):
+        """
+        :param tokenizer: tokenizer
+        :param n_init_bars: Number of bars for heuristic key estimation
+            Obsolete, see `musicnlp.preprocess.key_finder`
+        :param mode: Training mode, one of ['vanilla', 'key-aug']
+            If 'vanilla', compute with weighted average of all possible keys
+            If 'key-aug', compute with the key passed in at 3rd token
+        """
         self.tokenizer = tokenizer
         self.vocab = tokenizer.vocab
         self.n_init_bars = n_init_bars
+
+        ca.check_mismatch('Training Mode for IKR', mode, ['vanilla', 'key-aug'])
+        self.mode = mode
 
     def __call__(self, preds: np.ndarray, labels: np.ndarray) -> float:
         """
