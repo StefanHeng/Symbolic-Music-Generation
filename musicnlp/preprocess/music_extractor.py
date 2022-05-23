@@ -108,7 +108,8 @@ class MusicExtractor:
                 time_sig = tss[0]
 
             tempos = [list(b[MetronomeMark]) for b in bars]
-            has_tempo = any(tempos)
+            # observed tempo with number `None`... in such case, ignore
+            has_tempo = any(tempos) and any(any(t.number for t in ts) for ts in tempos)
             if has_tempo:
                 tempos = [t for t in tempos if len(t) != 0]
                 # When multiple tempos, take the mean
@@ -466,7 +467,8 @@ class MusicExtractor:
             else:
                 if not isinstance(elm, (  # Ensure all relevant types are considered
                     TimeSignature, MetronomeMark, Voice,
-                    m21.layout.LayoutBase, m21.clef.Clef, m21.key.KeySignature, m21.bar.Barline
+                    m21.layout.LayoutBase, m21.clef.Clef, m21.key.KeySignature, m21.bar.Barline,
+                    m21.expressions.TextExpression
                 )):
                     ic(elm)
                     print('unexpected type')
@@ -517,7 +519,7 @@ class MusicExtractor:
             title = title[:-4]
 
         lst_bar_info = list(self.it_bars(song))
-        assert len(lst_bar_info) > 0, 'No bars found in song'
+        assert len(lst_bar_info) > 0, f'{logi("No bars")} found in song'
         assert all(len(bar_info.bars) > 0 for bar_info in lst_bar_info), \
             f'No notes found at all times, most likely the song contains {logi("drum tracks")} only - ' \
             f'Terminating as extraction output would be empty'
@@ -1083,61 +1085,61 @@ if __name__ == '__main__':
         #     # '009483.mxl',
         #     '009858.mxl'
         # ]
-        broken_files = [
-            # '010853.mxl',
-            # '010994.mxl',
-            # '011076.mxl',
-            # '011299.mxl',
-            # '011487.mxl',
-            # '011896.mxl',
-            # '011804.mxl'
-            # '011899.mxl',
-            # '012361.mxl',
-            # '012544.mxl',
-            # '012434.mxl',
-            # '012602.mxl',
-            # '012493.mxl',
-            # '012943.mxl',
-            # '012763.mxl',
-            # '013013.mxl',
-            # '013277.mxl',
-            # '013215.mxl',
-            # '013629.mxl',
-            # '013551.mxl',
-            # '012969.mxl',
-            # '013989.mxl',
-            # '014247.mxl',
-            # '014447.mxl',
-            # '014391.mxl',
-            # '014538.mxl',
-            # '014891.mxl',
-            # '014964.mxl',
-            # '015364.mxl',
-            # '015780.mxl',
-            # '015976.mxl',
-            # '015882.mxl',
-            # '015984.mxl',
-            # '016304.mxl',
-            # '016597.mxl',
-            # '016869.mxl',
-            # '016932.mxl',
-            # '017151.mxl',
-            # '017111.mxl',
-            # '017228.mxl',
-            # '017482.mxl',
-            # '017707.mxl',
-            # '017948.mxl',
-            # '018015.mxl',  # TODO: check why error
-            # '018376.mxl',
-            # '018622.mxl',
-            # '017265.mxl',
-            # '016347.mxl',
-            # '018901.mxl',
-            # '019033.mxl',
-            # '019234.mxl',
-            # '019297.mxl',
-            '019984.mxl',
-        ]
+        # broken_files = [
+        #     # '010853.mxl',
+        #     # '010994.mxl',
+        #     # '011076.mxl',
+        #     # '011299.mxl',
+        #     # '011487.mxl',
+        #     # '011896.mxl',
+        #     # '011804.mxl'
+        #     # '011899.mxl',
+        #     # '012361.mxl',
+        #     # '012544.mxl',
+        #     # '012434.mxl',
+        #     # '012602.mxl',
+        #     # '012493.mxl',
+        #     # '012943.mxl',
+        #     # '012763.mxl',
+        #     # '013013.mxl',
+        #     # '013277.mxl',
+        #     # '013215.mxl',
+        #     # '013629.mxl',
+        #     # '013551.mxl',
+        #     # '012969.mxl',
+        #     # '013989.mxl',
+        #     # '014247.mxl',
+        #     # '014447.mxl',
+        #     # '014391.mxl',
+        #     # '014538.mxl',
+        #     # '014891.mxl',
+        #     # '014964.mxl',
+        #     # '015364.mxl',
+        #     # '015780.mxl',
+        #     # '015976.mxl',
+        #     # '015882.mxl',
+        #     # '015984.mxl',
+        #     # '016304.mxl',
+        #     # '016597.mxl',
+        #     # '016869.mxl',
+        #     # '016932.mxl',
+        #     # '017151.mxl',
+        #     # '017111.mxl',
+        #     # '017228.mxl',
+        #     # '017482.mxl',
+        #     # '017707.mxl',
+        #     # '017948.mxl',
+        #     '018015.mxl',  # TODO: check why error
+        #     # '018376.mxl',
+        #     # '018622.mxl',
+        #     # '017265.mxl',
+        #     # '016347.mxl',
+        #     # '018901.mxl',
+        #     # '019033.mxl',
+        #     # '019234.mxl',
+        #     # '019297.mxl',
+        #     # '019984.mxl',
+        # ]
         # broken_files = [
         #     # '020396.mxl',
         #     # '020145.mxl',
@@ -1183,11 +1185,35 @@ if __name__ == '__main__':
         #     # '026884.mxl',
         #     # '027980.mxl',
         #     # '028717.mxl',
-        #     '028285.mxl',
+        #     # '028285.mxl',
+        #     # '027228.mxl',
+        #     # '027267.mxl',
+        #     # '028371.mxl',
+        #     # '029373.mxl',
+        #     # '029730.mxl',
+        #     # '029873.mxl',
+        #     # '029921.mxl',
+        #     '029627.mid',  # music21 have trouble parsing this file, takes more than 5 min...
         # ]
+        broken_files = [
+            # '030110.mxl',
+            # '030588.mxl',
+            # '030334.mxl',
+            # '030369.mxl',
+            # '030647.mxl',
+            # '031642.mxl',
+            # '031337.mxl',
+            # '031405.mxl',
+            # '032699.mxl',
+            # '032582.mxl',
+            # '032636.mxl',
+            # '032787.mxl',
+            '033045.mxl',
+        ]
         # grp_nm = '000000-010000'
-        grp_nm = '010000-020000'
+        # grp_nm = '010000-020000'
         # grp_nm = '020000-030000'
+        grp_nm = '030000-040000'
         broken_files = [os_join(grp_nm, f) for f in broken_files]
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
@@ -1214,3 +1240,15 @@ if __name__ == '__main__':
             if 'd_0' in txt:
                 ic(song['title'])
     # fix_find_song_with_0dur()
+
+    def fix_merge_processing_from_lib():
+        import glob
+        dir_broken_ori = '/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/converted/LMD, ' \
+                         'broken/020000-030000'
+        dir_broken_new = '/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/Converted from Lib, ' \
+                         '05.22.22/LMD, broken/020000-030000'
+        paths_ori, paths_new = glob.iglob(dir_broken_ori + '/*.mid'), glob.iglob(dir_broken_new + '/*.mid')
+        set_fls_ori, set_fls_new = set([stem(f) for f in paths_ori]), set([stem(f) for f in paths_new])
+        ic(set_fls_ori, set_fls_new)
+        ic(set_fls_new - set_fls_ori)
+    # fix_merge_processing_from_lib()

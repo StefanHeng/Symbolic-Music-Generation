@@ -2,7 +2,7 @@
 assets/
 .idea/
 .vscode/
-test_lang*
+test-lang*
 inspiration/
 models/
 models, on pop909 only/

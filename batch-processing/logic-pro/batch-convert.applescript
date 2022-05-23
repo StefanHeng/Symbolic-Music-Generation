@@ -5,7 +5,7 @@
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MAESTRO, todo/"
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD/00000, todo/"
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken, todo/"
-set dir_process to "/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/converted/LMD, broken/000000-010000, todo"
+set dir_process to "/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/converted/LMD, LP/050000-060000, todo"
 
 
 # taken from https://stackoverflow.com/a/12535220/10732321

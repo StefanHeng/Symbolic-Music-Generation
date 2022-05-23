@@ -287,6 +287,9 @@ def get_lmd_conversion_meta():
         # default conversion store location
         path_ms, path_lp = os_join(u.dset_dir, f'{dir_nm}, MS', fnm), os_join(u.dset_path, f'{dir_nm}, LP', fnm)
         _path_ms, _path_lp = os_join(u.base_path, path_ms), os_join(u.base_path, path_lp)
+        # _path_lp = _path_lp.replace('.mxl', '.mid')  # sanity check all files found
+        # if stem(fnm) == '000373':
+        #     ic(_path_lp)
         if os.path.exists(_path_ms):
             lst_meta.append(dict(file_name=fnm, backend='MS', path=path_ms, status='converted'))
         elif os.path.exists(_path_lp):
@@ -295,6 +298,8 @@ def get_lmd_conversion_meta():
         else:
             # the original `mid` file should still be there to mark error
             path_broken = _path_lp.replace(f'{dnm}, LP', f'{dnm}, broken').replace('.mxl', '.mid')
+            if not os.path.exists(path_broken):
+                ic(path_broken)
             assert os.path.exists(path_broken)
             # note all drums is also considered empty
             lst_meta.append(dict(file_name=fnm, backend='NA', path='NA', status='error/empty'))
@@ -376,27 +381,28 @@ if __name__ == '__main__':
         After batch-convert terminates, check for the files processed in last session
         """
         import shutil
-        logger = get_logger('Get not Converted Files')
+        logger = get_logger('Move Converted Files')
         # dnm = 'LMD-cleaned_broken'
         # dnm = 'POP909, LP'
         # dnm = 'MAESTRO'
         # dnm = 'LMD, MS/040000-050000'
-        # path_processed = os_join(u.dset_path, 'converted', dnm)
+        dnm = 'LMD, LP/050000-060000'
+        path_processed = os_join(u.dset_path, 'converted', dnm)
         """
         Among group of 10k files in a folder for conversion, MS in Mac produces ~100 broken songs, 
         but MS in Win consistently produces ~150 broken songs, pass them through Mac again, 
         and some of the files can be converted now...  
         """
-        dnm = 'LMD, broken, Win/060000-070000'
-        path_processed = os_join(u.dset_path, dnm)
+        # dnm = 'LMD, broken, Win/060000-070000'
+        # path_processed = os_join(u.dset_path, dnm)
         path_to_process = f'{path_processed}, todo'
         ic(path_processed)
         os.makedirs(path_processed, exist_ok=True)
         path_mids = sorted(glob.iglob(os_join(path_to_process, '*.mid')))
         logger.info(f'{logi(len(path_mids))} MIDI files should have been converted')
         count = 0
-        # output_format = 'xml'
-        output_format = 'mxl'
+        output_format = 'xml'
+        # output_format = 'mxl'
         for path in path_mids:
             path_xml = path.replace('.mid', f'.{output_format}')
             if os.path.exists(path_xml):
