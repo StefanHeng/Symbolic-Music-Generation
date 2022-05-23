@@ -5,7 +5,7 @@ Proposed method: on compact melody & bass representation for autoregressive musi
 import json
 import math
 from os.path import join as os_join
-from typing import List, Tuple, Dict, Union
+from typing import List, Tuple, Dict, Union, Optional
 from collections import OrderedDict
 
 import torch
@@ -196,9 +196,9 @@ def get_train_and_my_train_args(
 
 
 class ComputeMetrics:
-    def __init__(self, tokenizer: MusicTokenizer):
+    def __init__(self, tokenizer: MusicTokenizer, ikr_mode: str = 'vanilla'):
         self.acc = datasets.load_metric('accuracy')
-        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, n_init_bars=2)
+        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, mode=ikr_mode)
 
     def __call__(self, eval_pred):
         """
@@ -235,6 +235,7 @@ def get_all_setup(
         dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
     else:
         n_key = len(key_ordinal2str)
+
         def map_fn(samples):
             ret = tokenizer(samples['score'], padding='max_length', truncation=True)
             keys: List[Dict[str, Optional[float]]] = samples['keys']
@@ -242,7 +243,6 @@ def get_all_setup(
             # -1 for metric computation to ignore
             ret['key_scores'] = [[(d[key_ordinal2str[i]] or -1) for i in range(n_key)] for d in keys]
             return ret
-
         dset = get_dataset(
             dataset_names=dataset_names,
             map_func=map_fn,
@@ -256,7 +256,7 @@ def get_all_setup(
 
     # clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
     clm_acc_logging = True
-    cm = ComputeMetrics(tokenizer)
+    cm = ComputeMetrics(tokenizer=tokenizer, ikr_mode='aug-key' if aug_key else 'vanilla')
     trainer_ = train_util.MyTrainer(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,

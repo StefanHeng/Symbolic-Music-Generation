@@ -1,14 +1,18 @@
-from typing import List, Union
+from typing import List, Union, Optional
 from itertools import filterfalse
 from collections import Counter
 
 import numpy as np
+import torch
 import music21
 
 from stefutil import *
 from musicnlp.util.train import PT_LOSS_PAD
 from musicnlp.vocab import VocabType, MusicTokenizer
 from musicnlp.vocab.elm_type import *
+
+
+MetricTensor = Union[np.ndarray, torch.Tensor]
 
 
 class IkrMetric:
@@ -29,22 +33,38 @@ class IkrMetric:
         self.vocab = tokenizer.vocab
         self.n_init_bars = n_init_bars
 
-
         ca.check_mismatch('Training Mode for IKR', mode, ['vanilla', 'key-aug'])
         self.mode = mode
 
-    def __call__(self, preds: np.ndarray, labels: np.ndarray) -> float:
+    def __call__(self, preds: MetricTensor, labels: MetricTensor, key_scores: Optional[MetricTensor] = None) -> float:
         """
         Arguments should be batched autoregressive transformer input & output tokens of the same shape in 2D
         """
+        # from icecream import ic
+        # ic(type(preds), type(labels), preds.shape, labels.shape)
         assert preds.shape == labels.shape, \
             f'Input and label shapes do not match, {logi(preds.shape)} vs {logi(labels.shape)}'
         ikrs = []
-        for pred, label in zip(preds, labels):
-            key_tok = label[2]  # expect labels to be well-formed
-            assert self.vocab.type(key_tok) == VocabType.key, \
-                f'Expect key token at 3rd position of label, got {logi(key_tok)}'
-            ikrs.append(self.get_in_key_ratio(pred[label != PT_LOSS_PAD], self.vocab.compact(key_tok)))
+        if self.mode == 'vanilla':
+            for pred, label, key_scores_ in zip(preds, labels, key_scores):
+                if isinstance(key_scores_, torch.Tensor):
+                    key_scores_ = key_scores_.numpy()
+                # lst_ord_n_score = [(ord_key, score) for ord_key, score in enumerate(key_scores_) if score > 0])
+                ords, scores = zip(*[(ord_key, score) for ord_key, score in enumerate(key_scores_) if score > 0])
+                pred = pred[label != PT_LOSS_PAD]
+                # ic(ords, scores)
+                _ikrs = [self.get_in_key_ratio(pred, key_ordinal2key_enum[o]) for o in ords]
+                # ic(_ikrs)
+                ikrs.append(np.average(_ikrs, weights=scores))
+                # ic(ikrs)
+                # exit(1)
+        elif self.mode == 'key-aug':
+            for pred, label in zip(preds, labels):
+                key_tok_id = label[2]  # expect labels to be well-formed
+                if not self.vocab.type(key_tok_id) == VocabType.key:
+                    tok = self.tokenizer.decode([key_tok_id])
+                    raise ValueError(f'Expect key token at 3rd position of label, got {logi(key_tok_id)}:{logi(tok)}')
+                ikrs.append(self.get_in_key_ratio(pred[label != PT_LOSS_PAD], self.vocab.compact(key_tok_id)))
         return np.array(ikrs).mean()
 
     def get_init_key_est(self, gt_token_seq: Union[str, List[str]]):

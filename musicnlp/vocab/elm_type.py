@@ -88,7 +88,7 @@ key_enum2tuple: Dict[Key, Tuple[int, str]] = {
 # for passing key during vanilla training to monitor IKR
 key_str2ordinal: Dict[str, int] = {k: i for i, k in enumerate(key_str2enum.keys())}
 key_ordinal2str: Dict[int, str] = {i: k for k, i in key_str2ordinal.items()}
-key_ordinal2key_enum: Dict[int, Key] = {i: key_str2ordinal[k] for k, i in key_str2ordinal.items()}
+key_ordinal2key_enum: Dict[int, Key] = {i: key_str2enum[k] for k, i in key_str2ordinal.items()}
 
 # This does not take ENHARMONICS into account
 # TODO: Fix this by adding COMPLETE ENHARMONIC relations
