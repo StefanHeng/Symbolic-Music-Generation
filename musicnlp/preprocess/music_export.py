@@ -17,7 +17,6 @@ import musicnlp.util.music as music_util
 from music_extractor import MusicExtractor
 
 
-
 class SingleExport:
     """
     Class instead of local function for multiprocessing
