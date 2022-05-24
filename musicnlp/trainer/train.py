@@ -258,7 +258,9 @@ def get_all_setup(
     # clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
     clm_acc_logging = True
     cm = ComputeMetrics(tokenizer=tokenizer, mode='aug-key' if aug_key else 'vanilla')
-    trainer_ = train_util.MyTrainer(
+    # if key not augmented, need to pass key info to each sample for eval
+    cls = train_util.MyTrainer if aug_key else train_util.MyEvalTrainer
+    trainer_ = cls(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
         train_metrics=dict(ikr=cm.ikr),  # TODO: calculate IRK when key not given?

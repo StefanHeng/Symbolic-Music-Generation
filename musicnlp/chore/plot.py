@@ -118,7 +118,7 @@ def plot_tb(
         df = d_df[tag_]
         x = df.step
         if tag_ == 'eval' and steps_per_epoch:
-            x *= steps_per_epoch  # to match the time step for training, see `util.train.py`
+            x *= steps_per_epoch  # to match the time step for training, see `util.train_util_wrap.py`
         y_ = df[y]
         if 'acc' in y:
             y_ *= 100
