@@ -26,7 +26,8 @@ class SingleExport:
     def __init__(
             self,
             output_path: str, save_each: bool, logger: logging.Logger,
-            extractor: MusicExtractor, exp: str, log2console: bool
+            extractor: MusicExtractor, exp: str, log2console: bool = True,
+            halt_on_error: bool = True
     ):
         self.output_path = output_path
         self.save_each = save_each
@@ -34,6 +35,7 @@ class SingleExport:
         self.logger = logger
         self.extractor = extractor
         self.exp = exp
+        self.halt_on_error = halt_on_error
 
         self.processed_count = 0
 
@@ -59,7 +61,10 @@ class SingleExport:
                     return ret
         except Exception as e:
             self.logger.error(f'Failed to extract {logi(fl_nm)}, {logi(e)}')  # Abruptly stop the process
-            raise ValueError(f'Failed to extract {logi(fl_nm)}')
+            if self.halt_on_error:
+                raise ValueError(f'Failed to extract {logi(fl_nm)}')
+            else:
+                return  # Keep the extraction going
 
 
 class ThreadedBatchedExport:
@@ -136,7 +141,11 @@ class MusicExport:
         pbar = None
 
         log2console = not with_tqdm  # TODO: not working when multiprocessing
-        export_single = SingleExport(path_out, save_each, self.logger, extractor, exp, log2console=log2console)
+        halt_on_error = not bool(parallel)
+        ic(halt_on_error)
+        export_single = SingleExport(
+            path_out, save_each, self.logger, extractor, exp, log2console=log2console, halt_on_error=halt_on_error
+        )
 
         if parallel:
             bsz = (isinstance(parallel, int) and parallel) or 32
@@ -300,7 +309,7 @@ if __name__ == '__main__':
         # dnm = 'LMD, MS/000000-010000'
         dnm = 'LMD, MS'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
-        grp_nm = '060000-070000'
+        grp_nm = '070000-080000'
         dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         # dnm = 'LMD-cleaned-subset'
@@ -329,7 +338,7 @@ if __name__ == '__main__':
             # dnm,
             paths,
             extractor_args=args, path_out=path_out, save_each=True,
-            parallel=64,
+            parallel=128,
             with_tqdm=True, parallel_mode=pl_md,
             # n_worker=16
         )
