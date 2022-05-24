@@ -62,12 +62,26 @@ class TrainArgs:
                 lr_scheduler_type=SchedulerType.CONSTANT,
                 num_train_epochs=16
             ),
+            'tiny': dict(
+                batch_size=32,
+                learning_rate=3e-4,
+                weight_decay=1e-2,
+                lr_scheduler_type=SchedulerType.COSINE,
+                num_train_epochs=64
+            ),
             'small': dict(
                 batch_size=32,
                 learning_rate=3e-4,
                 weight_decay=1e-2,
                 lr_scheduler_type=SchedulerType.COSINE,
-                num_train_epochs=32
+                num_train_epochs=64
+            ),
+            'base': dict(
+                batch_size=32,
+                learning_rate=3e-4,
+                weight_decay=1e-2,
+                lr_scheduler_type=SchedulerType.COSINE,
+                num_train_epochs=64
             )
         },
         'reformer': {
@@ -222,6 +236,26 @@ class ComputeMetrics:
         return d_metric
 
 
+class VanillaMap:
+    """
+    Class instead of local function for pickling
+
+    Map for vanilla training where keys need to be separately passed
+    """
+    n_key = len(key_ordinal2str)
+
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer
+
+    def __call__(self, samples):
+        ret = self.tokenizer(samples['score'], padding='max_length', truncation=True)
+        keys: List[Dict[str, Optional[float]]] = samples['keys']
+        # convert to a tensor format to eventually pass down to `compute_loss` and `compute_metrics`
+        # -1 for metric computation to ignore
+        ret['key_scores'] = [[(d[key_ordinal2str[i]] or -1) for i in range(VanillaMap.n_key)] for d in keys]
+        return ret
+
+
 def get_all_setup(
         model_name: str, model_size: str,
         dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None,
@@ -235,18 +269,8 @@ def get_all_setup(
         # For now, just do non-deterministic sampling for eval set too, TODO?
         dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
     else:
-        n_key = len(key_ordinal2str)
-
-        def map_fn(samples):
-            ret = tokenizer(samples['score'], padding='max_length', truncation=True)
-            keys: List[Dict[str, Optional[float]]] = samples['keys']
-            # convert to a tensor format to eventually pass down to `compute_loss` and `compute_metrics`
-            # -1 for metric computation to ignore
-            ret['key_scores'] = [[(d[key_ordinal2str[i]] or -1) for i in range(n_key)] for d in keys]
-            return ret
         dset = get_dataset(
-            dataset_names=dataset_names,
-            map_func=map_fn,
+            dataset_names=dataset_names, map_func=VanillaMap(tokenizer),
             remove_columns=['title', 'score', 'keys'], n_sample=n_sample  # i.e. keep the input ids only
         )
     tr, vl = dset['train'], dset['test']
@@ -255,7 +279,6 @@ def get_all_setup(
         get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer.precision for ds in dset.values()
     )
 
-    # clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
     clm_acc_logging = True
     cm = ComputeMetrics(tokenizer=tokenizer, mode='aug-key' if aug_key else 'vanilla')
     # if key not augmented, need to pass key info to each sample for eval
@@ -355,8 +378,9 @@ if __name__ == '__main__':
         transformers.set_seed(seed)
         # md_sz = 'debug'
         md_sz = 'debug-large'
-        n = 64
-        # n = None
+        # md_sz = 'tiny'
+        # n = 64
+        n = None
 
         augment_key = False
 
@@ -364,8 +388,14 @@ if __name__ == '__main__':
         dnm_mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, ' \
                   'meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
         dnms = [dnm_909, dnm_mst]
+        my_train_args = dict(
+            augment_key=augment_key,
+            save_epochs=2
+        )
         train_args = dict()
-        my_train_args = dict(augment_key=augment_key)
+        if 'debug' not in md_sz:
+            my_train_args.update(dict(tqdm=True, logging_strategy='epoch'))
+            train_args = dict(per_device_train_batch_size=32)
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n,
             train_args=train_args, my_train_args=my_train_args

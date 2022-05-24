@@ -48,16 +48,11 @@ class IkrMetric:
         if self.mode == 'vanilla':
             for pred, label, key_scores_ in zip(preds, labels, key_scores):
                 if isinstance(key_scores_, torch.Tensor):
-                    key_scores_ = key_scores_.numpy()
-                # lst_ord_n_score = [(ord_key, score) for ord_key, score in enumerate(key_scores_) if score > 0])
+                    key_scores_ = key_scores_.cpu().numpy()
                 ords, scores = zip(*[(ord_key, score) for ord_key, score in enumerate(key_scores_) if score > 0])
                 pred = pred[label != PT_LOSS_PAD]
-                # ic(ords, scores)
                 _ikrs = [self.get_in_key_ratio(pred, key_ordinal2key_enum[o]) for o in ords]
-                # ic(_ikrs)
                 ikrs.append(np.average(_ikrs, weights=scores))
-                # ic(ikrs)
-                # exit(1)
         elif self.mode == 'key-aug':
             for pred, label in zip(preds, labels):
                 key_tok_id = label[2]  # expect labels to be well-formed

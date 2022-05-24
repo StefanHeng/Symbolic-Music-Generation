@@ -142,7 +142,6 @@ class MusicExport:
 
         log2console = not with_tqdm  # TODO: not working when multiprocessing
         halt_on_error = not bool(parallel)
-        ic(halt_on_error)
         export_single = SingleExport(
             path_out, save_each, self.logger, extractor, exp, log2console=log2console, halt_on_error=halt_on_error
         )
@@ -309,7 +308,9 @@ if __name__ == '__main__':
         # dnm = 'LMD, MS/000000-010000'
         dnm = 'LMD, MS'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
-        grp_nm = '110000-120000'
+        # grp_nm = 'many'
+        grp_nm = '010000-020000'
+        # grp_nm = '110000-120000'
         dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         # dnm = 'LMD-cleaned-subset'
@@ -331,16 +332,21 @@ if __name__ == '__main__':
             # '040000-050000',
             # '050000-060000',
             # '060000-070000',
+            # '070000-080000',
+            # '080000-090000',
+            # '090000-100000',
+            # '100000-110000',
+            # '120000-130000',
+            # '130000-140000',
             grp_nm
         ]], start=[])
-        ic(len(paths))
         me(
             # dnm,
             paths,
             extractor_args=args, path_out=path_out, save_each=True,
-            parallel=128,
+            parallel=8,
             with_tqdm=True, parallel_mode=pl_md,
-            n_worker=24
+            # n_worker=24
         )
     export2json()
 
@@ -503,3 +509,50 @@ if __name__ == '__main__':
         ic(type(feat_keys))
         ic(dset[:4]['keys'])
     # check_dset_with_key_features()
+
+    def chore_move_proper_folder():
+        """
+        Batch processing writes to the same folder, move them to sub folders for LMD
+        """
+        import re
+        import shutil
+
+        dir_nm = '2022-05-20_09-39-16_LMD, MS'
+        path_process_base = os_join(u.dset_path, 'processed', 'intermediate', dir_nm)
+        path_to_process = os_join(path_process_base, 'many')
+        ic(path_to_process)
+        paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
+        pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$')
+        o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4), ext='json')
+        ic(o2f.total)
+        for path in tqdm(paths):
+            m = pattern.match(stem(path))
+            assert m is not None
+            o = int(m.group('ordinal'))
+
+            fnm, dir_nm = o2f(o, return_dir=True)
+            fnm = fnm.split('/')[-1]
+            fnm = f'Music Export - {fnm}.json'
+            path_out = os_join(path_process_base, dir_nm)
+            os.makedirs(path_out, exist_ok=True)
+
+            path_out = os_join(path_out, fnm)
+            assert not os.path.exists(path_out)
+            ic(path, path_out)
+            exit(1)
+            shutil.move(path, path_out)
+    # chore_move_proper_folder()
+
+    def fix_wrong_moved_fnm():
+        import shutil
+        dir_nm = '2022-05-20_09-39-16_LMD, MS'
+        path_process_base = os_join(u.dset_path, 'processed', 'intermediate', dir_nm)
+        path_to_process = os_join(path_process_base, '050000-060000')
+        paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
+        for path in tqdm(paths):
+            fnm = stem(path)[-6:]
+            path_new = os_join(path_to_process, f'Music Export - {fnm}.json')
+            # ic(fnm, path, path_new)
+            # exit(1)
+            shutil.move(path, path_new)
+    # fix_wrong_moved_fnm()

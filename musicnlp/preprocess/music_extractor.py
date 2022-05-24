@@ -521,7 +521,7 @@ class MusicExtractor:
         lst_bar_info = list(self.it_bars(song))
         assert len(lst_bar_info) > 0, f'{logi("No bars")} found in song'
         assert all(len(bar_info.bars) > 0 for bar_info in lst_bar_info), \
-            f'No notes found at all times, most likely the song contains {logi("drum tracks")} only - ' \
+            f'No pitched notes found at all times, most likely the song contains {logi("drum tracks")} only - ' \
             f'Terminating as extraction output would be empty'
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
 
@@ -1208,8 +1208,155 @@ if __name__ == '__main__':
         #     # '032582.mxl',
         #     # '032636.mxl',
         #     # '032787.mxl',
-        #     '033045.mxl',
+        #     # '033045.mxl',
+        #     # '032787.mxl',
+        #     # '033901.mxl',
+        #     # '033514.mxl',
+        #     # '034666.mxl',
+        #     # '031675.mxl',
+        #     # '033922.mxl',
+        #     # '033224.mxl',
+        #     # '034698.mxl',
+        #     # '034822.mxl',
+        #     # '034586.mxl',
+        #     # '033240.mxl',  # TODO: check error
+        #     # '033717.mxl',
+        #     # '034129.mxl',
+        #     # '034515.mxl',
+        #     # '035125.mxl',
+        #     # '034765.mxl',
+        #     # '035920.mxl',
+        #     # '035282.mxl',
+        #     # '035556.mxl',
+        #     # '035308.mxl',
+        #     # '036148.mxl',
+        #     # '036565.mxl',
+        #     # '037038.mxl',
+        #     # '036936.mxl',
+        #     # '037547.mxl',
+        #     # '037923.mxl',
+        #     # '037376.mxl',
+        #     # '037625.mxl',
+        #     # '037704.mxl',
+        #     # '038208.mxl',
+        #     # '038031.mxl',
+        #     # '038837.mxl',  # TODO: check error
+        #     # '038670.mxl',
+        #     # '038855.mxl',
+        #     # '039475.mxl',
+        #     # '038696.mxl',
+        #     # '039249.mxl',
+        #     # '039753.mxl',
+        #     # '039703.mxl',
+        #     # '039145.mxl',
+        #     # '039839.mxl',
+        #     # '035611.mxl',
+        #     '038670.mxl',
         # ]
+        # broken_files = [
+        #     # '040459.mxl',
+        #     # '040566.mxl',
+        #     # '040681.mxl',
+        #     # '040965.mxl',
+        #     # '041173.mxl',
+        #     # '041259.mxl',
+        #     # '041349.mxl',
+        #     # '041428.mxl',
+        #     # '041432.mxl',
+        #     # '041512.mxl',
+        #     # '041992.mxl',
+        #     # '042015.mxl',
+        #     '042156.mxl',
+        #     '042546.mxl',
+        #     '042653.mxl',
+        #     '042694.mxl',
+        #     '042824.mxl',
+        #     '042838.mxl',
+        #     '042920.mxl',
+        #     '042972.mxl',
+        #     '043001.mxl',
+        #     '043002.mxl',
+        #     '043061.mxl',
+        #     '043371.mxl',
+        #     '043710.mxl',
+        #     '043923.mxl',
+        #     '044052.mxl',
+        #     '044090.mxl',
+        #     '044109.mxl',
+        #     '044359.mxl',
+        #     '044363.mxl',
+        #     '044433.mxl',
+        #     '044499.mxl',
+        #     '045316.mxl',
+        #     '045381.mxl',
+        #     '045631.mxl',
+        #     '045674.mxl',
+        #     '045820.mxl',
+        #     '045964.mxl',
+        #     '046821.mxl',
+        #     '046868.mxl',
+        #     '047006.mxl',
+        #     '047130.mxl',
+        #     '047262.mxl',
+        #     '047304.mxl',
+        #     '047606.mxl',
+        #     '047699.mxl',
+        #     '047718.mxl',
+        #     '047743.mxl',
+        #     '048511.mxl',
+        #     '049070.mxl',
+        #     '049335.mxl',
+        #     '049356.mxl',
+        #     '049517.mxl',
+        #     '049737.mxl',
+        #     '049868.mxl',
+        #     '049922.mxl',
+        #     '049934.mxl'
+        # ]
+        broken_files = [
+            # '050077.mxl',
+            # '050305.mxl',
+            # '050355.mxl',
+            # '050565.mxl',
+            # '050621.mxl',
+            # '050651.mxl',
+            # '050689.mxl',
+            # '050703.mxl',
+            # '050735.mxl',  # TODO: check error
+            # '050992.mxl',
+            # '051354.mxl',
+            # '051696.mxl',
+            # '051926.mxl',
+            # '052001.mxl',
+            # '052324.mxl',
+            # '052902.mxl',
+            # '053020.mxl',
+            # '053135.mxl',
+            # '053137.mxl',
+            # '053165.mxl',
+            # '053585.mxl',
+            # '053693.mxl',
+            # '054246.mxl',
+            # '054280.mxl',
+            # '054494.mxl',
+            # '054923.mxl',
+            # '055028.mxl',
+            # '055465.mxl',
+            # '055770.mxl',
+            # '055924.mxl',
+            # '056113.mxl',
+            # '056122.mxl',
+            # '056453.mxl',
+            # '056606.mxl',
+            # '056617.mxl',
+            # '056792.mxl',
+            # '057053.mxl',
+            # '057853.mxl',
+            '057584.mxl',
+            '057374.mxl',
+            '050980.mxl',
+            '057285.mxl',
+        ]
         # broken_files = [
         #     # '060780.mxl',
         #     # '061434.mxl',
@@ -1266,31 +1413,31 @@ if __name__ == '__main__':
         #     # '068179.mxl',
         #     '069977.mxl',
         # ]
-        broken_files = [
-            # '070020.mxl',
-            # '070486.mxl',
-            # '070431.mxl',
-            # '070783.mxl',
-            # '070849.mxl',
-            # '070906.mxl',
-            # '071055.mxl',
-            # '071060.mxl',
-            # '071573.mxl',
-            # '070487.mxl',
-            # '072475.mxl',
-            # '072279.mxl',
-            # '072775.mxl',
-            # '072284.mxl',
-            # '073249.mxl',
-            # '074094.mxl',
-            # '074321.mxl',
-            # '074436.mxl',
-            # '073873.mxl',
-            # '075076.mxl',
-            # '074856.mxl',
-            # '074279.mxl',
-            '075055.mxl',
-        ]
+        # broken_files = [
+        #     # '070020.mxl',
+        #     # '070486.mxl',
+        #     # '070431.mxl',
+        #     # '070783.mxl',
+        #     # '070849.mxl',
+        #     # '070906.mxl',
+        #     # '071055.mxl',
+        #     # '071060.mxl',
+        #     # '071573.mxl',
+        #     # '070487.mxl',
+        #     # '072475.mxl',
+        #     # '072279.mxl',
+        #     # '072775.mxl',
+        #     # '072284.mxl',
+        #     # '073249.mxl',
+        #     # '074094.mxl',
+        #     # '074321.mxl',
+        #     # '074436.mxl',
+        #     # '073873.mxl',
+        #     # '075076.mxl',
+        #     # '074856.mxl',
+        #     # '074279.mxl',
+        #     '075055.mxl',
+        # ]
         # broken_files = [
         #     # '080403.mxl',
         #     # '080277.mxl',
@@ -1301,84 +1448,93 @@ if __name__ == '__main__':
         #     # '081142.mxl',
         #     '081285.mxl',
         # ]
-        broken_files = [
-            # '110459.mxl',
-            # '110416.mxl',
-            # '110302.mxl',
-            # '111158.mxl',
-            # '111071.mxl',
-            # '111375.mxl',
-            # '111569.mxl',
-            # '111282.mxl',
-            # '111350.mxl',
-            # '111391.mxl',
-            # '111830.mxl',
-            # '111735.mxl',
-            # '112271.mxl',
-            # '112533.mxl',
-            # '112685.mxl',
-            # '112397.mxl',
-            # '112774.mxl',
-            # '112780.mxl',
-            # '112545.mxl',
-            # '113210.mxl',
-            # '113381.mxl',
-            # '113045.mxl',
-            # '113517.mxl',
-            # '113620.mxl',
-            # '113670.mxl',
-            # '114030.mxl',
-            # '113694.mxl',
-            # '114813.mxl',
-            # '114950.mxl',
-            # '113387.mxl',
-            # '115408.mxl',
-            # '115570.mxl',
-            # '116052.mxl',
-            # '116371.mxl',
-            # '116483.mxl',
-            '116483.mxl',
-            '117028.mxl',
-            '116909.mxl',
-            '118591.mxl',
-            '117429.mxl',
-            '118207.mxl',
-            '118470.mxl',
-            '116600.mxl',
-            '118741.mxl',
-            '117967.mxl',
-            '116802.mxl',
-            '116941.mxl',
-            '117077.mxl',
-            '116496.mxl',
-            '118658.mxl',
-            '116710.mxl',
-            '118664.mxl',
-            '116976.mxl',
-            '118830.mxl',
-            '118307.mxl',
-            '119887.mxl',
-            '119799.mxl',
-        ]
+        # broken_files = [
+        #     # '110459.mxl',
+        #     # '110416.mxl',
+        #     # '110302.mxl',
+        #     # '111158.mxl',
+        #     # '111071.mxl',
+        #     # '111375.mxl',
+        #     # '111569.mxl',
+        #     # '111282.mxl',
+        #     # '111350.mxl',
+        #     # '111391.mxl',
+        #     # '111830.mxl',
+        #     # '111735.mxl',
+        #     # '112271.mxl',
+        #     # '112533.mxl',
+        #     # '112685.mxl',
+        #     # '112397.mxl',
+        #     # '112774.mxl',
+        #     # '112780.mxl',
+        #     # '112545.mxl',
+        #     # '113210.mxl',
+        #     # '113381.mxl',
+        #     # '113045.mxl',
+        #     # '113517.mxl',
+        #     # '113620.mxl',
+        #     # '113670.mxl',
+        #     # '114030.mxl',
+        #     # '113694.mxl',
+        #     # '114813.mxl',
+        #     # '114950.mxl',
+        #     # '113387.mxl',
+        #     # '115408.mxl',
+        #     # '115570.mxl',
+        #     # '116052.mxl',
+        #     # '116371.mxl',
+        #     # '116483.mxl',
+        #     '116483.mxl',
+        #     '117028.mxl',
+        #     '116909.mxl',
+        #     '118591.mxl',
+        #     '117429.mxl',
+        #     '118207.mxl',
+        #     '118470.mxl',
+        #     '116600.mxl',
+        #     '118741.mxl',
+        #     '117967.mxl',
+        #     '116802.mxl',
+        #     '116941.mxl',
+        #     '117077.mxl',
+        #     '116496.mxl',
+        #     '118658.mxl',
+        #     '116710.mxl',
+        #     '118664.mxl',
+        #     '116976.mxl',
+        #     '118830.mxl',
+        #     '118307.mxl',
+        #     '119887.mxl',
+        #     '119799.mxl',
+        # ]
         # grp_nm = '000000-010000'
         # grp_nm = '010000-020000'
         # grp_nm = '020000-030000'
         # grp_nm = '030000-040000'
         # grp_nm = '040000-050000'
-        # grp_nm = '050000-060000'
+        grp_nm = '050000-060000'
         # grp_nm = '060000-070000'
         # grp_nm = '070000-080000'
         # grp_nm = '080000-090000'
-        # grp_nm = '90000-100000'
+        # grp_nm = '090000-100000'
         # grp_nm = '100000-110000'
-        grp_nm = '110000-120000'
+        # grp_nm = '110000-120000'
         broken_files = [os_join(grp_nm, f) for f in broken_files]
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
+        
+        # batch = False
+        batch = True
 
         for broken_fl in broken_files:
             path = os_join(u.dset_path, dir_nm, broken_fl)
-            ic(path)
-            print(me(path, exp='visualize'))
+            if batch:
+                try:
+                    print(me(path, exp='visualize'))
+                except Exception as e:
+                    print(log_s(stem(path), c='y'), e)
+            else:
+                ic(path)
+                print(me(path, exp='visualize'))
             # me(path, exp='mxl')
     check_edge_case_batched()
 
@@ -1410,3 +1566,24 @@ if __name__ == '__main__':
         ic(set_fls_ori, set_fls_new)
         ic(set_fls_new - set_fls_ori)
     # fix_merge_processing_from_lib()
+
+    def get_broken_fnms():
+        """
+        Get the file names where music extraction failed, by extracting from console output
+        """
+        import re
+
+        log_fnm = '05.24.22 @ 10.18, lmd grp 4-5'
+        path_log = os_join(u.dset_path, 'converted', 'LMD log', f'{log_fnm}.log')
+        with open(path_log, 'r') as f:
+            lines = f.readlines()
+        pattern = re.compile(r'^.*Failed to extract.*/(?P<fnm>.*).mxl.*$')
+
+        def extract_line(ln: str) -> str:
+            m = pattern.match(ln)
+            if m:
+                return m.group('fnm')
+        fnms = [extract_line(ln) for ln in lines]
+        fnms = sorted([f'{fnm}.mxl' for fnm in fnms if fnm])
+        ic(fnms)
+    # get_broken_fnms()
