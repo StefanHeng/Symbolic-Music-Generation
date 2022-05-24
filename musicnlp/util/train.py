@@ -2,13 +2,14 @@ import os
 import re
 import math
 from os.path import join as os_join
-from typing import List, Tuple, Dict, Callable, Optional, Union
+from typing import List, Tuple, Dict, Callable, Any, Optional, Union
 import datetime
 from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
@@ -30,14 +31,17 @@ def meta2fnm_meta(meta: Dict) -> Dict:
     return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
 
 
-class EvalPrediction:
+class MyEvalPrediction:
     """
+    Override to pass in `key_scores`
+
     Evaluation output (always contains labels), to be used to compute metrics.
 
     Parameters:
         predictions (`np.ndarray`): Predictions of the model.
         label_ids (`np.ndarray`): Targets to be matched.
         inputs (`np.ndarray`, *optional*)
+        key_scores (`np.ndarray`, *optional*)
     """
 
     def __init__(
@@ -45,21 +49,28 @@ class EvalPrediction:
         predictions: Union[np.ndarray, Tuple[np.ndarray]],
         label_ids: Union[np.ndarray, Tuple[np.ndarray]],
         inputs: Optional[Union[np.ndarray, Tuple[np.ndarray]]] = None,
+        key_scores: Optional[Union[np.ndarray, Tuple[np.ndarray]]] = None,
     ):
         self.predictions = predictions
         self.label_ids = label_ids
         self.inputs = inputs
+        self.key_scores = key_scores
 
     def __iter__(self):
-        if self.inputs is not None:
-            return iter((self.predictions, self.label_ids, self.inputs))
-        else:
-            return iter((self.predictions, self.label_ids))
+        # if self.inputs is not None:
+        #     return iter((self.predictions, self.label_ids, self.inputs))
+        # else:
+        #     return iter((self.predictions, self.label_ids))
+        return iter(e for e in (self.predictions, self.label_ids, self.inputs, self.key_scores) if e is not None)
 
     def __getitem__(self, idx):
-        if idx < 0 or idx > 2:
+        # if idx < 0 or idx > 2:
+        #     raise IndexError("tuple index out of range")
+        if idx < 0 or idx > 3:
             raise IndexError("tuple index out of range")
         if idx == 2 and self.inputs is None:
+            raise IndexError("tuple index out of range")
+        if idx == 3 and self.key_scores is None:
             raise IndexError("tuple index out of range")
         if idx == 0:
             return self.predictions
@@ -67,14 +78,19 @@ class EvalPrediction:
             return self.label_ids
         elif idx == 2:
             return self.inputs
+        elif idx == 3:
+            return self.key_scores
 
 
 class MyTrainer(Trainer):
     def __init__(
             self, model_meta: Dict = None, my_args: Dict = None,
-            clm_acc_logging=True, train_metrics: Dict[str, Callable] = None, **kwargs
+            clm_acc_logging=True, train_metrics: Dict[str, Callable] = None,
+            compute_metrics: Optional[Callable[[MyEvalPrediction], Dict]] = None,
+            **kwargs
     ):
         assert kwargs['args'].disable_tqdm  # Always disable
+        kwargs['compute_metrics'] = compute_metrics
         super().__init__(**kwargs)
         self.clm_acc_logging = clm_acc_logging
         self.model_meta = model_meta
@@ -130,10 +146,7 @@ class MyTrainer(Trainer):
                 d_log.update({k: f(preds, labels_, ks) for k, f in self.train_metrics.items()})
 
             # CLM, predicting the next token given current, so shift
-            is_xl_output = preds.size(1) == labels_.size(1) - 1  # seems already shifted
-            if not is_xl_output:
-                preds = preds[:, :-1]
-            labels_ = labels_[:, 1:]
+            preds, labels_ = preds[:, :-1], labels_[:, 1:]
             msk_not_pad = labels_ != PT_LOSS_PAD  # Consider only the actual tokens for accuracy
             preds_non_pad, labels_non_pad = preds[msk_not_pad], labels_[msk_not_pad]
             matches: torch.Tensor = (preds_non_pad == labels_non_pad)
@@ -156,6 +169,112 @@ class MyTrainer(Trainer):
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         return (loss, outputs) if return_outputs else loss
+
+    def prediction_step(
+        self,
+        model: nn.Module,
+        inputs: Dict[str, Union[torch.Tensor, Any]],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[List[str]] = None,
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        """
+        Perform an evaluation step on `model` using `inputs`.
+
+        Subclass and override to inject custom behavior.
+
+        Args:
+            model (`nn.Module`):
+                The model to evaluate.
+            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
+                The inputs and targets of the model.
+
+                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
+                argument `labels`. Check your model's documentation for all accepted arguments.
+            prediction_loss_only (`bool`):
+                Whether or not to return the loss only.
+            ignore_keys (`Lst[str]`, *optional*):
+                A list of keys in the output of your model (if it is a dictionary) that should be ignored when
+                gathering predictions.
+
+        Return:
+            Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
+            logits and labels (each being optional).
+        """
+        # ========================== Begin of added =========================
+        from transformers.file_utils import is_sagemaker_mp_enabled
+        from transformers.trainer_pt_utils import nested_detach
+        if is_sagemaker_mp_enabled():
+            from transformers.trainer_pt_utils import smp_forward_only, smp_nested_concat
+        # ========================== End of added =========================
+        has_labels = all(inputs.get(k) is not None for k in self.label_names)
+        inputs = self._prepare_inputs(inputs)
+        if ignore_keys is None:
+            if hasattr(self.model, "config"):
+                ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", [])
+            else:
+                ignore_keys = []
+
+        # labels may be popped when computing the loss (label smoothing for instance) so we grab them first.
+        if has_labels:
+            labels = nested_detach(tuple(inputs.get(name) for name in self.label_names))
+            if len(labels) == 1:
+                labels = labels[0]
+        else:
+            labels = None
+
+        with torch.no_grad():
+            if is_sagemaker_mp_enabled():
+                raw_outputs = smp_forward_only(model, inputs)
+                if has_labels:
+                    if isinstance(raw_outputs, dict):
+                        loss_mb = raw_outputs["loss"]
+                        logits_mb = tuple(v for k, v in raw_outputs.items() if k not in ignore_keys + ["loss"])
+                    else:
+                        loss_mb = raw_outputs[0]
+                        logits_mb = raw_outputs[1:]
+
+                    loss = loss_mb.reduce_mean().detach().cpu()
+                    logits = smp_nested_concat(logits_mb)
+                else:
+                    loss = None
+                    if isinstance(raw_outputs, dict):
+                        logits_mb = tuple(v for k, v in raw_outputs.items() if k not in ignore_keys)
+                    else:
+                        logits_mb = raw_outputs
+                    logits = smp_nested_concat(logits_mb)
+            else:
+                if has_labels:
+                    with self.autocast_smart_context_manager():
+                        loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
+                    loss = loss.mean().detach()
+
+                    if isinstance(outputs, dict):
+                        logits = tuple(v for k, v in outputs.items() if k not in ignore_keys + ["loss"])
+                    else:
+                        logits = outputs[1:]
+                else:
+                    loss = None
+                    with self.autocast_smart_context_manager():
+                        outputs = model(**inputs)
+                    if isinstance(outputs, dict):
+                        logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
+                    else:
+                        logits = outputs
+                    # TODO: this needs to be fixed and made cleaner later.
+                    if self.args.past_index >= 0:
+                        self._past = outputs[self.args.past_index - 1]
+
+        if prediction_loss_only:
+            return (loss, None, None)
+
+        logits = nested_detach(logits)
+        if len(logits) == 1:
+            logits = logits[0]
+
+        # ========================== Begin of modified =========================
+        return (loss, logits, labels, inputs['key_scores'].detach())
+        # return (loss, logits, labels)
+        # ========================== End of modified =========================
 
     def evaluation_loop(
         self,
@@ -237,12 +356,17 @@ class MyTrainer(Trainer):
         preds_host = None
         labels_host = None
         inputs_host = None
-
+        # ========================== Begin of added =========================
+        key_scores_host = None
+        # ========================== End of added =========================
         # losses/preds/labels on CPU (final containers)
         all_losses = None
         all_preds = None
         all_labels = None
         all_inputs = None
+        # ========================== Begin of added =========================
+        all_key_scores = None
+        # ========================== End of added =========================
         # Will be useful when we have an iterable dataset so don't know its length.
 
         observed_num_examples = 0
@@ -257,7 +381,12 @@ class MyTrainer(Trainer):
                     batch_size = observed_batch_size
 
             # Prediction step
-            loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+            # ========================== Begin of modified =========================
+            # loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+            loss, logits, labels, key_scores = self.prediction_step(
+                model, inputs, prediction_loss_only, ignore_keys=ignore_keys
+            )
+            # ========================== Begin of modified =========================
             inputs_decode = inputs["input_ids"] if args.include_inputs_for_metrics else None
 
             if is_torch_tpu_available():
@@ -285,6 +414,15 @@ class MyTrainer(Trainer):
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits, labels)
                 preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+            # ========================== Begin of added =========================
+            if key_scores is not None:
+                key_scores = self._pad_across_processes(key_scores)
+                key_scores = self._nested_gather(key_scores)
+                key_scores_host = (
+                    key_scores if key_scores_host is None
+                    else nested_concat(key_scores_host, key_scores, padding_index=-100)
+                )
+            # ========================== End of added =========================
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
             # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
@@ -307,9 +445,20 @@ class MyTrainer(Trainer):
                     all_labels = (
                         labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
                     )
+                # ========================== Begin of added =========================
+                if key_scores_host is not None:
+                    key_scores = nested_numpify(key_scores_host)
+                    all_key_scores = (
+                        key_scores if all_key_scores is None
+                        else nested_concat(all_key_scores, key_scores, padding_index=-100)
+                    )
+                # ========================== End of added =========================
 
                 # Set back to None to begin a new accumulation
-                losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+                # ========================== Begin of modified =========================
+                # losses_host, preds_host, labels_host, inputs_host = None, None, None, None
+                losses_host, preds_host, inputs_host, labels_host, key_scores_host = None, None, None, None, None
+                # ========================== End of modified =========================
 
         if args.past_index and hasattr(self, "_past"):
             # Clean the state at the end of the evaluation loop
@@ -330,6 +479,14 @@ class MyTrainer(Trainer):
         if labels_host is not None:
             labels = nested_numpify(labels_host)
             all_labels = labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
+        # ========================== Begin of added =========================
+        if key_scores_host is not None:
+            key_scores = nested_numpify(key_scores_host)
+            all_key_scores = (
+                key_scores if key_scores_host is None
+                else nested_concat(key_scores, key_scores_host, padding_index=-100)
+            )
+        # ========================== End of added =========================
 
         # Number of samples
         if has_length(eval_dataset):
@@ -354,15 +511,29 @@ class MyTrainer(Trainer):
             all_labels = nested_truncate(all_labels, num_samples)
         if all_inputs is not None:
             all_inputs = nested_truncate(all_inputs, num_samples)
+        # ========================== Begin of added =========================
+        if all_key_scores is not None:
+            all_key_scores = nested_truncate(all_key_scores, num_samples)
+        # ========================== End of added =========================
 
         # Metrics!
         if self.compute_metrics is not None and all_preds is not None and all_labels is not None:
+            # ========================== Begin of modified =========================
+            # if args.include_inputs_for_metrics:
+            #     metrics = self.compute_metrics(
+            #         EvalPrediction(predictions=all_preds, label_ids=all_labels, inputs=all_inputs)
+            #     )
+            # else:
+            #     metrics = self.compute_metrics(EvalPrediction(predictions=all_preds, label_ids=all_labels))
             if args.include_inputs_for_metrics:
-                metrics = self.compute_metrics(
-                    EvalPrediction(predictions=all_preds, label_ids=all_labels, inputs=all_inputs)
-                )
+                metrics = self.compute_metrics(MyEvalPrediction(
+                    predictions=all_preds, label_ids=all_labels, inputs=all_inputs, key_scores=all_key_scores
+                ))
             else:
-                metrics = self.compute_metrics(EvalPrediction(predictions=all_preds, label_ids=all_labels))
+                metrics = self.compute_metrics(MyEvalPrediction(
+                    predictions=all_preds, label_ids=all_labels, key_scores=all_key_scores
+                ))
+            # ========================== End of modified =========================
         else:
             metrics = {}
 

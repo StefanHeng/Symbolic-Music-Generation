@@ -386,7 +386,7 @@ if __name__ == '__main__':
         # dnm = 'POP909, LP'
         # dnm = 'MAESTRO'
         # dnm = 'LMD, MS/040000-050000'
-        dnm = 'LMD, LP/050000-060000'
+        dnm = 'LMD, LP/170000-178561'
         path_processed = os_join(u.dset_path, 'converted', dnm)
         """
         Among group of 10k files in a folder for conversion, MS in Mac produces ~100 broken songs, 
@@ -422,6 +422,19 @@ if __name__ == '__main__':
                 logger.info(f'Original MIDI for {logi(fnm)} not found, removed')
                 count += 1
         logger.info(f'{logi(count)} converted xml with unknown origin in the last session removed')
-    mv_backend_not_processed()
+    # mv_backend_not_processed()
 
     # get_lmd_conversion_meta()
+
+    def chore_convert_xml2mxl():
+        """
+        ~~Logic Pro output is in un-compressed music XML, change to MXL for smaller file size~~
+
+        Converted using MuseScore instead
+        """
+        pattern = os_join(u.dset_path, 'converted', 'LMD, LP', '**/*.xml')
+        files = sorted(glob.iglob(pattern, recursive=True))
+        ic(len(files))
+        for path in files:
+            pass
+

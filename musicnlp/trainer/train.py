@@ -196,9 +196,10 @@ def get_train_and_my_train_args(
 
 
 class ComputeMetrics:
-    def __init__(self, tokenizer: MusicTokenizer, ikr_mode: str = 'vanilla'):
+    def __init__(self, tokenizer: MusicTokenizer, mode: str = 'vanilla'):
         self.acc = datasets.load_metric('accuracy')
-        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, mode=ikr_mode)
+        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, mode=mode)
+        self.mode = mode
 
     def __call__(self, eval_pred):
         """
@@ -206,14 +207,14 @@ class ComputeMetrics:
 
         Will be the outputs on eval dataset, see `Trainer.compute_metrics`
         """
-        preds, labels = eval_pred
-        is_xl_output = preds.shape[1] == labels.shape[1] - 1  # seems already shifted
+        if self.mode == 'vanilla':
+            preds, labels, key_scores = eval_pred
+        else:
+            (preds, labels), key_scores = eval_pred, None
         preds = preds.argmax(axis=-1)
-        d_metric = dict(ikr=self.ikr(preds, labels))
+        d_metric = dict(ikr=self.ikr(preds=preds, labels=labels, key_scores=key_scores))
 
-        if not is_xl_output:
-            preds = preds[:, :-1]
-        labels = labels[:, 1:]  # shift for CLM
+        preds, labels = preds[:, :-1], labels[:, 1:]  # shift for CLM
         labels, preds = labels.flatten(), preds.flatten()
         msk_non_pad = (labels != train_util.PT_LOSS_PAD)
         labels, preds = labels[msk_non_pad], preds[msk_non_pad]
@@ -256,7 +257,7 @@ def get_all_setup(
 
     # clm_acc_logging = isinstance(model_, ReformerModelWithLMHead)  # couldn't get logits for `TransfoXL`
     clm_acc_logging = True
-    cm = ComputeMetrics(tokenizer=tokenizer, ikr_mode='aug-key' if aug_key else 'vanilla')
+    cm = ComputeMetrics(tokenizer=tokenizer, mode='aug-key' if aug_key else 'vanilla')
     trainer_ = train_util.MyTrainer(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
