@@ -218,13 +218,16 @@ class MusicExtractor:
                     notes_out.append(nt)
                 offset += note2dur(nt)
 
-        # if number == 965:
+        # if number == 1:
         #     ic(notes)
+        #     for n in notes:
+        #         strt, end = get_offset(n), get_end_qlen(n)
+        #         ic(n, strt, end)
         #     ic(notes_out)
-        #     # for n in flatten_notes(notes):
-        #     for n in flatten_notes(notes_out):
-        #         qLen = n.duration.quarterLength
-        #         ic(n, n.offset, qLen)
+        #     for n in notes_out:
+        #         strt, end = get_offset(n), get_end_qlen(n)
+        #         ic(n, strt, end)
+        #     exit(1)
         #     # ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
         assert not notes_overlapping(notes_out)  # Sanity check
         assert sum(note2dur(n) for n in notes_out) == dur_bar
@@ -567,12 +570,12 @@ class MusicExtractor:
             self.logger.info(f'Extracting {logi(title)} with {log_dict(d_log)}... ')
             if self.warn_logger is not None:
                 self.warn_logger.start_tracking(args_func=lambda: dict(id=title, timestamp=now()))
-        set_ts = set(f'{ts.numerator}/{ts.denominator}' for ts in time_sigs)
-        set_tp = set(round(tp.number) for tp in tempos)
-        if len(set_ts) > 1:
-            self.log_warn(dict(warn_name=WarnLog.MultTimeSig, time_sigs=sorted(set_ts)))
-        if len(set_tp) > 1:
-            self.log_warn(dict(warn_name=WarnLog.MultTempo, tempos=sorted(set_tp)))
+        lst_ts = sorted(set((ts.numerator, ts.denominator) for ts in time_sigs), key=lambda x: (x[1], x[0]))
+        lst_tp = sorted(set(round(tp.number) for tp in tempos))
+        if len(lst_ts) > 1:
+            self.log_warn(dict(warn_name=WarnLog.MultTimeSig, time_sigs=sorted(lst_ts)))
+        if len(lst_tp) > 1:
+            self.log_warn(dict(warn_name=WarnLog.MultTempo, tempos=sorted(lst_tp)))
         if not is_common_time_sig(time_sig_mode):
             self.log_warn(dict(
                 warn_name=WarnLog.UncomTimeSig, time_sig_expect=COMMON_TIME_SIGS, time_sig_got=time_sig_mode
@@ -611,20 +614,30 @@ class MusicExtractor:
             sort_groups()
 
             def _fix_edge_case():
-                if number in [33, 43, 60, 62] and \
-                        (time_sig.numerator, time_sig.denominator) in [(8, 4), (4, 2)] and 4.0 in groups:
-                    # for [`LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`]
-                    # the original file is broken, with a note beginning at 4 and ending at 12 for bar duration of 8
+                # the original file is broken in that doesn't align with time signature duration
+                if (time_sig.numerator, time_sig.denominator) in [(8, 4), (4, 2), (2, 1)] and \
+                        number in [17, 33, 38, 43, 60, 62] and 4.0 in groups:
+                    # for [`LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`, `LMD::116976`, `LMD::119887`]
                     _notes_out = []
-                    for _n in groups[4.0]:
-                        s, e = get_offset(_n), get_end_qlen(_n)
-                        if s == 4.0 and e == 12.0:
-                            continue
+                    for _n in groups[4.0]:  # starts at offset 4
+                        if isinstance(_n, Rest) and get_end_qlen(_n) == 12.0:  # 4 qlen more than it should
+                            continue  # ignore
                         _notes_out.append(_n)
                     groups[4.0] = _notes_out
+                elif (time_sig.numerator, time_sig.denominator) == (4, 4) and number == 1 and 0.0 in groups:
+                    # for `LMD::116496`
+                    _notes_out = []
+                    for _n in groups[0.0]:
+                        wrong_dur = Fraction(33, 8)
+                        # assume correct duration of max bar length, 1/8 qlen more than it should
+                        if isinstance(_n, tuple) and get_end_qlen(_n) == wrong_dur:
+                            _notes_out.append(note2note_cleaned(_n, q_len=4))  # Keep, but normalize
+                        else:
+                            _notes_out.append(_n)
+                    groups[0.0] = _notes_out
             _fix_edge_case()
 
-            # if number == 62:
+            # if number == 1:
             #     ic(groups)
             #     for k, notes in groups.items():
             #         ic(k)
@@ -710,8 +723,12 @@ class MusicExtractor:
 
             with RecurseLimit(2**14):
                 notes_out = get_notes_out()
-            # if number == 965:
+            # if number == 1:
             #     ic(notes_out)
+            #     ic('after notes out')
+            #     for n in notes_out[0]:
+            #         strt, end = get_offset(n), get_end_qlen(n)
+            #         ic(n, strt, end)
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
             #   e.g. tiny-duration notes shifts all subsequent notes
@@ -980,7 +997,7 @@ if __name__ == '__main__':
         # path = '/Users/stefanhg/Desktop/Untitled 186.xml'
         # fnm = '018015.mxl'
         # path = os_join(u.dset_path, dir_nm, '010000-020000', fnm)
-        fnm = '069877.mxl'
+        fnm = '119887.mxl'
         path = os_join(u.dset_path, 'converted', 'LMD, check error', fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
