@@ -56,8 +56,8 @@ class TrainArgs:
                 num_train_epochs=64,
             ),
             'debug-large': dict(
-                batch_size=4,
-                learning_rate=3e-4,
+                batch_size=8,
+                learning_rate=1e-3,
                 weight_decay=0,
                 lr_scheduler_type=SchedulerType.CONSTANT,
                 num_train_epochs=16
@@ -353,14 +353,19 @@ if __name__ == '__main__':
     def train_xl():
         md_nm = 'transf-xl'
         transformers.set_seed(seed)
-        md_sz = 'debug'
-        n = 4
+        # md_sz = 'debug'
+        md_sz = 'debug-large'
+        n = 64
+        # n = None
 
-        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
-                  'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
-        dnms = [dnm_909]
-        train_args = dict(learning_rate=3e-3)
-        my_train_args = None
+        augment_key = False
+
+        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+        dnm_mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, ' \
+                  'meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+        dnms = [dnm_909, dnm_mst]
+        train_args = dict()
+        my_train_args = dict(augment_key=augment_key)
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n,
             train_args=train_args, my_train_args=my_train_args
