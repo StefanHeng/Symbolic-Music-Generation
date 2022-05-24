@@ -40,13 +40,14 @@ class MusicExtractor:
             self, precision: int = 5, mode: str = 'melody',
             warn_logger: Union[WarnLog, bool] = None,
             greedy_tuplet_pitch_threshold: int = 3**9,
-            verbose: Union[bool, str] = True
+            verbose: Union[bool, str] = True,
+            epsilon: float = eps
     ):
         """
         :param precision: Bar duration quantization, see `melody_extractor.MxlMelodyExtractor`
         :param mode: Extraction mode, one of [`melody`, `full`]
             `melody`: Only melody is extracted
-            `full`: Melody and Chord as 2 separate channels extracted TODO
+            `full`: Melody and Bass as 2 separate channels extracted TODO
         :param warn_logger: A logger for storing warnings
             If True, a logger is instantiated
         :param greedy_tuplet_pitch_threshold: If #possible note cartesian product in the tuplet > threshold,
@@ -57,6 +58,7 @@ class MusicExtractor:
                 due to transcription quality - See `expand_bar`
         :param verbose: If true, extraction process including warnings is logged
             If `single`, only begin and end of extraction is logged
+        :param epsilon: For float-related equality comparison
 
         .. note:: Prior logging warning messages are removed after new encode call, see `Warning.end_tracking`
         """
@@ -71,6 +73,7 @@ class MusicExtractor:
             self.warn_logger = None
         self.greedy_tuplet_pitch_threshold = greedy_tuplet_pitch_threshold
         self.verbose = verbose
+        self.eps = epsilon
 
         self.vocab = MusicVocabulary(precision)
 
@@ -387,17 +390,16 @@ class MusicExtractor:
                             self.log_warn(dict(
                                 warn_name=WarnLog.TupNoteOvlOut, bar_num=number, offsets=offsets, durations=durs
                             ))
-                            # A really severe case, should rarely happen
                             # TODO: how about just remove this group?
-                            # for n in tup:
-                            #     name, qLen = n.fullName, n.duration.quarterLength
-                            #     ic(name, n.offset, qLen)
                             total_dur: Union[float, Fraction] = sum(n.duration.quarterLength for n in tup)
                             dur_16th = 4 / 16  # duration in quarter length
                             # Trust the duration more than the offset, and unroll backwards to fix the offset
                             # As long as total duration is still multiple of 16th note, make the offset work
                             multiplier: Union[float, Fraction] = total_dur / dur_16th
-                            assert multiplier.is_integer() if isinstance(multiplier, float) \
+
+                            def float_is_int(f: float) -> Union[int, bool]:
+                                return f.is_integer() or math.isclose(f, round(f), abs_tol=self.eps)
+                            assert float_is_int(multiplier) if isinstance(multiplier, float) \
                                 else multiplier.denominator == 1
                             note1st = note2note_cleaned(tup[0])
                             offset = note1st.offset + note1st.duration.quarterLength
@@ -458,10 +460,10 @@ class MusicExtractor:
             elif isinstance(elm, Chord):
                 if keep_chord:
                     lst.append(elm)
-                else:  # TODO: to make things faster, can I keep just the top note?
+                else:
                     # notes = deepcopy(elm.notes)  # TODO: do I need this?
                     notes = list(elm.notes)
-                    for n in notes:
+                    for n in notes:  # TODO: to make things faster, can I keep just the top note?
                         n.offset += elm.offset  # Shift offset in the scope of bar
                     lst.extend(notes)
             else:
@@ -589,7 +591,7 @@ class MusicExtractor:
                 warn_name=WarnLog.IncTimeSig, time_sig=time_sig_mode, threshold=th, n_bar_total=n_bar, n_bar_mode=n_mode
             ))
 
-        lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
+        lst_notes: List[List[ExtNote]] = []
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
         for i_bar, bi in enumerate(lst_bar_info):
             bars, time_sig, tempo = bi.bars, bi.time_sig, bi.tempo
@@ -609,10 +611,10 @@ class MusicExtractor:
             sort_groups()
 
             def _fix_edge_case():
-                if number == 62 and time_sig.numerator == 8 and time_sig.denominator == 4 and 4.0 in groups:
-                    # for LMD::027213
+                if number in [33, 43, 60, 62] and \
+                        (time_sig.numerator, time_sig.denominator) in [(8, 4), (4, 2)] and 4.0 in groups:
+                    # for [`LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`]
                     # the original file is broken, with a note beginning at 4 and ending at 12 for bar duration of 8
-                    # ic('here')
                     _notes_out = []
                     for _n in groups[4.0]:
                         s, e = get_offset(_n), get_end_qlen(_n)
@@ -718,7 +720,8 @@ class MusicExtractor:
             #     n.offset: 2.0
             #     n.duration.quarterLength: Fraction(1, 480)
             dur_bar = time_sig.numerator / time_sig.denominator * 4
-            if not math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes_out)), dur_bar, abs_tol=1e-6):
+            note_dur = sum(n.duration.quarterLength for n in flatten_notes(notes_out))
+            if not math.isclose(note_dur, dur_bar, abs_tol=self.eps):
                 offsets, durs = notes2offset_duration(notes_out)
                 self.log_warn(dict(  # can be due to removing lower-pitched tuplets
                     warn_name=WarnLog.InvBarDur, bar_num=number, offsets=offsets, durations=durs, time_sig=time_sig
@@ -788,24 +791,24 @@ class MusicExtractor:
                 if not isinstance(n, tuple):  # ignore tuplet durations as `consolidate` doesn't consider tuplets
                     # Merges complex durations into one for MXL output
                     n.duration.consolidate()
-        # for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
-        #     if not is_valid_bar_notes(notes, time_sig):
-        #         ic(i_bar)
-        #         for n in notes:
-        #             strt, end = get_offset(n), get_end_qlen(n)
-        #             ic(n, strt, end)
-        #
-        #         dur_bar = time_sig.numerator / time_sig.denominator * 4
-        #         pos_dur = is_notes_pos_duration(notes)
-        #         no_ovl = not notes_overlapping(notes)
-        #         have_gap = notes_have_gap(notes)
-        #         match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
-        #                                      abs_tol=1e-6)
-        #         ic(pos_dur, no_ovl, (not have_gap), match_bar_dur, dur_bar)
-        #         exit(1)
+        for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
+            if not is_valid_bar_notes(notes, time_sig):
+                ic(i_bar)
+                for n in notes:
+                    strt, end = get_offset(n), get_end_qlen(n)
+                    ic(n, strt, end)
+
+                dur_bar = time_sig.numerator / time_sig.denominator * 4
+                pos_dur = is_notes_pos_duration(notes)
+                no_ovl = not notes_overlapping(notes)
+                have_gap = notes_have_gap(notes)
+                match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
+                                             abs_tol=eps)
+                ic(pos_dur, no_ovl, (not have_gap), match_bar_dur, dur_bar)
+                exit(1)
         for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
             assert is_valid_bar_notes(notes, time_sig)
-        if exp == 'mxl':  # TODO: didn't test
+        if exp == 'mxl':
             scr_out = make_score(
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
                 lst_note=[list(flatten_notes(notes)) for notes in lst_notes]
@@ -964,22 +967,26 @@ if __name__ == '__main__':
 
     def check_edge_case():
         # dnm = 'POP909'
-        dnm = 'MAESTRO'
+        # dnm = 'MAESTRO'
+        dnm = 'LMD'
         dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
         dir_nm = f'{dir_nm}, MS'
         # fnm = '汪峰 - 春天里.mxl'
         # fnm = 'Franz Schubert - Impromptu Op. 142 No. 3 In B-flat Major.mxl'
         # fnm = 'Alban Berg - Sonata Op. 1, v2.mxl'
         # fnm = 'Franz Liszt - Tarantelle Di Bravura, S. 386.mxl'
-        fnm = 'Johann Sebastian Bach - Prelude And Fugue In E Major, Wtc I, Bwv 854.mxl'
+        # fnm = 'Johann Sebastian Bach - Prelude And Fugue In E Major, Wtc I, Bwv 854.mxl'
         # path = os_join(u.dset_path, dir_nm, fnm)
         # path = '/Users/stefanhg/Desktop/Untitled 186.xml'
-        path = '/Users/stefanhg/Desktop/027213.musicxml'
+        # fnm = '018015.mxl'
+        # path = os_join(u.dset_path, dir_nm, '010000-020000', fnm)
+        fnm = '069877.mxl'
+        path = os_join(u.dset_path, 'converted', 'LMD, check error', fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
         me(path, exp='mxl')
-    # check_edge_case()
-    # exit(1)
+    check_edge_case()
+    exit(1)
 
     def check_edge_case_batched():
         # dnm = 'MAESTRO'
@@ -1085,61 +1092,65 @@ if __name__ == '__main__':
         #     # '009483.mxl',
         #     '009858.mxl'
         # ]
-        # broken_files = [
-        #     # '010853.mxl',
-        #     # '010994.mxl',
-        #     # '011076.mxl',
-        #     # '011299.mxl',
-        #     # '011487.mxl',
-        #     # '011896.mxl',
-        #     # '011804.mxl'
-        #     # '011899.mxl',
-        #     # '012361.mxl',
-        #     # '012544.mxl',
-        #     # '012434.mxl',
-        #     # '012602.mxl',
-        #     # '012493.mxl',
-        #     # '012943.mxl',
-        #     # '012763.mxl',
-        #     # '013013.mxl',
-        #     # '013277.mxl',
-        #     # '013215.mxl',
-        #     # '013629.mxl',
-        #     # '013551.mxl',
-        #     # '012969.mxl',
-        #     # '013989.mxl',
-        #     # '014247.mxl',
-        #     # '014447.mxl',
-        #     # '014391.mxl',
-        #     # '014538.mxl',
-        #     # '014891.mxl',
-        #     # '014964.mxl',
-        #     # '015364.mxl',
-        #     # '015780.mxl',
-        #     # '015976.mxl',
-        #     # '015882.mxl',
-        #     # '015984.mxl',
-        #     # '016304.mxl',
-        #     # '016597.mxl',
-        #     # '016869.mxl',
-        #     # '016932.mxl',
-        #     # '017151.mxl',
-        #     # '017111.mxl',
-        #     # '017228.mxl',
-        #     # '017482.mxl',
-        #     # '017707.mxl',
-        #     # '017948.mxl',
-        #     '018015.mxl',  # TODO: check why error
-        #     # '018376.mxl',
-        #     # '018622.mxl',
-        #     # '017265.mxl',
-        #     # '016347.mxl',
-        #     # '018901.mxl',
-        #     # '019033.mxl',
-        #     # '019234.mxl',
-        #     # '019297.mxl',
-        #     # '019984.mxl',
-        # ]
+        broken_files = [
+            # '010853.mxl',
+            # '010994.mxl',
+            # '011076.mxl',
+            # '011299.mxl',
+            # '011487.mxl',
+            # '011896.mxl',
+            # '011804.mxl'
+            # '011899.mxl',
+            # '012361.mxl',
+            # '012544.mxl',
+            # '012434.mxl',
+            # '012602.mxl',
+            # '012493.mxl',
+            # '012943.mxl',
+            # '012763.mxl',
+            # '013013.mxl',
+            # '013277.mxl',
+            # '013215.mxl',
+            # '013629.mxl',
+            # '013551.mxl',
+            # '012969.mxl',
+            # '013989.mxl',
+            # '014247.mxl',
+            # '014447.mxl',
+            # '014391.mxl',
+            # '014538.mxl',
+            # '014891.mxl',
+            # '014964.mxl',
+            # '015364.mxl',
+            # '015780.mxl',
+            # '015976.mxl',
+            # '015882.mxl',
+            # '015984.mxl',
+            # '016304.mxl',
+            # '016597.mxl',
+            # '016869.mxl',
+            # '016932.mxl',
+            # '017151.mxl',
+            # '017111.mxl',
+            # '017228.mxl',
+            # '017482.mxl',
+            # '017707.mxl',
+            # '017948.mxl',
+            # '018015.mxl',
+            # '018376.mxl',
+            # '018622.mxl',
+            # '017265.mxl',
+            # '016347.mxl',
+            # '018901.mxl',
+            # '019033.mxl',
+            # '019234.mxl',
+            # '019297.mxl',
+            # '019984.mxl',
+            '019250.mxl',
+            '019352.mxl',
+            '018376.mxl',
+            '018033.mxl',
+        ]
         # broken_files = [
         #     # '020396.mxl',
         #     # '020145.mxl',
@@ -1219,7 +1230,7 @@ if __name__ == '__main__':
         #     # '034698.mxl',
         #     # '034822.mxl',
         #     # '034586.mxl',
-        #     # '033240.mxl',  # TODO: check error
+        #     # '033240.mxl',
         #     # '033717.mxl',
         #     # '034129.mxl',
         #     # '034515.mxl',
@@ -1240,7 +1251,7 @@ if __name__ == '__main__':
         #     # '037704.mxl',
         #     # '038208.mxl',
         #     # '038031.mxl',
-        #     # '038837.mxl',  # TODO: check error
+        #     # '038837.mxl',
         #     # '038670.mxl',
         #     # '038855.mxl',
         #     # '039475.mxl',
@@ -1313,50 +1324,50 @@ if __name__ == '__main__':
         #     '049922.mxl',
         #     '049934.mxl'
         # ]
-        broken_files = [
-            # '050077.mxl',
-            # '050305.mxl',
-            # '050355.mxl',
-            # '050565.mxl',
-            # '050621.mxl',
-            # '050651.mxl',
-            # '050689.mxl',
-            # '050703.mxl',
-            # '050735.mxl',  # TODO: check error
-            # '050992.mxl',
-            # '051354.mxl',
-            # '051696.mxl',
-            # '051926.mxl',
-            # '052001.mxl',
-            # '052324.mxl',
-            # '052902.mxl',
-            # '053020.mxl',
-            # '053135.mxl',
-            # '053137.mxl',
-            # '053165.mxl',
-            # '053585.mxl',
-            # '053693.mxl',
-            # '054246.mxl',
-            # '054280.mxl',
-            # '054494.mxl',
-            # '054923.mxl',
-            # '055028.mxl',
-            # '055465.mxl',
-            # '055770.mxl',
-            # '055924.mxl',
-            # '056113.mxl',
-            # '056122.mxl',
-            # '056453.mxl',
-            # '056606.mxl',
-            # '056617.mxl',
-            # '056792.mxl',
-            # '057053.mxl',
-            # '057853.mxl',
-            '057584.mxl',
-            '057374.mxl',
-            '050980.mxl',
-            '057285.mxl',
-        ]
+        # broken_files = [
+        #     # '050077.mxl',
+        #     # '050305.mxl',
+        #     # '050355.mxl',
+        #     # '050565.mxl',
+        #     # '050621.mxl',
+        #     # '050651.mxl',
+        #     # '050689.mxl',
+        #     # '050703.mxl',
+        #     # '050735.mxl',
+        #     # '050992.mxl',
+        #     # '051354.mxl',
+        #     # '051696.mxl',
+        #     # '051926.mxl',
+        #     # '052001.mxl',
+        #     # '052324.mxl',
+        #     # '052902.mxl',
+        #     # '053020.mxl',
+        #     # '053135.mxl',
+        #     # '053137.mxl',
+        #     # '053165.mxl',
+        #     # '053585.mxl',
+        #     # '053693.mxl',
+        #     # '054246.mxl',
+        #     # '054280.mxl',
+        #     # '054494.mxl',
+        #     # '054923.mxl',
+        #     # '055028.mxl',
+        #     # '055465.mxl',
+        #     # '055770.mxl',
+        #     # '055924.mxl',
+        #     # '056113.mxl',
+        #     # '056122.mxl',
+        #     # '056453.mxl',
+        #     # '056606.mxl',
+        #     # '056617.mxl',
+        #     # '056792.mxl',
+        #     # '057053.mxl',
+        #     # '057853.mxl',
+        #     '057584.mxl',
+        #     '057374.mxl',
+        #     '050980.mxl',
+        #     '057285.mxl',
+        # ]
         # broken_files = [
         #     # '060780.mxl',
         #     # '061434.mxl',
@@ -1389,7 +1400,7 @@ if __name__ == '__main__':
         #     # '066752.mxl',
         #     # '066936.mxl',
         #     # '066876.mxl',
-        #     # '067436.mxl',  # TODO: check error
+        #     # '067436.mxl',
         #     # '067711.mxl',
         #     # '067526.mxl',
         #     # '067812.mxl',
@@ -1406,7 +1417,7 @@ if __name__ == '__main__':
         #     # '068166.mxl',
         #     # '068170.mxl',
         #     # '069209.mxl',
-        #     # '069877.mxl',   # TODO: check error
+        #     # '069877.mxl',
         #     # '069773.mxl',
         #     # '069799.mxl',
         #     # '069929.mxl',
@@ -1508,11 +1519,11 @@ if __name__ == '__main__':
         #     '119799.mxl',
         # ]
         # grp_nm = '000000-010000'
-        # grp_nm = '010000-020000'
+        grp_nm = '010000-020000'
         # grp_nm = '020000-030000'
         # grp_nm = '030000-040000'
         # grp_nm = '040000-050000'
-        grp_nm = '050000-060000'
+        # grp_nm = '050000-060000'
         # grp_nm = '060000-070000'
         # grp_nm = '070000-080000'
         # grp_nm = '080000-090000'
@@ -1567,13 +1578,13 @@ if __name__ == '__main__':
         ic(set_fls_new - set_fls_ori)
     # fix_merge_processing_from_lib()
 
-    def get_broken_fnms():
+    def get_broken_fnms_from_log():
         """
         Get the file names where music extraction failed, by extracting from console output
         """
         import re
 
-        log_fnm = '05.24.22 @ 10.18, lmd grp 4-5'
+        log_fnm = '05.24.22 @ 17.25, lmd grp 1'
         path_log = os_join(u.dset_path, 'converted', 'LMD log', f'{log_fnm}.log')
         with open(path_log, 'r') as f:
             lines = f.readlines()
@@ -1586,4 +1597,4 @@ if __name__ == '__main__':
         fnms = [extract_line(ln) for ln in lines]
         fnms = sorted([f'{fnm}.mxl' for fnm in fnms if fnm])
         ic(fnms)
-    # get_broken_fnms()
+    # get_broken_fnms_from_log()

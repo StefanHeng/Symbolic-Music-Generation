@@ -492,7 +492,7 @@ def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature) -> boo
     pos_dur = is_notes_pos_duration(notes)
     no_ovl = not notes_overlapping(notes)
     have_gap = notes_have_gap(notes)
-    match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=1e-6)
+    match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=eps)
     return pos_dur and no_ovl and (not have_gap) and match_bar_dur
 
 

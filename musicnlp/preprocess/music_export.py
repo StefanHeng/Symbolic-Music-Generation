@@ -180,6 +180,8 @@ class MusicExport:
             if with_tqdm:
                 gen = tqdm(gen, total=len(filenames), desc='Extracting music', unit='song')
             for i_fl, fnm in gen:
+                if with_tqdm:
+                    gen.set_postfix(fnm=stem(fnm))
                 lst_out.append(export_single(fnm))
 
         if not save_each:
@@ -344,7 +346,7 @@ if __name__ == '__main__':
             # dnm,
             paths,
             extractor_args=args, path_out=path_out, save_each=True,
-            parallel=8,
+            # parallel=2,
             with_tqdm=True, parallel_mode=pl_md,
             # n_worker=24
         )
