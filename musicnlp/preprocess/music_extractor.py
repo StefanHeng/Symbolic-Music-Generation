@@ -58,7 +58,7 @@ class MusicExtractor:
                 due to transcription quality - See `expand_bar`
         :param verbose: If true, extraction process including warnings is logged
             If `single`, only begin and end of extraction is logged
-        :param epsilon: For float-related equality comparison
+        :param epsilon: For float- & Fraction-related equality comparison
 
         .. note:: Prior logging warning messages are removed after new encode call, see `Warning.end_tracking`
         """
@@ -249,14 +249,14 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # if number == 62:
+        # if number == 17:
         #     ic('in expand_bar', number, len(bar))
         #     notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
         #     for n in notes:
         #         strt, end = get_offset(n), get_end_qlen(n)
         #         ic(n, n.fullName, strt, end)
-            # bar.show()
-        # if number > 62:
+        #     bar.show()
+        # if number > 17:
         #     exit(1)
         while elm is not None:
             # this is the bottleneck; just care about duration; Explicitly ignore voice
@@ -608,8 +608,7 @@ class MusicExtractor:
 
             groups: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in notes:
-                n_ = n[0] if isinstance(n, tuple) else n
-                groups[n_.offset].append(n)
+                groups[get_offset(n)].append(n)
 
             def sort_groups():
                 for offset, ns in groups.items():  # sort by pitch then by duration, in-place for speed
@@ -622,13 +621,13 @@ class MusicExtractor:
                 # the original file is broken in that doesn't align with time signature duration
                 ts_tup = (time_sig.numerator, time_sig.denominator)
                 if ts_tup in [(8, 4), (4, 2), (2, 1)] and \
-                        number in [17, 33, 38, 43, 52, 60, 62] and (4.0 in groups or 6.0 in groups):
+                        number in [9, 17, 19, 33, 38, 43, 47, 52, 60, 62] and (4.0 in groups or 6.0 in groups):
                     # for [
-                    #   `LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`, `LMD::116976`, `LMD::119887`,
-                    #   `LMD::123389`
+                    #   `LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`, `LMD::108367`,
+                    #   `LMD::116976`, `LMD::119887`, `LMD::123389`,
                     # ]
-                    _notes_out = []
                     for offset in [4.0, 6.0]:
+                        _notes_out = []
                         for _n in groups[offset]:  # starts at offset 4
                             if isinstance(_n, Rest) and get_end_qlen(_n) == 12.0:  # 4 qlen more than it should
                                 continue  # ignore
@@ -658,7 +657,7 @@ class MusicExtractor:
                         groups[4.0] = _notes_out
             _fix_edge_case()
 
-            # if number in [0, 17]:
+            # if number == 17:
             #     ic('before get notes out', time_sig)
             #     ic(groups)
             #     for k, notes in groups.items():
@@ -669,8 +668,8 @@ class MusicExtractor:
             #     # exit(1)
 
             def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
-                # ic('in new get_notes_out')
                 # if number == 17:
+                #     ic('in new get_notes_out')
                 #     if not hasattr(get_notes_out, 'recurse_count'):
                 #         get_notes_out.recurse_count = 0
                 #     get_notes_out.recurse_count += 1
@@ -687,50 +686,44 @@ class MusicExtractor:
                         del groups[offset]
                         continue
                     nt = notes_[-1]  # Note with the highest pitch
-                    nt_ = nt[-1] if isinstance(nt, tuple) else nt
-                    nt_end_offset = nt_.offset + nt_.duration.quarterLength
-                    # if number == 17:
-                    #     ic(groups)
-                    #     ic(ns_out, nt, offset, last_end)
-                    # For difference between floating point and Fraction on real small duration edge cases
-                    # See below for another instance
+                    nt_end = get_end_qlen(nt)
                     if last_end-offset > self.eps:
+                        # Current note starts before the last added note ends
                         # Tuplet notes not normalized at this point, remain faithful to the weighted average pitch
-                        pch_last, pch_curr = note2pitch(ns_out[-1]), note2pitch(nt)
-                        if pch_curr > pch_last:
-                            # Offset would closely line up across tracks, expect this to be less frequent
-                            if isinstance(ns_out[-1], tuple):  # triplet being truncated => Remove triplet, start over
+                        note_last = ns_out[-1]
+                        pch_last, pch_curr = note2pitch(note_last), note2pitch(nt)
+                        if pch_curr > pch_last:  # Truncate last added note
+                            if isinstance(note_last, tuple):  # tuplet being truncated => Remove entirely, start over
                                 # The triplet must've been the last note added, and it's joint offset is known
-                                del groups[ns_out[-1][0].offset][-1]
+                                del groups[get_offset(note_last)][-1]
                                 self.log_warn(dict(warn_name=WarnLog.HighPchOvlTup, bar_num=number))
                                 return get_notes_out()
-                            else:  # Triplet replaces prior note
+                            else:
                                 self.log_warn(dict(warn_name=WarnLog.HighPchOvl, bar_num=number))
 
                                 nt_ = nt[0] if isinstance(nt, tuple) else nt
                                 # Resulting duration usually non-0, for offset grouping
-                                ns_out[-1].duration = dur_last = Duration(quarterLength=nt_.offset - ns_out[-1].offset)
+                                note_last.duration = dur_last = Duration(quarterLength=nt_.offset - note_last.offset)
                                 assert dur_last.quarterLength >= 0
                                 # If it's 0, it's cos a **truncated** note was appended, as makeup
                                 if dur_last.quarterLength == 0:  # TODO: verify
                                     note_2_delete = ns_out.pop()
-                                    ic(note_2_delete.offset, offset)
                                     assert note_2_delete.offset == offset
                                     assert groups[offset][-1] == note_2_delete
                                     del groups[offset][-1]
                                     self.log_warn(dict(warn_name=WarnLog.LowPchMakeupRmv, bar_num=number))
                             ns_out.append(nt)
-                            last_end = nt_end_offset
+                            last_end = nt_end
                         # Current note to add has lower pitch, but ends later in time than the last note added
-                        # Add truncated current note into group based on new start time, recompute from scratch
-                        elif pch_curr < pch_last and (nt_end_offset-last_end) > self.eps:
+                        # Truncate current note, add back into group based on new start time, recompute
+                        elif pch_curr < pch_last and (nt_end-last_end) > self.eps:
                             if not isinstance(nt, tuple):
                                 # Move the truncated note to later group, restart
                                 del groups[offset][-1]
                                 nt_ = note2note_cleaned(nt)
                                 # ic(offset, groups[offset], nt_)
                                 nt_.offset = last_end
-                                nt_.duration = d = Duration(quarterLength=nt_end_offset-last_end)
+                                nt_.duration = d = Duration(quarterLength=nt_end-last_end)
                                 assert d.quarterLength > 0
                                 last_end_closest = min(groups.keys(), key=lambda x: abs(x-last_end))
                                 # since Fractions and float that are real close, are not equal (==)
@@ -747,7 +740,7 @@ class MusicExtractor:
                         # Otherwise, skip if later note is lower in pitch and is covered by the prior note duration
                     else:
                         ns_out.append(nt)
-                        last_end = nt_end_offset
+                        last_end = nt_end
                 return ns_out
             with RecurseLimit(2**14):
                 notes_out = get_notes_out()
@@ -1025,7 +1018,7 @@ if __name__ == '__main__':
         # path = '/Users/stefanhg/Desktop/Untitled 186.xml'
         # fnm = '103233.mxl'
         # path = os_join(u.dset_path, dir_nm, '100000-110000', fnm)
-        fnm = '091687.mxl'
+        fnm = '103233.mxl'
         path = os_join(u.dset_path, 'converted', 'LMD, check error', fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
@@ -1605,7 +1598,7 @@ if __name__ == '__main__':
         #     # '091375.mxl',
         #     # '091628.mxl',
         #     # '091640.mxl',
-        #     # '091687.mxl',  # TODO: check error
+        #     # '091687.mxl',
         #     # '091921.mxl',
         #     # '091936.mxl',
         #     # '092186.mxl',
@@ -1619,14 +1612,14 @@ if __name__ == '__main__':
         #     # '092597.mxl',
         #     # '093053.mxl',
         #     # '093099.mxl',
-        #     # '093106.mxl',  # TODO: check error
+        #     # '093106.mxl',
         #     # '093115.mxl',
         #     # '093116.mxl',
-        #     # '093227.mxl',  # TODO: check error
+        #     # '093227.mxl',
         #     # '093309.mxl',
-        #     # '093403.mxl',  # TODO: check error
+        #     # '093403.mxl',
         #     # '093455.mxl',
-        #     # '093473.mxl',  # TODO: check error
+        #     # '093473.mxl',
         #     # '093569.mxl',
         #     # '093760.mxl',
         #     # '094158.mxl',
@@ -1639,21 +1632,21 @@ if __name__ == '__main__':
         #     # '095168.mxl',
         #     # '095381.mxl',
         #     # '095502.mxl',
-        #     # '095558.mxl',  # TODO: check error
+        #     # '095558.mxl',
         #     # '095601.mxl',
-        #     # '095687.mxl',  # TODO: check error
+        #     # '095687.mxl',
         #     # '096037.mxl',
-        #     # '096044.mxl',  # TODO: check error
+        #     # '096044.mxl',
         #     # '096159.mxl',
         #     # '096483.mxl',
         #     # '097172.mxl',
         #     # '097193.mxl',
         #     # '097288.mxl',
-        #     # '097335.mxl',  # TODO: check error
+        #     # '097335.mxl',
         #     # '097374.mxl',
         #     # '097413.mxl',
         #     # '097452.mxl',
-        #     # '097606.mxl',  # TODO: check error
+        #     # '097606.mxl',
         #     # '097668.mxl',
         #     # '097768.mxl',
         #     # '097959.mxl',
@@ -1673,11 +1666,11 @@ if __name__ == '__main__':
         #     # '100137.mxl',
         #     # '100138.mxl',
         #     # '100201.mxl',
-        #     # '100599.mxl',  # TODO: check error
+        #     # '100599.mxl',
         #     # '100621.mxl',
-        #     # '100950.mxl',  # TODO: check error
+        #     # '100950.mxl',
         #     # '101231.mxl',
-        #     # '102224.mxl',  # TODO: check error
+        #     # '102224.mxl',
         #     # '102291.mxl',
         #     # '102304.mxl',
         #     # '102457.mxl',
@@ -1706,15 +1699,15 @@ if __name__ == '__main__':
         #     # '106066.mxl',
         #     # '106144.mxl',
         #     # '106178.mxl',
-        #     # '106211.mxl',  # TODO: check error
+        #     # '106211.mxl',
         #     # '106462.mxl',
         #     # '106607.mxl',
         #     # '106616.mxl',
         #     # '106687.mxl',
-        #     # '106823.mxl',  # TODO: check error
+        #     # '106823.mxl',
         #     # '106842.mxl',
         #     # '107056.mxl',
-        #     # '107103.mxl',  # TODO: check error
+        #     # '107103.mxl',
         #     # '107280.mxl',
         #     # '107479.mxl',
         #     # '107647.mxl',
@@ -1722,7 +1715,7 @@ if __name__ == '__main__':
         #     # '107876.mxl',
         #     # '107946.mxl',
         #     # '107965.mxl',
-        #     # '108367.mxl',  # TODO: check error
+        #     # '108367.mxl',
         #     # '108513.mxl',
         #     # '108519.mxl',
         #     # '108537.mxl',
