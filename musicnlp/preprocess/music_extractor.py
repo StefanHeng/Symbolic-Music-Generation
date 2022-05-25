@@ -611,7 +611,7 @@ class MusicExtractor:
             bars, time_sig, tempo = bi.bars, bi.time_sig, bi.tempo
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
             # ic(number)
-            assert number == i_bar
+            assert number == i_bar  # sanity check
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
 
             groups: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
@@ -620,8 +620,7 @@ class MusicExtractor:
 
             def sort_groups():
                 for offset, ns in groups.items():  # sort by pitch then by duration, in-place for speed
-                    # ns.sort(key=lambda nt: (note2pitch(nt), note2dur(nt)))
-                    # Create shallow copy of list so that no aliasing in list append & removal
+                    # Create shallow copy of list so that no aliasing in list append & removal in `get_notes_out`
                     groups[offset] = sorted(ns, key=lambda nt: (note2pitch(nt), note2dur(nt)))
             sort_groups()
 
@@ -637,10 +636,10 @@ class MusicExtractor:
                 # the original file is broken in that doesn't align with time signature duration
                 ts_tup = (time_sig.numerator, time_sig.denominator)
                 if ts_tup in [(8, 4), (4, 2), (2, 1)] and \
-                        number in [9, 17, 19, 33, 38, 43, 47, 52, 60, 62] and (4.0 in groups or 6.0 in groups):
+                        number in [9, 17, 19, 33, 38, 43, 47, 52, 60, 62, 201] and (4.0 in groups or 6.0 in groups):
                     # for [
                     #   `LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`, `LMD::108367`,
-                    #   `LMD::116976`, `LMD::119887`, `LMD::123389`,
+                    #   `LMD::116976`, `LMD::119887`, `LMD::123389`, `LMD::128869`
                     # ]
                     for offset in [4.0, 6.0]:
                         _fix_rest_too_long(offset, 12.0)  # 4 more than it should in quarter length
@@ -1877,7 +1876,7 @@ if __name__ == '__main__':
         #     # '128330.mxl',
         #     # '128707.mxl',
         #     # '128726.mxl',
-        #     # '128869.mxl',  # TODO: check error
+        #     # '128869.mxl',
         #     '129002.mxl',
         #     '129673.mxl',
         #     '129926.mxl'
