@@ -460,13 +460,13 @@ if __name__ == '__main__':
 
     import musicnlp.util.music as music_util
 
-    dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
-              'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
-    dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
-              'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
-    fnms = [os_join(music_util.get_processed_path(), f'{dnm}.json') for dnm in [dnm_909, dnm_lmd]]
+    dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+    dnm_mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+    # dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
+    #           'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
+    fnms = [os_join(music_util.get_processed_path(), f'{dnm}.json') for dnm in [dnm_909, dnm_mst]]
     # cnm = None
-    cnm = 'music visualize cache'
+    cnm = 'music visualize cache, 05.24.22'
     # for `LMD-cleaned-subset`
     mv = MusicVisualize(filename=fnms, dataset_name=['POP909', 'LCS'], hue_by_dataset=True, cache=cnm)
     # ic(mv.df)

@@ -311,8 +311,8 @@ if __name__ == '__main__':
         dnm = 'LMD, MS'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
         # grp_nm = 'many'
-        grp_nm = '080000-090000'
-        # grp_nm = '110000-120000'
+        # grp_nm = '050000-060000'
+        grp_nm = '150000-160000'
         dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         # dnm = 'LMD-cleaned-subset'
@@ -340,15 +340,18 @@ if __name__ == '__main__':
             # '100000-110000',
             # '120000-130000',
             # '130000-140000',
+            # '140000-150000',
+            # '150000-160000',
+            # '160000-170000',
             grp_nm
         ]], start=[])
         me(
             # dnm,
             paths,
             extractor_args=args, path_out=path_out, save_each=True,
-            parallel=2git ,
+            parallel=64,
             with_tqdm=True, parallel_mode=pl_md,
-            n_worker=40
+            # n_worker=40
         )
     export2json()
 
@@ -524,24 +527,25 @@ if __name__ == '__main__':
         path_to_process = os_join(path_process_base, 'many')
         ic(path_to_process)
         paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
-        pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$')
+        pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$.json')
         o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4), ext='json')
         ic(o2f.total)
-        for path in tqdm(paths):
+        it = tqdm(paths)
+        for path in it:
             m = pattern.match(stem(path))
             assert m is not None
             o = int(m.group('ordinal'))
 
-            fnm, dir_nm = o2f(o, return_dir=True)
-            fnm = fnm.split('/')[-1]
+            fnm, dir_nm = o2f(o, return_parts=True)
             fnm = f'Music Export - {fnm}.json'
+            it.set_postfix(fnm=f'{dir_nm}/{fnm}')
             path_out = os_join(path_process_base, dir_nm)
             os.makedirs(path_out, exist_ok=True)
 
             path_out = os_join(path_out, fnm)
             assert not os.path.exists(path_out)
-            ic(path, path_out)
-            exit(1)
+            # ic(path, path_out)
+            # exit(1)
             shutil.move(path, path_out)
     # chore_move_proper_folder()
 
@@ -549,10 +553,10 @@ if __name__ == '__main__':
         import shutil
         dir_nm = '2022-05-20_09-39-16_LMD, MS'
         path_process_base = os_join(u.dset_path, 'processed', 'intermediate', dir_nm)
-        path_to_process = os_join(path_process_base, '050000-060000')
+        path_to_process = os_join(path_process_base, '100000-110000')
         paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
         for path in tqdm(paths):
-            fnm = stem(path)[-6:]
+            fnm = stem(path)[-11:-5]
             path_new = os_join(path_to_process, f'Music Export - {fnm}.json')
             # ic(fnm, path, path_new)
             # exit(1)

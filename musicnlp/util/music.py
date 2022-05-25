@@ -95,13 +95,12 @@ class Ordinal2Fnm:
 
         self.ext = ext
 
-    def __call__(self, i: int, return_dir: bool = False) -> Union[str, Tuple[str, str]]:
+    def __call__(self, i: int, return_parts: bool = False) -> Union[str, Tuple[str, str]]:
         i_grp = i // self.grp_sz
         strt, end = i_grp * self.grp_sz, min((i_grp + 1) * self.grp_sz, self.total)
         dir_nm = f'{self._num2padded(strt)}-{self._num2padded(end)}'
         fnm = f'{i:>0{self.n_digit}}.{self.ext}'
-        fnm = os_join(dir_nm, fnm)
-        return (fnm, dir_nm) if return_dir else fnm
+        return (fnm, dir_nm) if return_parts else os_join(dir_nm, fnm)
 
     def _num2padded(self, n_: int):
         return f'{n_:0{self.n_digit}}'
@@ -114,7 +113,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
     """
     ca.cache_mismatch('Dataset Name', dataset_name, ['POP909', 'LMD-cleaned', 'LMD'])
 
-    path_exp = os_join(BASE_PATH, DSET_DIR, dataset_name)
+    path_exp = os_join(BASE_PATH, DSET_DIR, 'converted', dataset_name)
     os.makedirs(path_exp, exist_ok=True)
     if dataset_name == 'POP909':
         path = os_join(BASE_PATH, DSET_DIR, 'POP909-Dataset', dataset_name)
@@ -167,13 +166,15 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
         assert len(fnms_written) == len(paths)
         print(f'{logi(path2fnm.count_too_long)} files were truncated to {logi(os_lim)} characters')
     elif dataset_name == 'LMD':
-        d_dset = sconfig(f'datasets.{dataset_name}')
+        d_dset = sconfig(f'datasets.{dataset_name}.original')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
         o2f = Ordinal2Fnm(total=len(paths), group_size=int(1e4))
 
-        for i, p in enumerate(tqdm(paths)):
-            fnm, dir_nm = o2f(i, return_dir=True)
+        it = tqdm(paths)
+        for i, p in enumerate(it):
+            fnm, dir_nm = o2f(i, return_parts=True)
+            it.set_postfix(fnm=f'{dir_nm}/{fnm}')
             path = os_join(path_exp, dir_nm)
             os.makedirs(path, exist_ok=True)
             copyfile(p, os_join(path, fnm))
@@ -282,14 +283,13 @@ def get_lmd_conversion_meta():
     set_converted = get_converted_song_paths(dataset_name=dnm, fmt='mxl', backend='all')
     lst_meta = []
     o2f = Ordinal2Fnm(total=n_song, group_size=int(1e4), ext='mxl')
-    for i in trange(n_song, desc='Scanning converted files', unit='fl'):  # ensure go through every file
+    it = trange(n_song, desc='Scanning converted files', unit='fl')
+    for i in it:  # ensure go through every file
         fnm = o2f(i)
+        it.set_postfix(fnm=fnm)
         # default conversion store location
         path_ms, path_lp = os_join(u.dset_dir, f'{dir_nm}, MS', fnm), os_join(u.dset_path, f'{dir_nm}, LP', fnm)
         _path_ms, _path_lp = os_join(u.base_path, path_ms), os_join(u.base_path, path_lp)
-        # _path_lp = _path_lp.replace('.mxl', '.mid')  # sanity check all files found
-        # if stem(fnm) == '000373':
-        #     ic(_path_lp)
         if os.path.exists(_path_ms):
             lst_meta.append(dict(file_name=fnm, backend='MS', path=path_ms, status='converted'))
         elif os.path.exists(_path_lp):
@@ -424,17 +424,17 @@ if __name__ == '__main__':
         logger.info(f'{logi(count)} converted xml with unknown origin in the last session removed')
     # mv_backend_not_processed()
 
-    # get_lmd_conversion_meta()
+    get_lmd_conversion_meta()
 
-    def chore_convert_xml2mxl():
-        """
-        ~~Logic Pro output is in un-compressed music XML, change to MXL for smaller file size~~
-
-        Converted using MuseScore instead
-        """
-        pattern = os_join(u.dset_path, 'converted', 'LMD, LP', '**/*.xml')
-        files = sorted(glob.iglob(pattern, recursive=True))
-        ic(len(files))
-        for path in files:
-            pass
+    # def chore_convert_xml2mxl():
+    #     """
+    #     ~~Logic Pro output is in un-compressed music XML, change to MXL for smaller file size~~
+    #
+    #     Converted using MuseScore instead
+    #     """
+    #     pattern = os_join(u.dset_path, 'converted', 'LMD, LP', '**/*.xml')
+    #     files = sorted(glob.iglob(pattern, recursive=True))
+    #     ic(len(files))
+    #     for path in files:
+    #         pass
 
