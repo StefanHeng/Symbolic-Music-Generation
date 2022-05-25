@@ -491,14 +491,17 @@ def is_notes_pos_duration(notes: Iterable[ExtNote]) -> bool:
     return all(note.duration.quarterLength > 0 for note in flatten_notes(notes))
 
 
-def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature) -> bool:
-    dur_bar = time_sig2bar_dur(time_sig)
+def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature, check_match_time_sig: bool = True) -> bool:
     # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
     pos_dur = is_notes_pos_duration(notes)
     no_ovl = not notes_overlapping(notes)
     have_gap = notes_have_gap(notes)
-    match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=eps)
-    return pos_dur and no_ovl and (not have_gap) and match_bar_dur
+    valid = pos_dur and no_ovl and (not have_gap)
+    if check_match_time_sig:
+        dur_bar = time_sig2bar_dur(time_sig)
+        match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=eps)
+        valid = valid and match_bar_dur
+    return valid
 
 
 def get_score_skeleton(title: str = None, composer: str = PKG_NM, mode: str = 'melody') -> Score:

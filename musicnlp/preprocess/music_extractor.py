@@ -144,10 +144,16 @@ class MusicExtractor:
         """
         # ic('in quantize', number)
         dur_slot = 4 * 2**-self.prec  # In quarter length
-        dur_bar = (time_sig.numerator/time_sig.denominator*4)
+        dur_bar = time_sig2bar_dur(time_sig)
         n_slots = dur_bar / dur_slot
-        assert n_slots.is_integer()
-        n_slots = int(n_slots)
+        if self.prec == 5 and (time_sig.numerator, time_sig.denominator) == (21, 64) and number == 51:
+            # another poor transcription, `LMD::125135`
+            # actual #slot is 10.5...
+            n_slots = 11
+            dur_bar = dur_slot * n_slots
+        else:
+            assert n_slots.is_integer()
+            n_slots = int(n_slots)
         bin_edges = [(i*dur_slot, (i+1)*dur_slot) for i in range(n_slots)]  # All info indexed by note order
 
         def note2range(note):
@@ -837,14 +843,17 @@ class MusicExtractor:
                 if not isinstance(n, tuple):  # ignore tuplet durations as `consolidate` doesn't consider tuplets
                     # Merges complex durations into one for MXL output
                     n.duration.consolidate()
-        for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
-            if not is_valid_bar_notes(notes, time_sig):
+        for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):  # Final check before output
+            # Edge case, see `notes2quantized_notes`
+            check_dur = not (self.prec == 5 and (time_sig.numerator, time_sig.denominator) == (21, 64) and i_bar == 51)
+
+            if not is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur):
                 ic(i_bar)
                 for n in notes:
                     strt, end = get_offset(n), get_end_qlen(n)
                     ic(n, strt, end)
 
-                dur_bar = time_sig.numerator / time_sig.denominator * 4
+                dur_bar = time_sig2bar_dur(time_sig)
                 pos_dur = is_notes_pos_duration(notes)
                 no_ovl = not notes_overlapping(notes)
                 have_gap = notes_have_gap(notes)
@@ -852,8 +861,7 @@ class MusicExtractor:
                                              abs_tol=self.eps)
                 ic(pos_dur, no_ovl, (not have_gap), match_bar_dur, time_sig, dur_bar)
                 exit(1)
-        for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
-            assert is_valid_bar_notes(notes, time_sig)
+            assert is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur)
         if exp == 'mxl':
             scr_out = make_score(
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
@@ -1026,7 +1034,7 @@ if __name__ == '__main__':
         # path = '/Users/stefanhg/Desktop/Untitled 186.xml'
         # fnm = '103233.mxl'
         # path = os_join(u.dset_path, dir_nm, '100000-110000', fnm)
-        fnm = '125135.mxl'
+        fnm = '128869.mxl'
         path = os_join(u.dset_path, 'converted', 'LMD, check error', fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
@@ -1842,14 +1850,14 @@ if __name__ == '__main__':
         #     # '124190.mxl',
         #     # '124538.mxl',
         #     # '124832.mxl',
-        #     # '125135.mxl',  # TODO: check error
+        #     # '125135.mxl',
         #     # '125452.mxl',
         #     # '125673.mxl',
         #     # '125805.mxl',
         #     # '125956.mxl',
         #     # '126120.mxl',
         #     # '126193.mxl',
-        #     # '126248.mxl',  # TODO: check error
+        #     # '126248.mxl',
         #     # '126280.mxl',
         #     # '126873.mxl',
         #     # '126915.mxl',
