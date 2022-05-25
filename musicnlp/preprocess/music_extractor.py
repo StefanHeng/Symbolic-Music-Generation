@@ -116,7 +116,7 @@ class MusicExtractor:
             if has_tempo:
                 tempos = [t for t in tempos if len(t) != 0]
                 # When multiple tempos, take the mean
-                tempos = [MetronomeMark(number=np.array([t.number for t in ts]).mean()) for ts in tempos]
+                tempos = [MetronomeMark(number=np.mean([t.number for t in ts])) for ts in tempos]
                 bpms = [t.number for t in tempos]
                 assert list_is_same_elms(bpms)
                 tempo = MetronomeMark(number=bpms[0])
@@ -249,7 +249,7 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # if number == 17:
+        # if number == 2:
         #     ic('in expand_bar', number, len(bar))
         #     notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
         #     for n in notes:
@@ -284,7 +284,9 @@ class MusicExtractor:
                         ]
                     return get_filled_ranges.filled_ranges
                 if notes_overlapping(elms_tup):
-                    self.log_warn(dict(warn_name=WarnLog.TupNoteOvlIn, bar_num=number, filled_ranges=get_filled_ranges()))
+                    self.log_warn(dict(
+                        warn_name=WarnLog.TupNoteOvlIn, bar_num=number, filled_ranges=get_filled_ranges()
+                    ))
                 if notes_have_gap(elms_tup, enforce_no_overlap=False):
                     self.log_warn(dict(
                         warn_name=WarnLog.TupNoteGap, bar_num=number,
@@ -439,7 +441,7 @@ class MusicExtractor:
                                 opns = [chord2notes(n) if isinstance(n, Chord) else (n,) for n in tup]
                                 # Adding all possible tuplet notes may be the bottleneck during extraction
                                 n_opns = [len(n) for n in opns if n]
-                                if np.prod(n_opns) > self.greedy_tuplet_pitch_threshold:
+                                if math.prod(n_opns) > self.greedy_tuplet_pitch_threshold:
                                     # Too much possible cartesian products for later processing to handle
                                     # as it involves sorting
                                     # Cap at a tuplet of 9 consecutive 3-note Chords, beyond this number,
@@ -601,8 +603,8 @@ class MusicExtractor:
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
         for i_bar, bi in enumerate(lst_bar_info):
             bars, time_sig, tempo = bi.bars, bi.time_sig, bi.tempo
-            # ic(i_bar)
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
+            # ic(number)
             assert number == i_bar
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
 
@@ -617,6 +619,14 @@ class MusicExtractor:
                     groups[offset] = sorted(ns, key=lambda nt: (note2pitch(nt), note2dur(nt)))
             sort_groups()
 
+            def _fix_rest_too_long(offset, wrong_end_time):
+                _notes_out = []
+                for _n in groups[offset]:  # starts at offset 4
+                    if isinstance(_n, Rest) and get_end_qlen(_n) == wrong_end_time:  # 4 qlen more than it should
+                        continue  # ignore
+                    _notes_out.append(_n)
+                groups[offset] = _notes_out
+
             def _fix_edge_case():
                 # the original file is broken in that doesn't align with time signature duration
                 ts_tup = (time_sig.numerator, time_sig.denominator)
@@ -627,12 +637,10 @@ class MusicExtractor:
                     #   `LMD::116976`, `LMD::119887`, `LMD::123389`,
                     # ]
                     for offset in [4.0, 6.0]:
-                        _notes_out = []
-                        for _n in groups[offset]:  # starts at offset 4
-                            if isinstance(_n, Rest) and get_end_qlen(_n) == 12.0:  # 4 qlen more than it should
-                                continue  # ignore
-                            _notes_out.append(_n)
-                        groups[offset] = _notes_out
+                        _fix_rest_too_long(offset, 12.0)  # 4 more than it should in quarter length
+                elif ts_tup == (5, 2) and number in [5, 28] and 6.0 in groups:
+                    # for `LMD::109166`
+                    _fix_rest_too_long(6.0, 16.0)  # 6 more than it should
                 elif ts_tup == (4, 4):
                     if number == 1 and 0.0 in groups:
                         # for `LMD::116496`
@@ -1018,7 +1026,7 @@ if __name__ == '__main__':
         # path = '/Users/stefanhg/Desktop/Untitled 186.xml'
         # fnm = '103233.mxl'
         # path = os_join(u.dset_path, dir_nm, '100000-110000', fnm)
-        fnm = '103233.mxl'
+        fnm = '125135.mxl'
         path = os_join(u.dset_path, 'converted', 'LMD, check error', fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
@@ -1720,7 +1728,7 @@ if __name__ == '__main__':
         #     # '108519.mxl',
         #     # '108537.mxl',
         #     # '108841.mxl',
-        #     # '109166.mxl',  # TODO: check error
+        #     # '109166.mxl',
         #     '109208.mxl',
         #     '109253.mxl',
         #     '109324.mxl',
@@ -1826,12 +1834,12 @@ if __name__ == '__main__':
         #     # '122749.mxl',
         #     # '123071.mxl',
         #     # '123171.mxl',
-        #     # '123389.mxl',  # TODO: check error
+        #     # '123389.mxl',
         #     # '123774.mxl',
         #     # '123867.mxl',
         #     # '123875.mxl',
         #     # '124047.mxl',
-        #     # '124190.mxl',  # TODO: check error
+        #     # '124190.mxl',
         #     # '124538.mxl',
         #     # '124832.mxl',
         #     # '125135.mxl',  # TODO: check error

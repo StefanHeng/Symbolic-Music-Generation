@@ -222,11 +222,16 @@ def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[fl
     return offsets, durs
 
 
-def time_sig2bar_dur(time_sig: TimeSignature) -> float:
+def time_sig2bar_dur(time_sig: Union[TimeSignature, TsTup]) -> float:
     """
     :return: Duration of a bar in given time signature, in quarter length
     """
-    return time_sig.numerator / time_sig.denominator * 4
+    if isinstance(time_sig, TimeSignature):
+        numer, denom = time_sig.numerator, time_sig.denominator
+    else:
+        assert isinstance(time_sig, tuple)
+        numer, denom = time_sig
+    return numer / denom * 4
 
 
 def fullname2tuplet_meta(fullname: str) -> TupletNameMeta:
