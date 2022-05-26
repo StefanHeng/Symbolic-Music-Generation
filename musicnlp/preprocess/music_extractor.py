@@ -635,12 +635,12 @@ class MusicExtractor:
                 # the original file is broken in that doesn't align with time signature duration
                 ts_tup = (time_sig.numerator, time_sig.denominator)
                 if ts_tup in [(8, 4), (4, 2), (2, 1)] and \
-                        number in [9, 17, 19, 24, 33, 38, 43, 47, 52, 53, 60, 62, 84, 87, 201] and \
+                        number in [9, 17, 19, 24, 33, 38, 43, 47, 52, 53, 60, 62, 84, 87, 188, 201] and \
                         (4.0 in groups or 6.0 in groups):
                     # for [
                     #   `LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`, `LMD::108367`,
                     #   `LMD::116976`, `LMD::119887`, `LMD::123389`, `LMD::128869`, `LMD::137904`,
-                    #   `LMD::160646`, `LMD::161475`, `LMD::163655`
+                    #   `LMD::142327`,`LMD::160646`, `LMD::161475`, `LMD::163655`,
                     # ]
                     for offset in [4.0, 6.0]:
                         _fix_rest_too_long(offset, 12.0)  # 4 more than it should in quarter length
@@ -1052,8 +1052,7 @@ if __name__ == '__main__':
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
         me(path, exp='mxl')
-    check_edge_case()
-    # exit(1)
+    # check_edge_case()
 
     def check_edge_case_batched():
         # dnm = 'MAESTRO'
@@ -1948,6 +1947,70 @@ if __name__ == '__main__':
         #     '139693.mxl',
         #     '139991.mxl'
         # ]
+        broken_files = [
+            # '140453.mxl',
+            # '140603.mxl',
+            # '140651.mxl',
+            # '140888.mxl',
+            # '141140.mxl',
+            # '141538.mxl',
+            # '141552.mxl',
+            # '141807.mxl',
+            # '141898.mxl',
+            # '141923.mxl',
+            # '141945.mxl',
+            # '142327.mxl',
+            '142436.mxl',
+            '142608.mxl',
+            '142691.mxl',
+            '142820.mxl',
+            '142951.mxl',
+            '143120.mxl',
+            '143280.mxl',
+            '143342.mxl',
+            '143352.mxl',
+            '143434.mxl',
+            '143510.mxl',
+            '143847.mxl',
+            '143881.mxl',
+            '143963.mxl',
+            '144075.mxl',
+            '144306.mxl',
+            '144368.mxl',
+            '144710.mxl',
+            '144835.mxl',
+            '144935.mxl',
+            '145008.mxl',
+            '145026.mxl',
+            '145045.mxl',
+            '145208.mxl',
+            '145355.mxl',
+            '145570.mxl',
+            '145704.mxl',
+            '145972.mxl',
+            '146062.mxl',
+            '146733.mxl',
+            '147074.mxl',
+            '147176.mxl',
+            '147584.mxl',
+            '147693.mxl',
+            '147735.mxl',
+            '148061.mxl',
+            '148086.mxl',
+            '148137.mxl',
+            '148416.mxl',
+            '148594.mxl',
+            '148658.mxl',
+            '148677.mxl',
+            '148875.mxl',
+            '148918.mxl',
+            '149140.mxl',
+            '149445.mxl',
+            '149473.mxl',
+            '149883.mxl',
+            '149942.mxl',
+            '149994.mxl'
+        ]
         # broken_files = [
         #     # '150222.mxl',
         #     # '150366.mxl',
@@ -2069,67 +2132,67 @@ if __name__ == '__main__':
         #     '169617.mxl',
         #     '169939.mxl'
         # ]
-        broken_files = [
-            # '170270.mxl',
-            # '170409.mxl',
-            # '170551.mxl',
-            # '170580.mxl',
-            # '170649.mxl',
-            # '170775.mxl',
-            # '171059.mxl',
-            # '171420.mxl',
-            # '171489.mxl',
-            # '171582.mxl',
-            # '171899.mxl',
-            # '171934.mxl',
-            # '171972.mxl',
-            # '172062.mxl',
-            # '172448.mxl',
-            # '172614.mxl',
-            # '172646.mxl',
-            # '172846.mxl',
-            # '172888.mxl',
-            # '172889.mxl',
-            # '172974.mxl',
-            # '173004.mxl',
-            # '173049.mxl',
-            # '173111.mxl',
-            # '173113.mxl',
-            # '173228.mxl',
-            # '173527.mxl',
-            # '173749.mxl',
-            # '173855.mxl',
-            '174118.mxl',
-            '174259.mxl',
-            '174633.mxl',
-            '174700.mxl',
-            '174881.mxl',
-            '175009.mxl',
-            '175254.mxl',
-            '175554.mxl',
-            '175645.mxl',
-            '175694.mxl',
-            '175736.mxl',
-            '176180.mxl',
-            '176588.mxl',
-            '176650.mxl',
-            '176653.mxl',
-            '176901.mxl',
-            '176962.mxl',
-            '176992.mxl',
-            '177010.mxl',
-            '177262.mxl',
-            '177580.mxl',
-            '177596.mxl',
-            '177626.mxl',
-            '177815.mxl',
-            '178049.mxl',
-            '178061.mxl',
-            '178102.mxl',
-            '178125.mxl',
-            '178268.mxl',
-            '178427.mxl'
-        ]
+        # broken_files = [
+        #     # '170270.mxl',
+        #     # '170409.mxl',
+        #     # '170551.mxl',
+        #     # '170580.mxl',
+        #     # '170649.mxl',
+        #     # '170775.mxl',
+        #     # '171059.mxl',
+        #     # '171420.mxl',
+        #     # '171489.mxl',
+        #     # '171582.mxl',
+        #     # '171899.mxl',
+        #     # '171934.mxl',
+        #     # '171972.mxl',
+        #     # '172062.mxl',
+        #     # '172448.mxl',
+        #     # '172614.mxl',
+        #     # '172646.mxl',
+        #     # '172846.mxl',
+        #     # '172888.mxl',
+        #     # '172889.mxl',
+        #     # '172974.mxl',
+        #     # '173004.mxl',
+        #     # '173049.mxl',
+        #     # '173111.mxl',
+        #     # '173113.mxl',
+        #     # '173228.mxl',
+        #     # '173527.mxl',
+        #     # '173749.mxl',
+        #     # '173855.mxl',
+        #     '174118.mxl',
+        #     '174259.mxl',
+        #     '174633.mxl',
+        #     '174700.mxl',
+        #     '174881.mxl',
+        #     '175009.mxl',
+        #     '175254.mxl',
+        #     '175554.mxl',
+        #     '175645.mxl',
+        #     '175694.mxl',
+        #     '175736.mxl',
+        #     '176180.mxl',
+        #     '176588.mxl',
+        #     '176650.mxl',
+        #     '176653.mxl',
+        #     '176901.mxl',
+        #     '176962.mxl',
+        #     '176992.mxl',
+        #     '177010.mxl',
+        #     '177262.mxl',
+        #     '177580.mxl',
+        #     '177596.mxl',
+        #     '177626.mxl',
+        #     '177815.mxl',
+        #     '178049.mxl',
+        #     '178061.mxl',
+        #     '178102.mxl',
+        #     '178125.mxl',
+        #     '178268.mxl',
+        #     '178427.mxl'
+        # ]
         # grp_nm = '000000-010000'
         # grp_nm = '010000-020000'
         # grp_nm = '020000-030000'
@@ -2144,10 +2207,10 @@ if __name__ == '__main__':
         # grp_nm = '110000-120000'
         # grp_nm = '120000-130000'
         # grp_nm = '130000-140000'
-        # grp_nm = '140000-150000'
+        grp_nm = '140000-150000'
         # grp_nm = '150000-160000'
         # grp_nm = '160000-170000'
-        grp_nm = '170000-178561'
+        # grp_nm = '170000-178561'
         broken_files = [os_join(grp_nm, f) for f in broken_files]
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
@@ -2164,7 +2227,8 @@ if __name__ == '__main__':
             else:
                 ic(path)
                 print(me(path, exp='visualize'))
-    # check_edge_case_batched()
+                exit(1)
+    check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """
@@ -2201,7 +2265,7 @@ if __name__ == '__main__':
         """
         import re
 
-        log_fnm = '05.26.22 @ 11.16, lmd grp 17, 16, 13'
+        log_fnm = '05.26.22 @ 17.06, lmd grp 14'
         path_log = os_join(u.dset_path, 'converted', 'LMD, log', f'{log_fnm}.log')
         with open(path_log, 'r') as f:
             lines = f.readlines()

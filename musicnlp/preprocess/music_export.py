@@ -311,9 +311,8 @@ if __name__ == '__main__':
         dnm = 'LMD, MS'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
         # grp_nm = 'many'
-        # grp_nm = '080000-090000'
-        grp_nm = '160000-170000'
-        # grp_nm = '170000-178561'
+        # grp_nm = '050000-060000'
+        grp_nm = '140000-150000'
         dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         # dnm = 'LMD-cleaned-subset'
@@ -354,9 +353,9 @@ if __name__ == '__main__':
             # dnm,
             paths,
             extractor_args=args, path_out=path_out, save_each=True,
-            # parallel=64,
+            parallel=128,
             with_tqdm=True, parallel_mode=pl_md,
-            # n_worker=40
+            n_worker=40
         )
     export2json()
 
