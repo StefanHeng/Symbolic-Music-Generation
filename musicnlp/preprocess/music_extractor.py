@@ -255,15 +255,15 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # if number == 2:
+        # if number == 22:
         #     ic('in expand_bar', number, len(bar))
         #     notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
         #     for n in notes:
         #         strt, end = get_offset(n), get_end_qlen(n)
         #         ic(n, n.fullName, strt, end)
-        #     bar.show()
-        # if number > 17:
-        #     exit(1)
+        #     # bar.show()
+        # # if number > 22:
+        # #     exit(1)
         while elm is not None:
             # this is the bottleneck; just care about duration; Explicitly ignore voice
             full_nm = not isinstance(elm, Voice) and getattr(elm.duration, 'fullName', None)
@@ -475,9 +475,8 @@ class MusicExtractor:
                 if keep_chord:
                     lst.append(elm)
                 else:
-                    # notes = deepcopy(elm.notes)  # TODO: do I need this?
                     notes = list(elm.notes)
-                    for n in notes:  # TODO: to make things faster, can I keep just the top note?
+                    for n in notes:  # TODO: for efficiency, keep just the top note?
                         n.offset += elm.offset  # Shift offset in the scope of bar
                     lst.extend(notes)
             else:
@@ -670,16 +669,29 @@ class MusicExtractor:
                                 continue  # ignore
                             _notes_out.append(_n)
                         groups[4.0] = _notes_out
+                elif ts_tup == (3, 4) and number == 22 and 2.125 in groups:
+                    # A chord starts in 2.125, and all its notes have duration 1 in quarter length,
+                    # 1/8 more than it should
+                    # TODO: only fixing the case where Chords are broken down into notes
+                    assert self.mode == 'melody'
+                    _notes_out = []
+                    _dur_bar = time_sig2bar_dur(ts_tup)
+                    for _n in groups[2.125]:
+                        if isinstance(_n, Note) and get_end_qlen(_n) == 3.125:
+                            _n.duration = d = Duration(quarterLength=_dur_bar - _n.offset)
+                            assert d.quarterLength > 0
+                        _notes_out.append(_n)
+                    groups[2.125] = _notes_out
             _fix_edge_case()
 
-            # if number == 17:
+            # if number == 22:
             #     ic('before get notes out', time_sig)
             #     ic(groups)
             #     for k, notes in groups.items():
             #         ic(k)
             #         for n in notes:
             #             strt, end = get_offset(n), get_end_qlen(n)
-            #             ic(n, strt, end, n.offset, n.duration)
+            #             ic(n, strt, end)
             #     # exit(1)
 
             def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
@@ -1035,12 +1047,12 @@ if __name__ == '__main__':
         # path = '/Users/stefanhg/Desktop/Untitled 186.xml'
         # fnm = '103233.mxl'
         # path = os_join(u.dset_path, dir_nm, '100000-110000', fnm)
-        fnm = '128869.mxl'
+        fnm = '161651.mxl'
         path = os_join(u.dset_path, 'converted', 'LMD, check error', fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
         me(path, exp='mxl')
-    # check_edge_case()
+    check_edge_case()
     # exit(1)
 
     def check_edge_case_batched():
@@ -2152,8 +2164,7 @@ if __name__ == '__main__':
             else:
                 ic(path)
                 print(me(path, exp='visualize'))
-            # me(path, exp='mxl')
-    check_edge_case_batched()
+    # check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """

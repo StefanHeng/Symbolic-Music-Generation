@@ -286,25 +286,40 @@ def get_lmd_conversion_meta():
     lst_meta = []
     o2f = Ordinal2Fnm(total=n_song, group_size=int(1e4), ext='mxl')
     it = trange(n_song, desc='Scanning converted files', unit='fl')
+
+    def get_original_fnms():  # see `clean_dataset_paths`
+        d_dset = sconfig(f'datasets.{dnm}.original')
+        path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
+        return sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
+
+    ori_dir_nm = sconfig(f'datasets.{dnm}.original.dir_nm')
+
+    def original_abs2rel(path: str) -> str:
+        return path[path.index(ori_dir_nm)+len(ori_dir_nm)+1:]
+    original_fnms = get_original_fnms()
+    assert len(original_fnms) == n_song  # sanity check
     for i in it:  # ensure go through every file
         fnm = o2f(i)
-        it.set_postfix(fnm=fnm)
+        it.set_postfix(fnm=stem(fnm))
         # default conversion store location
         path_ms, path_lp = os_join(u.dset_dir, f'{dir_nm}, MS', fnm), os_join(u.dset_path, f'{dir_nm}, LP', fnm)
         _path_ms, _path_lp = os_join(u.base_path, path_ms), os_join(u.base_path, path_lp)
+        d_out = dict(file_name=fnm, original_filename=original_abs2rel(original_fnms[i]))
         if os.path.exists(_path_ms):
-            lst_meta.append(dict(file_name=fnm, backend='MS', path=path_ms, status='converted'))
+            d_out.update(dict(backend='MS', path=path_ms, status='converted'))
+            set_converted.remove(_path_ms)
         elif os.path.exists(_path_lp):
-            lst_meta.append(dict(file_name=fnm, backend='LP', path=path_lp, status='converted'))
+            d_out.update(dict(backend='LP', path=path_lp, status='converted'))
             set_converted.remove(_path_lp)
         else:
             # the original `mid` file should still be there to mark error
             path_broken = _path_lp.replace(f'{dnm}, LP', f'{dnm}, broken').replace('.mxl', '.mid')
-            if not os.path.exists(path_broken):
+            if not os.path.exists(path_broken):  # TODO: debugging
                 ic(path_broken)
             assert os.path.exists(path_broken)
             # note all drums is also considered empty
-            lst_meta.append(dict(file_name=fnm, backend='NA', path='NA', status='error/empty'))
+            d_out.update(dict(backend='NA', path='NA', status='error/empty'))
+        lst_meta.append(d_out)
     assert len(set_converted) == 0  # sanity check no converted file is missed
     df = pd.DataFrame(lst_meta)
     ic(df)

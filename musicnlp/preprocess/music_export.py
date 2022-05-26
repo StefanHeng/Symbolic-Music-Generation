@@ -312,7 +312,7 @@ if __name__ == '__main__':
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
         # grp_nm = 'many'
         # grp_nm = '080000-090000'
-        grp_nm = '120000-130000'
+        grp_nm = '160000-170000'
         # grp_nm = '170000-178561'
         dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
