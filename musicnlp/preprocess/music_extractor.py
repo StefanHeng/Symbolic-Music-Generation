@@ -105,8 +105,10 @@ class MusicExtractor:
             # Update time signature
             tss = [b[TimeSignature] for b in bars]
             if idx == 0 or any(tss):  # 1st bar must have time signature defined
+                # some parts may contain no time signature if the file went through Logic Pro mid=>xml conversion
+                tss = [list(t) for t in tss if t]
                 assert all(len(t) == 1 for t in tss)
-                tss = [next(t) for t in tss]
+                tss = [next(iter(t)) for t in tss]
                 assert list_is_same_elms([(ds.numerator, ds.denominator) for ds in tss])
                 time_sig = tss[0]
 
@@ -255,15 +257,16 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # if number == 22:
+        # ic('in expand bar', number)
+        # if number == 57:
         #     ic('in expand_bar', number, len(bar))
         #     notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
         #     for n in notes:
         #         strt, end = get_offset(n), get_end_qlen(n)
         #         ic(n, n.fullName, strt, end)
-        #     # bar.show()
-        # # if number > 22:
-        # #     exit(1)
+        #     bar.show()
+        # if number > 57:
+        #     exit(1)
         while elm is not None:
             # this is the bottleneck; just care about duration; Explicitly ignore voice
             full_nm = not isinstance(elm, Voice) and getattr(elm.duration, 'fullName', None)
@@ -483,7 +486,7 @@ class MusicExtractor:
                 if not isinstance(elm, (  # Ensure all relevant types are considered
                     TimeSignature, MetronomeMark, Voice,
                     m21.layout.LayoutBase, m21.clef.Clef, m21.key.KeySignature, m21.bar.Barline,
-                    m21.expressions.TextExpression
+                    m21.expressions.TextExpression, m21.repeat.Fine
                 )):
                     ic(elm)
                     print('unexpected type')
@@ -632,7 +635,7 @@ class MusicExtractor:
                 groups[offset] = _notes_out
 
             def _fix_edge_case():
-                # the original file is broken in that doesn't align with time signature duration
+                # the original file is broken in that note durations don't align with duration by time signature
                 ts_tup = (time_sig.numerator, time_sig.denominator)
                 if ts_tup in [(8, 4), (4, 2), (2, 1)] and \
                         number in [9, 17, 19, 24, 33, 38, 43, 47, 52, 53, 60, 62, 84, 87, 188, 201] and \
@@ -640,10 +643,21 @@ class MusicExtractor:
                     # for [
                     #   `LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`, `LMD::108367`,
                     #   `LMD::116976`, `LMD::119887`, `LMD::123389`, `LMD::128869`, `LMD::137904`,
-                    #   `LMD::142327`,`LMD::160646`, `LMD::161475`, `LMD::163655`,
+                    #   `LMD::140453`,`LMD::142327`,`LMD::160646`, `LMD::161475`, `LMD::163655`
                     # ]
                     for offset in [4.0, 6.0]:
                         _fix_rest_too_long(offset, 12.0)  # 4 more than it should in quarter length
+                elif ts_tup == (2, 4) and number == 6 and 2.0 in groups:
+                    # for `LMD::034249`
+                    _fix_rest_too_long(2.0, 4.0)
+                elif ts_tup == (1, 8):
+                    # for `LMD::051562`
+                    if number in [9, 40, 71, 102] and all(o in groups for o in [0.5, 4.0, 8.0]):
+                        for offset, wrong_time in [(0.0, 4.0), (0.5, 12.0), (4.0, 8.0), (8.0, 12.0)]:
+                            _fix_rest_too_long(offset, wrong_time)
+                    elif number in [26, 57, 88] and all(o in groups for o in [0.0, 4.0, 8.0]):
+                        for offset, wrong_time in [(0.0, 4.0), (4.0, 8.0), (8.0, 12.0)]:
+                            _fix_rest_too_long(offset, wrong_time)
                 elif ts_tup == (5, 2) and number in [5, 28] and 6.0 in groups:
                     # for `LMD::109166`
                     _fix_rest_too_long(6.0, 16.0)  # 6 more than it should
@@ -684,7 +698,7 @@ class MusicExtractor:
                     groups[2.125] = _notes_out
             _fix_edge_case()
 
-            # if number == 22:
+            # if number == 71:
             #     ic('before get notes out', time_sig)
             #     ic(groups)
             #     for k, notes in groups.items():
@@ -1047,7 +1061,7 @@ if __name__ == '__main__':
         # path = '/Users/stefanhg/Desktop/Untitled 186.xml'
         # fnm = '103233.mxl'
         # path = os_join(u.dset_path, dir_nm, '100000-110000', fnm)
-        fnm = '161651.mxl'
+        fnm = '140453.mxl'
         path = os_join(u.dset_path, 'converted', 'LMD, check error', fnm)
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
         # print(me(path, exp='visualize'))
@@ -1960,56 +1974,56 @@ if __name__ == '__main__':
             # '141923.mxl',
             # '141945.mxl',
             # '142327.mxl',
-            '142436.mxl',
-            '142608.mxl',
-            '142691.mxl',
-            '142820.mxl',
-            '142951.mxl',
-            '143120.mxl',
-            '143280.mxl',
-            '143342.mxl',
-            '143352.mxl',
-            '143434.mxl',
-            '143510.mxl',
-            '143847.mxl',
-            '143881.mxl',
-            '143963.mxl',
-            '144075.mxl',
-            '144306.mxl',
-            '144368.mxl',
-            '144710.mxl',
-            '144835.mxl',
-            '144935.mxl',
-            '145008.mxl',
-            '145026.mxl',
-            '145045.mxl',
-            '145208.mxl',
-            '145355.mxl',
-            '145570.mxl',
-            '145704.mxl',
-            '145972.mxl',
-            '146062.mxl',
-            '146733.mxl',
-            '147074.mxl',
-            '147176.mxl',
-            '147584.mxl',
-            '147693.mxl',
-            '147735.mxl',
-            '148061.mxl',
-            '148086.mxl',
-            '148137.mxl',
-            '148416.mxl',
-            '148594.mxl',
-            '148658.mxl',
-            '148677.mxl',
-            '148875.mxl',
-            '148918.mxl',
-            '149140.mxl',
-            '149445.mxl',
-            '149473.mxl',
-            '149883.mxl',
-            '149942.mxl',
-            '149994.mxl'
+            # '142436.mxl',
+            # '142608.mxl',
+            # '142691.mxl',
+            # '142820.mxl',
+            # '142951.mxl',
+            # '143120.mxl',
+            # '143280.mxl',
+            # '143342.mxl',
+            # '143352.mxl',
+            # '143434.mxl',
+            # '143510.mxl',
+            # '143847.mxl',
+            # '143881.mxl',
+            # '143963.mxl',
+            # '144075.mxl',
+            # '144306.mxl',
+            # '144368.mxl',
+            # '144710.mxl',
+            # '144835.mxl',
+            # '144935.mxl',
+            # '145008.mxl',
+            # '145026.mxl',
+            # '145045.mxl',
+            # '145208.mxl',
+            # '145355.mxl',
+            # '145570.mxl',
+            # '145704.mxl',
+            # '145972.mxl',
+            # '146062.mxl',
+            # '146733.mxl',
+            # '147074.mxl',
+            # '147176.mxl',
+            # '147584.mxl',
+            # '147693.mxl',
+            # '147735.mxl',
+            # '148061.mxl',
+            # '148086.mxl',
+            # '148137.mxl',
+            # '148416.mxl',
+            # '148594.mxl',
+            # '148658.mxl',
+            # '148677.mxl',
+            # '148875.mxl',
+            # '148918.mxl',
+            # '149140.mxl',
+            # '149445.mxl',
+            # '149473.mxl',
+            # '149883.mxl',
+            # '149942.mxl',
+            # '149994.mxl'
         ]
         # broken_files = [
         #     # '150222.mxl',
@@ -2207,19 +2221,86 @@ if __name__ == '__main__':
         # grp_nm = '110000-120000'
         # grp_nm = '120000-130000'
         # grp_nm = '130000-140000'
-        grp_nm = '140000-150000'
+        # grp_nm = '140000-150000'
         # grp_nm = '150000-160000'
         # grp_nm = '160000-170000'
         # grp_nm = '170000-178561'
-        broken_files = [os_join(grp_nm, f) for f in broken_files]
+        # broken_files = [os_join(grp_nm, f) for f in broken_files]
+        broken_files = [
+            # '003335.mxl',
+            # '004331.mxl',
+            # '007891.mxl',
+            # '012360.mxl',
+            # '017261.mxl',
+            # '018788.mxl',
+            # '019598.mxl',
+            # '020055.mxl',
+            # '020585.mxl',
+            # '029084.mxl',
+            # '030087.mxl',
+            # '033240.mxl',
+            # '034249.mxl',
+            # '037842.mxl',
+            # '038206.mxl',
+            # '045963.mxl',
+            # '047301.mxl',
+            # '049542.mxl',
+            # '050889.mxl',
+            # '051440.mxl',
+            # '051562.mxl',
+            '060154.mxl',
+            '061621.mxl',
+            '068788.mxl',
+            '079043.mxl',
+            '079104.mxl',
+            '079941.mxl',
+            '081859.mxl',
+            '082892.mxl',
+            '093306.mxl',
+            '094903.mxl',
+            '096118.mxl',
+            '097177.mxl',
+            '099388.mxl',
+            '102163.mxl',
+            '102993.mxl',
+            '124025.mxl',
+            '127754.mxl',
+            '128980.mxl',
+            '129011.mxl',
+            '132179.mxl',
+            '133865.mxl',
+            '133945.mxl',
+            '137165.mxl',
+            '138606.mxl',
+            '139359.mxl',
+            '140347.mxl',
+            '152887.mxl',
+            '157586.mxl',
+            '158307.mxl',
+            '159114.mxl',
+            '159600.mxl',
+            '160466.mxl',
+            '163183.mxl',
+            '167205.mxl',
+            '170019.mxl'
+        ]
+        o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
+
+        def map_fnm(f: str) -> str:
+            _, _dir_nm = o2f(int(stem(f)), return_parts=True)
+            return os_join(_dir_nm, f)
+        broken_files = [map_fnm(f) for f in broken_files]
+
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
         # batch = False
         batch = True
 
+        dir_nm = 'converted/LMD, LP'
         for broken_fl in broken_files:
             path = os_join(u.dset_path, dir_nm, broken_fl)
             if batch:
+                ic(broken_fl)
                 try:
                     print(me(path, exp='visualize'))
                 except Exception as e:
@@ -2265,7 +2346,7 @@ if __name__ == '__main__':
         """
         import re
 
-        log_fnm = '05.26.22 @ 17.06, lmd grp 14'
+        log_fnm = '05.26.22 @ 17.57, lmd all LP'
         path_log = os_join(u.dset_path, 'converted', 'LMD, log', f'{log_fnm}.log')
         with open(path_log, 'r') as f:
             lines = f.readlines()

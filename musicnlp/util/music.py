@@ -322,7 +322,9 @@ def get_lmd_conversion_meta():
         lst_meta.append(d_out)
     assert len(set_converted) == 0  # sanity check no converted file is missed
     df = pd.DataFrame(lst_meta)
-    ic(df)
+    path_out = os_join(u.dset_path, 'converted', f'{now(for_path=True)}, {dnm} conversion meta.csv')
+    df.to_csv(path_out)
+    return df
 
 
 if __name__ == '__main__':
@@ -441,7 +443,10 @@ if __name__ == '__main__':
         logger.info(f'{logi(count)} converted xml with unknown origin in the last session removed')
     # mv_backend_not_processed()
 
-    get_lmd_conversion_meta()
+    def get_convert_df():
+        df = get_lmd_conversion_meta()
+        ic(df)
+    get_convert_df()
 
     # def chore_convert_xml2mxl():
     #     """
@@ -454,4 +459,3 @@ if __name__ == '__main__':
     #     ic(len(files))
     #     for path in files:
     #         pass
-

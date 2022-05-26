@@ -216,10 +216,13 @@ def note2note_cleaned(
 
 
 def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[float], List[Dur]]:
-    if isinstance(notes, list):  # Else, single tuplet notes
-        notes = flatten_notes(unroll_notes(notes))
-    offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
-    return offsets, durs
+    if notes:
+        if isinstance(notes, list):  # Else, single tuplet notes
+            notes = flatten_notes(unroll_notes(notes))
+        offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
+        return offsets, durs
+    else:
+        return [], []
 
 
 def time_sig2bar_dur(time_sig: Union[TimeSignature, TsTup]) -> float:
@@ -420,52 +423,60 @@ def fill_with_rest(
 
     .. note:: Tuplet group is treated as a whole
     """
-    it = iter(notes)
-    note = next(it, None)
-    lst, meta = [note] if note else [], []
-    last_end = get_end_qlen(note)
-
-    def fill(strt, end):
+    def get_rest_note(strt, end):
         r = Rest(duration=Duration(quarterLength=end-strt))
         r.offset = strt
-        lst.append(r)
-        if serializable:
-            strt, end = serialize_frac(strt), serialize_frac(end)
-        meta.append((strt, end))
+        return r
+    it = iter(notes)
     note = next(it, None)
-    while note is not None:
-        new_begin = get_offset(note)
-        assert last_end <= new_begin  # verify input
-        if last_end < new_begin:  # Found gap
-            fill(last_end, new_begin)
-        lst.append(note)
+    if note is None:
+        return [get_rest_note(0, duration)], [(0, duration)]
+    else:
+        lst, meta = [note] if note else [], []
+        last_end = get_end_qlen(note)
 
-        last_end = get_end_qlen(note)  # prep for next iter
+        def fill(strt, end):
+            lst.append(get_rest_note(strt, end))
+            if serializable:
+                strt, end = serialize_frac(strt), serialize_frac(end)
+            meta.append((strt, end))
         note = next(it, None)
-    if duration:
-        diff = duration - last_end
-        if diff - eps > 0:
-            fill(last_end, duration)
-    return lst, meta
+        while note is not None:
+            new_begin = get_offset(note)
+            assert last_end <= new_begin  # verify input
+            if last_end < new_begin:  # Found gap
+                fill(last_end, new_begin)
+            lst.append(note)
+
+            last_end = get_end_qlen(note)  # prep for next iter
+            note = next(it, None)
+        if duration:
+            diff = duration - last_end
+            if diff - eps > 0:
+                fill(last_end, duration)
+        return lst, meta
 
 
 def notes_have_gap(notes: Iterable[ExtNote], enforce_no_overlap: bool = True, duration: Dur = None) -> bool:
     it = flatten_notes(notes)
     note = next(it, None)
-    last_end = get_end_qlen(note)
-    note = next(it, None)
-    while note is not None:
-        new_begin = get_offset(note)
-        diff = new_begin - last_end
-        if enforce_no_overlap and diff+eps < 0:
-            raise ValueError(f'Notes overlap: {note}')
-        if diff - eps > 0:
-            return True
+    if note is None:  # no note at all
+        return duration > 0
+    else:
         last_end = get_end_qlen(note)
         note = next(it, None)
-    if duration and (duration - last_end - eps) > 0:
-        return True
-    return False
+        while note is not None:
+            new_begin = get_offset(note)
+            diff = new_begin - last_end
+            if enforce_no_overlap and diff+eps < 0:
+                raise ValueError(f'Notes overlap: {note}')
+            if diff - eps > 0:
+                return True
+            last_end = get_end_qlen(note)
+            note = next(it, None)
+        if duration and (duration - last_end - eps) > 0:
+            return True
+        return False
 
 
 def notes_overlapping(notes: Iterable[ExtNote]) -> bool:
@@ -474,17 +485,20 @@ def notes_overlapping(notes: Iterable[ExtNote]) -> bool:
     """
     notes = flatten_notes(notes)
     note = next(notes, None)
-    end = get_end_qlen(note)
-    note = next(notes, None)
-    while note is not None:
-        # Current note should begin, after the previous one ends
-        # Since numeric representation of one-third durations, aka tuplets
-        if (end-eps) <= note.offset:
-            end = get_end_qlen(note)
-            note = next(notes, None)
-        else:
-            return True
-    return False
+    if note is None:
+        return False
+    else:
+        end = get_end_qlen(note)
+        note = next(notes, None)
+        while note is not None:
+            # Current note should begin, after the previous one ends
+            # Since numeric representation of one-third durations, aka tuplets
+            if (end-eps) <= note.offset:
+                end = get_end_qlen(note)
+                note = next(notes, None)
+            else:
+                return True
+        return False
 
 
 def is_notes_pos_duration(notes: Iterable[ExtNote]) -> bool:
