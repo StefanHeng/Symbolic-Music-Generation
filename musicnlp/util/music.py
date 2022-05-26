@@ -8,7 +8,7 @@ from typing import Tuple, List, Dict, Union
 from collections import defaultdict
 
 import pandas as pd
-from tqdm.auto import tqdm, trange
+from tqdm.auto import tqdm
 
 from stefutil import *
 from musicnlp.util.util import *
@@ -285,7 +285,6 @@ def get_lmd_conversion_meta():
     set_converted = get_converted_song_paths(dataset_name=dnm, fmt='mxl', backend='all')
     lst_meta = []
     o2f = Ordinal2Fnm(total=n_song, group_size=int(1e4), ext='mxl')
-    it = trange(n_song, desc='Scanning converted files', unit='fl')
 
     def get_original_fnms():  # see `clean_dataset_paths`
         d_dset = sconfig(f'datasets.{dnm}.original')
@@ -298,13 +297,14 @@ def get_lmd_conversion_meta():
         return path[path.index(ori_dir_nm)+len(ori_dir_nm)+1:]
     original_fnms = get_original_fnms()
     assert len(original_fnms) == n_song  # sanity check
-    for i in it:  # ensure go through every file
+    it = tqdm(enumerate(original_fnms), desc='Scanning converted files', unit='fl', total=n_song)
+    for i, ori_fnm in it:  # ensure go through every file
         fnm = o2f(i)
         it.set_postfix(fnm=stem(fnm))
         # default conversion store location
         path_ms, path_lp = os_join(u.dset_dir, f'{dir_nm}, MS', fnm), os_join(u.dset_path, f'{dir_nm}, LP', fnm)
         _path_ms, _path_lp = os_join(u.base_path, path_ms), os_join(u.base_path, path_lp)
-        d_out = dict(file_name=fnm, original_filename=original_abs2rel(original_fnms[i]))
+        d_out = dict(file_name=fnm, original_filename=original_abs2rel(ori_fnm))
         if os.path.exists(_path_ms):
             d_out.update(dict(backend='MS', path=path_ms, status='converted'))
             set_converted.remove(_path_ms)

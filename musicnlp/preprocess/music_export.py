@@ -312,8 +312,8 @@ if __name__ == '__main__':
         # dnm = 'LMD, LP'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
         # grp_nm = 'many'
-        # grp_nm = '080000-090000'
-        grp_nm = '140000-150000'
+        grp_nm = '000000-010000'
+        # grp_nm = '140000-150000'
         # grp_nm = '170000-178561'
         dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
@@ -359,7 +359,7 @@ if __name__ == '__main__':
             with_tqdm=True, parallel_mode=pl_md,
             # n_worker=40
         )
-    export2json()
+    # export2json()
 
     def export2json_save_each(
             filenames: Union[str, List[str]] = 'LMD-cleaned-subset',
@@ -576,8 +576,30 @@ if __name__ == '__main__':
 
         Make sure, every valid music file is exported
         """
-        meta_fnm = '2022-05-26_16-50-30, LMD conversion meta'
-        meta_path = os_join(u.dset_path, 'converted', 'meta', f'{meta_fnm}.csv')
+        meta_fnm = '2022-05-26_18-11-40, LMD conversion meta'
+        meta_path = os_join(u.dset_path, 'converted', f'{meta_fnm}.csv')
         df = pd.read_csv(meta_path)
-        ic(df)
-    # sanity_check_export()
+
+        # n_song = sconfig('datasets.LMD.meta.n_song')
+        # o2f = music_util.Ordinal2Fnm(total=n_song, group_size=int(1e4))
+        # ic(o2f.total)
+
+        dir_nm = f'2022-05-20_09-39-16_LMD, MS'
+        path_exported = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
+        paths_exported = set(glob.iglob(os_join(path_exported, '**/*.json'), recursive=True))
+        ic(len(paths_exported))
+
+        it = tqdm(df.iterrows(), unit='fl')
+        for idx, song in it:
+            _dir_nm, fnm = song.file_name.split('/')
+            fnm = stem(fnm)
+            it.set_postfix(fnm=fnm)
+            if song.status == 'converted':
+                path = os_join(path_exported, _dir_nm, f'Music Export - {fnm}.json')
+                # ic(path)
+                assert os.path.exists(path)  # a converted file is extracted
+                paths_exported.remove(path)
+            # ic(idx, song)
+            # exit(1)
+        assert len(paths_exported) == 0  # every exported file is accounted for
+    sanity_check_export()

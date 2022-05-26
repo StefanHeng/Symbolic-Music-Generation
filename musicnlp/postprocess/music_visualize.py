@@ -47,7 +47,7 @@ class MusicVisualize:
         :param hue_by_dataset: If true, automatically color-code statistics by dataset name
         """
         self.dset: Dict
-        self.prec, self.tokenizer, self.vocab, self.states = None, None, None, None
+        self._prec, self.tokenizer, self.vocab, self.states = None, None, None, None
         self._df = None
         self.cache = cache
         if cache:
@@ -59,12 +59,13 @@ class MusicVisualize:
                     self.dset, self._df = d['dset'], d['df']
             else:
                 self.dset = MusicVisualize._get_dset(filename, dataset_name)
+                self._set_meta()
                 self._df = self._get_song_info()
                 with open(path, 'wb') as f:
                     pickle.dump(dict(dset=self.dset, df=self._df), f)
         else:
             self.dset = MusicVisualize._get_dset(filename, dataset_name)
-        self._set_meta()
+            self._set_meta()
 
         self.color_palette = color_palette
         if hue_by_dataset:
@@ -106,11 +107,14 @@ class MusicVisualize:
                 extractor_meta=dset[0]['extractor_meta']
             )
 
+    @property
+    def prec(self) -> int:
+        if not self._prec:
+            self._prec = get(self.dset, 'extractor_meta.precision')
+            assert self.prec >= 2
+        return self._prec
+
     def _set_meta(self):
-        def get_prec(ds: Dict) -> int:
-            return get(ds, 'extractor_meta.precision')
-        self.prec = get_prec(self.dset)
-        assert self.prec >= 2
         self.tokenizer = MusicTokenizer(precision=self.prec)
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec)
@@ -468,7 +472,7 @@ if __name__ == '__main__':
     # cnm = None
     cnm = 'music visualize cache, 05.24.22'
     # for `LMD-cleaned-subset`
-    mv = MusicVisualize(filename=fnms, dataset_name=['POP909', 'LCS'], hue_by_dataset=True, cache=cnm)
+    mv = MusicVisualize(filename=fnms, dataset_name=['POP909', 'MAESTRO'], hue_by_dataset=True, cache=cnm)
     # ic(mv.df)
 
     def check_warn():
