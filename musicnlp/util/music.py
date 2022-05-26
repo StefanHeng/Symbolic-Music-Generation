@@ -89,7 +89,7 @@ class Ordinal2Fnm:
     Intended for LMD file cleaning
         storing 170k songs in a single folder makes prohibitively slow FS rendering
     """
-    def __init__(self, total: int, group_size: int = 1e4, ext='mid'):
+    def __init__(self, total: int, group_size: int = 1e4, ext: str = None):
         self.total, self.grp_sz = total, group_size
         self.n_digit = len(str(total))
 
@@ -99,7 +99,9 @@ class Ordinal2Fnm:
         i_grp = i // self.grp_sz
         strt, end = i_grp * self.grp_sz, min((i_grp + 1) * self.grp_sz, self.total)
         dir_nm = f'{self._num2padded(strt)}-{self._num2padded(end)}'
-        fnm = f'{i:>0{self.n_digit}}.{self.ext}'
+        fnm = f'{i:>0{self.n_digit}}'
+        if self.ext:
+            fnm = f'{fnm}.{self.ext}'
         return (fnm, dir_nm) if return_parts else os_join(dir_nm, fnm)
 
     def _num2padded(self, n_: int):

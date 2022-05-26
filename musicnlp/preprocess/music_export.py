@@ -176,12 +176,12 @@ class MusicExport:
                 lst_out = conc_map(fn, it, with_tqdm=tqdm_args, mode='process', n_worker=n_worker)
         else:
             lst_out = []
-            gen = enumerate(filenames)
+            it = enumerate(filenames)
             if with_tqdm:
-                gen = tqdm(gen, total=len(filenames), desc='Extracting music', unit='song')
-            for i_fl, fnm in gen:
+                it = tqdm(it, total=len(filenames), desc='Extracting music', unit='song')
+            for i_fl, fnm in it:
                 if with_tqdm:
-                    gen.set_postfix(fnm=stem(fnm))
+                    it.set_postfix(fnm=stem(fnm))
                 lst_out.append(export_single(fnm))
 
         if not save_each:
@@ -311,8 +311,9 @@ if __name__ == '__main__':
         dnm = 'LMD, MS'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
         # grp_nm = 'many'
-        # grp_nm = '050000-060000'
-        grp_nm = '150000-160000'
+        # grp_nm = '080000-090000'
+        grp_nm = '120000-130000'
+        # grp_nm = '170000-178561'
         dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         # dnm = 'LMD-cleaned-subset'
@@ -343,13 +344,17 @@ if __name__ == '__main__':
             # '140000-150000',
             # '150000-160000',
             # '160000-170000',
+            # '170000-178561'
             grp_nm
+            # '170000-178561',
+            # '160000-170000',
+            # '130000-140000',
         ]], start=[])
         me(
             # dnm,
             paths,
             extractor_args=args, path_out=path_out, save_each=True,
-            parallel=64,
+            # parallel=64,
             with_tqdm=True, parallel_mode=pl_md,
             # n_worker=40
         )
@@ -363,7 +368,7 @@ if __name__ == '__main__':
         # parallel = 3
         parallel = 64
         me(
-            filenames, parallel=False, extractor_args=dict(greedy_tuplet_pitch_threshold=1),
+            filenames, parallel=parallel, extractor_args=dict(greedy_tuplet_pitch_threshold=1),
             path_out=path_out, save_each=True
         )
     # export2json_save_each()
@@ -527,12 +532,13 @@ if __name__ == '__main__':
         path_to_process = os_join(path_process_base, 'many')
         ic(path_to_process)
         paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
-        pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$.json')
-        o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4), ext='json')
+        pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$')
+        o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
         ic(o2f.total)
         it = tqdm(paths)
         for path in it:
             m = pattern.match(stem(path))
+            # ic(stem(path))
             assert m is not None
             o = int(m.group('ordinal'))
 

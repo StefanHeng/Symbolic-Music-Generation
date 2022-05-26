@@ -52,8 +52,6 @@ class MyReformerConfig(ReformerConfig):
             is_decoder=True,
             num_buckets=None  # have reformer decide
         ))
-    # from icecream import ic
-    # ic(presets)
 
     def __init__(self, model_size: str = 'base', tokenizer: MusicTokenizer = None, **kwargs):
         d_config = MyReformerConfig.presets[model_size]

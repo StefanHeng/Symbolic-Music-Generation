@@ -18,7 +18,6 @@ import datasets
 from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
-import musicnlp.models.models as model_util
 from musicnlp.vocab import MusicTokenizer, key_ordinal2str
 from musicnlp.preprocess import get_dataset, KeySampleDataset
 from musicnlp.models import MyReformerConfig, MyTransfoXLConfig, MyTransfoXLLMHeadModel
@@ -27,7 +26,7 @@ from musicnlp.trainer import metrics
 
 def get_model_n_tokenizer(
         model_name: str, model_size: str, prec: int = 5, model_config: Dict = None
-) -> Tuple[MusicTokenizer, Union[model_util.MusicTransformerMixin, torch.nn.Module], OrderedDict]:
+) -> Tuple[MusicTokenizer, torch.nn.Module, OrderedDict]:
     ca.check_mismatch('Model Name', model_name, ['transf-xl', 'reformer'])
 
     tokenizer = MusicTokenizer(precision=prec)  # needed for reformer config
@@ -260,7 +259,7 @@ def get_all_setup(
         model_name: str, model_size: str,
         dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None,
         model_config: Dict = None, train_args: Dict = None, my_train_args: Dict = None
-) -> Tuple[model_util.MusicTransformerMixin, MusicTokenizer, Trainer]:
+) -> Tuple[torch.nn.Module, MusicTokenizer, Trainer]:
     # n_sample mainly for debugging
     tokenizer, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
     my_train_args = my_train_args or dict()
@@ -376,11 +375,13 @@ if __name__ == '__main__':
     def train_xl():
         md_nm = 'transf-xl'
         transformers.set_seed(seed)
-        # md_sz = 'debug'
-        md_sz = 'debug-large'
+        md_sz = 'debug'
+        # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        # n = 64
-        n = None
+        n = 64
+        # n = None
+        max_length = 2048
+        # max_length = None
 
         augment_key = False
 
@@ -397,8 +398,8 @@ if __name__ == '__main__':
             my_train_args.update(dict(tqdm=True, logging_strategy='epoch'))
             train_args = dict(per_device_train_batch_size=32)
         mdl, tokenizer, trainer = get_all_setup(
-            model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n,
-            train_args=train_args, my_train_args=my_train_args
+            model_name=md_nm, model_size=md_sz, dataset_names=dnms, model_config=dict(max_length=max_length),
+            n_sample=n, train_args=train_args, my_train_args=my_train_args
         )
         # ignore so that `None` don't get detached
         ignore_keys_for_eval = ['losses', 'mems', 'hidden_states', 'attentions']
