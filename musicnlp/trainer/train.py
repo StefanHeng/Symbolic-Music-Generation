@@ -378,7 +378,8 @@ if __name__ == '__main__':
         md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        n = 64
+        n = 8
+        # n = 64
         # n = None
         max_length = 2048
         # max_length = None
@@ -394,8 +395,12 @@ if __name__ == '__main__':
             save_epochs=2
         )
         train_args = dict()
-        if 'debug' not in md_sz:
+
+        with_tqdm = True
+        if with_tqdm:
             my_train_args.update(dict(tqdm=True, logging_strategy='epoch'))
+
+        if 'debug' not in md_sz:
             train_args = dict(per_device_train_batch_size=32)
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, dataset_names=dnms, model_config=dict(max_length=max_length),

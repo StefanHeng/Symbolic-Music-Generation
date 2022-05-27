@@ -1,10 +1,11 @@
 from typing import List, Tuple, Dict, Any, Optional
 
 import torch
-from transformers import TransfoXLConfig, TransfoXLLMHeadModel
+from transformers import TransfoXLConfig, TransfoXLModel, TransfoXLLMHeadModel
 from transformers.file_utils import ModelOutput
 
 from musicnlp.vocab import MusicTokenizer
+from musicnlp.models._adaptive_softmax import MyProjectedAdaptiveLogSoftmax
 
 
 __all__ = ['MyTransfoXLConfig', 'MyTransfoXLLMHeadModel']
@@ -72,6 +73,32 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
 
     Can do this since small vocab size
     """
+    def __init__(self, config):
+        super().__init__(config)
+        self.transformer = TransfoXLModel(config)
+        self.sample_softmax = config.sample_softmax
+        self.trainer_compatible = getattr(config, "trainer_compatible", False)
+
+        # if not self.trainer_compatible:
+        #     warnings.warn(
+        #         "The output of TransfoXL will be updated in v5 to support a single loss as first argument. In order"
+        #         "to use that updated output, please specify `trainer_compatible=True` as your configuration attribute.",
+        #         DeprecationWarning,
+        #     )
+
+        assert (
+            self.sample_softmax <= 0
+        ), "Sampling from the softmax is not implemented yet. Please look at issue: #3310: https://github.com/huggingface/transformers/issues/3310"
+
+        # ========================== Begin of modified ==========================
+        self.crit = MyProjectedAdaptiveLogSoftmax(
+            config.vocab_size, config.d_embed, config.d_model, config.cutoffs, div_val=config.div_val
+        )
+        # ========================== End of modified ==========================
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
     def forward(
         self,
         key_scores=None,  # not used, passed down for IKR computation
@@ -90,73 +117,6 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
             `labels = input_ids` Indices are selected in `[-100, 0, ..., config.vocab_size]` All labels set to `-100`
             are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
         """
-        # return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # if input_ids is not None:
-        #     bsz, tgt_len = input_ids.size(0), input_ids.size(1)
-        # elif inputs_embeds is not None:
-        #     bsz, tgt_len = inputs_embeds.size(0), inputs_embeds.size(1)
-        # else:
-        #     raise ValueError("You have to specify either input_ids or inputs_embeds")
-        #
-        # transformer_outputs = self.transformer(
-        #     input_ids,
-        #     mems=mems,
-        #     head_mask=head_mask,
-        #     inputs_embeds=inputs_embeds,
-        #     output_attentions=output_attentions,
-        #     output_hidden_states=output_hidden_states,
-        #     return_dict=return_dict,
-        # )
-        #
-        # last_hidden = transformer_outputs[0]
-        # pred_hid = last_hidden[:, -tgt_len:]
-        #
-        # if labels is not None:
-        #     # Prevents all labels being -100 and throwing an error
-        #     # when backwarding the loss
-        #     miss_valid_label = labels[0, 1:].sum() == (labels.size(1) - 1) * -100
-        #     if miss_valid_label:
-        #         # Sets an <EOS> token, just to prevent loss from being NaN
-        #         labels[0, 1] = self.config.eos_token_id
-        #
-        # softmax_output = self.crit(pred_hid, labels)
-        # # ========================== Begin of modified ==========================
-        # # prediction_scores = softmax_output.view(bsz, tgt_len, -1) if labels is None else ()
-        # if labels is None:
-        #     prediction_scores = softmax_output.view(bsz, tgt_len, -1)
-        # else:
-        #     # Run softmax again to get vocabulary logits
-        #     # Not most efficient but less error-prone
-        #     with torch.no_grad():
-        #         sm_out = self.crit(pred_hid)
-        #     prediction_scores = sm_out.view(bsz, tgt_len, -1)
-        # # ========================== End of modified ==========================
-        #
-        # if labels is not None:
-        #     losses = softmax_output.view(bsz, tgt_len - 1)
-        #     # Avoids from incorporating padding (-100) tokens into loss value
-        #     loss = losses[losses != 0].mean()
-        # else:
-        #     losses, loss = None, None
-        #
-        # if not return_dict:
-        #     if self.trainer_compatible:
-        #         output = (prediction_scores, losses) if losses is not None else (prediction_scores,)
-        #         output += transformer_outputs[1:]
-        #         return ((loss,) + output) if loss is not None else output
-        #     else:
-        #         output = (prediction_scores, *transformer_outputs[1:])
-        #         output = ((losses,) + output) if losses is not None else output
-        #         return (output + (loss,)) if loss is not None else output
-        #
-        # return TransfoXLLMHeadModelOutput(
-        #     loss=loss,
-        #     prediction_scores=prediction_scores,
-        #     losses=losses,
-        #     mems=transformer_outputs.mems,
-        #     hidden_states=transformer_outputs.hidden_states,
-        #     attentions=transformer_outputs.attentions,
-        # )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if input_ids is not None:
             bsz, tgt_len = input_ids.size(0), input_ids.size(1)
@@ -187,10 +147,24 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
                 labels[0, 1] = self.config.eos_token_id
 
         softmax_output = self.crit(pred_hid, labels)
-        prediction_scores = softmax_output.view(bsz, tgt_len, -1) if labels is None else ()
+        # ========================== Begin of modified ==========================
+        # prediction_scores = softmax_output.view(bsz, tgt_len, -1) if labels is None else ()
+        if labels is None:
+            prediction_scores = softmax_output.view(bsz, tgt_len, -1)
+        else:
+            # Run softmax again to get vocabulary logits
+            # Not most efficient but less error-prone
+            with torch.no_grad():
+                sm_out = self.crit(pred_hid)
+            prediction_scores = sm_out.view(bsz, tgt_len, -1)
+        # ========================== End of modified ==========================
 
         if labels is not None:
-            losses = softmax_output.view(bsz, tgt_len - 1)
+            # ========================== Begin of modified ==========================
+            # losses = softmax_output.view(bsz, tgt_len - 1)
+            losses = softmax_output  # Don't need that reshaping anyway
+            # below, padding should've been ignored already, see `MyProjectedAdaptiveLogSoftmax`
+            # ========================== End of modified ==========================
             # Avoids from incorporating padding (-100) tokens into loss value
             loss = losses[losses != 0].mean()
         else:

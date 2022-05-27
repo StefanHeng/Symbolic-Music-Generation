@@ -18,7 +18,6 @@ __all__ = [
     'ColoredPrinterCallback', 'ColoredPrinterCallbackForClm', 'ClmAccCallback'
 ]
 
-
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
 
 
@@ -234,8 +233,21 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
 
     def _log(self, d_log, mode='train', to_console=True):
         ca(log_mode=mode)
-        d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log.items()}
-        d_log_write = self.prettier(d_log_write)
+        from icecream import ic
+
+        d_log_write = self.prettier(d_log)
+        if self.trainer.my_args['tqdm']:
+            # Set current iter stats can be done only here,
+            # since HF normal callbacks don't have access to per step performance anyway
+            callback = next(cb for cb in self.trainer.callback_handler.callbacks if isinstance(cb, MyProgressCallback))
+            tqdm_kws = {k: v for k, v in d_log_write.items() if k not in ['step', 'epoch', 'learning_rate']}
+            if mode == 'train':
+                pbar = callback.training_bar
+            else:  # 'eval'
+                pbar = callback.prediction_bar
+            if pbar:
+                pbar.set_postfix(ordered_dict=tqdm_kws)
+        d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log_write.items()}
         if to_console:
             self.logger.info(log_dict(d_log_write))
         self.logger_fl.info(log_dict_nc(d_log_write))
