@@ -308,11 +308,11 @@ if __name__ == '__main__':
         # dnm = 'POP909'
         # dnm = 'MAESTRO'
         # dnm = 'LMD, MS/000000-010000'
-        dnm = 'LMD, MS'
-        # dnm = 'LMD, LP'
+        # dnm = 'LMD, MS'
+        dnm = 'LMD, LP'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
-        # grp_nm = 'many'
-        grp_nm = '000000-010000'
+        grp_nm = 'many'
+        # grp_nm = '000000-010000'
         # grp_nm = '140000-150000'
         # grp_nm = '170000-178561'
         dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
@@ -329,24 +329,24 @@ if __name__ == '__main__':
             ic(pattern)
             return sorted(glob.iglob(pattern, recursive=True))
         paths = sum([get_lmd_paths(d) for d in [
-            # '000000-010000',
-            # '010000-020000',
-            # '020000-030000',
-            # '030000-040000',
-            # '040000-050000',
-            # '050000-060000',
-            # '060000-070000',
-            # '070000-080000',
-            # '080000-090000',
-            # '090000-100000',
-            # '100000-110000',
-            # '120000-130000',
-            # '130000-140000',
-            # '140000-150000',
-            # '150000-160000',
-            # '160000-170000',
-            # '170000-178561'
-            grp_nm
+            '000000-010000',
+            '010000-020000',
+            '020000-030000',
+            '030000-040000',
+            '040000-050000',
+            '050000-060000',
+            '060000-070000',
+            '070000-080000',
+            '080000-090000',
+            '090000-100000',
+            '100000-110000',
+            '120000-130000',
+            '130000-140000',
+            '140000-150000',
+            '150000-160000',
+            '160000-170000',
+            '170000-178561'
+            # grp_nm
             # '170000-178561',
             # '160000-170000',
             # '130000-140000',
@@ -355,11 +355,11 @@ if __name__ == '__main__':
             # dnm,
             paths,
             extractor_args=args, path_out=path_out, save_each=True,
-            # parallel=16,
+            parallel=1,
             with_tqdm=True, parallel_mode=pl_md,
             # n_worker=40
         )
-    # export2json()
+    export2json()
 
     def export2json_save_each(
             filenames: Union[str, List[str]] = 'LMD-cleaned-subset',
@@ -602,4 +602,4 @@ if __name__ == '__main__':
             # ic(idx, song)
             # exit(1)
         assert len(paths_exported) == 0  # every exported file is accounted for
-    sanity_check_export()
+    # sanity_check_export()

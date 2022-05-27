@@ -57,6 +57,7 @@ class MusicVisualize:
                 with open(path, 'rb') as f:
                     d = pickle.load(f)
                     self.dset, self._df = d['dset'], d['df']
+                    self._set_meta()
             else:
                 self.dset = MusicVisualize._get_dset(filename, dataset_name)
                 self._set_meta()
@@ -488,7 +489,7 @@ if __name__ == '__main__':
     # check_uncommon_tempos()
 
     def plots():
-        args = dict(stat='percent', upper_percentile=True)
+        args = dict(stat='percent', upper_percentile=97.7)  # ~2std
         # mv.token_length_dist(**args)
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
