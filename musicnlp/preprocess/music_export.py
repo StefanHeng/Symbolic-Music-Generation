@@ -308,12 +308,12 @@ if __name__ == '__main__':
         # dnm = 'POP909'
         # dnm = 'MAESTRO'
         # dnm = 'LMD, MS/000000-010000'
-        # dnm = 'LMD, MS'
-        dnm = 'LMD, LP'
+        dnm = 'LMD, MS'
+        # dnm = 'LMD, LP'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
-        grp_nm = 'many'
-        # grp_nm = '000000-010000'
-        # grp_nm = '140000-150000'
+        # grp_nm = 'many'
+        # grp_nm = '090000-100000'
+        grp_nm = '150000-160000'
         # grp_nm = '170000-178561'
         dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
         path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
@@ -329,24 +329,25 @@ if __name__ == '__main__':
             ic(pattern)
             return sorted(glob.iglob(pattern, recursive=True))
         paths = sum([get_lmd_paths(d) for d in [
-            '000000-010000',
-            '010000-020000',
-            '020000-030000',
-            '030000-040000',
-            '040000-050000',
-            '050000-060000',
-            '060000-070000',
-            '070000-080000',
-            '080000-090000',
-            '090000-100000',
-            '100000-110000',
-            '120000-130000',
-            '130000-140000',
-            '140000-150000',
-            '150000-160000',
-            '160000-170000',
-            '170000-178561'
-            # grp_nm
+            # '000000-010000',
+            # '010000-020000',
+            # '020000-030000',
+            # '030000-040000',
+            # '040000-050000',
+            # '050000-060000',
+            # '060000-070000',
+            # '070000-080000',
+            # '080000-090000',
+            # '090000-100000',
+            # '100000-110000',
+            # '110000-120000',
+            # '120000-130000',
+            # '130000-140000',
+            # '140000-150000',
+            # '150000-160000',
+            # '160000-170000',
+            # '170000-178561'
+            grp_nm
             # '170000-178561',
             # '160000-170000',
             # '130000-140000',
@@ -355,11 +356,11 @@ if __name__ == '__main__':
             # dnm,
             paths,
             extractor_args=args, path_out=path_out, save_each=True,
-            parallel=1,
+            # parallel=1,
             with_tqdm=True, parallel_mode=pl_md,
-            # n_worker=40
+            # n_worker=16
         )
-    export2json()
+    # export2json()
 
     def export2json_save_each(
             filenames: Union[str, List[str]] = 'LMD-cleaned-subset',
@@ -576,7 +577,7 @@ if __name__ == '__main__':
 
         Make sure, every valid music file is exported
         """
-        meta_fnm = '2022-05-26_18-11-40, LMD conversion meta'
+        meta_fnm = '2022-05-27_14-31-43, LMD conversion meta'
         meta_path = os_join(u.dset_path, 'converted', f'{meta_fnm}.csv')
         df = pd.read_csv(meta_path)
 
@@ -587,9 +588,9 @@ if __name__ == '__main__':
         dir_nm = f'2022-05-20_09-39-16_LMD, MS'
         path_exported = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
         paths_exported = set(glob.iglob(os_join(path_exported, '**/*.json'), recursive=True))
-        ic(len(paths_exported))
+        ic(len(df), len(paths_exported))
 
-        it = tqdm(df.iterrows(), unit='fl')
+        it = tqdm(df.iterrows(), unit='fl', total=len(df))
         for idx, song in it:
             _dir_nm, fnm = song.file_name.split('/')
             fnm = stem(fnm)
@@ -601,5 +602,6 @@ if __name__ == '__main__':
                 paths_exported.remove(path)
             # ic(idx, song)
             # exit(1)
+        ic(paths_exported)
         assert len(paths_exported) == 0  # every exported file is accounted for
-    # sanity_check_export()
+    sanity_check_export()

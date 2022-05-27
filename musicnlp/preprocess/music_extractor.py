@@ -108,8 +108,8 @@ class MusicExtractor:
                 # some parts may contain no time signature if the file went through Logic Pro mid=>xml conversion
                 tss = [list(t) for t in tss if t]
                 assert all(len(t) == 1 for t in tss)
-                tss = [next(iter(t)) for t in tss]
-                assert list_is_same_elms([(ds.numerator, ds.denominator) for ds in tss])
+                tss = [t[0] for t in tss]
+                assert list_is_same_elms([(ts.numerator, ts.denominator) for ts in tss])
                 time_sig = tss[0]
 
             tempos = [list(b[MetronomeMark]) for b in bars]
@@ -651,9 +651,9 @@ class MusicExtractor:
                     # for `LMD::034249`
                     _fix_rest_too_long(2.0, 4.0)
                 elif ts_tup == (1, 8):
-                    # for `LMD::051562`
-                    if number in [9, 40, 71, 102] and all(o in groups for o in [0.5, 4.0, 8.0]):
-                        for offset, wrong_time in [(0.0, 4.0), (0.5, 12.0), (4.0, 8.0), (8.0, 12.0)]:
+                    # for `LMD::051562`, `LMD::119192`
+                    if number in [9, 40, 60, 71, 88, 102] and all(o in groups for o in [0.5, 4.0, 8.0]):
+                        for offset, wrong_time in [(0.0, 4.0), (0.5, 12.0), (4.0, 8.0), (4.0, 12.0), (8.0, 12.0)]:
                             _fix_rest_too_long(offset, wrong_time)
                     elif number in [26, 57, 88] and all(o in groups for o in [0.0, 4.0, 8.0]):
                         for offset, wrong_time in [(0.0, 4.0), (4.0, 8.0), (8.0, 12.0)]:
@@ -698,7 +698,7 @@ class MusicExtractor:
                     groups[2.125] = _notes_out
             _fix_edge_case()
 
-            # if number == 71:
+            # if number == 88:
             #     ic('before get notes out', time_sig)
             #     ic(groups)
             #     for k, notes in groups.items():
@@ -2248,41 +2248,46 @@ if __name__ == '__main__':
             # '050889.mxl',
             # '051440.mxl',
             # '051562.mxl',
-            '060154.mxl',
-            '061621.mxl',
-            '068788.mxl',
-            '079043.mxl',
-            '079104.mxl',
-            '079941.mxl',
-            '081859.mxl',
-            '082892.mxl',
-            '093306.mxl',
-            '094903.mxl',
-            '096118.mxl',
-            '097177.mxl',
-            '099388.mxl',
-            '102163.mxl',
-            '102993.mxl',
-            '124025.mxl',
-            '127754.mxl',
-            '128980.mxl',
-            '129011.mxl',
-            '132179.mxl',
-            '133865.mxl',
-            '133945.mxl',
-            '137165.mxl',
-            '138606.mxl',
-            '139359.mxl',
-            '140347.mxl',
-            '152887.mxl',
-            '157586.mxl',
-            '158307.mxl',
-            '159114.mxl',
-            '159600.mxl',
-            '160466.mxl',
-            '163183.mxl',
-            '167205.mxl',
-            '170019.mxl'
+            # '060154.mxl',
+            # '061621.mxl',
+            # '068788.mxl',
+            # '079043.mxl',
+            # '079104.mxl',
+            # '079941.mxl',
+            # '081859.mxl',
+            # '082892.mxl',
+            # '093306.mxl',
+            # '094903.mxl',
+            # '096118.mxl',
+            # '097177.mxl',
+            # '099388.mxl',
+            # '102163.mxl',
+            # '102993.mxl',
+            # '124025.mxl',
+            # '127754.mxl',
+            # '128980.mxl',
+            # '129011.mxl',
+            # '132179.mxl',
+            # '133865.mxl',
+            # '133945.mxl',
+            # '137165.mxl',
+            # '138606.mxl',
+            # '139359.mxl',
+            # '140347.mxl',
+            # '152887.mxl',
+            # '157586.mxl',
+            # '158307.mxl',
+            # '159114.mxl',
+            # '159600.mxl',
+            # '160466.mxl',
+            # '163183.mxl',
+            # '167205.mxl',
+            # '170019.mxl'
+            # '094903.mxl',
+            # '017261.mxl',
+            # '152887.mxl'
+            # '109418.mxl'
+            '119192.mxl'
         ]
         o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
 
@@ -2293,8 +2298,8 @@ if __name__ == '__main__':
 
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
-        # batch = False
-        batch = True
+        batch = False
+        # batch = True
 
         dir_nm = 'converted/LMD, LP'
         for broken_fl in broken_files:
@@ -2307,7 +2312,9 @@ if __name__ == '__main__':
                     print(log_s(stem(path), c='y'), e)
             else:
                 ic(path)
-                print(me(path, exp='visualize'))
+                exp = 'visualize'
+                # exp = 'mxl'
+                print(me(path, exp=exp))
                 exit(1)
     check_edge_case_batched()
 
