@@ -42,8 +42,8 @@ class WarnLog:
         HighPchOvl, HighPchOvlTup,
         LowPchMakeup, LowPchMakeupRmv,
         InvTupSz,
-        InvTupDur, InvTupDurSv,
         LowTupDur,
+        InvTupDur, InvTupDurSv,
         # InvTupNt,
         RestInTup,
         ExcecTupNote,
@@ -80,7 +80,7 @@ class WarnLog:
         NoteNotQuant: 10,
         TupNoteOvlOut: 12,
         InvBarDur: 12,
-        BarNoteGap: 16
+        BarNoteGap: 14
     }
 
     def __init__(self, name=f'Music Extraction Warn Log', verbose=True):

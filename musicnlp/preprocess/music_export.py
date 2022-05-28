@@ -206,21 +206,33 @@ class MusicExport:
         Combine the individual single-song json file exports to a single file,
             as if running `__call__` with save_each off
         """
-        def load_single(fnm):
-            with open(fnm, 'r') as f_:
+        logger = get_logger('Combine Single-Extracted Songs')
+        logger.info(f'Combining {logi(len(filenames))} songs... ')
+
+        def load_single(f):
+            with open(f, 'r') as f_:
                 return json.load(f_)
-        songs = [load_single(fnm) for fnm in filenames]
+        songs = []
+        it = tqdm(filenames, desc='Loading songs', unit='song')
+        for fnm in it:
+            it.set_postfix(fnm=stem(fnm))
+            songs.append(load_single(fnm))
+
         typ, meta, song = songs[0]['encoding_type'], songs[0]['extractor_meta'], songs[0]['music']
+        it = tqdm(songs[1:], desc='Combining songs', unit='song', total=len(songs) - 1)
+        it.update(1)
         songs_out = [song]
-        for s in songs[1:]:
+        for s in it:
             assert s['encoding_type'] == typ and s['extractor_meta'] == meta, 'Metadata for all songs must be the same'
             songs_out.append(s['music'])
         d_out = dict(encoding_type=typ, extractor_meta=meta, music=songs_out)
 
         meta = MusicExtractor.meta2fnm_meta(meta)
-        output_filename = f'{output_filename}, n={len(filenames)}, meta={meta}, {now(for_path=True)}'
-        with open(os_join(path_out, f'{output_filename}.json'), 'w') as f:
-            json.dump(d_out, f)  # no indent saves disk space
+        out_path = f'{output_filename}, n={len(filenames)}, meta={meta}, {now(for_path=True)}'
+        out_path = os_join(path_out, f'{out_path}.json')
+        logger.info(f'Writing combined songs to {logi(out_path)}... ')
+        with open(out_path, 'w') as f:
+            json.dump(d_out, f)  # no indent to save disk space
         return d_out
 
     @staticmethod
@@ -234,6 +246,8 @@ class MusicExport:
         :param path_out: Dataset export path
         :param split_args: arguments for datasets.Dataset.
         """
+        logger = get_logger('JSON=>HF dataset')
+        logger.info(f'Loading {logi(fnm)} JSON file... ')
         with open(os_join(path_out, f'{fnm}.json')) as f:
             dset = json.load(f)
         songs, meta = dset['music'], dset['extractor_meta']
@@ -242,17 +256,24 @@ class MusicExport:
         expected_col_names = {'score', 'title', 'song_path', 'keys'}
 
         def prep_entry(d: Dict) -> Dict:
-            del d['warnings']
-            del d['duration']
+            for k in ['warnings', 'duration', 'song_path']:
+                del d[k]
             assert all(k in expected_col_names for k in d.keys())  # sanity check
             return d
-        dset = datasets.Dataset.from_pandas(
-            pd.DataFrame([prep_entry(d) for d in songs]),
-            info=datasets.DatasetInfo(description=json.dumps(d_info)),
-        )
+        entries = []
+        it = tqdm(songs, desc='Preparing songs', unit='song')
+        for s in it:
+            it.set_postfix(fnm=stem(s['song_path']))
+            entries.append(prep_entry(s))
+
+        logger.info('Creating HuggingFace dataset... ')
+        info = datasets.DatasetInfo(description=json.dumps(d_info))
+        dset = datasets.Dataset.from_pandas(pd.DataFrame(entries), info=info)
         if split_args:
             dset = dset.train_test_split(**split_args)
+
         path = os_join(path_out, 'hf')
+        logger.info(f'Saving dataset to {logi(path)}... ')
         os.makedirs(path, exist_ok=True)
         dset.save_to_disk(os_join(path, fnm))
         return dset
@@ -262,8 +283,6 @@ if __name__ == '__main__':
     from icecream import ic
 
     ic.lineWrapWidth = 400
-
-    seed = sconfig('random-seed')
 
     me = MusicExport()
     # me = MusicExport(verbose=True)
@@ -378,7 +397,8 @@ if __name__ == '__main__':
     # export2json_save_each(filenames=music_util.get_cleaned_song_paths('LMD-cleaned-subset', fmt='mxl')[3000:])
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
-        fnms = sorted(glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, '*.json')))
+        fnms = sorted(glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, '**/*.json')))
+        # fnms = fnms[:1024]  # TODO: debugging
         out_fnm = f'{PKG_NM} music extraction, dnm={dataset_name}'
         songs = me.combine_saved_songs(filenames=fnms, output_filename=out_fnm)
         ic(songs.keys(), len(songs['music']))
@@ -389,21 +409,21 @@ if __name__ == '__main__':
     # )
     # combine_single_json_songs(singe_song_dir='2022-05-19_17-07-40_POP909', dataset_name='POP909')
     # combine_single_json_songs(singe_song_dir='2022-05-19_17-20-29_MAESTRO', dataset_name='MAESTRO')
+    # combine_single_json_songs(singe_song_dir='2022-05-20_09-39-16_LMD', dataset_name='LMD')
 
     def json2dset():
-        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-22 19-00-40'
-        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-02-25 20-59-06'
-        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, mode=melody, 2022-03-01 02-29-29'
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-        fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+        # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+        fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
         dset = me.json2dataset(fnm)
-        ic(dset, dset[:5])
+        ic(dset, len(dset), dset[:5])
     # json2dset()
 
     def json2dset_with_split():
         """
         Split the data for now, when amount of data is not huge
         """
+        seed = sconfig('random-seed')
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
         # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
         #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
@@ -412,12 +432,13 @@ if __name__ == '__main__':
         #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
         # for 10k data in the LMD-cleaned subset dataset, this is like 200 songs, should be good enough
         # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-        fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+        # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+        fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
         ic(dset)
         ic(len(dset['train']), len(dset['test']))
-        ic(dset['train'][:3], dset['test'][:3])
-    # json2dset_with_split()
+        ic(dset['train'][:2], dset['test'][:2])
+    json2dset_with_split()
 
     def fix_insert_key():
         """
@@ -604,4 +625,4 @@ if __name__ == '__main__':
             # exit(1)
         ic(paths_exported)
         assert len(paths_exported) == 0  # every exported file is accounted for
-    sanity_check_export()
+    # sanity_check_export()

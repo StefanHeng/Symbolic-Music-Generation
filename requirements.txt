@@ -118,7 +118,7 @@ six==1.16.0
 sklearn==0.0
 soupsieve==2.3.1
 stack-data==0.2.0
-stefutils==0.6.0
+stefutils==0.7.0
 sty==1.0.4
 tensorboard==2.9.0
 tensorboard-data-server==0.6.1

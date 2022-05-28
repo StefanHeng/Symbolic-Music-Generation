@@ -131,7 +131,7 @@ class TrainArgs:
     @staticmethod
     def _get_default(model_name: str):
         return dict(
-            output_dir=os_join(BASE_PATH, PROJ_DIR, MODEL_DIR, model_name, now(for_path=True)),
+            output_dir=os_join(u.model_path, f'{now(for_path=True)}_{model_name}'),
             do_train=True,
             do_eval=True,
             evaluation_strategy='epoch',
