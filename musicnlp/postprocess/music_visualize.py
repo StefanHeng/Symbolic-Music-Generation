@@ -2,6 +2,7 @@ import os
 import re
 import math
 import json
+import random
 import pickle
 from os.path import join as os_join
 from copy import deepcopy
@@ -39,12 +40,15 @@ class MusicVisualize:
     def __init__(
             self, filename: Union[str, List[str]], dataset_name: Union[str, List[str]] = None,
             color_palette: str = 'husl', hue_by_dataset: bool = True, cache: str = None,
+            subset: Union[float, bool] = None, subset_bound: int = 4096
     ):
         """
         :param filename: Path to a json dataset, or a list of paths, in which case datasets are concatenated
             See `preprocess.music_export.py`
         :param dataset_name: Datasets names, if given, should correspond to filenames
         :param hue_by_dataset: If true, automatically color-code statistics by dataset name
+        :param subset: If given, a subset of songs will be taken for plotting for
+            datasets with #song above `subset_bound`
         """
         self.dset: Dict
         self._prec, self.tokenizer, self.vocab, self.states = None, None, None, None
@@ -61,7 +65,7 @@ class MusicVisualize:
                     self.dset, self._df = d['dset'], d['df']
                     self._set_meta()
             else:
-                self.dset = self._get_dset(filename, dataset_name)
+                self.dset = self._get_dset(filename, dataset_name, subset=subset, subset_bound=subset_bound)
                 self._set_meta()
                 self._df = self._get_song_info()
                 with open(path, 'wb') as f:
@@ -82,14 +86,18 @@ class MusicVisualize:
             self._df = self._get_song_info()
         return self._df
 
-    def _get_dset(self, filename, dataset_name):
+    def _get_dset(self, filename, dataset_name, subset, subset_bound):
         def _load_single(f_: str, dnm: str = None) -> Dict:
             self.logger.info(f'Loading JSON dataset {logi(stem(f_))}... ')
             with open(f_, 'r') as f:
                 ds = json.load(f)
             if dnm:
-                for s in ds['music']:
+                songs = ds['music']
+                if len(songs) > subset_bound:
+                    songs = random.sample(songs, round(len(songs) * subset))
+                for s in songs:
                     s['dataset_name'] = dnm
+                ds['music'] = songs
             return ds
         if isinstance(filename, str):
             if dataset_name:
@@ -125,7 +133,6 @@ class MusicVisualize:
 
     def _get_song_info(self):
         entries: List[Dict] = self.dset['music']
-        entries = entries[:128]  # TODO: debugging
 
         def extract_info(d: Dict):
             d = deepcopy(d)
@@ -180,6 +187,7 @@ class MusicVisualize:
             ylab_default = stat
             if stat == 'percent':
                 ylab_default = f'{ylab_default} (%)'
+            assert (not yscale) or yscale == 'linear'
         plt.ylabel(ylabel or ylab_default)
         if yscale:
             plt.yscale(yscale)
@@ -217,6 +225,7 @@ class MusicVisualize:
 
     def time_sig_dist(self, kind: str = 'hist', **kwargs):
         self.logger.info('Getting stats... ')
+
         def callback(ax):
             plt.gcf().canvas.draw()  # so that labels are rendered
             xtick_lbs = ax.get_xticklabels()
@@ -226,7 +235,7 @@ class MusicVisualize:
                 if '/' in txt:
                     numer, denom = MusicVisualize._parse_frac(txt)
                     t.set_usetex(True)
-                    t.set_text(MusicVisualize._frac2tex_frac(numer, denom))
+                    t.set_text(MusicVisualize._frac2tex_frac(numer, denom, enforce_denom=False))
                 else:
                     t.set_text(txt)
                 if txt not in com_tss:
@@ -243,9 +252,9 @@ class MusicVisualize:
             tss_print = [f'{numer}/{denom}' for numer, denom in tss]
             df_col2cat_col(self.df, 'time_sig_str', tss_print)
             c_nm, xlab = 'time_sig_str', 'Time Signature'
-            self.hist_wrapper(
-                col_name=c_nm, title=title, xlabel=xlab, yscale='log', kde=False, callback=callback, **kwargs
-            )
+            args = dict(col_name=c_nm, title=title, xlabel=xlab, yscale='log', kde=False, callback=callback)
+            args.update(kwargs)
+            self.hist_wrapper(**args)
         else:
             df = self._count_by_dataset('time_sig')
             df['time_sig'] = df['time_sig'].map(lambda ts: f'{ts[0]}/{ts[1]}')  # so that the category ordering works
@@ -259,10 +268,13 @@ class MusicVisualize:
 
     def tempo_dist(self, **kwargs):
         def callback(ax):
+            mi, ma = ax.get_xlim()
+            ax.set_xlim([max(mi, 0), ma])  # cap to positive tempos
             plt.gcf().canvas.draw()  # so that labels are rendered
             xtick_lbs = ax.get_xticklabels()
             for t in xtick_lbs:
-                if int(t.get_text()) not in COMMON_TEMPOS:
+                # matplotlib encoding for negative int label
+                if int(re.sub(u'\u2212', '-', t.get_text())) not in COMMON_TEMPOS:
                     t.set_color(self.color_uncom)
             ax.set_xticks(ax.get_xticks())
             ax.set_xticklabels([t.get_text() for t in xtick_lbs])  # Hack
@@ -342,8 +354,9 @@ class MusicVisualize:
         return int(m.group('numer')), int(m.group('denom'))
 
     @staticmethod
-    def _frac2tex_frac(numer, denom) -> str:
-        assert denom != 1
+    def _frac2tex_frac(numer, denom, enforce_denom: bool = True) -> str:
+        if enforce_denom:
+            assert denom != 1
         return rf'$\nicefrac{{{numer}}}{{{denom}}}$'
 
     def note_duration_dist(self, kind='hist', **kwargs):
@@ -484,10 +497,8 @@ class MusicVisualize:
         barplot(
             data=df, x='type', y='average_count', title=title,
             xlabel='Warning Type (color coded by severity)', ylabel=f'count {typ}',
-            width=None,
-            callback=callback,
-            yscale='log', hue=self.key_dnm,
-            orient='h', **kwargs
+            width=None, callback=callback, yscale='log', orient='h',
+            hue=self.key_dnm if self.hue_by_dataset else None, **kwargs
         )
         # TODO: set left to log scale and right to linear scale?
         # https://stackoverflow.com/questions/21746491/combining-a-log-and-linear-scale-in-matplotlib/21870368
@@ -499,8 +510,8 @@ if __name__ == '__main__':
 
     import musicnlp.util.music as music_util
 
-    dnms = ['POP909', 'MAESTRO']
-    # dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['POP909', 'MAESTRO']
+    dnms = ['POP909', 'MAESTRO', 'LMD']
     dnm2path = dict(
         POP909='musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04',
         MAESTRO='musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28',
@@ -510,13 +521,16 @@ if __name__ == '__main__':
     # dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
     #           'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
     fnms = [dnm2path[dnm] for dnm in dnms]
+    subset = None
     if dnms == ['POP909', 'MAESTRO']:
         cnm = 'music visualize cache, 05.24.22'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = 'music visualize cache, 05.27.22'
+        # cnm = 'music visualize cache, 05.27.22'
+        cnm = 'music visualize cache 0.1, 05.27.22'  # LMD has 170k songs, prohibitive to plot all
+        subset = 0.1
     else:
         cnm = None
-    mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm)
+    mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm, subset=subset)
     # ic(mv.df)
 
     def check_warn():
@@ -537,12 +551,12 @@ if __name__ == '__main__':
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
-        # mv.time_sig_dist()
-        # mv.tempo_dist(stat='percent')
+        # mv.time_sig_dist(yscale='linear', stat='percent')
+        mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
         # mv.note_duration_dist(stat='percent')
-        mv.warning_type_dist()
+        # mv.warning_type_dist()
     plots()
 
     fig_sz = (9, 5)
