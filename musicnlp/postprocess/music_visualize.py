@@ -86,7 +86,7 @@ class MusicVisualize:
             self._df = self._get_song_info()
         return self._df
 
-    def _get_dset(self, filename, dataset_name, subset, subset_bound):
+    def _get_dset(self, filename, dataset_name, subset=None, subset_bound=None):
         def _load_single(f_: str, dnm: str = None) -> Dict:
             self.logger.info(f'Loading JSON dataset {logi(stem(f_))}... ')
             with open(f_, 'r') as f:
@@ -494,6 +494,7 @@ class MusicVisualize:
             title = 'Distribution of Warnings during Music Extraction'
         elif title == 'none':
             title = None
+        self.logger.info('Plotting... ')
         barplot(
             data=df, x='type', y='average_count', title=title,
             xlabel='Warning Type (color coded by severity)', ylabel=f'count {typ}',
@@ -508,6 +509,8 @@ class MusicVisualize:
 if __name__ == '__main__':
     from icecream import ic
 
+    ic.lineWrapWidth = 1024
+
     import musicnlp.util.music as music_util
 
     # dnms = ['POP909', 'MAESTRO']
@@ -521,16 +524,16 @@ if __name__ == '__main__':
     # dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
     #           'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
     fnms = [dnm2path[dnm] for dnm in dnms]
-    subset = None
+    subset_ = None
     if dnms == ['POP909', 'MAESTRO']:
         cnm = 'music visualize cache, 05.24.22'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        # cnm = 'music visualize cache, 05.27.22'
-        cnm = 'music visualize cache 0.1, 05.27.22'  # LMD has 170k songs, prohibitive to plot all
-        subset = 0.1
+        cnm = 'music visualize cache, 05.27.22'
+        # cnm = 'music visualize cache 0.1, 05.27.22'  # LMD has 170k songs, prohibitive to plot all
+        subset_ = 0.1
     else:
         cnm = None
-    mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm, subset=subset)
+    mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm, subset=subset_)
     # ic(mv.df)
 
     def check_warn():
@@ -539,11 +542,17 @@ if __name__ == '__main__':
     # check_warn()
 
     def check_uncommon_tempos():
-        df = mv.df
-        tempos = df.tempo.unique()
+        tempos = mv.df.tempo.unique()
         ic(tempos)
         ic(set(tempos) - set(COMMON_TEMPOS))
     # check_uncommon_tempos()
+
+    def check_uncommon_time_sigs():
+        tss = mv.df.time_sig.unique()
+        ic(tss)
+        uncom_tss = sorted(set(tss) - set(COMMON_TIME_SIGS), key=lambda ts: (ts[1], ts[0]))  # by denom first then numer
+        ic(uncom_tss)
+    check_uncommon_time_sigs()
 
     def plots():
         args = dict(stat='percent', upper_percentile=97.7)  # ~2std
@@ -557,7 +566,7 @@ if __name__ == '__main__':
         # mv.note_pitch_dist(stat='percent')
         # mv.note_duration_dist(stat='percent')
         # mv.warning_type_dist()
-    plots()
+    # plots()
 
     fig_sz = (9, 5)
 

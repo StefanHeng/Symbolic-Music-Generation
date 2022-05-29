@@ -1,4 +1,3 @@
-import os
 import re
 import json
 import math
@@ -59,7 +58,10 @@ class VocabType(Enum):
 
 int_types = (int, np.int32, np.int64, torch.Tensor)
 Int = Union[int, np.int32, np.int64, torch.Tensor]
-Compact = Union[TsTup, int, Dur, Key]
+Compact = Union[
+    TsTup, int, Dur, Key,
+    Tuple[None, None], None  # for uncommon tokens
+]
 
 
 class MusicVocabulary:
@@ -73,38 +75,81 @@ class MusicVocabulary:
     end_of_tuplet = '</tup>'
     pad = '[PAD]'  # Needed for type-checking, see `musicnlp.models.metric.get_in_key_ratio`
 
+    sep = '_'  # Separation
+    time_sig_pref = 'TimeSig'
+    tempo_pref = 'Tempo'
+    dur_pref = 'd'
+    uncommon_time_sig = f'{time_sig_pref}{sep}uncommon'
+    uncommon_low_tempo = f'{tempo_pref}{sep}low'
+    uncommon_high_tempo = f'{tempo_pref}{sep}high'
+    uncommon_duration = f'{dur_pref}{sep}uncommon'  # has to be too long, assuming durations are quantized
+    compact_uncommon_time_sig = (None, None)  # TODO: check, may break things?
+    compact_low_tempo = 40-1  # See `COMMON_TEMPOS`
+    compact_high_tempo = 240+1
+    compact_uncommon_duration = None
+    uncom_tok2compact = {
+        uncommon_time_sig: compact_uncommon_time_sig,
+        uncommon_low_tempo: compact_low_tempo,
+        uncommon_high_tempo: compact_high_tempo,
+        uncommon_duration: compact_uncommon_duration
+    }
+
     SPEC_TOKS = dict(
-        sep='_',  # Separation
+        sep=sep,
         rest='r',
         prefix_pitch='p',
-        prefix_duration='d',
+        prefix_duration=dur_pref,
         start_of_tuplet=start_of_tuplet,
         end_of_tuplet=end_of_tuplet,
         start_of_bar=start_of_bar,
         end_of_song=end_of_song,
-        prefix_time_sig='TimeSig',
-        prefix_tempo='Tempo',
+        prefix_time_sig=time_sig_pref,
+        prefix_tempo=tempo_pref,
         prefix_key='Key'
     )
-    # Uncommon Time Signatures in music theory, but empirically seen in MIDI data
-    # See music_visualize.py for distribution
-    UNCOM_TSS: List[TsTup] = [
-        (1, 4),  # seen, a lot, from POP909
-
-        # from LMD-cleaned_subset, only a small fraction are edge cases
-        (3, 2), (4, 2),
-        (6, 4), (7, 4), (8, 4), (12, 4), (132, 4),
-        (1, 8), (3, 8), (4, 8), (5, 8), (7, 8), (8, 8), (9, 8), (11, 8),
-        (8, 16), (16, 16),
-        (2, 64)
-    ]
-    UNCOM_TPS: List[int] = [  # Observed from LMD-cleaned_subset
-        30, 37,
-        241, 244, 245, 246, 250, 254, 255, 256, 265, 275, 276, 278, 280, 287, 293,
-        305, 334, 397
-    ]
+    # # Uncommon Time Signatures in music theory, but empirically seen in MIDI data
+    # # See music_visualize.py for distribution
+    # UNCOM_TSS: List[TsTup] = [
+    #     # (1, 4),  # seen, a lot, from POP909
+    #     #
+    #     # # from LMD-cleaned_subset, only a small fraction are edge cases
+    #     # (3, 2), (4, 2),
+    #     # (6, 4), (7, 4), (8, 4), (12, 4), (132, 4),
+    #     # (1, 8), (3, 8), (4, 8), (5, 8), (7, 8), (8, 8), (9, 8), (11, 8),
+    #     # (8, 16), (16, 16),
+    #     # (2, 64)
+    #
+    #     # ~80 uncommon ones considering POP909, MAESTRO & LMD, convert to a single uncommon token
+    #     (1, 1), (2, 1), (4, 1),
+    #     (1, 2), (3, 2), (4, 2), (5, 2), (6, 2), (8, 2), (10, 2), (12, 2), (74, 2),
+    #     (1, 4), (6, 4), (7, 4), (8, 4), (9, 4), (10, 4), (11, 4), (12, 4), (15, 4), (16, 4),
+    #     (18, 4), (32, 4), (66, 4), (68, 4), (131, 4), (132, 4), (133, 4), (149, 4),
+    #     (1, 8), (2, 8), (3, 8), (4, 8), (5, 8), (7, 8), (8, 8), (9, 8), (10, 8), (11, 8), (13, 8), (15, 8), (16, 8),
+    #     (17, 8), (18, 8), (19, 8), (20, 8), (22, 8), (24, 8), (124, 8), (134, 8), (140, 8), (252, 8),
+    #     (1, 16), (2, 16), (3, 16), (4, 16), (5, 16), (6, 16), (7, 16), (8, 16), (9, 16), (10, 16),
+    #     (11, 16), (12, 16), (13, 16), (15, 16), (16, 16), (18, 16), (24, 16),
+    #     (12, 32), (14, 32), (32, 32), (137, 32),
+    #     (2, 64), (4, 64),
+    #     (64, 128)
+    # ]
+    # UNCOM_TPS: List[int] = [
+    #     # 30, 37,  # Observed from LMD-cleaned_subset
+    #     # 241, 244, 245, 246, 250, 254, 255, 256, 265, 275, 276, 278, 280, 287, 293,
+    #     # 305, 334, 397
+    #
+    #     # ~120 edge case tempos taking up embedding storage => group them into a `HIGH` and a `LOW` token
+    #     6, 10, 11, 12, 16, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+    #     241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260,
+    #     261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 278, 279, 280,
+    #     282, 283, 285, 286, 287, 288, 289, 290, 291, 293, 294, 295, 297, 299, 300,
+    #     302, 305, 306, 310, 318, 320, 324, 325, 327, 329, 330, 334, 338, 339, 340, 349, 350,
+    #     353, 360, 366, 368, 370, 385, 395, 397, 400,
+    #     403, 406, 432, 440, 450, 451, 480, 500, 616, 700, 900
+    # ]
     # Observed from LMD-cleaned_subset
-    UNCOM_DURS: List[Union[int, float]] = [25/4, 13/2, 15/2, 8, 77/8, 12, 29/2, 16, 24]
+    # UNCOM_DURS: List[Union[int, float]] = [
+    #     # 25/4, 13/2, 15/2, 8, 77/8, 12, 29/2, 16, 24  # Observed from LMD-cleaned_subset
+    # ]
 
     RE_INT = r'[-]?\d*'  # negative sign for `octave`
     RE1 = rf'(?P<num>{RE_INT})'
@@ -120,7 +165,7 @@ class MusicVocabulary:
     }
 
     # TODO: remove, original training was without key support
-    def __init__(self, precision: int = 5, color: bool = False, deprecated: bool = False):
+    def __init__(self, precision: int = 5, color: bool = False):
         """
         :param precision: See `musicnlp.preprocess.music_extractor`
         :param color: If True, string outputs are colorized
@@ -128,7 +173,6 @@ class MusicVocabulary:
         """
         self.precision = precision
         self.color = color
-        self.deprecated = deprecated
 
         specs = MusicVocabulary.SPEC_TOKS  # Syntactic sugar
         sep = specs['sep']
@@ -161,28 +205,24 @@ class MusicVocabulary:
 
         def rev(time_sig):
             return tuple(reversed(time_sig))  # Syntactic sugar
-        tss = [elm2str(rev(ts))[0] for ts in sorted(rev(ts) for ts in COMMON_TIME_SIGS + MusicVocabulary.UNCOM_TSS)]
-        # See music_visualize.py for distribution; TODO: filter out the tempos not found?
-        tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS + MusicVocabulary.UNCOM_TPS]
+        tss = [elm2str(rev(ts))[0] for ts in sorted(rev(ts) for ts in COMMON_TIME_SIGS)]
+        # See music_visualize.py for distribution
+        tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS]
         pitches = [self.cache['rest']] + [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
         keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
 
         # TODO: with music-theory, mod-7 scale degree, vocab size would increase
         special = [specs[k] for k in ('end_of_song', 'start_of_bar', 'start_of_tuplet', 'end_of_tuplet')]
         special.append(MusicVocabulary.pad)
-        self.toks: Dict[str, List[str]] = OrderedDict([  # Enforce iteration order
-            ('special', special),
-            ('time_sig', tss),
-            ('tempo', tempos),
-            # ('key', keys),
-            # ('pitch', pitches),
-            # ('duration', self.get_durations(exp='str'))
-        ])
-        if not deprecated:
-            self.toks['key'] = keys
-        self.toks['pitch'] = pitches
-        self.toks['duration'] = self.get_durations(exp='str')
-        self.enc: Dict[str, int] = {  # Back2back index as ids
+        self.toks: Dict[str, List[str]] = OrderedDict(dict(
+            special=special,
+            time_sig=[MusicVocabulary.uncommon_time_sig, *tss],
+            tempo=[MusicVocabulary.uncommon_low_tempo, *tempos, MusicVocabulary.uncommon_high_tempo],
+            key=keys,
+            pitch=pitches,
+            duration=[MusicVocabulary.uncommon_duration, *self.get_durations(exp='str')]
+        ))
+        self.enc: Dict[str, int] = {  # back-to0back index as ids
             tok: id_ for id_, tok in enumerate(chain_its(toks for toks in self.toks.values()))
         }
         self.dec = {v: k for k, v in self.enc.items()}
@@ -223,20 +263,14 @@ class MusicVocabulary:
         :return: List of durations
         """
         if bound is None:
-            # TODO: support for longer duration needed?
-            tss = COMMON_TIME_SIGS + MusicVocabulary.UNCOM_TSS if self.deprecated else COMMON_TIME_SIGS
-            bound = max(ts[0]/ts[1] for ts in tss) * 4  # Effectively support up to 6 in terms of quarter length
+            # Effectively support up to 6 in terms of quarter length; TODO: support for longer duration needed?
+            bound = max(ts[0]/ts[1] for ts in COMMON_TIME_SIGS) * 4
             assert bound.is_integer()
         dur_slot, denom = 4 / 2 ** self.precision, 2 ** self.precision / 4
         assert denom.is_integer()
         dur_nums = list(range(math.ceil(bound / dur_slot)))
         if exp == 'str':
-            from icecream import ic
             durs = [self._note2dur_str((i+1) * dur_slot) for i in dur_nums]
-            if not self.deprecated:
-                # sanity check no overlap & quantizable
-                assert all((d > bound and (d / dur_slot).is_integer()) for d in MusicVocabulary.UNCOM_DURS)
-                durs += [self._note2dur_str(d) for d in MusicVocabulary.UNCOM_DURS]
             return durs
         else:
             assert exp == 'dur'
@@ -276,7 +310,7 @@ class MusicVocabulary:
         m = tpl.match(tok)
         return int(m.group('numer')), int(m.group('denom'))
 
-    def compact(self, tok: Union[str, Int]) -> Compact:
+    def compact(self, tok: Union[str, Int], for_stats: bool = False) -> Compact:
         """
         Convert tokens to the numeric format
 
@@ -288,10 +322,14 @@ class MusicVocabulary:
             If tempo, returns integer of tempo number
             If pitch, returns the pitch MIDI number
             If duration, returns the duration quarterLength
+
+        representation remains faithful to the token for the uncommon ones
         """
         assert self.has_compact(tok), ValueError(f'{logi(tok)} does not have a compact representation')
         if isinstance(tok, int_types):
             return self.id2compact[int(tok)]
+        elif tok in MusicVocabulary.uncom_tok2compact:
+            return MusicVocabulary.uncom_tok2compact[tok]
         else:
             typ = self.type(tok)
             tpl = self.type2compact_re[typ]
@@ -444,6 +482,16 @@ class MusicVocabulary:
         return log_s(s, c='b') if self.color else s
 
     def t2i(self, tok):
+        if tok not in self.enc:  # uncommon
+            typ = self.type(tok)
+            assert typ in (VocabType.duration, VocabType.time_sig, VocabType.tempo)  # sanity check
+            if typ == VocabType.duration:
+                tok = MusicVocabulary.uncommon_duration
+            elif typ == VocabType.time_sig:
+                tok = MusicVocabulary.uncommon_time_sig
+            else:  # VocabType.tempo
+                tp = self.compact(tok)  # get the actual BPM
+                tok = MusicVocabulary.uncommon_low_tempo if tp < 40 else MusicVocabulary.uncommon_high_tempo
         return self.enc[tok]
 
     def i2t(self, id_):
@@ -475,6 +523,8 @@ class MusicVocabulary:
 if __name__ == '__main__':
     from icecream import ic
 
+    ic.lineWrapWidth = 512
+
     mv = MusicVocabulary()
     # ic(mv.get_durations(exp='dur'))
 
@@ -484,7 +534,7 @@ if __name__ == '__main__':
         for k, v in mv.toks.items():
             ic(k, len(v))
         ic(sum(len(v) for v in mv.toks.values()))
-    # check_vocab_size()
+    check_vocab_size()
 
     def check_compact_pitch():
         for i in range(128):
@@ -492,4 +542,37 @@ if __name__ == '__main__':
             tok = mv.note2pitch_str(pch)
             ic(i, tok, mv.compact(tok))
             assert i == mv.compact(tok) == pch.midi
-    check_compact_pitch()
+    # check_compact_pitch()
+
+    def sanity_check_uncom():
+        """
+        A small ratio of tokens should be set to uncommon
+        """
+        from collections import Counter
+
+        import datasets
+        from tqdm.auto import tqdm
+
+        from musicnlp.util import sconfig
+
+        np.random.seed(sconfig('random-seed'))
+
+        dnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+        path = os_join(music_util.get_processed_path(), 'hf', dnm)
+        dsets = datasets.load_from_disk(path)
+        # ic(dsets, len(dsets['train']))
+        c = Counter()
+        n = 4096 * 4
+        for split, dset in dsets.items():
+            n_dset = len(dset)
+            if n_dset > n:
+                idxs = np.random.choice(n_dset, size=n, replace=False)
+                for i in tqdm(idxs, desc=split):
+                    txt = dset[int(i)]['score']
+                    c.update(mv.compact(t) for t in txt.split() if mv.has_compact(t))
+            else:
+                for row in tqdm(dset, desc=split):
+                    txt = row['score']
+                    c.update(mv.compact(t) for t in txt.split() if mv.has_compact(t))
+        ic(c)
+    # sanity_check_uncom()

@@ -14,7 +14,7 @@ from musicnlp.vocab import VocabType, MusicTokenizer
 def get_dataset(
         dataset_names: Union[str, List[str]],
         map_func: Callable = None, remove_columns: Union[str, List[str]] = None,
-        n_sample: int = None, shuffle_seed: int = None, fast=True
+        n_sample: int = None, shuffle_seed: int = None, fast=True, pbar: bool = False
 ) -> Union[Dataset, DatasetDict]:
     """
     Get dataset preprocessed for training
@@ -49,10 +49,10 @@ def get_dataset(
         num_proc = None
         n_cpu = os.cpu_count()
         if fast and n_cpu >= 2:
-            num_proc = n_cpu // 2
-            datasets.disable_progress_bar()
+            if not pbar:
+                datasets.disable_progress_bar()
 
-        dset = dset.map(map_func, batched=True, remove_columns=remove_columns, num_proc=num_proc)
+        dset = dset.map(map_func, batched=True, remove_columns=remove_columns, num_proc=n_cpu)
         datasets.enable_progress_bar()
     if shuffle_seed:
         dset = dset.shuffle(seed=shuffle_seed)
@@ -164,5 +164,7 @@ if __name__ == '__main__':
         ic(dset)
         tr = dset['train']
         ic(tr[:2])
-    check_keys_stored_in_dset()
+    # check_keys_stored_in_dset()
+
+
 

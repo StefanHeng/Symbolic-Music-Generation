@@ -270,7 +270,8 @@ def get_all_setup(
     else:
         dset = get_dataset(
             dataset_names=dataset_names, map_func=VanillaMap(tokenizer),
-            remove_columns=['title', 'score', 'keys'], n_sample=n_sample  # i.e. keep the input ids only
+            remove_columns=['title', 'score', 'keys'], n_sample=n_sample,  # i.e. keep the input ids only
+            # pbar=True
         )
     tr, vl = dset['train'], dset['test']
     args, my_args, = get_train_and_my_train_args(model_name, model_size, train_args, my_train_args, tr)
@@ -378,18 +379,18 @@ if __name__ == '__main__':
         md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        n = 8
+        # n = 8
         # n = 64
-        # n = None
-        max_length = 2048
+        n = None
+        max_length = 512
         # max_length = None
 
         augment_key = False
 
-        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-        dnm_mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, ' \
-                  'meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
-        dnms = [dnm_909, dnm_mst]
+        pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+        mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+        dnms = [pop, mst, lmd]
         my_train_args = dict(
             augment_key=augment_key,
             save_epochs=2
