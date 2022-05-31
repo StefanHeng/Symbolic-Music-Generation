@@ -2,7 +2,7 @@ import os
 import re
 import math
 from os.path import join as os_join
-from typing import Dict, Callable
+from typing import List, Dict, Callable
 import datetime
 from collections import OrderedDict
 
@@ -98,8 +98,7 @@ class MyTrainer(Trainer):
             preds_non_pad, labels_non_pad = preds[msk_not_pad], labels_[msk_not_pad]
             matches: torch.Tensor = (preds_non_pad == labels_non_pad)
             # next-token-prediction task
-            ntp_acc_meta = dict(matched=matches.sum().item(), total=preds_non_pad.numel())
-            d_log['ntp_acc_meta'] = ntp_acc_meta
+            d_log['ntp_acc'] = matches.sum().item() / preds_non_pad.numel()
             self.log(d_log)
         # ========================== End of added ==========================
 
@@ -150,7 +149,7 @@ class ColoredPrinterCallback(TrainerCallback):
 
         if name is None:
             name = 'MyTrainer'
-        self.name = f'{name} Training'
+        self.name = f'{name} Train'
         self.logger, self.logger_fl, self.writer = None, None, None
         self.report2tb = report2tb
         self.prettier = MlPrettier(ref=self.train_meta, metric_keys=['acc', 'recall', 'auc', 'ikr'])
@@ -225,7 +224,9 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.out_dict = None  # For passing NTP accuracy in training steps
+        # For passing metrics including NTP accuracy in training steps
+        self._train_step_metrics: List[Dict[str, float]] = []
+        self.gas = self.trainer.args.gradient_accumulation_steps
         self.pattern_eval_key = re.compile(r'^eval_(?P<key>.*)$')
 
     def _get_eval_key(self, key: str) -> str:
@@ -233,7 +234,6 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
 
     def _log(self, d_log, mode='train', to_console=True):
         ca(log_mode=mode)
-        from icecream import ic
 
         d_log_write = self.prettier(d_log)
         if self.trainer.my_args['tqdm']:
@@ -261,26 +261,28 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
         if state.is_local_process_zero:
             if 'src' in logs and logs['src'] == 'compute_loss':
                 del logs['src']
-                self.out_dict = logs
+                del logs['epoch']
+                self._train_step_metrics.append(logs)  # the only metric needed for gathering
             else:
                 # Heuristics on the training step updates, see `Trainer._maybe_log_save_evaluate`
                 if self.mode == 'train' and all('runtime' not in k for k in logs):
+                    # sanity check
+                    assert len(self._train_step_metrics) == self.gas
                     step = state.global_step
                     assert logs['epoch'] == round(state.epoch, 2)
                     n_ep = state.epoch  # The one originally is rounded, see `Trainer.log`
                     loss, lr = logs['loss'], logs['learning_rate']
-                    assert self.out_dict is not None
-                    ntp_acc_meta = self.out_dict['ntp_acc_meta']
-                    # TODO: Potentially support gradient accumulation
-                    # ntp_acc_meta = {k: sum(v for v in d[k]) for k, d in ntp_acc_meta.items()}
-                    ntp_acc = ntp_acc_meta['matched'] / ntp_acc_meta['total']
-                    metrics = {k: self.out_dict[k] for k in self.trainer.train_metrics}
+                    metrics = {
+                        k: sum(d[k] for d in self._train_step_metrics) / self.gas
+                        for k in self._train_step_metrics[0].keys()
+                    }
+                    self._train_step_metrics = []  # for next iter
 
-                    self.out_dict = OrderedDict([
+                    d_log = OrderedDict([
                         ('step', step), ('epoch', n_ep), ('learning_rate', lr),
-                        ('loss', loss), ('ntp_acc', ntp_acc)
-                    ])
-                    self.out_dict.update(metrics)
+                        ('loss', loss), ('ntp_acc', metrics['ntp_acc'])
+                    ])  # effectively prepend `ntp_acc` as the 1st metric to log
+                    d_log.update({k: v for k, v in metrics.items() if k != 'ntp_acc'})
 
                     # `should_log` in Trainer just prevents the `on_log` call, I only filter console logging
                     should_log = False
@@ -289,7 +291,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                         should_log = True
                     elif my_log_strat == 'epoch' and step % self.trainer.my_args['steps_per_epoch'] == 0:
                         should_log = True
-                    self._log(self.out_dict, mode='train', to_console=should_log)
+                    self._log(d_log, mode='train', to_console=should_log)
                 elif 'eval_loss' in logs:  # `Trainer.is_in_train` is not False so can't use
                     assert 'epoch' in logs
                     del logs['epoch']
@@ -306,6 +308,9 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     assert n_ep.is_integer()
                     d_log = dict(step=state.global_step, epoch=int(n_ep), **{k: logs[f'eval_{k}'] for k in ks})
                     self._log(d_log, mode='eval', to_console=True)
+                    # for next iter, cos `compute_loss` is called for eval too
+                    # we don't need it for logging as eval metrics are gathered by Trainer out-of-the-box
+                    self._train_step_metrics = []
                 else:
                     self.logger.info(log_dict(logs))
                     self.logger_fl.info(log_dict_nc(logs))

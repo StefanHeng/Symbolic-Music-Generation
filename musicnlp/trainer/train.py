@@ -257,21 +257,22 @@ class VanillaMap:
 
 def get_all_setup(
         model_name: str, model_size: str,
-        dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None,
+        dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None, dataset_args: Dict = None,
         model_config: Dict = None, train_args: Dict = None, my_train_args: Dict = None
 ) -> Tuple[torch.nn.Module, MusicTokenizer, Trainer]:
     # n_sample mainly for debugging
     tokenizer, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
     my_train_args = my_train_args or dict()
     aug_key = my_train_args.pop('augment_key', False)
+    dset_args = dict(n_sample=n_sample)
+    dset_args.update(dataset_args or dict())
     if aug_key:
         # For now, just do non-deterministic sampling for eval set too, TODO?
-        dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
+        dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dset_args)
     else:
         dset = get_dataset(
             dataset_names=dataset_names, map_func=VanillaMap(tokenizer),
-            remove_columns=['title', 'score', 'keys'], n_sample=n_sample,  # i.e. keep the input ids only
-            # pbar=True
+            remove_columns=['title', 'score', 'keys'], **dset_args  # i.e. keep the input ids only
         )
     tr, vl = dset['train'], dset['test']
     args, my_args, = get_train_and_my_train_args(model_name, model_size, train_args, my_train_args, tr)
@@ -379,11 +380,15 @@ if __name__ == '__main__':
         md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
+        # md_sz = 'base'
         # n = 8
-        # n = 64
-        n = None
+        n = 16
+        # n = 1024
+        # n = None
         max_length = 512
+        gas = 4
         # max_length = None
+        model_config = dict(max_length=max_length)
 
         augment_key = False
 
@@ -395,16 +400,18 @@ if __name__ == '__main__':
             augment_key=augment_key,
             save_epochs=2
         )
-        train_args = dict()
+        train_args = dict(gradient_accumulation_steps=gas)
 
+        # with_tqdm = False
         with_tqdm = True
         if with_tqdm:
             my_train_args.update(dict(tqdm=True, logging_strategy='epoch'))
 
         if 'debug' not in md_sz:
-            train_args = dict(per_device_train_batch_size=32)
+            model_config.update(mem_len=256)
+            train_args.update(dict(per_device_train_batch_size=32))
         mdl, tokenizer, trainer = get_all_setup(
-            model_name=md_nm, model_size=md_sz, dataset_names=dnms, model_config=dict(max_length=max_length),
+            model_name=md_nm, model_size=md_sz, dataset_names=dnms, model_config=model_config,
             n_sample=n, train_args=train_args, my_train_args=my_train_args
         )
         # ignore so that `None` don't get detached
