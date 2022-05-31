@@ -9,7 +9,6 @@ from typing import List, Tuple, Dict, Union, Optional
 from collections import OrderedDict
 
 import torch
-from transformers import ReformerModelWithLMHead
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
 from transformers import Trainer
 from transformers.training_args import OptimizerNames
@@ -20,7 +19,7 @@ from musicnlp.util import *
 import musicnlp.util.train as train_util
 from musicnlp.vocab import MusicTokenizer, key_ordinal2str
 from musicnlp.preprocess import get_dataset, KeySampleDataset
-from musicnlp.models import MyReformerConfig, MyTransfoXLConfig, MyTransfoXLLMHeadModel
+from musicnlp.models import MyReformerConfig, MyReformerModelWithLMHead, MyTransfoXLConfig, MyTransfoXLLMHeadModel
 from musicnlp.trainer import metrics
 
 
@@ -33,7 +32,7 @@ def get_model_n_tokenizer(
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
             'transf-xl': (MyTransfoXLConfig, MyTransfoXLLMHeadModel),
-            'reformer': (MyReformerConfig, ReformerModelWithLMHead)
+            'reformer': (MyReformerConfig, MyReformerModelWithLMHead)
         }
     cls_config, cls_model = get_model_n_tokenizer.d_nm2cls[model_name]
     config = cls_config(model_size=model_size, tokenizer=tokenizer, **(model_config or dict()))
@@ -149,7 +148,7 @@ class TrainArgs:
             optim=OptimizerNames.ADAMW_TORCH,
             disable_tqdm=True,
             report_to='none',
-            # `gradient_checkpointing` for both Transformer XL and Reformer not supported
+            gradient_checkpointing=False,  # not supported in both Transformer XL and Reformer not supported
         )
 
     def __call__(
@@ -163,10 +162,7 @@ class TrainArgs:
             bsz = train_args_.pop('batch_size')
             train_args_['per_device_train_batch_size'] = train_args_['per_device_eval_batch_size'] = bsz
         args.update(train_args_)
-        if self.model_name == 'xl':
-            assert not args['fp16'] and not args['gradient_checkpointing']
-        elif self.model_name == 'reformer':
-            assert not args['gradient_checkpointing']
+        assert not args['gradient_checkpointing']
         if train_args is not None:
             args.update(train_args)
 
@@ -322,43 +318,35 @@ if __name__ == '__main__':
         # md_sz = 'base'
         ic(md_nm, md_sz)
 
+        pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+        mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+        dnms = [pop, mst, lmd]
+
         augment_key = False
-        # if augment_key:
-        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
-                  'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
-        dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
-                  'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
-        # else:
-        #     dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
-        #               'meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
-        #     dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
-        #               'meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
-        dnms = [dnm_909, dnm_lmd]
+        n_ep = 4
+        train_args = dict(num_train_epochs=n_ep)
+        my_train_args = dict(tqdm=True, logging_strategy='epoch')
 
         if 'debug' in md_sz or md_sz == 'tiny':
             # n = None
-            n = 8
-            train_args = dict(
-                per_device_train_batch_size=2,
+            n = 32
+            train_args.update(dict(
+                per_device_train_batch_size=4,
                 # save_strategy='no',
                 save_strategy='epoch',
-                num_train_epochs=16,
-            )
-            my_train_args = dict(
-                save_epochs=16,
-                # logging_strategy='no',
-                # logging_strategy='steps',
-                logging_strategy='epoch',
-                tqdm='train-only',
+                num_train_epochs=64
+            ))
+            my_train_args.update(dict(
+                save_epochs=4,
+                # tqdm=False,
                 augment_key=augment_key,
-            )
+            ))
         else:
             n = None
-            train_args = dict(num_train_epochs=16)
-            my_train_args = dict(
-                logging_strategy='epoch',
-                save_epochs=4
-            )
+            my_train_args.update(dict(
+                save_epochs=1
+            ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n,
             train_args=train_args, my_train_args=my_train_args
@@ -369,7 +357,7 @@ if __name__ == '__main__':
         else:
             trainer.train()
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    # train_reformer()
+    train_reformer()
 
     # checkpoint_path = os_join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
     # train(resume_from_checkpoint=checkpoint_path)
@@ -417,4 +405,4 @@ if __name__ == '__main__':
         # ignore so that `None` don't get detached
         ignore_keys_for_eval = ['losses', 'mems', 'hidden_states', 'attentions']
         trainer.train(ignore_keys_for_eval=ignore_keys_for_eval)
-    train_xl()
+    # train_xl()

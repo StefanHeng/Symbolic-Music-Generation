@@ -1,12 +1,13 @@
-from typing import Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 import numpy as np
-from transformers import ReformerConfig
+import torch
+from transformers import ReformerConfig, ReformerModelWithLMHead
 
 from musicnlp.vocab import MusicTokenizer
 
 
-__all__ = ['MyReformerConfig']
+__all__ = ['MyReformerConfig', 'MyReformerModelWithLMHead']
 
 
 class MyReformerConfig(ReformerConfig):
@@ -82,4 +83,40 @@ class MyReformerConfig(ReformerConfig):
             n_layer=len(self.attn_layers),
             hidden_size=self.hidden_size, ff_size=self.feed_forward_size,
             attention_shape=f'{self.num_attention_heads}x{self.attention_head_size}',
+        )
+
+
+class MyReformerModelWithLMHead(ReformerModelWithLMHead):
+    """
+    Like TransformerXL, override `forward` to pass in `key_scores` for eval metrics
+    """
+    def forward(
+            self,
+            key_scores=None,
+            input_ids: Optional[torch.Tensor] = None,
+            position_ids: Optional[torch.Tensor] = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            head_mask: Optional[torch.Tensor] = None,
+            inputs_embeds: Optional[torch.Tensor] = None,
+            num_hashes: Optional[int] = None,
+            past_buckets_states: Optional[List[Tuple[torch.Tensor]]] = None,
+            use_cache: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            labels: Optional[torch.Tensor] = None,
+    ):  # using `kwargs` breaks things, see `Trainer._remove_unused_columns`
+        return super().forward(
+            input_ids=input_ids,
+            position_ids=position_ids,
+            attention_mask=attention_mask,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            num_hashes=num_hashes,
+            past_buckets_states=past_buckets_states,
+            use_cache=use_cache,
+            output_hidden_states=output_hidden_states,
+            output_attentions=output_attentions,
+            return_dict=return_dict,
+            labels=labels
         )
