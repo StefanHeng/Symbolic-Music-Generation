@@ -3,24 +3,33 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 
 See `melody_extractor` for the old version.
 """
-import os
 import math
 import datetime
 import itertools
+from os.path import join as os_join
 from copy import deepcopy
-from typing import List, Tuple, Dict, Iterable, Iterator, Union, Any
+from typing import List, Tuple, Dict, Iterable, Union, Any
 from fractions import Fraction
+from dataclasses import dataclass
 from collections import defaultdict, Counter, OrderedDict
 
 import numpy as np
 import music21 as m21
 
+from stefutil import *
 from musicnlp.util import *
-from musicnlp.util.data_path import PATH_BASE, DIR_DSET
+from musicnlp.util.data_path import BASE_PATH, DSET_DIR
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import COMMON_TEMPOS, COMMON_TIME_SIGS, is_common_tempo, is_common_time_sig, MusicVocabulary
 from musicnlp.preprocess.warning_logger import WarnLog
 from musicnlp.preprocess.key_finder import KeyFinder
+
+
+@dataclass
+class BarInfo:
+    bars: Union[Tuple[Measure], List[Measure]]
+    time_sig: TimeSignature
+    tempo: MetronomeMark
 
 
 class MusicExtractor:
@@ -31,13 +40,14 @@ class MusicExtractor:
             self, precision: int = 5, mode: str = 'melody',
             warn_logger: Union[WarnLog, bool] = None,
             greedy_tuplet_pitch_threshold: int = 3**9,
-            verbose: Union[bool, str] = True
+            verbose: Union[bool, str] = True,
+            epsilon: float = eps
     ):
         """
         :param precision: Bar duration quantization, see `melody_extractor.MxlMelodyExtractor`
         :param mode: Extraction mode, one of [`melody`, `full`]
             `melody`: Only melody is extracted
-            `full`: Melody and Chord as 2 separate channels extracted TODO
+            `full`: Melody and Bass as 2 separate channels extracted TODO
         :param warn_logger: A logger for storing warnings
             If True, a logger is instantiated
         :param greedy_tuplet_pitch_threshold: If #possible note cartesian product in the tuplet > threshold,
@@ -48,6 +58,7 @@ class MusicExtractor:
                 due to transcription quality - See `expand_bar`
         :param verbose: If true, extraction process including warnings is logged
             If `single`, only begin and end of extraction is logged
+        :param epsilon: For float- & Fraction-related equality comparison
 
         .. note:: Prior logging warning messages are removed after new encode call, see `Warning.end_tracking`
         """
@@ -62,6 +73,7 @@ class MusicExtractor:
             self.warn_logger = None
         self.greedy_tuplet_pitch_threshold = greedy_tuplet_pitch_threshold
         self.verbose = verbose
+        self.eps = epsilon
 
         self.vocab = MusicVocabulary(precision)
 
@@ -74,11 +86,15 @@ class MusicExtractor:
         m, p, t = d['mode'], d['precision'], d['greedy_tuplet_pitch_threshold']
         return log_dict_p({'mode': m, 'prec': p, 'th': t})
 
-    def it_bars(self, scr: Score) -> Iterator[Tuple[Tuple[Measure], TimeSignature, MetronomeMark]]:
+    def it_bars(self, scr: Score) -> Iterable[BarInfo]:
         """
         Unroll a score by time, with the time signatures of each bar
         """
         parts = list(scr.parts)
+        # ic(parts)
+        # instrs = list(parts[0][m21.instrument.Instrument])
+        # ic(instrs)
+        # exit(1)
         ignore = [is_drum_track(p_) for p_ in parts]
 
         time_sig, tempo = None, None
@@ -89,24 +105,27 @@ class MusicExtractor:
             # Update time signature
             tss = [b[TimeSignature] for b in bars]
             if idx == 0 or any(tss):  # 1st bar must have time signature defined
+                # some parts may contain no time signature if the file went through Logic Pro mid=>xml conversion
+                tss = [list(t) for t in tss if t]
                 assert all(len(t) == 1 for t in tss)
-                tss = [next(t) for t in tss]
-                assert list_is_same_elms([(ds.numerator, ds.denominator) for ds in tss])
+                tss = [t[0] for t in tss]
+                assert list_is_same_elms([(ts.numerator, ts.denominator) for ts in tss])
                 time_sig = tss[0]
 
             tempos = [list(b[MetronomeMark]) for b in bars]
-            has_tempo = any(tempos)
+            # observed tempo with number `None`... in such case, ignore
+            has_tempo = any(tempos) and any(any(t.number for t in ts) for ts in tempos)
             if has_tempo:
                 tempos = [t for t in tempos if len(t) != 0]
                 # When multiple tempos, take the mean
-                tempos = [MetronomeMark(number=np.array([t.number for t in ts]).mean()) for ts in tempos]
+                tempos = [MetronomeMark(number=np.mean([t.number for t in ts])) for ts in tempos]
                 bpms = [t.number for t in tempos]
                 assert list_is_same_elms(bpms)
                 tempo = MetronomeMark(number=bpms[0])
             elif idx == 0:
                 self.log_warn(dict(warn_name=WarnLog.MissTempo))
                 tempo = MetronomeMark(number=120)  # set as default
-            yield [b for ignore, b in zip(ignore, bars) if not ignore], time_sig, tempo
+            yield BarInfo(bars=[b for ignore, b in zip(ignore, bars) if not ignore], time_sig=time_sig, tempo=tempo)
 
     def log_warn(self, log_d: Dict):
         if self.warn_logger is not None:
@@ -127,10 +146,16 @@ class MusicExtractor:
         """
         # ic('in quantize', number)
         dur_slot = 4 * 2**-self.prec  # In quarter length
-        dur_bar = (time_sig.numerator/time_sig.denominator*4)
+        dur_bar = time_sig2bar_dur(time_sig)
         n_slots = dur_bar / dur_slot
-        assert n_slots.is_integer()
-        n_slots = int(n_slots)
+        if self.prec == 5 and (time_sig.numerator, time_sig.denominator) == (21, 64) and number == 51:
+            # another poor transcription, `LMD::125135`
+            # actual #slot is 10.5...
+            n_slots = 11
+            dur_bar = dur_slot * n_slots
+        else:
+            assert n_slots.is_integer()
+            n_slots = int(n_slots)
         bin_edges = [(i*dur_slot, (i+1)*dur_slot) for i in range(n_slots)]  # All info indexed by note order
 
         def note2range(note):
@@ -160,15 +185,18 @@ class MusicExtractor:
         # Notes goes beyond offset of 4 in 4/4 time sig,
         #   whereas music21 wraps them with mod 4 so the notes become 0-offset
         # those notes are not long enough with the actual 0-offset notes, but are selected as it has higher pitch
-        overlap_flag = [(False if i is None else (get_overlap(*edge, i) > 0)) for edge, i in zip(bin_edges, idxs_note)]
-        if not all(overlap_flag):
-            flag_with_idx = [(i, flag) for i, flag in enumerate(overlap_flag)]
+        slot_filled_flag = [
+            (False if i is None else (get_overlap(*edge, i) > 0)) for edge, i in zip(bin_edges, idxs_note)
+        ]
+        if not all(slot_filled_flag):
+            flag_with_idx = [(i, flag) for i, flag in enumerate(slot_filled_flag)]
             missing_idxs = [
                 [i for i, f in pairs]
                 for flag, pairs in itertools.groupby(flag_with_idx, key=lambda x: x[1]) if not flag
             ]
             idxs_ends = [(idxs[0], idxs[-1]) for idxs in missing_idxs]
             starts_n_spans = [(i_strt*dur_slot, (i_end-i_strt+1) * dur_slot) for i_strt, i_end in idxs_ends]
+            # This will definitely not produce `Fraction`s, which is problematic for json output, see `music_export`
 
             self.log_warn(dict(
                 warn_name=WarnLog.BarNoteGap, bar_num=number, time_sig=(time_sig.numerator, time_sig.denominator),
@@ -188,9 +216,6 @@ class MusicExtractor:
                 nt = note2note_cleaned(notes[i], q_len=n*dur_slot, for_output=True)  # last not processing before output
                 if isinstance(nt, tuple):
                     dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
-                    # if number == 61:
-                    #     ic('in quantize tuplet', nt)
-                    #     ic(dur_ea)
                     note_tups_out = []
                     for i_, nt_tup in enumerate(nt):
                         nt_tup.offset = offset + dur_ea * i_
@@ -201,15 +226,18 @@ class MusicExtractor:
                     notes_out.append(nt)
                 offset += note2dur(nt)
 
-        # if number in [23, 61]:
-        #     # ic(notes)
+        # if number == 1:
+        #     ic(notes)
+        #     for n in notes:
+        #         strt, end = get_offset(n), get_end_qlen(n)
+        #         ic(n, strt, end)
         #     ic(notes_out)
-        #     # for n in flatten_notes(notes):
-        #     for n in flatten_notes(notes_out):
-        #         qLen = n.duration.quarterLength
-        #         ic(n, n.offset, qLen)
+        #     for n in notes_out:
+        #         strt, end = get_offset(n), get_end_qlen(n)
+        #         ic(n, strt, end)
+        #     exit(1)
         #     # ic([get_overlap(*edge, i) > 0 for edge, i in zip(bin_edges, idxs_note)])
-        assert is_notes_no_overlap(notes_out)  # Sanity check
+        assert not notes_overlapping(notes_out)  # Sanity check
         assert sum(note2dur(n) for n in notes_out) == dur_bar
         return notes_out
 
@@ -229,12 +257,22 @@ class MusicExtractor:
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # if number == 49:
-        #     ic('in expand_bar', number)
+        # ic('in expand bar', number)
+        # if number == 57:
+        #     ic('in expand_bar', number, len(bar))
+        #     notes = [e for e in bar if isinstance(e, (Chord, Note, Rest))]
+        #     for n in notes:
+        #         strt, end = get_offset(n), get_end_qlen(n)
+        #         ic(n, n.fullName, strt, end)
+        #     bar.show()
+        # if number > 57:
+        #     exit(1)
         while elm is not None:
-            full_nm = getattr(elm, 'fullName', None)
+            # this is the bottleneck; just care about duration; Explicitly ignore voice
+            full_nm = not isinstance(elm, Voice) and getattr(elm.duration, 'fullName', None)
             if full_nm and tuplet_postfix in full_nm:
                 tup_str, n_tup = fullname2tuplet_meta(full_nm)
+                n_ignored, tup_ignored = 0, False  # for sanity check, see below (`LowTupDur`)
 
                 elms_tup: List[Union[Rest, Note, Chord]] = [elm]
                 elm_ = next(it, None)
@@ -242,16 +280,27 @@ class MusicExtractor:
                     # For poor transcription quality, skip over non-note elements in the middle
                     if isinstance(elm_, (m21.clef.Clef, MetronomeMark, m21.bar.Barline)):
                         elm_ = next(it, None)
-                    elif tup_str in elm_.fullName:  # Look for all elements of the same `n_tup`
+                    elif tup_str in elm_.duration.fullName:  # Look for all elements of the same `n_tup`
                         elms_tup.append(elm_)
                         elm_ = next(it, None)  # Peeked 1 ahead
                     else:  # Finished looking for all tuplets
                         break
-                # if number == 61 and elm.offset == 0:
-                #     ic('in found tuplet', len(elms_tup), tup_str, n_tup)
-                #     for n in elms_tup:
-                #         name, qLen = n.fullName, n.duration.quarterLength
-                #         ic(name, n.offset, qLen)
+
+                def get_filled_ranges():  # cache
+                    if not hasattr(get_filled_ranges, 'filled_ranges'):
+                        get_filled_ranges.filled_ranges = [
+                            (serialize_frac(get_offset(n)), serialize_frac(get_end_qlen(n))) for n in elms_tup
+                        ]
+                    return get_filled_ranges.filled_ranges
+                if notes_overlapping(elms_tup):
+                    self.log_warn(dict(
+                        warn_name=WarnLog.TupNoteOvlIn, bar_num=number, filled_ranges=get_filled_ranges()
+                    ))
+                if notes_have_gap(elms_tup, enforce_no_overlap=False):
+                    self.log_warn(dict(
+                        warn_name=WarnLog.TupNoteGap, bar_num=number,
+                        time_sig=(time_sig.numerator, time_sig.denominator), filled_ranges=get_filled_ranges()
+                    ))
 
                 # Consecutive tuplet notes => (potentially multiple) groups
                 it_tup = iter(elms_tup)
@@ -281,7 +330,7 @@ class MusicExtractor:
                     if idx == idx_last:  # Processed til last element, make sure all tuplet notes are added
                         if len(elms_tup) == 1:  # Poor processing, edge case
                             note = elms_tup[0]  # As if single note with weird duration
-                            if isinstance(note, Chord):
+                            if (not keep_chord) and isinstance(note, Chord):
                                 note = max(note, key=lambda n: note2pitch(n))
                             lst.append(note)
                             tup_added, is_single_tup = True, True
@@ -299,6 +348,7 @@ class MusicExtractor:
                             assert not is_8th(dur)  # Add such tuplet notes anyway, set a valid quantized length
                             warn_nm = WarnLog.InvTupDur
                             offsets, durs = notes2offset_duration(elms_tup[idx_next_strt:])
+                            curr_ignored = False
                             if not self.dur_within_prec(dur):  # Enforce it by changing the durations
                                 warn_nm = WarnLog.InvTupDurSv
 
@@ -309,26 +359,37 @@ class MusicExtractor:
                                     round_by_factor(dur, 2**-self.prec), time_sig.numerator/time_sig.denominator*4
                                 )
                                 n_tup_last = len(elms_tup[idx_next_strt:])
-                                dur_ea = dur / n_tup_last
-                                strt = elms_tup[idx_next_strt].offset
-                                for i in range(idx_next_strt, idx_next_strt+n_tup_last):
-                                    elms_tup[i].offset = strt
-                                    dur_ = m21.duration.Duration(quarterLength=dur_ea)
-                                    elms_tup[i].duration = dur_
-                                    if isinstance(elms_tup[i], Chord):
-                                        cd = elms_tup[i]
-                                        for i_n in range(len(cd.notes)):  # Broadcast duration to notes inside
-                                            elms_tup[i].notes[i_n].duration = dur_
-                                    strt += dur_ea
-                            lst.append(tuple(elms_tup[idx_next_strt:]))
-                            tup_added = True
+                                if dur > 0:
+                                    dur_ea = dur / n_tup_last
+                                    strt = elms_tup[idx_next_strt].offset
+                                    for i in range(idx_next_strt, idx_next_strt+n_tup_last):
+                                        elms_tup[i].offset = strt
+                                        dur_ = m21.duration.Duration(quarterLength=dur_ea)
+                                        elms_tup[i].duration = dur_
+                                        if isinstance(elms_tup[i], Chord):
+                                            cd = elms_tup[i]
+                                            for i_n in range(len(cd.notes)):  # Broadcast duration to notes inside
+                                                elms_tup[i].notes[i_n].duration = dur_
+                                        strt += dur_ea
+                                else:  # total duration for the group is way too small, ignore
+                                    n_ignored += n_tup_last
+                                    tup_ignored = curr_ignored = True
+                                    self.log_warn(dict(
+                                        warn_name=WarnLog.LowTupDur, bar_num=number,
+                                        time_sig=(time_sig.numerator, time_sig.denominator),
+                                        precision=self.prec,
+                                        filled_ranges=get_filled_ranges()
+                                    ))
+                            if not curr_ignored:
+                                lst.append(tuple(elms_tup[idx_next_strt:]))
+                                tup_added = True
                             self.log_warn(dict(warn_name=warn_nm, bar_num=number, offsets=offsets, durations=durs))
                     idx += 1
                     e_tup = next(it_tup, None)
                 # All triple notes with the same `n_tup` are added
-                assert tup_added
-                if not is_single_tup:
-                    assert sum(len(tup) for tup in lst[idx_tup_strt:]) == len(elms_tup)
+                assert tup_added or tup_ignored
+                if not is_single_tup:  # sanity check all notes are processed
+                    assert sum(len(tup) for tup in lst[idx_tup_strt:]) + n_ignored == len(elms_tup)
 
                     for tup in lst[idx_tup_strt:]:
                         ln = len(tup)
@@ -338,22 +399,21 @@ class MusicExtractor:
                     # Enforce no overlap in each triplet group
                     for idx_tup, tup in enumerate(lst[idx_tup_strt:], start=idx_tup_strt):
                         tup: tuple[Union[Note, Rest]]
-                        if not is_notes_no_overlap(tup):
+                        if notes_overlapping(tup):
                             offsets, durs = notes2offset_duration(tup)
                             self.log_warn(dict(
-                                warn_name=WarnLog.TupNoteOvl, bar_num=number, offsets=offsets, durations=durs
+                                warn_name=WarnLog.TupNoteOvlOut, bar_num=number, offsets=offsets, durations=durs
                             ))
-                            # A really severe case, should rarely happen
                             # TODO: how about just remove this group?
-                            # for n in tup:
-                            #     name, qLen = n.fullName, n.duration.quarterLength
-                            #     ic(name, n.offset, qLen)
                             total_dur: Union[float, Fraction] = sum(n.duration.quarterLength for n in tup)
                             dur_16th = 4 / 16  # duration in quarter length
                             # Trust the duration more than the offset, and unroll backwards to fix the offset
                             # As long as total duration is still multiple of 16th note, make the offset work
                             multiplier: Union[float, Fraction] = total_dur / dur_16th
-                            assert multiplier.is_integer() if isinstance(multiplier, float) \
+
+                            def float_is_int(f: float) -> Union[int, bool]:
+                                return f.is_integer() or math.isclose(f, round(f), abs_tol=self.eps)
+                            assert float_is_int(multiplier) if isinstance(multiplier, float) \
                                 else multiplier.denominator == 1
                             note1st = note2note_cleaned(tup[0])
                             offset = note1st.offset + note1st.duration.quarterLength
@@ -363,7 +423,7 @@ class MusicExtractor:
                                 n.offset = offset
                                 fixed_tup.append(n)
                                 offset += n.duration.quarterLength
-                            assert is_notes_no_overlap(fixed_tup)  # sanity check
+                            assert not notes_overlapping(fixed_tup)  # sanity check
                             lst[idx_tup] = tuple(fixed_tup)  # Override the original tuplet
                     for tup in lst[idx_tup_strt:]:
                         n_rest = sum(isinstance(n, Rest) for n in tup)
@@ -390,7 +450,7 @@ class MusicExtractor:
                                 opns = [chord2notes(n) if isinstance(n, Chord) else (n,) for n in tup]
                                 # Adding all possible tuplet notes may be the bottleneck during extraction
                                 n_opns = [len(n) for n in opns if n]
-                                if np.prod(n_opns) > self.greedy_tuplet_pitch_threshold:
+                                if math.prod(n_opns) > self.greedy_tuplet_pitch_threshold:
                                     # Too much possible cartesian products for later processing to handle
                                     # as it involves sorting
                                     # Cap at a tuplet of 9 consecutive 3-note Chords, beyond this number,
@@ -403,38 +463,38 @@ class MusicExtractor:
                                     tups_new.append(notes_max_pitch)
                                 else:
                                     tups_new.extend(list(itertools.product(*opns)))
+                            else:  # keep the tuplet group
+                                tups_new.append(tup)
                         if has_chord:  # Replace prior triplet groups
                             lst = lst[:idx_tup_strt] + tups_new
-                    # if number == 49:
-                    #     for tup in lst[idx_tup_strt:]:
-                    #         ic(tup)
+                for idx_tup, tup in enumerate(lst[idx_tup_strt:], start=idx_tup_strt):
+                    if isinstance(tup, tuple) and len(tup) == 1:
+                        lst[idx_tup] = tup[0]  # consider as single note if just 1 element
                 elm = elm_
                 continue  # Skip `next` for peeked 1 step ahead
             elif isinstance(elm, (Note, Rest)):
-                # assert elm.duration.quarterLength > 0
                 lst.append(elm)
             elif isinstance(elm, Chord):
                 if keep_chord:
                     lst.append(elm)
                 else:
-                    # notes = deepcopy(elm.notes)  # TODO: do I need this?
                     notes = list(elm.notes)
-                    for n in notes:
+                    for n in notes:  # TODO: for efficiency, keep just the top note?
                         n.offset += elm.offset  # Shift offset in the scope of bar
                     lst.extend(notes)
             else:
                 if not isinstance(elm, (  # Ensure all relevant types are considered
                     TimeSignature, MetronomeMark, Voice,
-                    m21.layout.LayoutBase, m21.clef.Clef, m21.key.KeySignature, m21.bar.Barline
+                    m21.layout.LayoutBase, m21.clef.Clef, m21.key.KeySignature, m21.bar.Barline,
+                    m21.expressions.TextExpression, m21.repeat.Fine
                 )):
                     ic(elm)
                     print('unexpected type')
                     exit(1)
             elm = next(it, None)
+        assert is_notes_pos_duration(lst)
         if bar.hasVoices():  # Join all voices to notes
-            lst.extend(join_its(self.expand_bar(v, time_sig, number=number) for v in bar.voices))
-            # for v in bar.voices:
-            #     lst.extend(self.expand_bar(v, time_sig, number=number))
+            lst.extend(chain_its(self.expand_bar(v, time_sig, number=number) for v in bar.voices))
         if not keep_chord:  # sanity check
             assert all(
                 all(not isinstance(n_, Chord) for n_ in n) if isinstance(n, tuple) else (not isinstance(n, Chord))
@@ -476,18 +536,18 @@ class MusicExtractor:
         if title.endswith('.mxl'):
             title = title[:-4]
 
-        lst_bar_info: List[tuple[tuple[Measure], TimeSignature, MetronomeMark]] = list(self.it_bars(song))
-        assert len(lst_bar_info) > 0, 'No bars found song'
-        assert all(len(bar_info[0]) > 0 for bar_info in lst_bar_info), \
-            f'No notes found at all times, most likely the song contains {logi("drum tracks")} only - ' \
-            f'Terminating as extraction output would be empty'
+        lst_bar_info = list(self.it_bars(song))
+        assert len(lst_bar_info) > 0, f'{logi("No bars")} found in song'
+        assert all(len(bar_info.bars) > 0 for bar_info in lst_bar_info), \
+            f'{logi("No pitched")} notes found at all times, most likely the song contains {logi("drum tracks")} ' \
+            f'only - Terminating as extraction output would be empty'
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
 
         # Crop out empty bars at both ends to reduce token length
         def is_empty_bars(bars: tuple[Measure]):
             def bar2elms(b: Measure):
                 def stream2elms(stm: Union[Measure, Voice]):
-                    return list(join_its((stm[Note], stm[Rest], stm[Chord])))  # Get all relevant notes
+                    return list(chain_its((stm[Note], stm[Rest], stm[Chord])))  # Get all relevant notes
                 elms = stream2elms(b)
                 if b.hasVoices():
                     elms += sum((stream2elms(v) for v in b.voices), start=[])
@@ -495,15 +555,14 @@ class MusicExtractor:
             return all(all(isinstance(e, Rest) for e in bar2elms(b)) for b in bars)
         empty_warns = []
         idx = 0
-        # ic(lst_bar_info)
-        while is_empty_bars(lst_bar_info[idx][0]):  # grab the all the bars at current number
+        while is_empty_bars(lst_bar_info[idx].bars):
             idx += 1
         idx_strt_last_empty = idx-1
         if idx_strt_last_empty != -1:  # 2-tuple, 0-indexed, inclusive on both ends
             empty_warns.append(dict(warn_name=WarnLog.EmptyStrt, bar_range=(0, idx_strt_last_empty)))
 
         idx = n_bars_ori-1
-        while is_empty_bars(lst_bar_info[idx][0]):
+        while is_empty_bars(lst_bar_info[idx].bars):
             idx -= 1
         idx_end_1st_empty = idx+1
         if idx_end_1st_empty != n_bars_ori:
@@ -511,7 +570,7 @@ class MusicExtractor:
         lst_bar_info = lst_bar_info[idx_strt_last_empty+1:idx_end_1st_empty]
 
         lst_bars_, time_sigs, tempos = zip(*(
-            (bars, time_sig, tempo) for bars, time_sig, tempo in lst_bar_info
+            (bi.bars, bi.time_sig, bi.tempo) for bi in lst_bar_info
         ))
         # Pick 1st bar arbitrarily
         secs = round(sum(t.durationToSeconds(bars[0].duration) for t, bars in zip(tempos, lst_bars_)))
@@ -524,19 +583,19 @@ class MusicExtractor:
             self.logger.info(f'Extracting {logi(title)} with {log_dict(d_log)}... ')
             if self.warn_logger is not None:
                 self.warn_logger.start_tracking(args_func=lambda: dict(id=title, timestamp=now()))
-        set_ts = set(f'{ts.numerator}/{ts.denominator}' for ts in time_sigs)
-        set_tp = set(round(tp.number) for tp in tempos)
-        if len(set_ts) > 1:
-            self.log_warn(dict(warn_name=WarnLog.MultTimeSig, time_sigs=sorted(set_ts)))
-        if len(set_tp) > 1:
-            self.log_warn(dict(warn_name=WarnLog.MultTempo, tempos=sorted(set_tp)))
+        lst_ts = sorted(set((ts.numerator, ts.denominator) for ts in time_sigs), key=lambda x: (x[1], x[0]))
+        lst_tp = sorted(set(round(tp.number) for tp in tempos))
+        if len(lst_ts) > 1:
+            self.log_warn(dict(warn_name=WarnLog.MultTimeSig, time_sigs=sorted(lst_ts)))
+        if len(lst_tp) > 1:
+            self.log_warn(dict(warn_name=WarnLog.MultTempo, tempos=sorted(lst_tp)))
         if not is_common_time_sig(time_sig_mode):
             self.log_warn(dict(
                 warn_name=WarnLog.UncomTimeSig, time_sig_expect=COMMON_TIME_SIGS, time_sig_got=time_sig_mode
             ))
         if not is_common_tempo(mean_tempo):
             self.log_warn(dict(
-                warn_name=WarnLog.UncomTempo, tempo_expect=COMMON_TEMPOS, time_sig_got=mean_tempo
+                warn_name=WarnLog.UncomTempo, tempo_expect=COMMON_TEMPOS, tempo_got=mean_tempo
             ))
         for warn_dict in empty_warns:  # Postpone warning message until after logging song info
             self.log_warn(warn_dict)
@@ -548,83 +607,144 @@ class MusicExtractor:
                 warn_name=WarnLog.IncTimeSig, time_sig=time_sig_mode, threshold=th, n_bar_total=n_bar, n_bar_mode=n_mode
             ))
 
-        lst_notes: List[List[Union[Note, Chord, tuple[Note]]]] = []  # TODO: melody only
+        lst_notes: List[List[ExtNote]] = []
         i_bar_strt = lst_bars_[0][0].number  # Get number of 1st bar
-        for i_bar, (bars, time_sig, tempo) in enumerate(lst_bar_info):
-            # ic(i_bar)
+        for i_bar, bi in enumerate(lst_bar_info):
+            bars, time_sig, tempo = bi.bars, bi.time_sig, bi.tempo
             number = bars[0].number - i_bar_strt  # Enforce bar number 0-indexing
-            assert number == i_bar
-            # notes = []
-            # for b in bars:
-            #     notes.extend(self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number))
+            # ic(number)
+            assert number == i_bar  # sanity check
             notes = sum((self.expand_bar(b, time_sig, keep_chord=self.mode == 'full', number=number) for b in bars), [])
 
             groups: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in notes:
-                n_ = n[0] if isinstance(n, tuple) else n
-                if isinstance(n, tuple):
-                    if any(isinstance(nn, Chord) for nn in n):
-                        ic(n)
-                        exit(1)
-                groups[n_.offset].append(n)
-            # if number == 22:
-            #     ic(groups)
-            #     for k, v in groups.items():
-            #         assert is_notes_pos_duration(v)
+                groups[get_offset(n)].append(n)
 
-            # def sort_groups(g):
-            #     return {
-            #         offset: sorted(ns, key=lambda nt: (note2pitch(nt), note2dur(nt)))
-            #         for offset, ns in g.items()
-            #     }
-            # groups = sort_groups(groups)
             def sort_groups():
-                for offset, ns in groups.items():  # sort by pitch then by duration; sort in-place
-                    ns.sort(key=lambda nt: (note2pitch(nt), note2dur(nt)))
+                for offset, ns in groups.items():  # sort by pitch then by duration, in-place for speed
+                    # Create shallow copy of list so that no aliasing in list append & removal in `get_notes_out`
+                    groups[offset] = sorted(ns, key=lambda nt: (note2pitch(nt), note2dur(nt)))
             sort_groups()
-            # if number == 92:
-            #     # ic(groups)
-            #     for k, v in groups.items():
-            #         ic(k, len(v))
+
+            def _fix_rest_too_long(offset, wrong_end_time):
+                _notes_out = []
+                for _n in groups[offset]:  # starts at offset 4
+                    if isinstance(_n, Rest) and get_end_qlen(_n) == wrong_end_time:  # 4 qlen more than it should
+                        continue  # ignore; then if no notes, will fill with rest with subsequent logic
+                    _notes_out.append(_n)
+                groups[offset] = _notes_out
+
+            def _fix_edge_case():
+                # the original file is broken in that note durations don't align with duration by time signature
+                ts_tup = (time_sig.numerator, time_sig.denominator)
+                if ts_tup in [(8, 4), (4, 2), (2, 1)] and \
+                        number in [9, 17, 19, 24, 33, 38, 43, 47, 52, 53, 60, 62, 84, 87, 188, 201] and \
+                        (4.0 in groups or 6.0 in groups):
+                    # for [
+                    #   `LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`, `LMD::108367`,
+                    #   `LMD::116976`, `LMD::119887`, `LMD::123389`, `LMD::128869`, `LMD::137904`,
+                    #   `LMD::140453`,`LMD::142327`,`LMD::160646`, `LMD::161475`, `LMD::163655`
+                    # ]
+                    for offset in [4.0, 6.0]:
+                        _fix_rest_too_long(offset, 12.0)  # 4 more than it should in quarter length
+                elif ts_tup == (2, 4) and number == 6 and 2.0 in groups:
+                    # for `LMD::034249`
+                    _fix_rest_too_long(2.0, 4.0)
+                elif ts_tup == (1, 8):
+                    # for `LMD::051562`, `LMD::119192`
+                    if number in [9, 40, 60, 71, 88, 102] and all(o in groups for o in [0.5, 4.0, 8.0]):
+                        for offset, wrong_time in [(0.0, 4.0), (0.5, 12.0), (4.0, 8.0), (4.0, 12.0), (8.0, 12.0)]:
+                            _fix_rest_too_long(offset, wrong_time)
+                    elif number in [26, 57, 88] and all(o in groups for o in [0.0, 4.0, 8.0]):
+                        for offset, wrong_time in [(0.0, 4.0), (4.0, 8.0), (8.0, 12.0)]:
+                            _fix_rest_too_long(offset, wrong_time)
+                elif ts_tup == (5, 2) and number in [5, 28] and 6.0 in groups:
+                    # for `LMD::109166`
+                    _fix_rest_too_long(6.0, 16.0)  # 6 more than it should
+                elif ts_tup == (4, 4):
+                    if number == 1 and 0.0 in groups:
+                        # for `LMD::116496`
+                        _notes_out = []
+                        for _n in groups[0.0]:
+                            wrong_dur = Fraction(33, 8)
+                            # assume correct duration of max bar length, 1/8 qlen more than it should
+                            if isinstance(_n, tuple) and get_end_qlen(_n) == wrong_dur:
+                                _notes_out.append(note2note_cleaned(_n, q_len=4))  # Keep, but normalize
+                            else:
+                                _notes_out.append(_n)
+                        groups[0.0] = _notes_out
+                    elif number == 46 and 4.0 in groups:
+                        # for `LMD::086800`
+                        _notes_out = []
+                        for _n in groups[4.0]:  # starts at offset 4
+                            e = get_end_qlen(_n)
+                            if isinstance(_n, Rest) and \
+                                    (math.isclose(e, 4.110416666666667, abs_tol=self.eps) or e == 4.125):
+                                continue  # ignore
+                            _notes_out.append(_n)
+                        groups[4.0] = _notes_out
+                elif ts_tup == (3, 4) and number == 22 and 2.125 in groups:
+                    # A chord starts in 2.125, and all its notes have duration 1 in quarter length,
+                    # 1/8 more than it should
+                    # TODO: only fixing the case where Chords are broken down into notes
+                    assert self.mode == 'melody'
+                    _notes_out = []
+                    _dur_bar = time_sig2bar_dur(ts_tup)
+                    for _n in groups[2.125]:
+                        if isinstance(_n, Note) and get_end_qlen(_n) == 3.125:
+                            _n.duration = d = Duration(quarterLength=_dur_bar - _n.offset)
+                            assert d.quarterLength > 0
+                        _notes_out.append(_n)
+                    groups[2.125] = _notes_out
+            _fix_edge_case()
+
+            # if number == 88:
+            #     ic('before get notes out', time_sig)
+            #     ic(groups)
+            #     for k, notes in groups.items():
+            #         ic(k)
+            #         for n in notes:
+            #             strt, end = get_offset(n), get_end_qlen(n)
+            #             ic(n, strt, end)
+            #     # exit(1)
 
             def get_notes_out() -> List[Union[Note, Chord, tuple[Note]]]:
-                # if number == 22:
+                # if number == 17:
                 #     ic('in new get_notes_out')
-                # if not hasattr(get_notes_out, 'recurse_count'):
-                #     get_notes_out.recurse_count = 0
-                # get_notes_out.recurse_count += 1
-                # if get_notes_out.recurse_count % 100 == 0:
-                #     ic(get_notes_out.recurse_count)
+                #     if not hasattr(get_notes_out, 'recurse_count'):
+                #         get_notes_out.recurse_count = 0
+                #     get_notes_out.recurse_count += 1
+                #     if get_notes_out.recurse_count > 10:
+                #         exit(1)
+                #     if get_notes_out.recurse_count % 100 == 0:
+                #         ic(get_notes_out.recurse_count)
 
                 ns_out = []
-                offset_next = 0
+                last_end = 0  # Last added note, end time in quarter length
                 for offset in sorted(groups.keys()):  # Pass through notes in order
                     notes_ = groups[offset]
                     if len(notes_) == 0:  # As a result of removing triplets
                         del groups[offset]
                         continue
                     nt = notes_[-1]  # Note with the highest pitch
-                    nt_ = nt[-1] if isinstance(nt, tuple) else nt
-                    nt_end_offset = nt_.offset + nt_.duration.quarterLength
-                    # if number == 50:
-                    #     ic(ns_out, nt, offset, offset_next)
-                    # For difference between floating point and Fraction on real small duration edge cases
-                    # See below for another instance
-                    if offset_next-offset > eps:
+                    nt_end = get_end_qlen(nt)
+                    if last_end-offset > self.eps:
+                        # Current note starts before the last added note ends
                         # Tuplet notes not normalized at this point, remain faithful to the weighted average pitch
-                        if note2pitch(nt) > note2pitch(ns_out[-1]):
-                            # Offset would closely line up across tracks, expect this to be less frequent
-                            if isinstance(ns_out[-1], tuple):  # triplet being truncated => Remove triplet, start over
+                        note_last = ns_out[-1]
+                        pch_last, pch_curr = note2pitch(note_last), note2pitch(nt)
+                        if pch_curr > pch_last:  # Truncate last added note
+                            if isinstance(note_last, tuple):  # tuplet being truncated => Remove entirely, start over
                                 # The triplet must've been the last note added, and it's joint offset is known
-                                del groups[ns_out[-1][0].offset][-1]
+                                del groups[get_offset(note_last)][-1]
                                 self.log_warn(dict(warn_name=WarnLog.HighPchOvlTup, bar_num=number))
                                 return get_notes_out()
-                            else:  # Triplet replaces prior note
+                            else:
                                 self.log_warn(dict(warn_name=WarnLog.HighPchOvl, bar_num=number))
 
                                 nt_ = nt[0] if isinstance(nt, tuple) else nt
                                 # Resulting duration usually non-0, for offset grouping
-                                ns_out[-1].duration = dur_last = Duration(quarterLength=nt_.offset - ns_out[-1].offset)
+                                note_last.duration = dur_last = Duration(quarterLength=nt_.offset - note_last.offset)
                                 assert dur_last.quarterLength >= 0
                                 # If it's 0, it's cos a **truncated** note was appended, as makeup
                                 if dur_last.quarterLength == 0:  # TODO: verify
@@ -634,40 +754,43 @@ class MusicExtractor:
                                     del groups[offset][-1]
                                     self.log_warn(dict(warn_name=WarnLog.LowPchMakeupRmv, bar_num=number))
                             ns_out.append(nt)
-                            offset_next = nt_end_offset
-                        # Later note has smaller pitch, but ends later than the last note
-                        # Truncate the note, add it into later group for consideration
-                        elif (nt_end_offset-offset_next) > eps:
+                            last_end = nt_end
+                        # Current note to add has lower pitch, but ends later in time than the last note added
+                        # Truncate current note, add back into group based on new start time, recompute
+                        elif pch_curr < pch_last and (nt_end-last_end) > self.eps:
                             if not isinstance(nt, tuple):
                                 # Move the truncated note to later group, restart
                                 del groups[offset][-1]
                                 nt_ = note2note_cleaned(nt)
-                                nt_.offset = offset_next
-                                nt_.duration = d = Duration(quarterLength=nt_end_offset-offset_next)
+                                # ic(offset, groups[offset], nt_)
+                                nt_.offset = last_end
+                                nt_.duration = d = Duration(quarterLength=nt_end-last_end)
                                 assert d.quarterLength > 0
-                                offset_next_closest = min(groups.keys(), key=lambda x: abs(x-offset_next))
+                                last_end_closest = min(groups.keys(), key=lambda x: abs(x-last_end))
                                 # since Fractions and float that are real close, are not equal (==)
-                                if abs(offset_next-offset_next_closest) < eps:
-                                    offset_next = offset_next_closest
-                                if offset_next in groups:
-                                    groups[offset_next].append(nt_)
+                                if abs(last_end-last_end_closest) < self.eps:
+                                    last_end = last_end_closest
+                                if last_end in groups:
+                                    groups[last_end].append(nt_)
                                 else:
-                                    groups[offset_next] = [nt_]
+                                    groups[last_end] = [nt_]
                                 sort_groups()
                                 self.log_warn(dict(warn_name=WarnLog.LowPchMakeup, bar_num=number))
                                 return get_notes_out()
-                            # Skip adding tuplets, TODO: can this potentially lead to gaps in the extraction?
+                            # Skip adding tuplets, this potentially leads to gaps in extraction output
                         # Otherwise, skip if later note is lower in pitch and is covered by the prior note duration
                     else:
                         ns_out.append(nt)
-                        offset_next = nt_end_offset
+                        last_end = nt_end
                 return ns_out
-
             with RecurseLimit(2**14):
                 notes_out = get_notes_out()
-            # if number == 22:
+            # if number == 1:
             #     ic(notes_out)
-            #     assert is_notes_pos_duration(notes_out)
+            #     ic('after notes out')
+            #     for n in notes_out[0]:
+            #         strt, end = get_offset(n), get_end_qlen(n)
+            #         ic(n, strt, end)
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
             #   e.g. tiny-duration notes shifts all subsequent notes
@@ -676,12 +799,13 @@ class MusicExtractor:
             #     n.offset: 2.0
             #     n.duration.quarterLength: Fraction(1, 480)
             dur_bar = time_sig.numerator / time_sig.denominator * 4
-            if not math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes_out)), dur_bar, abs_tol=1e-6):
+            note_dur = sum(n.duration.quarterLength for n in flatten_notes(notes_out))
+            if not math.isclose(note_dur, dur_bar, abs_tol=self.eps):
                 offsets, durs = notes2offset_duration(notes_out)
-                self.log_warn(dict(
+                self.log_warn(dict(  # can be due to removing lower-pitched tuplets
                     warn_name=WarnLog.InvBarDur, bar_num=number, offsets=offsets, durations=durs, time_sig=time_sig
                 ))
-            if not is_notes_no_overlap(notes_out):
+            if notes_overlapping(notes_out):
                 # Convert tuplet to single note by duration, pitch doesn't matter, prep for overlap check
                 def tup2note(t: tuple[Note]):
                     note = Note()
@@ -690,31 +814,39 @@ class MusicExtractor:
                     note.duration = Duration(quarterLength=q_len_max)
                     return note
                 notes_out_ = [tup2note(n) if isinstance(n, tuple) else n for n in notes_out]  # Temporary, for checking
-                assert is_notes_no_overlap(notes_out_)  # The source of overlapping should be inside tuplet
+                assert not notes_overlapping(notes_out_)  # The source of overlapping should be inside tuplet
                 for tup__ in notes_out:
-                    if isinstance(tup__, tuple) and not is_notes_no_overlap(tup__):
+                    if isinstance(tup__, tuple) and notes_overlapping(tup__):
                         offsets, durs = notes2offset_duration(tup__)
                         self.log_warn(dict(
-                            warn_name=WarnLog.TupNoteOvl, bar_num=number, offsets=offsets, durations=durs
+                            warn_name=WarnLog.TupNoteOvlOut, bar_num=number, offsets=offsets, durations=durs
                         ))
             lst_notes.append([note2note_cleaned(n) for n in notes_out])
 
         # Enforce quantization
         dur_slot = 4 / 2**self.prec  # quarterLength by quantization precision
 
+        def val_within_prec(val: float) -> bool:
+            return (val / dur_slot).is_integer()
+
         def note_within_prec(note):
-            return (note2dur(note) / dur_slot).is_integer()
+            return val_within_prec(note2dur(note)) and val_within_prec(get_offset(note))
 
         def notes_within_prec(notes_):
             return all(note_within_prec(n__) for n__ in notes_)
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):
+            dur = time_sig2bar_dur(time_sig)
             if not notes_within_prec(notes):
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
-                # if i_bar == 61:
-                #     ic(lst_notes[i_bar])
                 assert notes_within_prec(lst_notes[i_bar])  # Sanity check implementation
                 offsets, durs = notes2offset_duration(notes)
                 self.log_warn(dict(warn_name=WarnLog.NoteNotQuant, bar_num=i_bar, offsets=offsets, durations=durs))
+            elif notes_have_gap(notes, duration=dur):
+                lst_notes[i_bar], unfilled_ranges = fill_with_rest(notes, duration=dur)
+                self.log_warn(dict(
+                    warn_name=WarnLog.BarNoteGap, bar_num=i_bar, time_sig=(time_sig.numerator, time_sig.denominator),
+                    precision=self.prec, unfilled_ranges=unfilled_ranges
+                ))
         # Now, triplets fixed to equal duration by `notes2quantized_notes`
 
         def trip_n_quant2notes(notes_: List[Union[Rest, Note, tuple[Note]]], num_bar: int):
@@ -738,26 +870,34 @@ class MusicExtractor:
                 if not isinstance(n, tuple):  # ignore tuplet durations as `consolidate` doesn't consider tuplets
                     # Merges complex durations into one for MXL output
                     n.duration.consolidate()
-        for notes, time_sig in zip(lst_notes, time_sigs):  # Final check before output
-            assert is_valid_bar_notes(notes, time_sig)
-        # lst_notes = lst_notes[:22]  # breaks when including bar index 21
-        # bar_wicked = lst_notes[21]
-        # ic(lst_notes[20], lst_notes[21])
-        # ic(bar_wicked, len(bar_wicked))
-        # for e in bar_wicked:
-        #     name, qLen = e.fullName, e.duration.quarterLength
-        #     ic(name, e.offset, qLen, e.duration)
-        if exp == 'mxl':  # TODO: didn't test
+        for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):  # Final check before output
+            # Edge case, see `notes2quantized_notes`
+            check_dur = not (self.prec == 5 and (time_sig.numerator, time_sig.denominator) == (21, 64) and i_bar == 51)
+
+            if not is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur):
+                ic(i_bar)
+                for n in notes:
+                    strt, end = get_offset(n), get_end_qlen(n)
+                    ic(n, strt, end)
+
+                dur_bar = time_sig2bar_dur(time_sig)
+                pos_dur = is_notes_pos_duration(notes)
+                no_ovl = not notes_overlapping(notes)
+                have_gap = notes_have_gap(notes)
+                match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
+                                             abs_tol=self.eps)
+                ic(pos_dur, no_ovl, (not have_gap), match_bar_dur, time_sig, dur_bar)
+                exit(1)
+            assert is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur)
+        if exp == 'mxl':
             scr_out = make_score(
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo,
                 lst_note=[list(flatten_notes(notes)) for notes in lst_notes]
             )
-            dir_nm = config(f'{DIR_DSET}.mxl-eg.dir_nm_extracted')
-            fmt = 'mxl'
-            # fmt = 'musicxml'
-            # sometimes file-writes via `mxl` couldn't be read by MuseScore
+            dir_nm = sconfig(f'{DSET_DIR}.mxl-eg.dir_nm_extracted')
+            fmt = 'mxl'  # sometimes file-writes via `mxl` couldn't be read by MuseScore
             mode_str = 'melody only' if self.mode == 'melody' else 'full'
-            path = os.path.join(PATH_BASE, DIR_DSET, dir_nm, f'{title}, {mode_str}.{fmt}')
+            path = os_join(BASE_PATH, DSET_DIR, dir_nm, f'{title}, {mode_str}.{fmt}')
             # disable all `music21` modifications, I should have handled all the edge cases
             scr_out.write(fmt=fmt, fp=path, makeNotation=False)
         else:
@@ -786,7 +926,7 @@ class MusicExtractor:
                 else:
                     scr_out = ' '.join(toks)
         if self.verbose and self.warn_logger is not None:
-            t = fmt_time(datetime.datetime.now() - t_strt)
+            t = fmt_delta(datetime.datetime.now() - t_strt)
             self.logger.info(f'{logi(title)} extraction completed in {log_s(t, c="y")} '
                              f'with warnings {log_dict(self.warn_logger.tracked())}')
         ret = scr_out
@@ -809,49 +949,50 @@ if __name__ == '__main__':
 
     from icecream import ic
 
-    ic.lineWrapWidth = 400
+    ic.lineWrapWidth = 512
 
     import musicnlp.util.music as music_util
 
     def toy_example():
         logger = WarnLog()
-        fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        # fnm = 'Faded'
+        # fnm = 'Piano Sonata'
+        # fnm = 'Merry Christmas'
+        # fnm = 'Merry Go Round of Life'
+        fnm = '易燃易爆炸'
+        fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         # fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
         # fnm = music_util.get_my_example_songs('平凡之路', fmt='MXL')
-        # fnm = music_util.get_my_example_songs('Canon')
         # fnm = music_util.get_my_example_songs('Canon piano')
-        # fnm = music_util.get_my_example_songs('canonroc1')
-        # fnm = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/Kool & The Gang - ' \
-        #       'What Would the World Be Without Music Let the Music Take Your Mind Medley.mxl'
         ic(fnm)
-        mt = MusicExtractor(warn_logger=logger, verbose=True)
+        me = MusicExtractor(warn_logger=logger, verbose=True)
 
         def check_mxl_out():
-            mt(fnm, exp='mxl')
+            me(fnm, exp='mxl')
             # ic(logger.to_df())
 
         def check_str():
-            toks = mt(fnm, exp='str')
+            toks = me(fnm, exp='str')
             ic(len(toks), toks[:20])
 
         def check_visualize():
-            s = mt(fnm, exp='visualize')
+            s = me(fnm, exp='visualize')
             print(s)
 
         def check_return_meta_n_key():
-            d_out = mt(fnm, exp='str_join', return_meta=True, return_key=True)
+            d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             ic(d_out)
-        # check_mxl_out()
+        check_mxl_out()
         # check_str()
         # check_visualize()
-        check_return_meta_n_key()
-    toy_example()
+        # check_return_meta_n_key()
+    # toy_example()
 
     def encode_a_few():
         # dnm = 'POP909'
         dnm = 'LMD-cleaned-subset'
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[641:]  # this one too long fnm
-        fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[:10]
+        fnms = music_util.get_converted_song_paths(dnm, fmt='mxl')[641:]  # this one too long fnm
+        fnms = music_util.get_converted_song_paths(dnm, fmt='mxl')[:10]
         # ic(len(fnms), fnms[:5])
 
         # idx = [idx for idx, fnm in enumerate(fnms) if '恋爱ing' in fnm][0]
@@ -868,7 +1009,7 @@ if __name__ == '__main__':
     def profile():
         def func():
             dnm = 'LMD-cleaned-subset'
-            fnms = music_util.get_cleaned_song_paths(dnm, fmt='mxl')[:10]
+            fnms = music_util.get_converted_song_paths(dnm, fmt='mxl')[:10]
             me = MusicExtractor(warn_logger=True, verbose=False, greedy_tuplet_pitch_threshold=1)
             for i_fl, fnm in enumerate(fnms):
                 ic(i_fl)
@@ -906,26 +1047,1276 @@ if __name__ == '__main__':
     # fix_find_song_with_error()
 
     def check_edge_case():
+        # dnm = 'POP909'
+        # dnm = 'MAESTRO'
+        dnm = 'LMD'
+        dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
+        dir_nm = f'{dir_nm}, MS'
+        # fnm = '汪峰 - 春天里.mxl'
+        # fnm = 'Franz Schubert - Impromptu Op. 142 No. 3 In B-flat Major.mxl'
+        # fnm = 'Alban Berg - Sonata Op. 1, v2.mxl'
+        # fnm = 'Franz Liszt - Tarantelle Di Bravura, S. 386.mxl'
+        # fnm = 'Johann Sebastian Bach - Prelude And Fugue In E Major, Wtc I, Bwv 854.mxl'
+        # path = os_join(u.dset_path, dir_nm, fnm)
+        # path = '/Users/stefanhg/Desktop/Untitled 186.xml'
+        # fnm = '103233.mxl'
+        # path = os_join(u.dset_path, dir_nm, '100000-110000', fnm)
+        fnm = '140453.mxl'
+        path = os_join(u.dset_path, 'converted', 'LMD, check error', fnm)
+        me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
+        # print(me(path, exp='visualize'))
+        me(path, exp='mxl')
+    # check_edge_case()
+
+    def check_edge_case_batched():
+        # dnm = 'MAESTRO'
+        dnm = 'LMD'
+        dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
+        dir_nm = f'{dir_nm}, MS'
         # broken_files = ['Grandi - Dolcissimo amore', 'John Elton - Burn Down the Mission']
         # broken_files = ['Battiato - Segnali di vita', 'Billy Joel - The River of Dreams']
         # broken_files = ['Pooh - Anni senza fiato', 'Nirvana - Been a Son']
-        broken_files = [
-            'Daniele - Io vivo come te',
-            'Drupi - Voglio una donna',
-            'Flamingos - I Only Have Eyes for You',
-            'Ozzy Osbourne - Mr. Crowley',
-            'Ricky Martin - Jaleo (Spanglish)'
-        ]
+        # broken_files = [
+        #     'Daniele - Io vivo come te',
+        #     'Drupi - Voglio una donna',
+        #     'Flamingos - I Only Have Eyes for You',
+        #     'Ozzy Osbourne - Mr. Crowley',
+        #     'Ricky Martin - Jaleo (Spanglish)'
+        # ]
         # broken_fl = broken_files[0]
         # broken_fl = 'U2 - The Electric Co.'
+        # broken_files = [
+        #     'Franz Schubert - Sonata In A Major, D. 959 (complete), v2.mxl',
+        #     'Franz Liszt - Après Une Lecture De Dante: Fantasia Quasi Sonata, S.161, No. 7.mxl',
+        #     'Franz Liszt - Transcendental Etude No. 10 In F Minor.mxl',
+        #     'Franz Liszt - Grandes Études De Paganini, No. 3 "la Campanella", S.141:3, v1.mxl',
+        #     'Claude Debussy - Pour Le Piano (complete).mxl',
+        #     'Franz Schubert - Sonata In B-flat Major, D960, v9.mxl',
+        #     'Frédéric Chopin - Etude Op. 10 No. 4 In C-sharp Minor.mxl'
+        # ]
+        # broken_files = [
+        #     # '000065.mxl',
+        #     # '000431.mxl',
+        #     # '000523.mxl',
+        #     # '000338.mxl',
+        #     # '000562.mxl',
+        #     # '000122.mxl',
+        #     # '000211.mxl',
+        #     # '000284.mxl',
+        #     # '000721.mxl',
+        #     # '000186.mxl',
+        #     # '000822.mxl',
+        #     # '000709.mxl',
+        #     # '001139.mxl',
+        #     # '001176.mxl',
+        #     # '001240.mxl',
+        #     # '001489.mxl',
+        #     # '001154.mxl',
+        #     # '001617.mxl',
+        #     # '001128.mxl',
+        #     # '001097.mxl',
+        #     # '001317.mxl',
+        #     # '001909.mxl',
+        #     '001764.mxl',
+        #     '001549.mxl',
+        #     '001803.mxl'
+        #     # '000123.mxl',
+        #     # '000455.mxl',
+        #     # '001144.mxl',
+        #     '001282.mxl',
+        #     # '001216.mxl'
+        #     # '001219.mxl',
+        #     # '002380.mxl',
+        #     # '002436.mxl',
+        #     '002197.mxl'
+        #     # '002669.mxl',
+        #     # '002810.mxl',
+        #     # '002577.mxl',
+        #     # '003335.mxl',
+        #     # '002888.mxl',
+        #     # '003768.mxl',
+        #     # '003659.mxl',
+        #     # '004368.mxl',
+        #     # '004929.mxl',
+        #     # '004564.mxl',
+        #     # '004875.mxl',
+        #     # '004331.mxl',
+        #     # '004645.mxl',
+        #     '004464.mxl'
+        #     # '003348.mxl',
+        #     # '005398.mxl',
+        #     # '005098.mxl',
+        #     # '005340.mxl',
+        #     # '005475.mxl',
+        #     # '005973.mxl',
+        #     # '005747.mxl',
+        #     # '006624.mxl',
+        #     '006144.mxl'
+        #     # '006095.mxl',
+        #     # '006637.mxl',
+        #     # '006890.mxl',
+        #     # '006825.mxl',
+        #     # '007025.mxl',
+        #     # '005444.mxl',
+        #     # '007156.mxl',
+        #     # '007860.mxl',
+        #     # '007326.mxl',
+        #     # '008092.mxl',
+        #     # '008605.mxl',
+        #     # '008816.mxl',
+        #     # '008567.mxl',
+        #     '008696.mxl',
+        #     # '008816.mxl',
+        #     # '009399.mxl',
+        #     # '009353.mxl',
+        #     # '009483.mxl',
+        #     '009858.mxl'
+        # ]
+        # broken_files = [
+        #     # '010853.mxl',
+        #     # '010994.mxl',
+        #     # '011076.mxl',
+        #     # '011299.mxl',
+        #     # '011487.mxl',
+        #     # '011896.mxl',
+        #     # '011804.mxl'
+        #     # '011899.mxl',
+        #     # '012361.mxl',
+        #     # '012544.mxl',
+        #     # '012434.mxl',
+        #     # '012602.mxl',
+        #     # '012493.mxl',
+        #     # '012943.mxl',
+        #     # '012763.mxl',
+        #     # '013013.mxl',
+        #     # '013277.mxl',
+        #     # '013215.mxl',
+        #     # '013629.mxl',
+        #     # '013551.mxl',
+        #     # '012969.mxl',
+        #     # '013989.mxl',
+        #     # '014247.mxl',
+        #     # '014447.mxl',
+        #     # '014391.mxl',
+        #     # '014538.mxl',
+        #     # '014891.mxl',
+        #     # '014964.mxl',
+        #     # '015364.mxl',
+        #     # '015780.mxl',
+        #     # '015976.mxl',
+        #     # '015882.mxl',
+        #     # '015984.mxl',
+        #     # '016304.mxl',
+        #     # '016597.mxl',
+        #     # '016869.mxl',
+        #     # '016932.mxl',
+        #     # '017151.mxl',
+        #     # '017111.mxl',
+        #     # '017228.mxl',
+        #     # '017482.mxl',
+        #     # '017707.mxl',
+        #     # '017948.mxl',
+        #     # '018015.mxl',
+        #     # '018376.mxl',
+        #     # '018622.mxl',
+        #     # '017265.mxl',
+        #     # '016347.mxl',
+        #     # '018901.mxl',
+        #     # '019033.mxl',
+        #     # '019234.mxl',
+        #     # '019297.mxl',
+        #     # '019984.mxl',
+        #     '019250.mxl',
+        #     '019352.mxl',
+        #     '018376.mxl',
+        #     '018033.mxl',
+        # ]
+        # broken_files = [
+        #     # '020396.mxl',
+        #     # '020145.mxl',
+        #     # '020358.mxl',
+        #     # '020557.mxl',
+        #     # '020846.mxl',
+        #     # '020683.mxl',
+        #     # '021209.mxl',
+        #     # '020831.mxl',
+        #     # '020257.mxl',
+        #     # '021341.mxl',
+        #     # '021777.mxl',
+        #     # '021912.mxl',
+        #     # '022179.mxl',
+        #     # '022490.mxl',
+        #     # '022986.mxl',
+        #     # '022860.mxl',
+        #     # '022744.mxl',
+        #     # '022576.mxl',
+        #     # '021939.mxl',
+        #     # '020182.mxl',
+        #     # '023977.mxl',
+        #     # '023616.mxl',
+        #     # '024091.mxl',
+        #     # '020846.mxl',
+        #     # '021912.mxl',
+        #     # '024327.mxl',
+        #     # '024653.mxl',
+        #     # '024592.mxl',
+        #     # '025049.mxl',
+        #     # '025591.mxl',
+        #     # '025250.mxl',
+        #     # '026051.mxl',
+        #     # '025967.mxl',
+        #     # '024661.mxl',
+        #     # '024609.mxl',
+        #     # '026132.mxl',
+        #     # '026884.mxl',
+        #     # '027213.mxl',
+        #     # '026751.mxl',
+        #     # '027607.mxl',
+        #     # '027966.mxl',
+        #     # '026884.mxl',
+        #     # '027980.mxl',
+        #     # '028717.mxl',
+        #     # '028285.mxl',
+        #     # '027228.mxl',
+        #     # '027267.mxl',
+        #     # '028371.mxl',
+        #     # '029373.mxl',
+        #     # '029730.mxl',
+        #     # '029873.mxl',
+        #     # '029921.mxl',
+        #     '029627.mid',  # music21 have trouble parsing this file, takes more than 5 min...
+        # ]
+        # broken_files = [
+        #     # '030110.mxl',
+        #     # '030588.mxl',
+        #     # '030334.mxl',
+        #     # '030369.mxl',
+        #     # '030647.mxl',
+        #     # '031642.mxl',
+        #     # '031337.mxl',
+        #     # '031405.mxl',
+        #     # '032699.mxl',
+        #     # '032582.mxl',
+        #     # '032636.mxl',
+        #     # '032787.mxl',
+        #     # '033045.mxl',
+        #     # '032787.mxl',
+        #     # '033901.mxl',
+        #     # '033514.mxl',
+        #     # '034666.mxl',
+        #     # '031675.mxl',
+        #     # '033922.mxl',
+        #     # '033224.mxl',
+        #     # '034698.mxl',
+        #     # '034822.mxl',
+        #     # '034586.mxl',
+        #     # '033240.mxl',
+        #     # '033717.mxl',
+        #     # '034129.mxl',
+        #     # '034515.mxl',
+        #     # '035125.mxl',
+        #     # '034765.mxl',
+        #     # '035920.mxl',
+        #     # '035282.mxl',
+        #     # '035556.mxl',
+        #     # '035308.mxl',
+        #     # '036148.mxl',
+        #     # '036565.mxl',
+        #     # '037038.mxl',
+        #     # '036936.mxl',
+        #     # '037547.mxl',
+        #     # '037923.mxl',
+        #     # '037376.mxl',
+        #     # '037625.mxl',
+        #     # '037704.mxl',
+        #     # '038208.mxl',
+        #     # '038031.mxl',
+        #     # '038837.mxl',
+        #     # '038670.mxl',
+        #     # '038855.mxl',
+        #     # '039475.mxl',
+        #     # '038696.mxl',
+        #     # '039249.mxl',
+        #     # '039753.mxl',
+        #     # '039703.mxl',
+        #     # '039145.mxl',
+        #     # '039839.mxl',
+        #     # '035611.mxl',
+        #     '038670.mxl',
+        # ]
+        # broken_files = [
+        #     # '040459.mxl',
+        #     # '040566.mxl',
+        #     # '040681.mxl',
+        #     # '040965.mxl',
+        #     # '041173.mxl',
+        #     # '041259.mxl',
+        #     # '041349.mxl',
+        #     # '041428.mxl',
+        #     # '041432.mxl',
+        #     # '041512.mxl',
+        #     # '041992.mxl',
+        #     # '042015.mxl',
+        #     '042156.mxl',
+        #     '042546.mxl',
+        #     '042653.mxl',
+        #     '042694.mxl',
+        #     '042824.mxl',
+        #     '042838.mxl',
+        #     '042920.mxl',
+        #     '042972.mxl',
+        #     '043001.mxl',
+        #     '043002.mxl',
+        #     '043061.mxl',
+        #     '043371.mxl',
+        #     '043710.mxl',
+        #     '043923.mxl',
+        #     '044052.mxl',
+        #     '044090.mxl',
+        #     '044109.mxl',
+        #     '044359.mxl',
+        #     '044363.mxl',
+        #     '044433.mxl',
+        #     '044499.mxl',
+        #     '045316.mxl',
+        #     '045381.mxl',
+        #     '045631.mxl',
+        #     '045674.mxl',
+        #     '045820.mxl',
+        #     '045964.mxl',
+        #     '046821.mxl',
+        #     '046868.mxl',
+        #     '047006.mxl',
+        #     '047130.mxl',
+        #     '047262.mxl',
+        #     '047304.mxl',
+        #     '047606.mxl',
+        #     '047699.mxl',
+        #     '047718.mxl',
+        #     '047743.mxl',
+        #     '048511.mxl',
+        #     '049070.mxl',
+        #     '049335.mxl',
+        #     '049356.mxl',
+        #     '049517.mxl',
+        #     '049737.mxl',
+        #     '049868.mxl',
+        #     '049922.mxl',
+        #     '049934.mxl'
+        # ]
+        # broken_files = [
+        #     # '050077.mxl',
+        #     # '050305.mxl',
+        #     # '050355.mxl',
+        #     # '050565.mxl',
+        #     # '050621.mxl',
+        #     # '050651.mxl',
+        #     # '050689.mxl',
+        #     # '050703.mxl',
+        #     # '050735.mxl',
+        #     # '050992.mxl',
+        #     # '051354.mxl',
+        #     # '051696.mxl',
+        #     # '051926.mxl',
+        #     # '052001.mxl',
+        #     # '052324.mxl',
+        #     # '052902.mxl',
+        #     # '053020.mxl',
+        #     # '053135.mxl',
+        #     # '053137.mxl',
+        #     # '053165.mxl',
+        #     # '053585.mxl',
+        #     # '053693.mxl',
+        #     # '054246.mxl',
+        #     # '054280.mxl',
+        #     # '054494.mxl',
+        #     # '054923.mxl',
+        #     # '055028.mxl',
+        #     # '055465.mxl',
+        #     # '055770.mxl',
+        #     # '055924.mxl',
+        #     # '056113.mxl',
+        #     # '056122.mxl',
+        #     # '056453.mxl',
+        #     # '056606.mxl',
+        #     # '056617.mxl',
+        #     # '056792.mxl',
+        #     # '057053.mxl',
+        #     # '057853.mxl',
+        #     '057584.mxl',
+        #     '057374.mxl',
+        #     '050980.mxl',
+        #     '057285.mxl',
+        # ]
+        # broken_files = [
+        #     # '060780.mxl',
+        #     # '061434.mxl',
+        #     # '061147.mxl',
+        #     # '061621.mxl',
+        #     # '061971.mxl',
+        #     # '062044.mxl',
+        #     # '061235.mxl',
+        #     # '062224.mxl',
+        #     # '062109.mxl',
+        #     # '061274.mxl',
+        #     # '062363.mxl',
+        #     # '062793.mxl',
+        #     # '062523.mxl',
+        #     # '063122.mxl',
+        #     # '063104.mxl',
+        #     # '062372.mxl',
+        #     # '063157.mxl',
+        #     # '063536.mxl',
+        #     # '063749.mxl',
+        #     # '063561.mxl',
+        #     # '064261.mxl',
+        #     # '064722.mxl',
+        #     # '064532.mxl',
+        #     # '064734.mxl',
+        #     # '065726.mxl',
+        #     # '066250.mxl',
+        #     # '066380.mxl',
+        #     # '066585.mxl',
+        #     # '066752.mxl',
+        #     # '066936.mxl',
+        #     # '066876.mxl',
+        #     # '067436.mxl',
+        #     # '067711.mxl',
+        #     # '067526.mxl',
+        #     # '067812.mxl',
+        #     # '068132.mxl',
+        #     # '067765.mxl',
+        #     # '068070.mxl',
+        #     # '068318.mxl',
+        #     # '068042.mxl',
+        #     # '068589.mxl',
+        #     # '068659.mxl',
+        #     # '069017.mxl',
+        #     # '067771.mxl',
+        #     # '069175.mxl',
+        #     # '068166.mxl',
+        #     # '068170.mxl',
+        #     # '069209.mxl',
+        #     # '069877.mxl',
+        #     # '069773.mxl',
+        #     # '069799.mxl',
+        #     # '069929.mxl',
+        #     # '068179.mxl',
+        #     '069977.mxl',
+        # ]
+        # broken_files = [
+        #     # '070020.mxl',
+        #     # '070486.mxl',
+        #     # '070431.mxl',
+        #     # '070783.mxl',
+        #     # '070849.mxl',
+        #     # '070906.mxl',
+        #     # '071055.mxl',
+        #     # '071060.mxl',
+        #     # '071573.mxl',
+        #     # '070487.mxl',
+        #     # '072475.mxl',
+        #     # '072279.mxl',
+        #     # '072775.mxl',
+        #     # '072284.mxl',
+        #     # '073249.mxl',
+        #     # '074094.mxl',
+        #     # '074321.mxl',
+        #     # '074436.mxl',
+        #     # '073873.mxl',
+        #     # '075076.mxl',
+        #     # '074856.mxl',
+        #     # '074279.mxl',
+        #     # '075055.mxl',
+        #     # '075831.mxl',
+        #     # '075927.mxl',
+        #     # '076528.mxl',
+        #     # '076763.mxl',
+        #     # '076808.mxl',
+        #     # '076834.mxl',
+        #     # '076901.mxl',
+        #     # '076905.mxl',
+        #     # '077081.mxl',
+        #     # '077162.mxl',
+        #     # '077198.mxl',
+        #     # '077774.mxl',
+        #     # '077797.mxl',
+        #     '077511.mxl',
+        #     '077999.mxl',
+        #     '078118.mxl',
+        #     '078146.mxl',
+        #     '078395.mxl',
+        #     '078439.mxl',
+        #     '078570.mxl',
+        #     '078642.mxl',
+        #     '078668.mxl',
+        #     '078695.mxl',
+        #     '078982.mxl',
+        #     '079223.mxl',
+        #     '079373.mxl',
+        #     '079555.mxl',
+        #     '079696.mxl',
+        #     '079824.mxl',
+        #     '079877.mxl',
+        #     '079941.mxl'
+        # ]
+        # broken_files = [
+        #     # '080403.mxl',
+        #     # '080277.mxl',
+        #     # '080237.mxl',
+        #     # '080121.mxl',
+        #     # '081070.mxl',
+        #     # '081220.mxl',
+        #     # '081142.mxl',
+        #     # '081285.mxl',
+        #     # '081475.mxl',
+        #     # '081645.mxl',
+        #     # '081687.mxl',
+        #     # '081720.mxl',
+        #     # '081731.mxl',
+        #     # '081981.mxl',
+        #     # '082499.mxl',
+        #     # '082875.mxl',
+        #     # '082912.mxl',
+        #     # '083053.mxl',
+        #     # '083091.mxl',
+        #     # '083102.mxl',
+        #     # '083271.mxl',
+        #     # '084002.mxl',
+        #     # '084048.mxl',
+        #     # '084088.mxl',
+        #     # '084171.mxl',
+        #     # '084232.mxl',
+        #     # '084268.mxl',
+        #     # '084402.mxl',
+        #     # '084838.mxl',
+        #     # '084958.mxl',
+        #     # '085070.mxl',
+        #     # '085367.mxl',
+        #     # '085518.mxl',
+        #     # '085744.mxl',
+        #     # '085859.mxl',
+        #     # '086053.mxl',
+        #     # '086212.mxl',
+        #     # '086374.mxl',
+        #     # '086481.mxl',
+        #     # '086592.mxl',
+        #     # '086769.mxl',
+        #     # '086800.mxl',
+        #     '086961.mxl',
+        #     '087081.mxl',
+        #     '087104.mxl',
+        #     '087201.mxl',
+        #     '087274.mxl',
+        #     '087315.mxl',
+        #     '087375.mxl',
+        #     '087833.mxl',
+        #     '087970.mxl',
+        #     '087984.mxl',
+        #     '087985.mxl',
+        #     '087991.mxl',
+        #     '088138.mxl',
+        #     '088347.mxl',
+        #     '088814.mxl',
+        #     '089084.mxl',
+        #     '089156.mxl',
+        #     '089164.mxl',
+        #     '089189.mxl',
+        #     '089691.mxl',
+        #     '089903.mxl'
+        # ]
+        # broken_files = [
+        #     # '090002.mxl',
+        #     # '090017.mxl',
+        #     # '090057.mxl',
+        #     # '090156.mxl',
+        #     # '090212.mxl',
+        #     # '090213.mxl',
+        #     # '090276.mxl',
+        #     # '090892.mxl',
+        #     # '090927.mxl',
+        #     # '091195.mxl',
+        #     # '091285.mxl',
+        #     # '091375.mxl',
+        #     # '091628.mxl',
+        #     # '091640.mxl',
+        #     # '091687.mxl',
+        #     # '091921.mxl',
+        #     # '091936.mxl',
+        #     # '092186.mxl',
+        #     # '092242.mxl',
+        #     # '092288.mxl',
+        #     # '092380.mxl',
+        #     # '092395.mxl',
+        #     # '092405.mxl',
+        #     # '092407.mxl',
+        #     # '092415.mxl',
+        #     # '092597.mxl',
+        #     # '093053.mxl',
+        #     # '093099.mxl',
+        #     # '093106.mxl',
+        #     # '093115.mxl',
+        #     # '093116.mxl',
+        #     # '093227.mxl',
+        #     # '093309.mxl',
+        #     # '093403.mxl',
+        #     # '093455.mxl',
+        #     # '093473.mxl',
+        #     # '093569.mxl',
+        #     # '093760.mxl',
+        #     # '094158.mxl',
+        #     # '094217.mxl',
+        #     # '094253.mxl',
+        #     # '094569.mxl',
+        #     # '094678.mxl',
+        #     # '094953.mxl',
+        #     # '095098.mxl',
+        #     # '095168.mxl',
+        #     # '095381.mxl',
+        #     # '095502.mxl',
+        #     # '095558.mxl',
+        #     # '095601.mxl',
+        #     # '095687.mxl',
+        #     # '096037.mxl',
+        #     # '096044.mxl',
+        #     # '096159.mxl',
+        #     # '096483.mxl',
+        #     # '097172.mxl',
+        #     # '097193.mxl',
+        #     # '097288.mxl',
+        #     # '097335.mxl',
+        #     # '097374.mxl',
+        #     # '097413.mxl',
+        #     # '097452.mxl',
+        #     # '097606.mxl',
+        #     # '097668.mxl',
+        #     # '097768.mxl',
+        #     # '097959.mxl',
+        #     # '098202.mxl',
+        #     # '098631.mxl',
+        #     # '098879.mxl',
+        #     # '098930.mxl',
+        #     # '099166.mxl',
+        #     # '099308.mxl',
+        #     # '099394.mxl',
+        #     # '099481.mxl',
+        #     '099641.mxl',
+        #     '099675.mxl'
+        # ]
+        # broken_files = [
+        #     # '100067.mxl',
+        #     # '100137.mxl',
+        #     # '100138.mxl',
+        #     # '100201.mxl',
+        #     # '100599.mxl',
+        #     # '100621.mxl',
+        #     # '100950.mxl',
+        #     # '101231.mxl',
+        #     # '102224.mxl',
+        #     # '102291.mxl',
+        #     # '102304.mxl',
+        #     # '102457.mxl',
+        #     # '102670.mxl',
+        #     # '102711.mxl',
+        #     # '102983.mxl',
+        #     # '103155.mxl',
+        #     # '103193.mxl',
+        #     # '103451.mxl',
+        #     # '103456.mxl',
+        #     # '103501.mxl',
+        #     # '104001.mxl',
+        #     # '104162.mxl',
+        #     # '104238.mxl',
+        #     # '104310.mxl',
+        #     # '104374.mxl',
+        #     # '104593.mxl',
+        #     # '104842.mxl',
+        #     # '104915.mxl',
+        #     # '104997.mxl',
+        #     # '105238.mxl',
+        #     # '105584.mxl',
+        #     # '105797.mxl',
+        #     # '105869.mxl',
+        #     # '105993.mxl',
+        #     # '106066.mxl',
+        #     # '106144.mxl',
+        #     # '106178.mxl',
+        #     # '106211.mxl',
+        #     # '106462.mxl',
+        #     # '106607.mxl',
+        #     # '106616.mxl',
+        #     # '106687.mxl',
+        #     # '106823.mxl',
+        #     # '106842.mxl',
+        #     # '107056.mxl',
+        #     # '107103.mxl',
+        #     # '107280.mxl',
+        #     # '107479.mxl',
+        #     # '107647.mxl',
+        #     # '107713.mxl',
+        #     # '107876.mxl',
+        #     # '107946.mxl',
+        #     # '107965.mxl',
+        #     # '108367.mxl',
+        #     # '108513.mxl',
+        #     # '108519.mxl',
+        #     # '108537.mxl',
+        #     # '108841.mxl',
+        #     # '109166.mxl',
+        #     '109208.mxl',
+        #     '109253.mxl',
+        #     '109324.mxl',
+        #     '109380.mxl',
+        #     '109406.mxl',
+        #     '109805.mxl'
+        # ]
+        # broken_files = [
+        #     # '110459.mxl',
+        #     # '110416.mxl',
+        #     # '110302.mxl',
+        #     # '111158.mxl',
+        #     # '111071.mxl',
+        #     # '111375.mxl',
+        #     # '111569.mxl',
+        #     # '111282.mxl',
+        #     # '111350.mxl',
+        #     # '111391.mxl',
+        #     # '111830.mxl',
+        #     # '111735.mxl',
+        #     # '112271.mxl',
+        #     # '112533.mxl',
+        #     # '112685.mxl',
+        #     # '112397.mxl',
+        #     # '112774.mxl',
+        #     # '112780.mxl',
+        #     # '112545.mxl',
+        #     # '113210.mxl',
+        #     # '113381.mxl',
+        #     # '113045.mxl',
+        #     # '113517.mxl',
+        #     # '113620.mxl',
+        #     # '113670.mxl',
+        #     # '114030.mxl',
+        #     # '113694.mxl',
+        #     # '114813.mxl',
+        #     # '114950.mxl',
+        #     # '113387.mxl',
+        #     # '115408.mxl',
+        #     # '115570.mxl',
+        #     # '116052.mxl',
+        #     # '116371.mxl',
+        #     # '116483.mxl',
+        #     # '117028.mxl',
+        #     # '116909.mxl',
+        #     # '118591.mxl',
+        #     # '117429.mxl',
+        #     # '118207.mxl',
+        #     # '118470.mxl',
+        #     # '116600.mxl',
+        #     # '118741.mxl',
+        #     # '117967.mxl',
+        #     # '116802.mxl',
+        #     # '116941.mxl',
+        #     # '117077.mxl',
+        #     # '116496.mxl',
+        #     # '118658.mxl',
+        #     # '116710.mxl',
+        #     # '118664.mxl',
+        #     # '116976.mxl',
+        #     # '118830.mxl',
+        #     # '118307.mxl',
+        #     # '119887.mxl',
+        #     # '119799.mxl',
+        #     # '116496.mxl',
+        #     # '116600.mxl',
+        #     # '116710.mxl',
+        #     # '116802.mxl',
+        #     # '116909.mxl',
+        #     # '116941.mxl',
+        #     # '116976.mxl',
+        #     # '117028.mxl',
+        #     # '117077.mxl',
+        #     # '117429.mxl',
+        #     # '117546.mxl',
+        #     # '117907.mxl',
+        #     # '117967.mxl',
+        #     # '118207.mxl',
+        #     # '118307.mxl',
+        #     # '118429.mxl',
+        #     # '118470.mxl',
+        #     # '118591.mxl',
+        #     # '118658.mxl',
+        #     # '118741.mxl',
+        #     # '118830.mxl',
+        #     # '119537.mxl',
+        #     # '119799.mxl',
+        #     # '119887.mxl',
+        #     '118664.mxl',
+        # ]
+        # broken_files = [
+        #     # '120027.mxl',
+        #     # '120177.mxl',
+        #     # '120351.mxl',
+        #     # '120428.mxl',
+        #     # '120602.mxl',
+        #     # '121186.mxl',
+        #     # '121245.mxl',
+        #     # '121280.mxl',
+        #     # '121643.mxl',
+        #     # '122331.mxl',
+        #     # '122359.mxl',
+        #     # '122749.mxl',
+        #     # '123071.mxl',
+        #     # '123171.mxl',
+        #     # '123389.mxl',
+        #     # '123774.mxl',
+        #     # '123867.mxl',
+        #     # '123875.mxl',
+        #     # '124047.mxl',
+        #     # '124190.mxl',
+        #     # '124538.mxl',
+        #     # '124832.mxl',
+        #     # '125135.mxl',
+        #     # '125452.mxl',
+        #     # '125673.mxl',
+        #     # '125805.mxl',
+        #     # '125956.mxl',
+        #     # '126120.mxl',
+        #     # '126193.mxl',
+        #     # '126248.mxl',
+        #     # '126280.mxl',
+        #     # '126873.mxl',
+        #     # '126915.mxl',
+        #     # '127114.mxl',
+        #     # '127423.mxl',
+        #     # '127468.mxl',
+        #     # '127481.mxl',
+        #     # '127490.mxl',
+        #     # '127684.mxl',
+        #     # '127831.mxl',
+        #     # '127864.mxl',
+        #     # '128104.mxl',
+        #     # '128142.mxl',
+        #     # '128203.mxl',
+        #     # '128241.mxl',
+        #     # '128314.mxl',
+        #     # '128330.mxl',
+        #     # '128707.mxl',
+        #     # '128726.mxl',
+        #     # '128869.mxl',
+        #     '129002.mxl',
+        #     '129673.mxl',
+        #     '129926.mxl'
+        # ]
+        # broken_files = [
+        #     # '130315.mxl',
+        #     # '130520.mxl',
+        #     # '130694.mxl',
+        #     # '130865.mxl',
+        #     # '130890.mxl',
+        #     # '131057.mxl',
+        #     # '131076.mxl',
+        #     # '131214.mxl',
+        #     # '131288.mxl',
+        #     # '131318.mxl',
+        #     # '131637.mxl',
+        #     # '131652.mxl',
+        #     # '132244.mxl',
+        #     # '132435.mxl',
+        #     # '132626.mxl',
+        #     # '133023.mxl',
+        #     # '133048.mxl',
+        #     # '133723.mxl',
+        #     # '133980.mxl',
+        #     # '133995.mxl',
+        #     # '134158.mxl',
+        #     # '134713.mxl',
+        #     # '135207.mxl',
+        #     # '135382.mxl',
+        #     # '135582.mxl',
+        #     # '135786.mxl',
+        #     # '135860.mxl',
+        #     # '135869.mxl',
+        #     # '136063.mxl',
+        #     # '136261.mxl',
+        #     # '136365.mxl',
+        #     # '136803.mxl',
+        #     # '136809.mxl',
+        #     # '136826.mxl',
+        #     # '137084.mxl',
+        #     # '137212.mxl',
+        #     # '137330.mxl',
+        #     # '137388.mxl',
+        #     # '137508.mxl',
+        #     # '137583.mxl',
+        #     # '137590.mxl',
+        #     # '137904.mxl',
+        #     '138067.mxl',
+        #     '138235.mxl',
+        #     '138276.mxl',
+        #     '138527.mxl',
+        #     '138592.mxl',
+        #     '139229.mxl',
+        #     '139402.mxl',
+        #     '139693.mxl',
+        #     '139991.mxl'
+        # ]
+        broken_files = [
+            # '140453.mxl',
+            # '140603.mxl',
+            # '140651.mxl',
+            # '140888.mxl',
+            # '141140.mxl',
+            # '141538.mxl',
+            # '141552.mxl',
+            # '141807.mxl',
+            # '141898.mxl',
+            # '141923.mxl',
+            # '141945.mxl',
+            # '142327.mxl',
+            # '142436.mxl',
+            # '142608.mxl',
+            # '142691.mxl',
+            # '142820.mxl',
+            # '142951.mxl',
+            # '143120.mxl',
+            # '143280.mxl',
+            # '143342.mxl',
+            # '143352.mxl',
+            # '143434.mxl',
+            # '143510.mxl',
+            # '143847.mxl',
+            # '143881.mxl',
+            # '143963.mxl',
+            # '144075.mxl',
+            # '144306.mxl',
+            # '144368.mxl',
+            # '144710.mxl',
+            # '144835.mxl',
+            # '144935.mxl',
+            # '145008.mxl',
+            # '145026.mxl',
+            # '145045.mxl',
+            # '145208.mxl',
+            # '145355.mxl',
+            # '145570.mxl',
+            # '145704.mxl',
+            # '145972.mxl',
+            # '146062.mxl',
+            # '146733.mxl',
+            # '147074.mxl',
+            # '147176.mxl',
+            # '147584.mxl',
+            # '147693.mxl',
+            # '147735.mxl',
+            # '148061.mxl',
+            # '148086.mxl',
+            # '148137.mxl',
+            # '148416.mxl',
+            # '148594.mxl',
+            # '148658.mxl',
+            # '148677.mxl',
+            # '148875.mxl',
+            # '148918.mxl',
+            # '149140.mxl',
+            # '149445.mxl',
+            # '149473.mxl',
+            # '149883.mxl',
+            # '149942.mxl',
+            # '149994.mxl'
+        ]
+        # broken_files = [
+        #     # '150222.mxl',
+        #     # '150366.mxl',
+        #     # '150380.mxl',
+        #     # '150514.mxl',
+        #     # '150530.mxl',
+        #     # '150670.mxl',
+        #     # '151251.mxl',
+        #     # '151464.mxl',
+        #     # '151821.mxl',
+        #     # '151830.mxl',
+        #     # '152197.mxl',
+        #     '152227.mxl',
+        #     '152283.mxl',
+        #     '152447.mxl',
+        #     '152896.mxl',
+        #     '152980.mxl',
+        #     '153374.mxl',
+        #     '153469.mxl',
+        #     '153497.mxl',
+        #     '153631.mxl',
+        #     '153695.mxl',
+        #     '153978.mxl',
+        #     '154019.mxl',
+        #     '154065.mxl',
+        #     '154144.mxl',
+        #     '154184.mxl',
+        #     '154401.mxl',
+        #     '154691.mxl',
+        #     '155102.mxl',
+        #     '155137.mxl',
+        #     '155391.mxl',
+        #     '155569.mxl',
+        #     '155754.mxl',
+        #     '155909.mxl',
+        #     '155960.mxl',
+        #     '155968.mxl',
+        #     '156033.mxl',
+        #     '156176.mxl',
+        #     '156761.mxl',
+        #     '156951.mxl',
+        #     '157054.mxl',
+        #     '157586.mxl',
+        #     '157854.mxl',
+        #     '157980.mxl',
+        #     '158092.mxl',
+        #     '158202.mxl',
+        #     '158274.mxl',
+        #     '158399.mxl',
+        #     '158413.mxl',
+        #     '158592.mxl',
+        #     '158695.mxl',
+        #     '158902.mxl',
+        #     '159031.mxl',
+        #     '159236.mxl',
+        #     '159243.mxl',
+        #     '159380.mxl',
+        #     '159509.mxl',
+        #     '159595.mxl',
+        #     '159953.mxl'
+        # ]
+        # broken_files = [
+        #     # '160556.mxl',
+        #     # '160557.mxl',
+        #     # '160646.mxl',
+        #     # '160718.mxl',
+        #     # '160937.mxl',
+        #     # '161073.mxl',
+        #     # '161351.mxl',
+        #     # '161475.mxl',
+        #     # '161628.mxl',
+        #     # '161651.mxl',  # TODO: check error
+        #     # '161880.mxl',
+        #     # '162131.mxl',
+        #     # '162226.mxl',
+        #     # '162440.mxl',
+        #     # '162485.mxl',
+        #     # '163416.mxl',
+        #     '163655.mxl',
+        #     '163807.mxl',
+        #     '163813.mxl',
+        #     '163924.mxl',
+        #     '163953.mxl',
+        #     '164087.mxl',
+        #     '164214.mxl',
+        #     '164340.mxl',
+        #     '164389.mxl',
+        #     '164740.mxl',
+        #     '164938.mxl',
+        #     '165011.mxl',
+        #     '165034.mxl',
+        #     '165037.mxl',
+        #     '165040.mxl',
+        #     '165111.mxl',
+        #     '165226.mxl',
+        #     '165345.mxl',
+        #     '165389.mxl',
+        #     '165592.mxl',
+        #     '165697.mxl',
+        #     '165859.mxl',
+        #     '166220.mxl',
+        #     '166747.mxl',
+        #     '166766.mxl',
+        #     '166768.mxl',
+        #     '166831.mxl',
+        #     '166967.mxl',
+        #     '167063.mxl',
+        #     '167167.mxl',
+        #     '167205.mxl',
+        #     '167367.mxl',
+        #     '167395.mxl',
+        #     '167668.mxl',
+        #     '168349.mxl',
+        #     '168425.mxl',
+        #     '168581.mxl',
+        #     '168628.mxl',
+        #     '168973.mxl',
+        #     '169352.mxl',
+        #     '169617.mxl',
+        #     '169939.mxl'
+        # ]
+        # broken_files = [
+        #     # '170270.mxl',
+        #     # '170409.mxl',
+        #     # '170551.mxl',
+        #     # '170580.mxl',
+        #     # '170649.mxl',
+        #     # '170775.mxl',
+        #     # '171059.mxl',
+        #     # '171420.mxl',
+        #     # '171489.mxl',
+        #     # '171582.mxl',
+        #     # '171899.mxl',
+        #     # '171934.mxl',
+        #     # '171972.mxl',
+        #     # '172062.mxl',
+        #     # '172448.mxl',
+        #     # '172614.mxl',
+        #     # '172646.mxl',
+        #     # '172846.mxl',
+        #     # '172888.mxl',
+        #     # '172889.mxl',
+        #     # '172974.mxl',
+        #     # '173004.mxl',
+        #     # '173049.mxl',
+        #     # '173111.mxl',
+        #     # '173113.mxl',
+        #     # '173228.mxl',
+        #     # '173527.mxl',
+        #     # '173749.mxl',
+        #     # '173855.mxl',
+        #     '174118.mxl',
+        #     '174259.mxl',
+        #     '174633.mxl',
+        #     '174700.mxl',
+        #     '174881.mxl',
+        #     '175009.mxl',
+        #     '175254.mxl',
+        #     '175554.mxl',
+        #     '175645.mxl',
+        #     '175694.mxl',
+        #     '175736.mxl',
+        #     '176180.mxl',
+        #     '176588.mxl',
+        #     '176650.mxl',
+        #     '176653.mxl',
+        #     '176901.mxl',
+        #     '176962.mxl',
+        #     '176992.mxl',
+        #     '177010.mxl',
+        #     '177262.mxl',
+        #     '177580.mxl',
+        #     '177596.mxl',
+        #     '177626.mxl',
+        #     '177815.mxl',
+        #     '178049.mxl',
+        #     '178061.mxl',
+        #     '178102.mxl',
+        #     '178125.mxl',
+        #     '178268.mxl',
+        #     '178427.mxl'
+        # ]
+        # grp_nm = '000000-010000'
+        # grp_nm = '010000-020000'
+        # grp_nm = '020000-030000'
+        # grp_nm = '030000-040000'
+        # grp_nm = '040000-050000'
+        # grp_nm = '050000-060000'
+        # grp_nm = '060000-070000'
+        # grp_nm = '070000-080000'
+        # grp_nm = '080000-090000'
+        # grp_nm = '090000-100000'
+        # grp_nm = '100000-110000'
+        # grp_nm = '110000-120000'
+        # grp_nm = '120000-130000'
+        # grp_nm = '130000-140000'
+        # grp_nm = '140000-150000'
+        # grp_nm = '150000-160000'
+        # grp_nm = '160000-170000'
+        # grp_nm = '170000-178561'
+        # broken_files = [os_join(grp_nm, f) for f in broken_files]
+        broken_files = [
+            # '003335.mxl',
+            # '004331.mxl',
+            # '007891.mxl',
+            # '012360.mxl',
+            # '017261.mxl',
+            # '018788.mxl',
+            # '019598.mxl',
+            # '020055.mxl',
+            # '020585.mxl',
+            # '029084.mxl',
+            # '030087.mxl',
+            # '033240.mxl',
+            # '034249.mxl',
+            # '037842.mxl',
+            # '038206.mxl',
+            # '045963.mxl',
+            # '047301.mxl',
+            # '049542.mxl',
+            # '050889.mxl',
+            # '051440.mxl',
+            # '051562.mxl',
+            # '060154.mxl',
+            # '061621.mxl',
+            # '068788.mxl',
+            # '079043.mxl',
+            # '079104.mxl',
+            # '079941.mxl',
+            # '081859.mxl',
+            # '082892.mxl',
+            # '093306.mxl',
+            # '094903.mxl',
+            # '096118.mxl',
+            # '097177.mxl',
+            # '099388.mxl',
+            # '102163.mxl',
+            # '102993.mxl',
+            # '124025.mxl',
+            # '127754.mxl',
+            # '128980.mxl',
+            # '129011.mxl',
+            # '132179.mxl',
+            # '133865.mxl',
+            # '133945.mxl',
+            # '137165.mxl',
+            # '138606.mxl',
+            # '139359.mxl',
+            # '140347.mxl',
+            # '152887.mxl',
+            # '157586.mxl',
+            # '158307.mxl',
+            # '159114.mxl',
+            # '159600.mxl',
+            # '160466.mxl',
+            # '163183.mxl',
+            # '167205.mxl',
+            # '170019.mxl'
+            # '094903.mxl',
+            # '017261.mxl',
+            # '152887.mxl'
+            # '109418.mxl'
+            '119192.mxl'
+        ]
+        o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
+
+        def map_fnm(f: str) -> str:
+            _, _dir_nm = o2f(int(stem(f)), return_parts=True)
+            return os_join(_dir_nm, f)
+        broken_files = [map_fnm(f) for f in broken_files]
+
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1)
 
+        batch = False
+        # batch = True
+
+        dir_nm = 'converted/LMD, LP'
         for broken_fl in broken_files:
-            path = f'/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/{broken_fl}.mxl'
-            ic(path)
-            print(me(path, exp='visualize'))
-            # me(path, exp='mxl')
-    # check_edge_case()
+            path = os_join(u.dset_path, dir_nm, broken_fl)
+            if batch:
+                ic(broken_fl)
+                try:
+                    print(me(path, exp='visualize'))
+                except Exception as e:
+                    print(log_s(stem(path), c='y'), e)
+            else:
+                ic(path)
+                exp = 'visualize'
+                # exp = 'mxl'
+                print(me(path, exp=exp))
+                exit(1)
+    check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """
@@ -933,7 +2324,7 @@ if __name__ == '__main__':
         """
         dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
                   'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
-        path = os.path.join(music_util.get_processed_path(), f'{dnm_lmd}.json')
+        path = os_join(music_util.get_processed_path(), f'{dnm_lmd}.json')
         ic(path)
         with open(path, 'r') as f:
             dset: Dict = json.load(f)
@@ -943,3 +2334,36 @@ if __name__ == '__main__':
             if 'd_0' in txt:
                 ic(song['title'])
     # fix_find_song_with_0dur()
+
+    def fix_merge_processing_from_lib():
+        import glob
+        dir_broken_ori = '/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/converted/LMD, ' \
+                         'broken/020000-030000'
+        dir_broken_new = '/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/Converted from Lib, ' \
+                         '05.22.22/LMD, broken/020000-030000'
+        paths_ori, paths_new = glob.iglob(dir_broken_ori + '/*.mid'), glob.iglob(dir_broken_new + '/*.mid')
+        set_fls_ori, set_fls_new = set([stem(f) for f in paths_ori]), set([stem(f) for f in paths_new])
+        ic(set_fls_ori, set_fls_new)
+        ic(set_fls_new - set_fls_ori)
+    # fix_merge_processing_from_lib()
+
+    def get_broken_fnms_from_log():
+        """
+        Get the file names where music extraction failed, by extracting from console output
+        """
+        import re
+
+        log_fnm = '05.26.22 @ 17.57, lmd all LP'
+        path_log = os_join(u.dset_path, 'converted', 'LMD, log', f'{log_fnm}.log')
+        with open(path_log, 'r') as f:
+            lines = f.readlines()
+        pattern = re.compile(r'^.*Failed to extract.*/(?P<fnm>.*).mxl.*$')
+
+        def extract_line(ln: str) -> str:
+            m = pattern.match(ln)
+            if m:
+                return m.group('fnm')
+        fnms = [extract_line(ln) for ln in lines]
+        fnms = sorted(set([f'{fnm}.mxl' for fnm in fnms if fnm]))
+        ic(fnms)
+    # get_broken_fnms_from_log()

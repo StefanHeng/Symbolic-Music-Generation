@@ -2,16 +2,20 @@
 assets/
 .idea/
 .vscode/
-test_lang*
+test-lang*
 inspiration/
 models/
 models, on pop909 only/
-!musicnlp/models/
+!musicnlp/trainer/
 runs/
 tb_log/
 plot/
+eval/
 evaluations/
 requirements, 04.08.22.txt
+**/*.pkl
+cache/
+test-lang*
 
 
 # Byte-compiled / optimized / DLL files

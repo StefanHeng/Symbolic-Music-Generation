@@ -17,7 +17,7 @@ if __name__ == '__main__':
     idx = randint(0, n-1)
 
     fnm = paths[idx]
-    fnm_ = fnm[len(PATH_BASE):]
+    fnm_ = fnm[len(BASE_PATH):]
 
     def play_midi():
         freq = 44100

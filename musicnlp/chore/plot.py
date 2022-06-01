@@ -1,8 +1,8 @@
-import os
 import re
 import glob
 import itertools
 import statistics
+from os.path import join as os_join
 from typing import List, Tuple, Dict, Sequence, Any, Union
 from collections import defaultdict
 
@@ -13,6 +13,7 @@ from tensorflow.core.util import event_pb2
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from stefutil import *
 from musicnlp.util import *
 
 
@@ -31,7 +32,7 @@ def parse_tensorboard(path) -> Dict[str, pd.DataFrame]:
             value=float(evt.summary.value[0].simple_value),
         )
 
-    fnms = list(glob.iglob(os.path.join(path, '**/events.out.tfevents*'), recursive=True))
+    fnms = list(glob.iglob(os_join(path, '**/events.out.tfevents*'), recursive=True))
     assert len(fnms) == 1, f'Expect one events.out.tfevents file, found {logi(len(fnms))}'
     fnm = fnms[0]
     events = [event_pb2.Event.FromString(rec.numpy()) for rec in tf.data.TFRecordDataset(fnm)]
@@ -97,55 +98,61 @@ def smooth(vals: Sequence[float], factor: float) -> np.array:
 
 
 def plot_tb(
-        d_df: Dict[str, pd.DataFrame], y: str = 'loss', label: str = None,
+        d_df: Dict[str, pd.DataFrame], y: str = 'loss', plot_label: str = None,
+        xlabel: str = None, ylabel: str = None,
+        splits: Union[Tuple[str], str] = ('train', 'eval'), prefix_split: bool = True,
         smooth_factor: Union[float, Dict[str, float]] = 0.9, figure_kwargs: Dict = None,
-        title: str = None, cs=None, save=False,
-        steps_per_epoch: int = None
+        title: str = None, cs=None, save=False, show=True, ax=None,
+        steps_per_epoch: int = None, smoothed_only: bool = False,
 ):
-    label = label or y
+    ylabel = ylabel if ylabel is not None else y
+    xlabel = xlabel if xlabel is not None else 'step'
+    plot_label = plot_label if plot_label is not None else y
     assert all(k in ['train', 'eval'] for k in d_df.keys())
-    if figure_kwargs is None:
-        figure_kwargs = dict()
-    fig = plt.figure(**figure_kwargs)
+    if not ax:
+        plt.figure(**(figure_kwargs or dict()))
+    ax = ax or plt.gca()
     cs = cs or sns.color_palette(palette='husl', n_colors=7)
 
-    def plot_single(idx_, tag_, ax=plt.gca()):
+    def plot_single(idx_, tag_):
         df = d_df[tag_]
         x = df.step
-        if tag_ == 'eval':
-            x *= steps_per_epoch  # to match the time step for training, see `util.train.py`
+        if tag_ == 'eval' and steps_per_epoch:
+            x *= steps_per_epoch  # to match the time step for training, see `util.train_util_wrap.py`
         y_ = df[y]
         if 'acc' in y:
             y_ *= 100
         factor = smooth_factor[tag_] if isinstance(smooth_factor, dict) else smooth_factor
         y_s = smooth(y_, factor=factor)
         c = cs[idx_]
-        ms = statistics.harmonic_mean(fig.get_size_inches()) / 16
+        ms = statistics.harmonic_mean(plt.gcf().get_size_inches()) / 16
         args_ori = LN_KWARGS | dict(ls='None', c=c, alpha=0.3, ms=ms)
         if tag_ == 'eval':  # enlarge markers for eval
             args_ori |= dict(ms=ms * 16, marker='1', alpha=0.9)
         args_smooth = LN_KWARGS | dict(c=c, lw=0.75, marker=None)
-        ax.plot(x, y_, **args_ori)
-        return ax.plot(x, y_s, **args_smooth, label=f'{tag_} {label}')
-    plt.xlabel('step')
-    for idx, tag in enumerate(d_df.keys()):
+        if not smoothed_only:
+            ax.plot(x, y_, **args_ori)
+        return ax.plot(x, y_s, **args_smooth, label=f'{tag_} {plot_label}' if prefix_split else plot_label)
+    plt.xlabel(xlabel)
+    splits = splits if isinstance(splits, (tuple, list)) else (splits,)
+    for idx, tag in enumerate(splits):
         plot_single(idx, tag)
-        plt.ylabel(label)
+        plt.ylabel(ylabel)
         plt.legend()
     save_title = 'Training per-batch performance over Steps'
     if title is None:
         title = save_title
-    if title != 'None':
+    if title != 'none':
         plt.title(title)
         save_title = title
     if save:
         save_fig(f'{save_title}, {now(for_path=True)}')
-    else:
+    if show:
         plt.show()
 
 
 def md_n_dir2tb_path(model_name: str = 'reformer', directory_name: str = None) -> str:
-    return os.path.join(PATH_BASE, DIR_PROJ, DIR_MDL, model_name, directory_name)
+    return os_join(BASE_PATH, PROJ_DIR, MODEL_DIR, model_name, directory_name)
 
 
 if __name__ == '__main__':
@@ -167,8 +174,8 @@ if __name__ == '__main__':
         d_df = parse_tensorboards(paths)
         # ic(d_df)
 
-        # y = 'loss'
-        y = 'ntp_acc'
+        y = 'loss'
+        # y = 'ntp_acc'
         label = 'Next-Token-Prediction Accuracy'
 
         plot_tb(
@@ -176,7 +183,7 @@ if __name__ == '__main__':
             title='Reformer-base Training per-batch performance over Steps',
             # save=True
         )
-    check_plot_multiple()
+    # check_plot_multiple()
 
     # def plot_trained_04_03():
     #     """
@@ -224,3 +231,31 @@ if __name__ == '__main__':
             steps_per_epoch=343
         )
     # plot_train_for_presentation()
+
+    def plot_comparison_for_report():
+        dir_nms_base = ['2022-04-15_13-42-56', '2022-04-15_18-45-49', '2022-04-16_16-08-03']
+        dir_nms_aug = ['2022-04-17_22-53-41', '2022-04-18_08-56-05', '2022-04-19_13-48-54']
+        paths_base = [md_n_dir2tb_path(directory_name=d) for d in dir_nms_base]
+        paths_aug = [md_n_dir2tb_path(directory_name=d) for d in dir_nms_aug]
+
+        y = 'ntp_acc'
+        plt.figure(figsize=(9, 4))
+        ax = plt.gca()
+        s_fact = dict(train=0.95, eval=0.5)
+        args = dict(
+            smooth_factor=s_fact, ax=ax, show=False, smoothed_only=False, prefix_split=False,
+            splits='eval', title='none'
+        )
+
+        od_blue = hex2rgb('#619AEF', normalize=True)
+        od_purple = hex2rgb('#C678DD', normalize=True)
+        df_base, df_aug = parse_tensorboards(paths_base), parse_tensorboards(paths_aug)
+        plot_tb(df_base, y=y, ylabel='', plot_label='Reformer-base, vanilla', cs=[od_blue], **args)
+        plot_tb(df_aug, y=y, ylabel='', plot_label='Reformer-base, key augmentation', cs=[od_purple], **args)
+        plt.xlabel('epoch')
+        plt.ylabel('Next-Token Prediction Accuracy (%)')
+
+        title = 'Validation Next-Token Prediction Accuracy over Epochs'
+        save_fig(title)
+        plt.show()
+    plot_comparison_for_report()

@@ -4,10 +4,9 @@ import numpy as np
 import music21 as m21
 
 from musicnlp.util import *
-from musicnlp.vocab.elm_type import ElmType, MusicElement
-from musicnlp.vocab.music_vocab import VocabType, MusicVocabulary
-from musicnlp.vocab.music_tokenizer import MusicTokenizer
 from musicnlp.util.music_lib import *
+from musicnlp.vocab import ElmType, MusicElement, VocabType, MusicVocabulary, MusicTokenizer
+from musicnlp.preprocess import KeyFinder
 
 
 class MusicConverter:
@@ -54,7 +53,9 @@ class MusicConverter:
             elm = next(it, None)
         return lst
 
-    def mxl2str(self, song: Union[str, Score], join: bool = True, n_bar: int = None) -> Union[str, List[str]]:
+    def mxl2str(
+            self, song: Union[str, Score], join: bool = True, n_bar: int = None, insert_key: Union[bool, str] = False
+    ) -> Union[str, List[str]]:
         """
         Convert a MusicExtractor output song into the music token representation
 
@@ -64,6 +65,7 @@ class MusicConverter:
         :param n_bar: If given, only return the decoded first n bars, star of bar is appended
                 Intended for conditional generation
             Otherwise, the entire song is converted and end of song token is appended
+        :param insert_key: A key is inserted accordingly, intended for generation
         """
         if isinstance(song, str):
             song = m21.converter.parse(song)
@@ -86,21 +88,17 @@ class MusicConverter:
             tempos) == 1, f'Invalid #Tempo: Expect only 1 tempo - {warn}'
         time_sig, tempo = time_sigs[0], tempos[0]
         toks = [self.vocab(time_sig), self.vocab(tempo)]
+        if insert_key:
+            key = insert_key if isinstance(insert_key, str) else sample(KeyFinder(song).find_key(return_type='dict'))
+            toks.append(self.vocab(key))
 
         for_gen = n_bar is not None
         if for_gen:
             assert n_bar > 0, f'Invalid {logi("n_bar")}: Expects positive integer'
             bars = bars[:min(n_bar, len(bars))]
         for bar in bars:
-<<<<<<< HEAD:musicnlp/postprocess/music_converter.py
-            assert all(not isinstance(e, m21.stream.Voice)
-                       for e in bar), f'Invalid Bar: Expect no voice - {warn}'
-            toks.extend([[self.vocab.start_of_bar]] + [self.vocab(e)
-                        for e in self._bar2grouped_bar(bar)])
-=======
             assert all(not isinstance(e, m21.stream.Voice) for e in bar), f'Invalid Bar: Expect no voice - {warn}'
             toks.extend([[self.vocab.start_of_bar]] + [self.vocab(e) for e in self._bar2grouped_bar(bar)])
->>>>>>> master:musicnlp/vocab/music_converter.py
         # as `vocab` converts each music element to a list
         toks = sum(toks, start=[])
         toks += [self.vocab.start_of_bar if for_gen else self.vocab.end_of_song]
@@ -144,11 +142,11 @@ class MusicConverter:
                               for tok in toks_p]), self.vocab.compact(tok_d))
                     ))
             elif typ == VocabType.time_sig:
-                lst_out.append(MusicElement(
-                    type=ElmType.time_sig, meta=(self.vocab.compact(tok))))
+                lst_out.append(MusicElement(type=ElmType.time_sig, meta=(self.vocab.compact(tok))))
             elif typ == VocabType.tempo:
-                lst_out.append(MusicElement(type=ElmType.tempo,
-                               meta=(self.vocab.compact(tok))))
+                lst_out.append(MusicElement(type=ElmType.tempo, meta=(self.vocab.compact(tok))))
+            elif typ == VocabType.key:  # ignore
+                pass
             else:
                 assert typ == VocabType.pitch
                 tok_d = next(it, None)
@@ -195,6 +193,8 @@ class MusicConverter:
         e1, e2, lst = lst[0], lst[1], lst[2:]
         assert e1.type == ElmType.time_sig, 'First element must be time signature'
         assert e2.type == ElmType.tempo, 'Second element must be tempo'
+        if lst[0].type == ElmType.key:
+            lst = lst[1:]  # ignore
         if omit_eos:
             lst = [e for e in lst if e.type != ElmType.song_end]
         else:
@@ -221,27 +221,12 @@ if __name__ == '__main__':
 
     def check_encode():
         # text = get_extracted_song_eg(k=2)  # this one has tuplets
-<<<<<<< HEAD:musicnlp/postprocess/music_converter.py
-        text = music_util.get_extracted_song_eg(
-            k='平凡之路')  # this one has tuplets
-        token = text.split()
-        ic(len(token))
-        ex = token[3]
-        ic(ex)
-        ic(mc.vocab.type(ex))
-        ic(ex[2])
-        # toks = mc.str2notes(text)
-        # ic(toks)
-        # scr = mc.str2score(text)
-        # ic(scr)
-=======
         text = music_util.get_extracted_song_eg(k='平凡之路')  # this one has tuplets
         # ic(text)
         # toks = mc.str2notes(text)
         # ic(toks)
         scr = mc.str2score(text)
         ic(scr)
->>>>>>> master:musicnlp/vocab/music_converter.py
         # scr.show()
     check_encode()
 

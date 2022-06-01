@@ -1,55 +1,24 @@
 import os
 import re
 import math
-from typing import Dict, Callable
+from os.path import join as os_join
+from typing import List, Dict, Callable
 import datetime
-import collections
 from collections import OrderedDict
 
 import pandas as pd
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
-from tqdm import tqdm
+from stefutil import *
 
-from musicnlp.util.util import *
-from musicnlp.util.check_args import ca
+
+__all__ = [
+    'PT_LOSS_PAD', 'MyTrainer',
+    'ColoredPrinterCallback', 'ColoredPrinterCallbackForClm', 'ClmAccCallback'
+]
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
-
-
-def _pretty_single(key: str, val, ref: Dict = None):
-    if key in ['step', 'epoch']:
-        k = next(iter(k for k in ref.keys() if key in k))
-        lim = ref[k]
-        assert isinstance(val, (int, float))
-        len_lim = len(str(lim))
-        if isinstance(val, int):
-            s_val = f'{val:>{len_lim}}'
-        else:
-            fmt = f'%{len_lim+4}.3f'
-            s_val = fmt % val
-        return f'{s_val}/{lim}'  # Pad integer
-    elif 'loss' in key:
-        return f'{round(val, 4):7.4f}'
-    elif any(k in key for k in ('acc', 'recall', 'auc', 'ikr')):  # custom in-key-ratio metric
-        def _single(v):
-            return f'{round(v * 100, 2):6.2f}' if v is not None else '-'
-
-        if isinstance(val, list):
-            return [_single(v) for v in val]
-        elif isinstance(val, dict):
-            return {k: _single(v) for k, v in val.items()}
-        else:
-            return _single(val)
-    elif 'learning_rate' in key or 'lr' in key:
-        return f'{round(val, 7):.3e}'
-    else:
-        return val
-
-
-def pretty_log_dict(d_log: Dict, ref: Dict = None):
-    return {k: _pretty_single(k, v, ref=ref) for k, v in d_log.items()}
 
 
 def meta2fnm_meta(meta: Dict) -> Dict:
@@ -61,83 +30,6 @@ def meta2fnm_meta(meta: Dict) -> Dict:
             'parameter_count': 'n_param'
         }
     return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
-
-
-class MyProgressCallback(TrainerCallback):
-    """
-    My modification to the HF progress callback
-
-    1. Effectively remove all logging, keep only the progress bar w.r.t. this callback
-    2. Train tqdm for each epoch only
-    3. Option to disable progress bar for evaluation
-
-    Expects to start from whole epochs
-    """
-
-    def __init__(self, train_only: bool = False):
-        """
-        :param train_only: If true, disable progress bar for evaluation
-        """
-        self.training_bar = None
-        self.prediction_bar = None
-        self.train_only = train_only
-        self.step_per_epoch = None
-        self.current_step = None
-
-    def on_epoch_begin(self, args, state, control, **kwargs):
-        if state.is_local_process_zero:
-            # self.training_bar = tqdm(total=state.max_steps)
-            n_ep = _pretty_single('epoch', int(state.epoch), ref={'epoch': state.num_train_epochs})
-            # self.training_bar.set_description(f'Epoch {n_ep}')
-            assert state.max_steps % state.num_train_epochs == 0
-            self.step_per_epoch = state.max_steps // state.num_train_epochs
-            self.training_bar = tqdm(total=self.step_per_epoch, desc=f'Epoch {n_ep}')
-        self.current_step = 0
-
-    def on_train_begin(self, args, state, control, **kwargs):
-        # if state.is_local_process_zero:
-        #     self.training_bar = tqdm(total=state.max_steps)
-        # self.current_step = 0
-        pass
-
-    def on_epoch_end(self, args, state, control, **kwargs):
-        if state.is_local_process_zero:
-        #     self.training_bar.update(state.num_steps)
-        #     self.training_bar.refresh()
-            self.training_bar.close()
-            self.training_bar = None
-
-    def on_step_end(self, args, state, control, **kwargs):
-        if state.is_local_process_zero:
-            # self.training_bar.update(state.global_step - self.current_step)
-            # self.current_step = state.global_step
-            # self.training_bar.update(self.step_per_epoch - state.global_step % self.step_per_epoch)
-            # self.current_step = state.global_step % self.step_per_epoch
-            self.training_bar.update(1)
-
-    def on_prediction_step(self, args, state, control, eval_dataloader=None, **kwargs):
-        if not self.train_only:
-            if state.is_local_process_zero and isinstance(eval_dataloader.dataset, collections.abc.Sized):
-                if self.prediction_bar is None:
-                    self.prediction_bar = tqdm(total=len(eval_dataloader), leave=self.training_bar is None)
-                self.prediction_bar.update(1)
-
-    def on_evaluate(self, args, state, control, **kwargs):
-        if not self.train_only:
-            if state.is_local_process_zero:
-                if self.prediction_bar is not None:
-                    self.prediction_bar.close()
-                self.prediction_bar = None
-
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        if state.is_local_process_zero and self.training_bar is not None:
-            _ = logs.pop("total_flos", None)
-
-    def on_train_end(self, args, state, control, **kwargs):
-        pass
-        # if state.is_local_process_zero:
-        #     self.training_bar.close()
-        #     self.training_bar = None
 
 
 class MyTrainer(Trainer):
@@ -195,7 +87,10 @@ class MyTrainer(Trainer):
             labels_ = inputs['labels'].detach()
             d_log = dict(src='compute_loss')
             if self.train_metrics:
-                d_log.update({k: f(preds, labels_) for k, f in self.train_metrics.items()})
+                ks = None
+                if 'key_scores' in inputs:
+                    ks = inputs['key_scores'].detach()
+                d_log.update({k: f(preds, labels_, ks) for k, f in self.train_metrics.items()})
 
             # CLM, predicting the next token given current, so shift
             preds, labels_ = preds[:, :-1], labels_[:, 1:]
@@ -203,8 +98,7 @@ class MyTrainer(Trainer):
             preds_non_pad, labels_non_pad = preds[msk_not_pad], labels_[msk_not_pad]
             matches: torch.Tensor = (preds_non_pad == labels_non_pad)
             # next-token-prediction task
-            ntp_acc_meta = dict(matched=matches.sum().item(), total=preds_non_pad.numel())
-            d_log['ntp_acc_meta'] = ntp_acc_meta
+            d_log['ntp_acc'] = matches.sum().item() / preds_non_pad.numel()
             self.log(d_log)
         # ========================== End of added ==========================
 
@@ -255,19 +149,20 @@ class ColoredPrinterCallback(TrainerCallback):
 
         if name is None:
             name = 'MyTrainer'
-        self.name = f'{name} Training'
+        self.name = f'{name} Train'
         self.logger, self.logger_fl, self.writer = None, None, None
         self.report2tb = report2tb
+        self.prettier = MlPrettier(ref=self.train_meta, metric_keys=['acc', 'recall', 'auc', 'ikr'])
 
     def on_train_begin(self, args: TrainingArguments, state, control, **kwargs):
         self.mode = 'train'
 
         self.logger = get_logger(self.name)
         self.logger_fl = get_logger(
-            name=self.name, typ='file-write', file_path=os.path.join(self.output_dir, f'{self.log_fnm}.log')
+            name=self.name, typ='file-write', file_path=os_join(self.output_dir, f'{self.log_fnm}.log')
         )
         if self.report2tb:
-            self.writer = SummaryWriter(os.path.join(self.output_dir, f'tb - {self.log_fnm}'))
+            self.writer = SummaryWriter(os_join(self.output_dir, f'tb - {self.log_fnm}'))
 
         conf = self.trainer.model.config.to_dict()
         train_args = self.trainer.args.to_dict()
@@ -282,7 +177,7 @@ class ColoredPrinterCallback(TrainerCallback):
 
     def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
         self.t_end = datetime.datetime.now()
-        t = fmt_time(self.t_end - self.t_strt)
+        t = fmt_delta(self.t_end - self.t_strt)
         self.logger.info(f'Training completed in {logi(t)} ')
         self.logger_fl.info(f'Training completed in {t} ')
         self.mode = 'eval'
@@ -303,7 +198,7 @@ class ColoredPrinterCallback(TrainerCallback):
                     self.writer.add_scalar('Train/learning_rate', lr, step)
 
                     # out_console, out_write = self.out_dict2str(logs, return_wo_color=True)  # TODO: didn't test
-                    logs = pretty_log_dict(logs, ref=self.train_meta)
+                    logs = self.prettier(logs)
                     self.logger.info(log_dict(logs))
                     self.logger_fl.info(log_dict_nc(logs))
                 else:
@@ -329,16 +224,30 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.out_dict = None  # For passing NTP accuracy in training steps
+        # For passing metrics including NTP accuracy in training steps
+        self._train_step_metrics: List[Dict[str, float]] = []
+        self.gas = self.trainer.args.gradient_accumulation_steps
         self.pattern_eval_key = re.compile(r'^eval_(?P<key>.*)$')
 
     def _get_eval_key(self, key: str) -> str:
         return self.pattern_eval_key.match(key).group('key')
 
     def _log(self, d_log, mode='train', to_console=True):
-        ca(logging_mode=mode)
-        d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log.items()}
-        d_log_write = pretty_log_dict(d_log_write, ref=self.train_meta)
+        ca(log_mode=mode)
+
+        d_log_write = self.prettier(d_log)
+        if self.trainer.my_args['tqdm']:
+            # Set current iter stats can be done only here,
+            # since HF normal callbacks don't have access to per step performance anyway
+            callback = next(cb for cb in self.trainer.callback_handler.callbacks if isinstance(cb, MyProgressCallback))
+            tqdm_kws = {k: v for k, v in d_log_write.items() if k not in ['step', 'epoch', 'learning_rate']}
+            if mode == 'train':
+                pbar = callback.training_bar
+            else:  # 'eval'
+                pbar = callback.prediction_bar
+            if pbar:
+                pbar.set_postfix(ordered_dict=tqdm_kws)
+        d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log_write.items()}
         if to_console:
             self.logger.info(log_dict(d_log_write))
         self.logger_fl.info(log_dict_nc(d_log_write))
@@ -352,30 +261,28 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
         if state.is_local_process_zero:
             if 'src' in logs and logs['src'] == 'compute_loss':
                 del logs['src']
-                self.out_dict = logs
+                del logs['epoch']
+                self._train_step_metrics.append(logs)  # the only metric needed for gathering
             else:
                 # Heuristics on the training step updates, see `Trainer._maybe_log_save_evaluate`
                 if self.mode == 'train' and all('runtime' not in k for k in logs):
+                    # sanity check
+                    assert len(self._train_step_metrics) == self.gas
                     step = state.global_step
                     assert logs['epoch'] == round(state.epoch, 2)
                     n_ep = state.epoch  # The one originally is rounded, see `Trainer.log`
                     loss, lr = logs['loss'], logs['learning_rate']
-                    assert self.out_dict is not None
-                    from icecream import ic
-                    # ic(self.out_dict)
-                    ntp_acc_meta = self.out_dict['ntp_acc_meta']
-                    # TODO: Potentially support gradient accumulation
-                    # ntp_acc_meta = {k: sum(v for v in d[k]) for k, d in ntp_acc_meta.items()}
-                    # ic(ntp_acc_meta)
-                    ntp_acc = ntp_acc_meta['matched'] / ntp_acc_meta['total']
-                    metrics = {k: self.out_dict[k] for k in self.trainer.train_metrics}
+                    metrics = {
+                        k: sum(d[k] for d in self._train_step_metrics) / self.gas
+                        for k in self._train_step_metrics[0].keys()
+                    }
+                    self._train_step_metrics = []  # for next iter
 
-                    self.out_dict = OrderedDict([
+                    d_log = OrderedDict([
                         ('step', step), ('epoch', n_ep), ('learning_rate', lr),
-                        ('loss', loss), ('ntp_acc', ntp_acc)
-                    ])
-                    self.out_dict.update(metrics)
-                    # ic(self.out_dict)
+                        ('loss', loss), ('ntp_acc', metrics['ntp_acc'])
+                    ])  # effectively prepend `ntp_acc` as the 1st metric to log
+                    d_log.update({k: v for k, v in metrics.items() if k != 'ntp_acc'})
 
                     # `should_log` in Trainer just prevents the `on_log` call, I only filter console logging
                     should_log = False
@@ -384,7 +291,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                         should_log = True
                     elif my_log_strat == 'epoch' and step % self.trainer.my_args['steps_per_epoch'] == 0:
                         should_log = True
-                    self._log(self.out_dict, mode='train', to_console=should_log)
+                    self._log(d_log, mode='train', to_console=should_log)
                 elif 'eval_loss' in logs:  # `Trainer.is_in_train` is not False so can't use
                     assert 'epoch' in logs
                     del logs['epoch']
@@ -401,6 +308,9 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     assert n_ep.is_integer()
                     d_log = dict(step=state.global_step, epoch=int(n_ep), **{k: logs[f'eval_{k}'] for k in ks})
                     self._log(d_log, mode='eval', to_console=True)
+                    # for next iter, cos `compute_loss` is called for eval too
+                    # we don't need it for logging as eval metrics are gathered by Trainer out-of-the-box
+                    self._train_step_metrics = []
                 else:
                     self.logger.info(log_dict(logs))
                     self.logger_fl.info(log_dict_nc(logs))
@@ -446,7 +356,7 @@ class ClmAccCallback(ColoredPrinterCallback):
                 del self.out_dict_tr[self.k_acc]
                 self.out_dict_tr['learning_rate'] = logs['learning_rate']
                 self.out_dict_tr['train_loss'] = logs['loss']
-                self.logger.info(pretty_log_dict(self.out_dict_tr))
+                self.logger.info(self.prettier(self.out_dict_tr))
                 self.out_dict_tr = None  # Rest for next global step
             elif any('runtime' in k for k in logs.keys()):
                 self.logger.info(log_dict(logs) if isinstance(logs, dict) else logs)

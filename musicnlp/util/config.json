@@ -1,24 +1,42 @@
 {
     "datasets": {
-        "Allie-Chords": {
-            "dir_nm": "Allie-Chord-Embedding",
-            "nm": "Allie-Chord-Embedding",
-            "nm_data": "full_song_objects.pickle",
-            "n_entry": 87481
+        "LMD": {
+            "nm": "The Lakh MIDI Dataset, Full",
+            "original": {
+                "dir_nm": "original/lmd_full",
+                "song_fmt_mid": "**/*.mid"
+            },
+            "converted": {
+                "song_fmt_mid": "**/*.mid",
+                "song_fmt_mxl": "**/*.mxl",
+                "dir_nm": "converted/LMD"
+            },
+            "meta": {
+                "n_song": 178561
+            }
         },
         "LMD-matched": {
             "nm": "The Lakh MIDI Dataset, Matched",
-            "dir_nm": "Lakh-MIDI-Dataset/LMD-Matched"
+            "original": {
+                "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Matched"
+            }
         },
         "LMD-aligned": {
             "nm": "The Lakh MIDI Dataset, Aligned",
-            "dir_nm": "Lakh-MIDI-Dataset/LMD-Aligned"
+            "original": {
+                "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Aligned"
+            }
         },
         "LMD-cleaned": {
             "nm": "The Lakh MIDI Dataset, Cleaned",
-            "dir_nm": "Lakh-MIDI-Dataset/LMD-Cleaned",
-            "song_fmt_mid": "**/*.mid",
-            "song_fmt_mxl": "**/*.mxl",
+            "original": {
+                "dir_nm": "original/Lakh-MIDI-Dataset/LMD-Cleaned",
+                "song_fmt_mid": "**/*.mid"
+            },
+            "converted": {
+                "song_fmt_mid": "**.mid",
+                "song_fmt_mxl": "*.mxl"
+            },
             "meta": {
                 "songs": [
                     {
@@ -75971,22 +75989,29 @@
                 "n_song": 10291
             }
         },
-        "midi-eg": {
-            "nm": "Some hand-selected MIDI samples",
-            "dir_nm": "MIDI-eg",
-            "song_fmt_mid": "*.mid"
-        },
-        "mxl-eg": {
-            "nm": "Some hand-selected MXL samples",
-            "dir_nm": "MXL-eg",
-            "dir_nm_extracted": "MXL-eg_out",
-            "song_fmt_mxl": "*.mxl"
+        "MAESTRO": {
+            "nm": "The MAESTRO Dataset v3.0.0",
+            "original": {
+                "dir_nm": "original/maestro-v3.0.0",
+                "song_fmt_mid": "**/*.midi"
+            },
+            "converted": {
+                "song_fmt_mid": "*.mid",
+                "song_fmt_mxl": "*.mxl",
+                "dir_nm": "converted/MAESTRO"
+            }
         },
         "POP909": {
             "nm": "POP909 Dataset for Music Arrangement Generation",
-            "dir_nm": "POP909",
-            "song_fmt_mid": "*.mid",
-            "song_fmt_mxl": "*.mxl",
+            "dir_nm": "original/POP909",
+            "original": {
+                "song_fmt_mid": "*.mid"
+            },
+            "converted": {
+                "song_fmt_mid": "*.mid",
+                "song_fmt_mxl": "*.mxl",
+                "dir_nm": "converted/POP909"
+            },
             "meta": {
                 "songs": [
                     {
@@ -79631,10 +79656,117 @@
                 "n_song": 909
             }
         },
+        "midi-eg": {
+            "nm": "Some hand-selected MIDI samples",
+            "dir_nm": "MIDI-eg",
+            "song_fmt_mid": "*.mid"
+        },
+        "mxl-eg": {
+            "nm": "Some hand-selected MXL samples",
+            "dir_nm": "MXL-eg",
+            "dir_nm_extracted": "MXL-eg_out",
+            "song_fmt_mxl": "*.mxl"
+        },
         "my": {
             "nm": "Music with NLP, Project output",
-            "dir_nm": "MNLP-Combined"
+            "dir_nm": "processed"
         }
     },
-    "random-seed": 77
+    "random-seed": 77,
+    "check-arg": [
+        {
+            "display_name": "Extraction Export Type",
+            "attr_name": "exp",
+            "accepted_values": [
+                "mxl",
+                "str",
+                "id",
+                "str_join",
+                "visualize"
+            ]
+        },
+        {
+            "display_name": "Music File Format",
+            "attr_name": "fmt",
+            "accepted_values": [
+                "mid",
+                "mxl"
+            ]
+        },
+        {
+            "display_name": "Music File Conversion Backend",
+            "attr_name": "backend",
+            "accepted_values": [
+                "MS",
+                "LP"
+            ]
+        },
+        {
+            "display_name": "Music Key Type",
+            "attr_name": "key_type",
+            "accepted_values": [
+                "list",
+                "enum",
+                "dict"
+            ]
+        },
+        {
+            "display_name": "Train Logging Strategy",
+            "attr_name": "log_strategy",
+            "accepted_values": [
+                "epoch",
+                "steps",
+                "no"
+            ]
+        },
+        {
+            "display_name": "Train Logging Mode",
+            "attr_name": "log_mode",
+            "accepted_values": [
+                "train",
+                "eval"
+            ]
+        },
+        {
+            "display_name": "Generation Mode",
+            "attr_name": "generation_mode",
+            "accepted_values": [
+                "conditional",
+                "unconditional"
+            ]
+        },
+        {
+            "display_name": "Generation Strategy",
+            "attr_name": "generation_strategy",
+            "accepted_values": [
+                "greedy",
+                "sample",
+                "beam"
+            ]
+        },
+        {
+            "display_name": "Distribution Plot Type",
+            "attr_name": "dist_plot_type",
+            "accepted_values": [
+                "bar",
+                "hist"
+            ]
+        },
+        {
+            "display_name": "Dataset Name",
+            "attr_name": "dataset_name",
+            "accepted_values": [
+                "LMD",
+                "LMD-matched",
+                "LMD-aligned",
+                "LMD-cleaned",
+                "MAESTRO",
+                "POP909",
+                "midi-eg",
+                "mxl-eg",
+                "my",
+                "LMD-cleaned-subset"
+            ]
+        }
+    ]
 }

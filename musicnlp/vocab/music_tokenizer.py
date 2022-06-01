@@ -14,8 +14,6 @@ class MusicTokenizer(PreTrainedTokenizer):
 
     Note that there are **no special tokens**
     """
-    TOK_PAD = '[PAD]'
-
     model_input_names = ['input_ids']  # Per `TransfoXLTokenizer`
 
     def __init__(self, precision: int = 5, **kwargs):
@@ -27,10 +25,19 @@ class MusicTokenizer(PreTrainedTokenizer):
         self.precision = precision
         self.vocab = MusicVocabulary(precision=precision, color=False)
         self.spec_toks_enc, self.spec_toks_dec = dict(), dict()
-        self._add_special_token(MusicTokenizer.TOK_PAD)
-        self.pad_token, self.eos_token = MusicTokenizer.TOK_PAD, self.vocab.end_of_song
+        # self._add_special_token(self.vocab.pad)
+        self.pad_token, self.eos_token = self.vocab.pad, self.vocab.end_of_song
+
         self.sob_token = self.vocab.start_of_bar
+        self.uncommon_time_sig_token = self.vocab.uncommon_time_sig
+        self.uncommon_low_tempo_token = self.vocab.uncommon_low_tempo
+        self.uncommon_high_tempo_token = self.vocab.uncommon_high_tempo
+        self.uncommon_duration_token = self.vocab.uncommon_duration
         self.sob_token_id = self._convert_token_to_id(self.sob_token)
+        self.uncommon_time_sig_token_id = self._convert_token_to_id(self.uncommon_time_sig_token)
+        self.uncommon_low_tempo_token_id = self._convert_token_to_id(self.uncommon_low_tempo_token)
+        self.uncommon_high_tempo_token_id = self._convert_token_to_id(self.uncommon_high_tempo_token)
+        self.uncommon_duration_token_id = self._convert_token_to_id(self.uncommon_duration_token)
 
     def _add_special_token(self, tok):
         assert tok not in self.spec_toks_enc
@@ -68,15 +75,16 @@ if __name__ == '__main__':
 
     from musicnlp.preprocess import get_dataset
 
-    fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
-    dset = get_dataset(fnm)
+    # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+    fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+    dsets = get_dataset(fnm)
 
     def implementation_check():
         # ic(dset, dset[:2])
         tkzer = MusicTokenizer(model_max_length=12)
         # tkzer = MusicTokenizer()
         ic(tkzer, tkzer.model_max_length, len(tkzer))
-        txt = dset[1]['score']
+        txt = dsets[1]['score']
         # txt = dset[:3]['text']
         # Turning off both `padding` & `truncation`, and the token ids too long warning appears
         input_ = tkzer(txt, padding='max_length', truncation=True)
@@ -84,7 +92,7 @@ if __name__ == '__main__':
         # ic(len(input_['input_ids']))
         ids_ = input_['input_ids']
         ic(input_, ids_, tkzer.decode(ids_))
-    implementation_check()
+    # implementation_check()
 
     def check_pad_n_eos():
         tkzer = MusicTokenizer(model_max_length=12)
@@ -92,3 +100,31 @@ if __name__ == '__main__':
         vocab = tkzer.vocab
         ic(vocab.t2i(vocab.end_of_song))
     # check_pad_n_eos()
+
+    def sanity_check_uncom():
+        """
+        A small ratio of tokens should be set to uncommon
+        """
+        import numpy as np
+
+        from tqdm.auto import tqdm
+    
+        from musicnlp.util import sconfig
+
+        tkzer = MusicTokenizer(model_max_length=int(1e20))
+        np.random.seed(sconfig('random-seed'))
+
+        n = 4096 * 4
+        for split, dset in dsets.items():
+            n_dset = len(dset)
+            if n_dset > n:
+                idxs = np.random.choice(n_dset, size=n, replace=False)
+                for i in tqdm(idxs, desc=split):
+                    txt = dset[int(i)]['score']
+                    ic(tkzer(txt))
+                    exit(1)
+            else:
+                for row in tqdm(dset, desc=split):
+                    txt = row['score']
+                    tkzer(txt)
+    sanity_check_uncom()

@@ -13,10 +13,11 @@ import music21 as m21
 from music21.meter import TimeSignature
 from music21.tempo import MetronomeMark
 from music21.note import Note, Rest
-from music21.stream import Measure, Part, Score
-from music21.chord import Chord
-from music21.stream import Voice
+from music21.pitch import Pitch
 from music21.duration import Duration
+from music21.chord import Chord
+from music21.stream import Measure, Part, Score
+from music21.stream import Voice
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -35,16 +36,18 @@ if KEEP_OBSOLETE:
 
 
 __all__ = [
-    'TimeSignature', 'MetronomeMark', 'Note', 'Rest', 'Measure', 'Part', 'Score', 'Chord', 'Voice', 'Duration',
+    'TimeSignature', 'MetronomeMark', 'Note', 'Rest', 'Chord', 'Pitch', 'Duration', 'Measure', 'Part', 'Score', 'Voice',
     
     'ExtNote', 'SNote', 'Dur', 'TsTup', 'ordinal2dur_type', 'ScoreExt',
     'time_sig2n_slots',
     'eps', 'is_int', 'is_8th', 'quarter_len2fraction',
     'note2pitch', 'note2dur', 'note2note_cleaned', 'notes2offset_duration',
+    'time_sig2bar_dur',
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
     'is_drum_track',
-    'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes',
-    'is_notes_no_overlap', 'is_notes_pos_duration', 'is_valid_bar_notes',
+    'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes', 'fill_with_rest',
+    'get_offset', 'get_end_qlen',
+    'notes_have_gap', 'notes_overlapping', 'is_notes_pos_duration', 'is_valid_bar_notes',
     'get_score_skeleton', 'insert_ts_n_tp_to_part', 'make_score'
 ]
 
@@ -60,7 +63,7 @@ ExtNote = Union[Note, Rest, Chord, Tuple[Union[Note, Rest]]]
 SNote = Union[Note, Rest]  # Single note
 Dur = Union[float, Fraction]
 TsTup = Tuple[int, int]
-eps = 1e-6  # for music21 duration equality comparison
+eps = 1e-8  # for music21 duration equality comparison
 
 
 TupletNameMeta = namedtuple('TupletNameMeta', field_names=['tuplet_string', 'n_note'])
@@ -80,7 +83,7 @@ instrs_drum = (
     m21.instrument.BongoDrums,
     m21.instrument.CongaDrum,
     m21.instrument.SnareDrum,
-    m21.instrument.SteelDrum,
+    # m21.instrument.SteelDrum,  # we can work with this as it's `PitchedPercussion`
     m21.instrument.TenorDrum,
 )
 
@@ -142,6 +145,9 @@ def note2pitch(note: ExtNote):
     elif isinstance(note, Note):
         return note.pitch.frequency
     else:
+        if not isinstance(note, Rest):
+            from icecream import ic
+            ic(note, note.duration.fullName)
         assert isinstance(note, Rest)
         return 0  # `Rest` given pitch frequency of 0
 
@@ -199,7 +205,7 @@ def note2note_cleaned(
     dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
     assert isinstance(note, (Note, Rest, Chord))
     if isinstance(note, Note):  # Removes e.g. `tie`s
-        nt = Note(pitch=m21.pitch.Pitch(midi=note.pitch.midi), **dur_args)
+        nt = Note(pitch=Pitch(midi=note.pitch.midi), **dur_args)
     elif isinstance(note, Rest):
         nt = Rest(offset=note.offset, **dur_args)
     else:
@@ -210,10 +216,25 @@ def note2note_cleaned(
 
 
 def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[float], List[Dur]]:
-    if isinstance(notes, list):  # Else, single tuplet notes
-        notes = flatten_notes(unroll_notes(notes))
-    offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
-    return offsets, durs
+    if notes:
+        if isinstance(notes, list):  # Else, single tuplet notes
+            notes = flatten_notes(unroll_notes(notes))
+        offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
+        return offsets, durs
+    else:
+        return [], []
+
+
+def time_sig2bar_dur(time_sig: Union[TimeSignature, TsTup]) -> float:
+    """
+    :return: Duration of a bar in given time signature, in quarter length
+    """
+    if isinstance(time_sig, TimeSignature):
+        numer, denom = time_sig.numerator, time_sig.denominator
+    else:
+        assert isinstance(time_sig, tuple)
+        numer, denom = time_sig
+    return numer / denom * 4
 
 
 def fullname2tuplet_meta(fullname: str) -> TupletNameMeta:
@@ -341,12 +362,9 @@ def unroll_notes(notes: List[ExtNote]) -> List[ExtNote]:
     :param notes: individual notes with offsets not back-to-back
     :return: Notes as if jointed in time together
 
-    .. Original notes unmodified
+    .. note:: Original notes unmodified
     """
-    # if not isinstance(notes, list):
-    #     notes = list(notes)
-    # notes[0].offset = 0
-    if is_notes_no_overlap(notes):
+    if not notes_overlapping(notes):
         return notes
     else:
         notes_ = list(flatten_notes(notes))
@@ -369,36 +387,135 @@ def unroll_notes(notes: List[ExtNote]) -> List[ExtNote]:
         return notes
 
 
-def is_notes_no_overlap(notes: Iterable[ExtNote]) -> bool:
+def get_end_qlen(note: ExtNote):
     """
-    :return True if notes don't overlap, given the start time and duration
+    :return: Ending time in quarter length
+    """
+    if isinstance(note, tuple):
+        return get_end_qlen(note[-1])
+    else:
+        return note.offset + note.duration.quarterLength
+
+
+def get_offset(note: ExtNote) -> float:
+    """
+    :return: Starting time in quarter length
+    """
+    if isinstance(note, tuple):
+        return get_offset(note[0])
+    else:
+        return note.offset
+
+
+def fill_with_rest(
+        notes: Iterable[ExtNote], serializable: bool = True, duration: Dur = None,
+) -> Tuple[List[ExtNote], List[Tuple[float, float]]]:
+    """
+    Fill the missing time with rests
+
+    :param notes: List of notes in non-overlapping sequential order
+        Intended for filling quantized notes during music extraction
+            This process is already part of `notes2quantized_notes`
+    :param serializable: If True, `Fraction`s in unfilled ranges will be converted to string
+        Intended for json output
+    :param duration: If given, notes are filled up until this ending time
+    :return: 2 tuple of (notes with rests added, list of 2-tuple of (start, end) of missing time)
+
+    .. note:: Tuplet group is treated as a whole
+    """
+    def get_rest_note(strt, end):
+        r = Rest(duration=Duration(quarterLength=end-strt))
+        r.offset = strt
+        return r
+    it = iter(notes)
+    note = next(it, None)
+    if note is None:
+        return [get_rest_note(0, duration)], [(0, duration)]
+    else:
+        lst, meta = [note] if note else [], []
+        last_end = get_end_qlen(note)
+
+        def fill(strt, end):
+            lst.append(get_rest_note(strt, end))
+            if serializable:
+                strt, end = serialize_frac(strt), serialize_frac(end)
+            meta.append((strt, end))
+        note = next(it, None)
+        while note is not None:
+            new_begin = get_offset(note)
+            assert last_end <= new_begin  # verify input
+            if last_end < new_begin:  # Found gap
+                fill(last_end, new_begin)
+            lst.append(note)
+
+            last_end = get_end_qlen(note)  # prep for next iter
+            note = next(it, None)
+        if duration:
+            diff = duration - last_end
+            if diff - eps > 0:
+                fill(last_end, duration)
+        return lst, meta
+
+
+def notes_have_gap(notes: Iterable[ExtNote], enforce_no_overlap: bool = True, duration: Dur = None) -> bool:
+    it = flatten_notes(notes)
+    note = next(it, None)
+    if note is None:  # no note at all
+        return duration > 0
+    else:
+        last_end = get_end_qlen(note)
+        note = next(it, None)
+        while note is not None:
+            new_begin = get_offset(note)
+            diff = new_begin - last_end
+            if enforce_no_overlap and diff+eps < 0:
+                raise ValueError(f'Notes overlap: {note}')
+            if diff - eps > 0:
+                return True
+            last_end = get_end_qlen(note)
+            note = next(it, None)
+        if duration and (duration - last_end - eps) > 0:
+            return True
+        return False
+
+
+def notes_overlapping(notes: Iterable[ExtNote]) -> bool:
+    """
+    :return True if notes overlap, given the start time and duration
     """
     notes = flatten_notes(notes)
     note = next(notes, None)
-    end = note.offset + note.duration.quarterLength
-    note = next(notes, None)
-    while note is not None:
-        # Current note should begin, after the previous one ends
-        # Since numeric representation of one-third durations, aka tuplets
-        if (end-eps) <= note.offset:
-            end = note.offset + note.duration.quarterLength
-            note = next(notes, None)
-        else:
-            return False
-    return True
+    if note is None:
+        return False
+    else:
+        end = get_end_qlen(note)
+        note = next(notes, None)
+        while note is not None:
+            # Current note should begin, after the previous one ends
+            # Since numeric representation of one-third durations, aka tuplets
+            if (end-eps) <= note.offset:
+                end = get_end_qlen(note)
+                note = next(notes, None)
+            else:
+                return True
+        return False
 
 
 def is_notes_pos_duration(notes: Iterable[ExtNote]) -> bool:
     return all(note.duration.quarterLength > 0 for note in flatten_notes(notes))
 
 
-def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature) -> bool:
-    dur_bar = time_sig.numerator / time_sig.denominator * 4
+def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature, check_match_time_sig: bool = True) -> bool:
     # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
     pos_dur = is_notes_pos_duration(notes)
-    no_ovl = is_notes_no_overlap(notes)
-    match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=1e-6)
-    return pos_dur and no_ovl and match_bar_dur
+    no_ovl = not notes_overlapping(notes)
+    have_gap = notes_have_gap(notes)
+    valid = pos_dur and no_ovl and (not have_gap)
+    if check_match_time_sig:
+        dur_bar = time_sig2bar_dur(time_sig)
+        match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=eps)
+        valid = valid and match_bar_dur
+    return valid
 
 
 def get_score_skeleton(title: str = None, composer: str = PKG_NM, mode: str = 'melody') -> Score:

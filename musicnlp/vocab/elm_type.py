@@ -1,10 +1,17 @@
 from enum import Enum
-from typing import Dict
+from typing import Tuple, Dict
 from collections import namedtuple
 
 
+__all__ = [
+    'ElmType', 'MusicElement',
+    'Key', 'key_str2enum', 'key_enum2tuple', 'key_str2ordinal', 'key_ordinal2str', 'key_ordinal2key_enum',
+    'key_offset_dict', 'OFFKEY_OFFSET'
+]
+
+
 class ElmType(Enum):
-    bar_start, song_end, time_sig, tempo, note, tuplets = list(range(6))
+    bar_start, song_end, time_sig, tempo, key, note, tuplets = list(range(7))
 
 
 class Key(Enum):
@@ -51,7 +58,7 @@ key_str2enum: Dict[str, Key] = {
 
 # Dictionary for translating a Key type to a tuple of ints (type, key)
 # where type := major (1) or minor (0) and key := the name of the keyC
-key_enum2tuple: Dict[Key, tuple[int, str]] = {
+key_enum2tuple: Dict[Key, Tuple[int, str]] = {
     Key.CMin: (0, 'C'),
     Key.CsMin: (0, 'C#'),
     Key.DMin: (0, 'D'),
@@ -78,8 +85,13 @@ key_enum2tuple: Dict[Key, tuple[int, str]] = {
     Key.BMaj: (1, 'B')
 }
 
+# for passing key during vanilla training to monitor IKR
+key_str2ordinal: Dict[str, int] = {k: i for i, k in enumerate(key_str2enum.keys())}
+key_ordinal2str: Dict[int, str] = {i: k for k, i in key_str2ordinal.items()}
+key_ordinal2key_enum: Dict[int, Key] = {i: key_str2enum[k] for k, i in key_str2ordinal.items()}
+
 # This does not take ENHARMONICS into account
-# TODO: Fix this by adding ENHARMONIC relations
+# TODO: Fix this by adding COMPLETE ENHARMONIC relations
 key_offset_dict: Dict[str, int] = {
     'C': 0,
     'C#': 1,
@@ -104,10 +116,9 @@ MINOR_OFFKEY_OFFSET_IDX = [1, 4, 6, 9, 11]
 OFFKEY_OFFSET = [MINOR_OFFKEY_OFFSET_IDX, MAJOR_OFFKEY_OFFSET_IDX]
 
 # an intermediate representation, for conversion between music string & MXL
-MusicElement = namedtuple(typename='MusicElement', field_names=[
-                          'type', 'meta'], defaults=[None, None])
+MusicElement = namedtuple(typename='MusicElement', field_names=['type', 'meta'], defaults=[None, None])
 
 
 if __name__ == '__main__':
     assert len(key_str2enum) == len(
-        key_enum2str), "Dictionary should be of the same size"
+        key_enum2tuple), "Dictionary should be of the same size"
