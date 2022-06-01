@@ -368,18 +368,20 @@ if __name__ == '__main__':
     def train_xl():
         md_nm = 'transf-xl'
         transformers.set_seed(seed)
-        md_sz = 'debug'
+        # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        # md_sz = 'base'
+        md_sz = 'base'
         # n = 8
-        n = 16
+        # n = 16
         # n = 1024
-        # n = None
+        n = None
         max_length = 512
-        gas = 4
+        gas = 1
+        # gas = 4
         # max_length = None
         model_config = dict(max_length=max_length)
+        n_ep = 4
 
         augment_key = False
 
@@ -400,7 +402,11 @@ if __name__ == '__main__':
 
         if 'debug' not in md_sz:
             model_config.update(mem_len=256)
-            train_args.update(dict(per_device_train_batch_size=32))
+            train_args.update(dict(
+                per_device_train_batch_size=32,
+                per_device_eval_batch_size=32,
+                num_train_epoch=n_ep
+            ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
             dataset_names=dnms, n_sample=n, dataset_args=dict(shuffle_seed=seed),
