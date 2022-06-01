@@ -360,7 +360,7 @@ if __name__ == '__main__':
         else:
             trainer.train()
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    train_reformer()
+    # train_reformer()
 
     # checkpoint_path = os_join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
     # train(resume_from_checkpoint=checkpoint_path)
@@ -409,4 +409,4 @@ if __name__ == '__main__':
         # ignore so that `None` don't get detached
         ignore_keys_for_eval = ['losses', 'mems', 'hidden_states', 'attentions']
         trainer.train(ignore_keys_for_eval=ignore_keys_for_eval)
-    # train_xl()
+    train_xl()
