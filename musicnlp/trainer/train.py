@@ -65,21 +65,24 @@ class TrainArgs:
                 learning_rate=3e-4,
                 weight_decay=1e-2,
                 lr_scheduler_type=SchedulerType.COSINE,
-                num_train_epochs=64
+                num_train_epochs=64,
+                warmup_ratio=0.1
             ),
             'small': dict(
                 batch_size=32,
                 learning_rate=3e-4,
                 weight_decay=1e-2,
                 lr_scheduler_type=SchedulerType.COSINE,
-                num_train_epochs=64
+                num_train_epochs=64,
+                warmup_ratio=0.1
             ),
             'base': dict(
                 batch_size=32,
                 learning_rate=3e-4,
                 weight_decay=1e-2,
                 lr_scheduler_type=SchedulerType.COSINE,
-                num_train_epochs=64
+                num_train_epochs=64,
+                warmup_ratio=0.1
             )
         },
         'reformer': {
@@ -252,8 +255,8 @@ class VanillaMap:
 
 
 def get_all_setup(
-        model_name: str, model_size: str,
-        dataset_names: Union[str, List[str]], prec: int = 5, n_sample=None, dataset_args: Dict = None,
+        model_name: str = None, model_size: str = None,
+        dataset_names: Union[str, List[str]] = None, prec: int = 5, n_sample=None, dataset_args: Dict = None,
         model_config: Dict = None, train_args: Dict = None, my_train_args: Dict = None
 ) -> Tuple[torch.nn.Module, MusicTokenizer, Trainer]:
     # n_sample mainly for debugging
@@ -399,8 +402,9 @@ if __name__ == '__main__':
             model_config.update(mem_len=256)
             train_args.update(dict(per_device_train_batch_size=32))
         mdl, tokenizer, trainer = get_all_setup(
-            model_name=md_nm, model_size=md_sz, dataset_names=dnms, model_config=model_config,
-            n_sample=n, train_args=train_args, my_train_args=my_train_args
+            model_name=md_nm, model_size=md_sz, model_config=model_config,
+            dataset_names=dnms, n_sample=n, dataset_args=dict(shuffle_seed=seed),
+            train_args=train_args, my_train_args=my_train_args
         )
         # ignore so that `None` don't get detached
         ignore_keys_for_eval = ['losses', 'mems', 'hidden_states', 'attentions']

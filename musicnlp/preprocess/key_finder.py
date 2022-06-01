@@ -215,7 +215,7 @@ if __name__ == '__main__':
         ic(path)
         kf = KeyFinder(path)
         ic(kf.find_key(return_type='enum'))
-    # check_get_key()
+    check_get_key()
 
     def check_deprecated_scale_deg():
         path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
@@ -223,7 +223,7 @@ if __name__ == '__main__':
         keys_dep_maj, keys_dep_min = kf.find_key()
         keys_dep_maj, keys_dep_min = [key for key, score in keys_dep_maj], [key for key, score in keys_dep_min]
         ic(kf.find_scale_degrees((keys_dep_maj, keys_dep_min)))
-    check_deprecated_scale_deg()
+    # check_deprecated_scale_deg()
 
     def carson_dev():
         path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
