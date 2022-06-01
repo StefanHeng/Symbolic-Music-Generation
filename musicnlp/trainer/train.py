@@ -405,7 +405,7 @@ if __name__ == '__main__':
             train_args.update(dict(
                 per_device_train_batch_size=32,
                 per_device_eval_batch_size=32,
-                num_train_epoch=n_ep
+                num_train_epochs=n_ep
             ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
