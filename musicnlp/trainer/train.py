@@ -403,8 +403,8 @@ if __name__ == '__main__':
         if 'debug' not in md_sz:
             model_config.update(mem_len=256)
             train_args.update(dict(
-                per_device_train_batch_size=32,
-                per_device_eval_batch_size=32,
+                per_device_train_batch_size=20,
+                per_device_eval_batch_size=20,
                 num_train_epochs=n_ep
             ))
         mdl, tokenizer, trainer = get_all_setup(
