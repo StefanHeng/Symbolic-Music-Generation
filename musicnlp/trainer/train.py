@@ -376,7 +376,7 @@ if __name__ == '__main__':
         # n = 16
         # n = 1024
         n = None
-        max_length = 512
+        max_length = 1024
         gas = 1
         # gas = 4
         # max_length = None
@@ -391,7 +391,7 @@ if __name__ == '__main__':
         dnms = [pop, mst, lmd]
         my_train_args = dict(
             augment_key=augment_key,
-            save_epochs=2
+            save_epochs=1
         )
         train_args = dict(gradient_accumulation_steps=gas)
 
