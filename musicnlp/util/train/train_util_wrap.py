@@ -27,7 +27,7 @@ def meta2fnm_meta(meta: Dict) -> Dict:
             'model name': 'nm', 'max length': 'l', 'axial_pos_shape': 'ax_pos_sp',
             'hidden_size': 'hd_sz', 'ff_size': 'ff_sz',
             'n_layer': 'n_l', 'attn_layers': 'attn', 'attention_shape': 'attn_sh',
-            'parameter_count': 'n_param'
+            'parameter_count': 'n_param', 'seg_len': 'seg_len', 'max_len': 'max_len'
         }
     return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
 
