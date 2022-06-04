@@ -75,11 +75,11 @@ if __name__ == '__main__':
 
     from musicnlp.preprocess import get_dataset
 
-    # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-    fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
-    dsets = get_dataset(fnm)
+    fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+    # fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
 
     def implementation_check():
+        dsets = get_dataset(fnm)
         # ic(dset, dset[:2])
         tkzer = MusicTokenizer(model_max_length=12)
         # tkzer = MusicTokenizer()
@@ -115,6 +115,7 @@ if __name__ == '__main__':
         np.random.seed(sconfig('random-seed'))
 
         n = 4096 * 4
+        dsets = get_dataset(fnm)
         for split, dset in dsets.items():
             n_dset = len(dset)
             if n_dset > n:
@@ -127,4 +128,47 @@ if __name__ == '__main__':
                 for row in tqdm(dset, desc=split):
                     txt = row['score']
                     tkzer(txt)
-    sanity_check_uncom()
+    # sanity_check_uncom()
+
+    def check_n_note_in_tup():
+        import os
+        import json
+        from collections import Counter
+        from tqdm.auto import tqdm
+
+        import musicnlp.util.music as music_util
+        from musicnlp.vocab.elm_type import ElmType
+        from musicnlp.postprocess import MusicConverter
+        mc = MusicConverter()
+
+        pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+        mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+        dnms = [pop, mst, lmd]
+
+        def load_songs(dnm: str):
+            with open(os.path.join(music_util.get_processed_path(), f'{dnm}.json'), 'r') as f:
+                return json.load(f)['music']
+
+        def song2n_note(t: str) -> List[int]:
+            elms = mc.str2notes(t)
+            tups = [e.meta for e in elms if e.type == ElmType.tuplets]
+            return [len(t[0]) for t in tups]
+
+        def count(songs_):
+            c_ = Counter()
+            for s in tqdm(songs_):
+                c_.update(song2n_note(s['score']))
+            return c_
+
+        each = True
+        if each:
+            for f in dnms:
+                ic(f)
+                ic(count(load_songs(f)))
+        else:
+            songs = sum([load_songs(d) for d in dnms], start=[])
+            ic(len(songs))
+            c = count(songs)
+            ic(c)
+    check_n_note_in_tup()

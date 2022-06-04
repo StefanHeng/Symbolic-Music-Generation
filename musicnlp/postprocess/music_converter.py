@@ -3,7 +3,7 @@ from typing import List, Dict, Union
 import numpy as np
 import music21 as m21
 
-from musicnlp.util import *
+from stefutil import *
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import ElmType, MusicElement, VocabType, MusicVocabulary, MusicTokenizer
 from musicnlp.preprocess import KeyFinder
@@ -12,9 +12,7 @@ from musicnlp.preprocess import KeyFinder
 class MusicConverter:
     def __init__(self, prec: int = 5, tokenizer_kw: Dict = None):
         self.prec = prec
-        if tokenizer_kw is None:
-            tokenizer_kw = dict()
-        self.tokenizer = MusicTokenizer(precision=prec, **tokenizer_kw)
+        self.tokenizer = MusicTokenizer(precision=prec, **(tokenizer_kw or dict()))
         self.vocab: MusicVocabulary = self.tokenizer.vocab
 
     def _bar2grouped_bar(self, bar: Measure) -> List[ExtNote]:
@@ -84,7 +82,7 @@ class MusicConverter:
         time_sig, tempo = time_sigs[0], tempos[0]
         toks = [self.vocab(time_sig), self.vocab(tempo)]
         if insert_key:
-            key = insert_key if isinstance(insert_key, str) else sample(KeyFinder(song).find_key(return_type='dict'))
+            key = insert_key if isinstance(insert_key, str) else pt_sample(KeyFinder(song).find_key(return_type='dict'))
             toks.append(self.vocab(key))
 
         for_gen = n_bar is not None

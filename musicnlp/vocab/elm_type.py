@@ -1,6 +1,6 @@
 from enum import Enum
-from typing import Tuple, Dict
-from collections import namedtuple
+from typing import Tuple, Dict, Optional
+from dataclasses import dataclass
 
 
 __all__ = [
@@ -12,6 +12,15 @@ __all__ = [
 
 class ElmType(Enum):
     bar_start, song_end, time_sig, tempo, key, note, tuplets = list(range(7))
+
+
+@dataclass
+class MusicElement:
+    """
+    an intermediate representation, for conversion between music string & MXL
+    """
+    type: ElmType
+    meta: Optional[Tuple] = None
 
 
 class Key(Enum):
@@ -114,9 +123,6 @@ MAJOR_OFFKEY_OFFSET_IDX = [1, 3, 6, 8, 10]
 # Harmonic key (INKEY) offset for MINOR: [0, 2, 3, 5, 7, 8, (10 or 11)]
 MINOR_OFFKEY_OFFSET_IDX = [1, 4, 6, 9, 11]
 OFFKEY_OFFSET = [MINOR_OFFKEY_OFFSET_IDX, MAJOR_OFFKEY_OFFSET_IDX]
-
-# an intermediate representation, for conversion between music string & MXL
-MusicElement = namedtuple(typename='MusicElement', field_names=['type', 'meta'], defaults=[None, None])
 
 
 if __name__ == '__main__':
