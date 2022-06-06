@@ -481,27 +481,30 @@ class MusicVocabulary:
             s = f'{self.cache["pref_pch"]}{pch2step(pitch)}/{pitch.octave}'
         return log_s(s, c='b') if self.color else s
 
-    def _uncommon_tok2uncommon_tok(self, tok: str) -> str:
-        typ = self.type(tok)
-        assert typ in (VocabType.duration, VocabType.time_sig, VocabType.tempo)  # sanity check
-        if typ == VocabType.duration:
-            return MusicVocabulary.uncommon_duration
-        elif typ == VocabType.time_sig:
-            return MusicVocabulary.uncommon_time_sig
-        else:  # VocabType.tempo
-            tp = self.compact(tok)  # get the actual BPM
-            return MusicVocabulary.uncommon_low_tempo if tp < 40 else MusicVocabulary.uncommon_high_tempo
+    def clean_uncommon_token(self, tok: str) -> str:
+        if tok in self.tok2id:
+            return tok
+        else:
+            typ = self.type(tok)
+            assert typ in (VocabType.duration, VocabType.time_sig, VocabType.tempo)  # sanity check
+            if typ == VocabType.duration:
+                return MusicVocabulary.uncommon_duration
+            elif typ == VocabType.time_sig:
+                return MusicVocabulary.uncommon_time_sig
+            else:  # VocabType.tempo
+                tp = self.compact(tok)  # get the actual BPM
+                return MusicVocabulary.uncommon_low_tempo if tp < 40 else MusicVocabulary.uncommon_high_tempo
 
     def clean_uncommon(self, s: str, return_joined: bool = True) -> str:
         """
         Convert uncommon tokens from input score into the special `uncommon` token
         """
-        toks = [(tok if tok in self.tok2id else self._uncommon_tok2uncommon_tok(tok)) for tok in s.split()]
+        toks = [(tok if tok in self.tok2id else self.clean_uncommon_token(tok)) for tok in s.split()]
         return ' '.join(toks) if return_joined else toks
 
     def t2i(self, tok):
-        if tok in self.tok2id:  # uncommon
-            tok = self._uncommon_tok2uncommon_tok(tok)
+        if tok not in self.tok2id:  # uncommon
+            tok = self.clean_uncommon_token(tok)
         return self.tok2id[tok]
 
     def i2t(self, id_):
