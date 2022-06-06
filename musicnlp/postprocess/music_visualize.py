@@ -338,7 +338,7 @@ class MusicVisualize:
         def callback(ax):
             plt.gcf().canvas.draw()
             pch_ints = [-1, *range(6, ma + 6, 6)]
-            ax.set_xticks(pch_ints, labels=[self.tokenizer.vocab.pitch_midi2name(p) for p in pch_ints])
+            ax.set_xticks(pch_ints, labels=[self.tokenizer.vocab_.pitch_midi2name(p) for p in pch_ints])
         title, xlab = 'Distribution of Pitch', 'Pitch'
         if weighted:
             title = f'{title}, weighted by duration'

@@ -1019,7 +1019,7 @@ if __name__ == '__main__':
 
     def check_vocabulary():
         vocab = MusicVocabulary()
-        ic(vocab.enc, vocab.dec, len(vocab))
+        ic(vocab.tok2id, vocab.id2tok, len(vocab))
 
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # mt = MusicTokenizer()

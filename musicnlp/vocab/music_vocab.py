@@ -222,16 +222,16 @@ class MusicVocabulary:
             pitch=pitches,
             duration=[MusicVocabulary.uncommon_duration, *self.get_durations(exp='str')]
         ))
-        self.enc: Dict[str, int] = {  # back-to0back index as ids
+        self.tok2id: Dict[str, int] = {  # back-to0back index as ids
             tok: id_ for id_, tok in enumerate(chain_its(toks for toks in self.toks.values()))
         }
-        self.dec = {v: k for k, v in self.enc.items()}
-        assert len(self.enc) == len(self.dec)  # Sanity check: no id collision
+        self.id2tok = {v: k for k, v in self.tok2id.items()}
+        assert len(self.tok2id) == len(self.id2tok)  # Sanity check: no id collision
 
         # cache them for efficiency
-        self.id2type: Dict[int, VocabType] = {id_: self.type(tok) for id_, tok in self.dec.items()}
+        self.id2type: Dict[int, VocabType] = {id_: self.type(tok) for id_, tok in self.id2tok.items()}
         self.id2compact: Dict[int, Compact] = {
-            id_: self.compact(tok) for id_, tok in self.dec.items() if self.has_compact(tok)
+            id_: self.compact(tok) for id_, tok in self.id2tok.items() if self.has_compact(tok)
         }
 
     def to_dict(self, save=False):
@@ -243,11 +243,11 @@ class MusicVocabulary:
                 'start_of_tuplet': MusicVocabulary.start_of_tuplet,
                 'end_of_tuplet': MusicVocabulary.end_of_tuplet
             },
-            vocabulary=self.enc,
-            n_vocabulary=len(self.enc),
+            vocabulary=self.tok2id,
+            n_vocabulary=len(self.tok2id),
         )
         if save:
-            fnm = f'{self.__class__.__qualname__}, n={len(self.enc)}, prec={self.precision}, {now(for_path=True)}'
+            fnm = f'{self.__class__.__qualname__}, n={len(self.tok2id)}, prec={self.precision}, {now(for_path=True)}'
             path = os_join(music_util.get_processed_path(), f'{fnm}.json')
             with open(path, 'w') as f:
                 json.dump(d_out, f, indent=4)
@@ -279,7 +279,7 @@ class MusicVocabulary:
             return [int(f) if f.denominator == 1 else f for f in ret]
 
     def __len__(self):
-        return len(self.enc)
+        return len(self.tok2id)
 
     def has_compact(self, tok: Union[str, int]) -> bool:
         return self.type(tok) != VocabType.special
@@ -481,21 +481,31 @@ class MusicVocabulary:
             s = f'{self.cache["pref_pch"]}{pch2step(pitch)}/{pitch.octave}'
         return log_s(s, c='b') if self.color else s
 
+    def _uncommon_tok2uncommon_tok(self, tok: str) -> str:
+        typ = self.type(tok)
+        assert typ in (VocabType.duration, VocabType.time_sig, VocabType.tempo)  # sanity check
+        if typ == VocabType.duration:
+            return MusicVocabulary.uncommon_duration
+        elif typ == VocabType.time_sig:
+            return MusicVocabulary.uncommon_time_sig
+        else:  # VocabType.tempo
+            tp = self.compact(tok)  # get the actual BPM
+            return MusicVocabulary.uncommon_low_tempo if tp < 40 else MusicVocabulary.uncommon_high_tempo
+
+    def clean_uncommon(self, s: str, return_joined: bool = True) -> str:
+        """
+        Convert uncommon tokens from input score into the special `uncommon` token
+        """
+        toks = [(tok if tok in self.tok2id else self._uncommon_tok2uncommon_tok(tok)) for tok in s.split()]
+        return ' '.join(toks) if return_joined else toks
+
     def t2i(self, tok):
-        if tok not in self.enc:  # uncommon
-            typ = self.type(tok)
-            assert typ in (VocabType.duration, VocabType.time_sig, VocabType.tempo)  # sanity check
-            if typ == VocabType.duration:
-                tok = MusicVocabulary.uncommon_duration
-            elif typ == VocabType.time_sig:
-                tok = MusicVocabulary.uncommon_time_sig
-            else:  # VocabType.tempo
-                tp = self.compact(tok)  # get the actual BPM
-                tok = MusicVocabulary.uncommon_low_tempo if tp < 40 else MusicVocabulary.uncommon_high_tempo
-        return self.enc[tok]
+        if tok in self.tok2id:  # uncommon
+            tok = self._uncommon_tok2uncommon_tok(tok)
+        return self.tok2id[tok]
 
     def i2t(self, id_):
-        return self.dec[id_]
+        return self.id2tok[id_]
 
     def encode(self, s: Union[str, List[str], List[List[str]]]) -> Union[int, List[int], List[List[int]]]:
         """
@@ -504,9 +514,9 @@ class MusicVocabulary:
         if isinstance(s, List) and isinstance(s[0], List):
             return list(conc_map(self.encode, s))
         elif isinstance(s, List):
-            return [self.enc[s_] for s_ in s]
+            return [self.tok2id[s_] for s_ in s]
         else:
-            return self.enc[s]
+            return self.tok2id[s]
 
     def decode(self, id_: Union[int, List[int], List[List[int]]]) -> Union[str, List[str], List[List[str]]]:
         """
@@ -515,9 +525,9 @@ class MusicVocabulary:
         if isinstance(id_, List) and isinstance(id_[0], List):
             return list(conc_map(self.decode, id_))
         elif isinstance(id_, List):
-            return [self.dec[i_] for i_ in id_]
+            return [self.id2tok[i_] for i_ in id_]
         else:
-            return self.dec[id_]
+            return self.id2tok[id_]
 
 
 if __name__ == '__main__':

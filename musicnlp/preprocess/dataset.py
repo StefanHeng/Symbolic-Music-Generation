@@ -11,6 +11,15 @@ import musicnlp.util.music as music_util
 from musicnlp.vocab import VocabType, MusicTokenizer
 
 
+def load_songs(dnm: str) -> List[str]:
+    """
+    Get individual song `score`s from a JSON `music_export` output
+    """
+    with open(os.path.join(music_util.get_processed_path(), f'{dnm}.json'), 'r') as f:
+        dset = json.load(f)
+    return [s['score'] for s in dset['music']]
+
+
 def get_dataset(
         dataset_names: Union[str, List[str]],
         map_func: Callable = None, remove_columns: Union[str, List[str]] = None,

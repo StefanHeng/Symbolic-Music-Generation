@@ -131,13 +131,11 @@ if __name__ == '__main__':
     # sanity_check_uncom()
 
     def check_n_note_in_tup():
-        import os
-        import json
         from collections import Counter
         from tqdm.auto import tqdm
 
-        import musicnlp.util.music as music_util
         from musicnlp.vocab.elm_type import ElmType
+        from musicnlp.preprocess.dataset import load_songs
         from musicnlp.postprocess import MusicConverter
         mc = MusicConverter()
 
@@ -145,10 +143,6 @@ if __name__ == '__main__':
         mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
         lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
         dnms = [pop, mst, lmd]
-
-        def load_songs(dnm: str):
-            with open(os.path.join(music_util.get_processed_path(), f'{dnm}.json'), 'r') as f:
-                return json.load(f)['music']
 
         def song2n_note(t: str) -> List[int]:
             elms = mc.str2notes(t)
@@ -163,9 +157,9 @@ if __name__ == '__main__':
 
         each = True
         if each:
-            for f in dnms:
-                ic(f)
-                ic(count(load_songs(f)))
+            for path in dnms:
+                ic(path)
+                ic(count(load_songs(path)))
         else:
             songs = sum([load_songs(d) for d in dnms], start=[])
             ic(len(songs))
