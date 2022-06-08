@@ -29,7 +29,7 @@ class MyTransfoXLConfig(TransfoXLConfig):
             d_embed=hd_sz,  # saves a projection layer when hidden size is embedding size
             d_inner=hd_sz * 4,
             d_head=hd_sz // n_head,  # ensure dim_head x #head == hidden size
-            mem_len=64 if 'debug' in k else 512,  # TODO: if i understand correctly this is segment length?
+            mem_len=64 if 'debug' in k else 2048,  # TODO: if i understand correctly this is segment length?
             # intended that adaptive softmax is effectively not needed, given the small Music vocab size
             div_val=1, cutoffs=[]
         ))

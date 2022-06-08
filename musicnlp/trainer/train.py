@@ -9,8 +9,7 @@ from typing import List, Tuple, Dict, Union, Optional
 from collections import OrderedDict
 
 import torch
-from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling
-from transformers import Trainer
+from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling, Trainer
 from transformers.training_args import OptimizerNames
 import datasets
 
@@ -295,9 +294,6 @@ def get_all_setup(
 
 if __name__ == '__main__':
     import transformers
-    from icecream import ic
-
-    ic.lineWrapWidth = 400
 
     def check_model_size():
         md_nm = 'reformer'
@@ -305,12 +301,12 @@ if __name__ == '__main__':
         # md_sz = 'base'
         md_sz = 'large'
         mdl: torch.nn.Module = get_model_n_tokenizer(model_name=md_nm, model_size=md_sz)[1]
-        ic(get_model_num_trainable_parameter(mdl))
+        mic(get_model_num_trainable_parameter(mdl))
     # check_model_size()
 
     seed = sconfig('random-seed')
 
-    def train_reformer(resume_from_checkpoint: str = None):
+    def train_reformer(resume: str = None):
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
         md_nm = 'reformer'
@@ -319,7 +315,7 @@ if __name__ == '__main__':
         # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
-        ic(md_nm, md_sz)
+        mic(md_nm, md_sz)
 
         pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
         mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
@@ -355,8 +351,8 @@ if __name__ == '__main__':
             train_args=train_args, my_train_args=my_train_args
         )
 
-        if resume_from_checkpoint:
-            trainer.train(resume_from_checkpoint)
+        if resume:
+            trainer.train(resume)
         else:
             trainer.train()
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
@@ -365,23 +361,31 @@ if __name__ == '__main__':
     # checkpoint_path = os_join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
     # train(resume_from_checkpoint=checkpoint_path)
 
-    def train_xl():
-        md_nm = 'transf-xl'
+    def train_xl(resume: str = None):
         transformers.set_seed(seed)
-        # md_sz = 'debug'
+
+        md_nm = 'transf-xl'
+
+        md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        md_sz = 'base'
+        # md_sz = 'base'
+
         # n = 8
         # n = 16
+        n = 128
         # n = 1024
-        n = None
-        max_length = 1024
+        # n = None
+
         gas = 1
         # gas = 4
-        # max_length = None
-        model_config = dict(max_length=max_length)
         n_ep = 4
+
+        mem_len = 256
+        # max_length = 512
+        # max_length = 1024
+        max_length = None  # 2048 for non-debugging configs
+        model_config = dict(max_length=max_length)
 
         augment_key = False
 
@@ -401,7 +405,7 @@ if __name__ == '__main__':
             my_train_args.update(dict(tqdm=True, logging_strategy='epoch'))
 
         if 'debug' not in md_sz:
-            model_config.update(mem_len=256)
+            model_config.update(mem_len=mem_len)
             train_args.update(dict(
                 per_device_train_batch_size=20,
                 per_device_eval_batch_size=20,
@@ -412,7 +416,18 @@ if __name__ == '__main__':
             dataset_names=dnms, n_sample=n, dataset_args=dict(shuffle_seed=seed),
             train_args=train_args, my_train_args=my_train_args
         )
+        sanity_check_eval = True
+        if sanity_check_eval:
+            trainer.train_dataset: datasets.Dataset
+            trainer.train_dataset = trainer.train_dataset.select(range(8))
+            mic(len(trainer.train_dataset))
         # ignore so that `None` don't get detached
         ignore_keys_for_eval = ['losses', 'mems', 'hidden_states', 'attentions']
-        trainer.train(ignore_keys_for_eval=ignore_keys_for_eval)
+        train_call_args = dict(ignore_keys_for_eval=ignore_keys_for_eval)
+        if resume:
+            train_call_args['resume_from_checkpoint'] = resume
+        trainer.train(**train_call_args)
+        trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
     train_xl()
+    # resume = os_join(u.model_path, 'checkpoint-17526')
+    # train_xl(resume)

@@ -11,13 +11,19 @@ import musicnlp.util.music as music_util
 from musicnlp.vocab import VocabType, MusicTokenizer
 
 
-def load_songs(dnm: str) -> List[str]:
+def load_songs(*dnms) -> List[str]:
     """
     Get individual song `score`s from a JSON `music_export` output
     """
-    with open(os.path.join(music_util.get_processed_path(), f'{dnm}.json'), 'r') as f:
-        dset = json.load(f)
-    return [s['score'] for s in dset['music']]
+    if not hasattr(load_songs, 'logger'):
+        load_songs.logger = get_logger('Load Songs')
+
+    def _load_single(dnm_):
+        load_songs.logger.info(f'Loading songs in dataset {logi(dnm_)}... ')
+        with open(os.path.join(music_util.get_processed_path(), f'{dnm_}.json'), 'r') as f:
+            dset = json.load(f)
+        return [s['score'] for s in dset['music']]
+    return sum((_load_single(dnm_) for dnm_ in dnms), start=[])
 
 
 def get_dataset(
