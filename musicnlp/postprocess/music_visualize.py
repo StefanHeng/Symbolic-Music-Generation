@@ -21,7 +21,7 @@ from musicnlp.util import *
 from musicnlp.util.music_lib import Dur
 from musicnlp.vocab import (
     COMMON_TEMPOS, COMMON_TIME_SIGS, get_common_time_sig_duration_bound,
-    MusicVocabulary, MusicTokenizer, key_str2enum
+    MusicVocabulary, MusicTokenizer, load_trained as load_word_piece_tokenizer, key_str2enum
 )
 from musicnlp.preprocess import WarnLog
 from musicnlp.postprocess.music_stats import MusicStats
@@ -51,15 +51,18 @@ class MusicVisualize:
             datasets with #song above `subset_bound`
         """
         self.dset: Dict
-        self._prec, self.tokenizer, self.vocab, self.states = None, None, None, None
+        self._prec, self.tokenizer, self.wp_tokenizer, self.vocab, self.states = None, None, None, None, None
         self._df = None
         self.cache = cache
         self.logger = get_logger('Music Visualizer')
+        d_log = dict(cache=cache, subset=subset, subset_bound=subset_bound)
+        self.logger.info(f'Initializing {logi(self.__class__.__qualname__)} with {logi(d_log)}... ')
         self.logger.info('Getting global stats... ')
         if cache:
             fnm = f'{self.cache}.pkl'
             path = os_join(u.plot_path, 'cache', fnm)
             if os.path.exists(path):
+                self.logger.info(f'Loading cached stats from {logi(path)}... ')
                 with open(path, 'rb') as f:
                     d = pickle.load(f)
                     self.dset, self._df = d['dset'], d['df']
@@ -70,6 +73,7 @@ class MusicVisualize:
                 self._df = self._get_song_info()
                 with open(path, 'wb') as f:
                     pickle.dump(dict(dset=self.dset, df=self._df), f)
+                self.logger.info(f'Cached stats saved to {logi(path)} ')
         else:
             self.dset = self._get_dset(filename, dataset_name)
             self._set_meta()
@@ -93,7 +97,7 @@ class MusicVisualize:
                 ds = json.load(f)
             if dnm:
                 songs = ds['music']
-                if len(songs) > subset_bound:
+                if subset_bound and len(songs) > subset_bound:
                     songs = random.sample(songs, round(len(songs) * subset))
                 for s in songs:
                     s['dataset_name'] = dnm
@@ -128,33 +132,47 @@ class MusicVisualize:
 
     def _set_meta(self):
         self.tokenizer = MusicTokenizer(precision=self.prec)
+        self.wp_tokenizer = load_word_piece_tokenizer()
+        assert self.wp_tokenizer.precision == self.prec
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec)
+
+    def _extract_song_info(self, d: Dict, it = None) -> Dict:
+        d = deepcopy(d)
+        scr = d.pop('score')
+        toks = self.tokenizer.tokenize(scr)
+        d['n_token'] = len(toks)
+        wp_toks = self.wp_tokenizer.tokenize(scr, mode='char')  # just need len, efficient
+        d['n_wp_token'] = len(wp_toks)
+        if it:
+            it.set_postfix(dict(n_token=d['n_token'], n_wp_token=d['n_wp_token']))
+        counter_toks = Counter(toks)
+        d['n_bar'] = counter_toks[self.vocab.start_of_bar]
+        d['n_tup'] = counter_toks[self.vocab.start_of_tuplet]
+        del d['warnings']
+        ttc = self.stats.vocab_type_counts(toks)
+        # Only 1 per song
+        d['tempo'] = list(ttc['tempo'].keys())[0]
+        d['time_sig'] = (numer, denom) = list(ttc['time_sig'].keys())[0]
+        d['time_sig_str'] = f'{numer}/{denom}'
+        d['keys_unweighted'] = {k: 1 for k in d['keys']}  # to fit into `_count_by_dataset`
+
+        d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
+        d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
+        return d
 
     def _get_song_info(self):
         entries: List[Dict] = self.dset['music']
 
-        def extract_info(d: Dict):
-            d = deepcopy(d)
-            toks = self.tokenizer.tokenize(d.pop('score'))
-            d['n_token'] = len(toks)
-            counter_toks = Counter(toks)
-            d['n_bar'] = counter_toks[self.vocab.start_of_bar]
-            d['n_tup'] = counter_toks[self.vocab.start_of_tuplet]
-            del d['warnings']
-            ttc = self.stats.vocab_type_counts(toks)
-            # Only 1 per song
-            d['tempo'] = list(ttc['tempo'].keys())[0]
-            d['time_sig'] = (numer, denom) = list(ttc['time_sig'].keys())[0]
-            d['time_sig_str'] = f'{numer}/{denom}'
-            d['keys_unweighted'] = {k: 1 for k in d['keys']}  # to fit into `_count_by_dataset`
-
-            d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
-            d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
-            return d
-        ds = []
-        for e in tqdm(entries, desc='Extracting song info', unit='song'):
-            ds.append(extract_info(e))
+        concurrent = True
+        if concurrent:
+            tqdm_args = dict(desc='Extracting song info', unit='song', chunksize=16)
+            ds = conc_map(self._extract_song_info, entries, with_tqdm=tqdm_args, mode='process')
+        else:
+            it = tqdm(entries, desc='Extracting song info', unit='song')
+            ds = []
+            for song in it:
+                ds.append(self._extract_song_info(song, it))
         return pd.DataFrame(ds)
 
     def hist_wrapper(
@@ -199,8 +217,12 @@ class MusicVisualize:
             plt.show()
         return ax
 
-    def token_length_dist(self, **kwargs):
-        args = dict(col_name='n_token', title='Distribution of token length', xlabel='#token')
+    def token_length_dist(self, wordpiece_tokenize: bool = False, **kwargs):
+        col_nm, title = 'n_token', 'Distribution of token length'
+        if wordpiece_tokenize:
+            col_nm = 'n_wp_token'
+            title = f'{title} w/ WordPiece tokenization'
+        args = dict(col_name=col_nm, title=title, xlabel='#token')
         if kwargs is not None:
             args.update(kwargs)
         self.hist_wrapper(**args)
@@ -507,14 +529,11 @@ class MusicVisualize:
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
-    ic.lineWrapWidth = 1024
-
     import musicnlp.util.music as music_util
 
-    # dnms = ['POP909', 'MAESTRO']
-    dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['POP909']
+    dnms = ['POP909', 'MAESTRO']
+    # dnms = ['POP909', 'MAESTRO', 'LMD']
     dnm2path = dict(
         POP909='musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04',
         MAESTRO='musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28',
@@ -524,49 +543,50 @@ if __name__ == '__main__':
     # dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
     #           'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
     fnms = [dnm2path[dnm] for dnm in dnms]
-    subset_ = None
-    if dnms == ['POP909', 'MAESTRO']:
-        cnm = 'music visualize cache, 05.24.22'
+    if dnms == ['POP909']:
+        cnm = 'music visualize cache, pop, 06.14.22'
+    elif dnms == ['POP909', 'MAESTRO']:
+        cnm = 'music visualize cache, pop & mst, 06.14.22'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = 'music visualize cache, 05.27.22'
-        # cnm = 'music visualize cache 0.1, 05.27.22'  # LMD has 170k songs, prohibitive to plot all
-        subset_ = 0.1
+        cnm = 'music visualize cache, pop & ms & lmd, 06.14.22'
     else:
         cnm = None
+    subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
     mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm, subset=subset_)
     # ic(mv.df)
 
     def check_warn():
         df = mv.warn_info(as_counts=True)
-        ic(df)
+        mic(df)
     # check_warn()
 
     def check_uncommon_tempos():
         tempos = mv.df.tempo.unique()
-        ic(tempos)
-        ic(set(tempos) - set(COMMON_TEMPOS))
+        mic(tempos)
+        mic(set(tempos) - set(COMMON_TEMPOS))
     # check_uncommon_tempos()
 
     def check_uncommon_time_sigs():
         tss = mv.df.time_sig.unique()
-        ic(tss)
+        mic(tss)
         uncom_tss = sorted(set(tss) - set(COMMON_TIME_SIGS), key=lambda ts: (ts[1], ts[0]))  # by denom first then numer
-        ic(uncom_tss)
-    check_uncommon_time_sigs()
+        mic(uncom_tss)
+    # check_uncommon_time_sigs()
 
     def plots():
         args = dict(stat='percent', upper_percentile=97.7)  # ~2std
         # mv.token_length_dist(**args)
+        mv.token_length_dist(wordpiece_tokenize=True, **args)
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
         # mv.time_sig_dist(yscale='linear', stat='percent')
-        mv.tempo_dist(stat='percent')
+        # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
         # mv.note_duration_dist(stat='percent')
         # mv.warning_type_dist()
-    # plots()
+    plots()
 
     fig_sz = (9, 5)
 

@@ -153,9 +153,22 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         prec, chars = meta['music_vocab']['prec'], meta['score2chars']['chars']
         return cls(_tokenizer, precision=prec, chars=chars)
 
+    @property
+    def vocab_size(self) -> int:
+        return self._tokenizer.vocab_size
+
     def __call__(self, text, **kwargs):
         if isinstance(text, str):
             return self._tokenizer(self.s2c(text, clean=True), **kwargs)
+        else:
+            raise NotImplementedError('Not implemented for iterable input')
+
+    def tokenize(self, text, mode: str = 'music', **kwargs):
+        ca.check_mismatch('Tokenization Mode', mode, ['music', 'char'])
+        if isinstance(text, str):
+            encoded = self.s2c(text, clean=True)
+            toks = self._tokenizer.tokenize(encoded, **kwargs)
+            return [self.s2c.trained_tok2tok(t) for t in toks] if mode == 'music' else toks
         else:
             raise NotImplementedError('Not implemented for iterable input')
 
@@ -173,6 +186,12 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         return self.s2c.decode(self._tokenizer.decode(index).removeprefix(self.continuing_prefix))
 
 
+def load_trained(
+        fnm: str = '2022-06-06_23-20-24_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
+) -> WordPieceMusicTokenizer:
+    return WordPieceMusicTokenizer.from_file(fnm)
+
+
 class _CheckTrainedMap:
     """
     **debugging**, see `check_trained`
@@ -188,10 +207,9 @@ class _CheckTrainedMap:
 
 
 if __name__ == '__main__':
+    from tqdm.auto import tqdm
+
     from stefutil.prettier import mic
-
-    mic.output_width = 128
-
     from musicnlp.preprocess.dataset import load_songs
 
     sample_txt = 'TimeSig_1/4 Tempo_120 <bar> p_7/4 d_1/4 p_r d_1/4 p_12/4 d_1/4 p_r d_1/4 <bar> p_2/5 d_1/4 p_r ' \
@@ -207,6 +225,54 @@ if __name__ == '__main__':
                  'p_2/5 d_1/2 p_7/3 d_1/4 p_r d_1/4 <bar> p_12/4 d_1 <bar> p_12/4 d_1 <bar> p_4/5 d_1/2 p_4/5 d_1/2 ' \
                  '<bar> p_4/5 d_1/2 p_9/4 d_1/2 <bar> p_11/4 d_1/2 p_9/5 d_1/2 <bar> p_9/5 d_1/2 p_7/5 d_1/2 <bar> ' \
                  'p_7/5 d_1 <bar> p_7/5 d_1/2 p_12/4 d_1/4 p_r d_1/4 '
+    sample_txt2 = 'TimeSig_2/2 Tempo_230 <bar> p_6/3 d_2 p_1/4 d_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 d_1 <bar> p_8/3 ' \
+                  'd_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 d_3/2 p_11/3 d_1/2 p_11/3 d_1 p_8/3 d_1 <bar> p_6/3 d_2 p_1/4 ' \
+                  'd_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 d_1 <bar> p_8/3 d_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 d_3/2 ' \
+                  'p_11/3 d_1/2 p_11/3 d_1 p_8/3 d_1 <bar> p_6/4 d_2 p_1/5 d_2 <bar> p_6/5 d_2 p_1/5 d_1 p_9/4 d_1 ' \
+                  '<bar> p_8/4 d_2 p_3/4 d_2 <bar> p_8/4 d_3/2 p_11/4 d_1/2 p_11/4 d_1 p_8/4 d_1 <bar> p_6/4 d_2 ' \
+                  'p_1/5 d_2 <bar> p_6/5 d_2 p_1/5 d_1 p_9/4 d_1 <bar> p_8/4 d_2 p_r d_2 <bar> p_8/2 d_2 p_r d_2 ' \
+                  '<bar> p_6/2 d_2 p_6/4 d_2 <bar> p_1/5 d_3/2 p_12/4 d_1/2 p_12/4 d_1 p_1/5 d_1 <bar> p_1/5 d_1 ' \
+                  'p_6/5 d_2 p_1/5 d_1 <bar> p_1/5 d_1 p_12/4 d_3 <bar> p_9/4 d_2 p_6/4 d_1 p_6/4 d_1 <bar> p_6/4 d_2 '\
+                  'p_1/3 d_1 p_4/4 d_1 <bar> p_6/4 d_1 p_6/4 d_1/2 p_9/4 d_1/2 p_11/4 d_1/2 p_12/4 d_1 p_1/5 d_1/2 ' \
+                  '<bar> p_1/5 d_1/2 p_6/5 d_1 p_12/4 d_1/2 p_12/4 d_1/2 p_11/4 d_1/2 p_9/4 d_1 <bar> p_6/2 d_2 p_6/4 '\
+                  'd_2 <bar> p_1/5 d_3/2 p_12/4 d_1/2 p_12/4 d_1 p_1/5 d_1 <bar> p_1/5 d_1 p_6/5 d_2 p_1/5 d_1 <bar> ' \
+                  'p_1/5 d_1 p_8/5 d_3 <bar> p_8/5 d_2 p_6/5 d_1 p_6/5 d_1 <bar> p_6/5 d_2 p_1/3 d_1 p_4/5 d_1 <bar> ' \
+                  'p_6/5 d_1 p_6/5 d_1/2 p_1/5 d_1/2 p_11/4 d_1/2 p_9/4 d_1 p_9/4 d_1/2 <bar> p_6/5 d_1/2 p_1/5 d_1/2 '\
+                  'p_11/4 d_1/2 p_9/4 d_1/2 p_9/4 d_1 p_8/2 d_1 <bar> p_9/2 d_7/4 p_1/4 d_1/8 p_2/4 d_1/8 p_4/4 d_2 ' \
+                  '<bar> p_4/4 d_2 p_4/4 d_2 <bar> p_6/4 d_2 p_11/2 d_1 p_11/3 d_1 <bar> p_11/3 d_2 p_11/3 d_2 <bar> ' \
+                  'p_1/4 d_1 p_4/4 d_1 p_6/4 d_1 p_9/4 d_1 <bar> p_11/4 d_3/2 p_1/5 d_1/2 p_1/5 d_1 p_12/4 d_1 <bar> ' \
+                  'p_11/4 d_1 p_9/4 d_1 p_1/5 d_1/2 p_12/4 d_1/2 p_1/5 d_1/2 p_4/5 d_1/2 <bar> p_r d_1 p_1/5 d_1/2 ' \
+                  'p_12/4 d_1/2 p_1/5 d_1/2 p_4/5 d_3/2 <bar> p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 <bar> p_1/5 d_1/2 p_12/4 ' \
+                  'd_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> p_6/5 d_3 p_9/5 d_1 <bar> p_9/5 d_1 p_6/5 d_3 <bar> ' \
+                  'p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 <bar> p_1/5 d_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> ' \
+                  'p_6/5 d_4 <bar> p_1/5 d_1/2 p_12/4 d_1 p_11/4 d_1/2 p_11/4 d_1/2 p_9/4 d_3/2 <bar> p_6/2 d_2 p_1/3 '\
+                  'd_1 p_6/4 d_1 <bar> p_1/5 d_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> p_6/5 d_3 p_9/5 ' \
+                  'd_1 <bar> p_9/5 d_1 p_6/5 d_3 <bar> p_6/5 d_2 p_6/5 d_2 <bar> p_6/5 d_2 p_6/5 d_2 <bar> p_6/5 d_1 ' \
+                  'p_6/5 d_3 <bar> p_5/5 d_1/2 p_5/5 d_1 p_6/5 d_1/2 p_6/5 d_3/4 p_r d_1/4 p_r d_1 <bar> p_6/3 d_2 ' \
+                  'p_1/4 d_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 d_1 <bar> p_8/3 d_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 ' \
+                  'd_3/2 p_11/3 d_1/2 p_11/3 d_1 p_8/3 d_1 <bar> p_6/3 d_2 p_1/4 d_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 ' \
+                  'd_1 <bar> p_8/3 d_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 d_3/2 p_11/3 d_1/2 p_11/3 d_1 p_8/3 d_1 <bar> ' \
+                  'p_6/4 d_2 p_1/5 d_2 <bar> p_6/5 d_2 p_1/5 d_1 p_9/4 d_1 <bar> p_8/4 d_2 p_3/4 d_2 <bar> p_8/4 ' \
+                  'd_3/2 p_11/4 d_1/2 p_11/4 d_1 p_8/4 d_1 <bar> p_6/4 d_2 p_1/5 d_2 <bar> p_6/5 d_2 p_1/5 d_1 p_9/4 ' \
+                  'd_1 <bar> p_8/4 d_2 p_r d_2 <bar> p_8/2 d_2 p_r d_2 <bar> p_6/2 d_2 p_6/4 d_2 <bar> p_1/5 d_3/2 ' \
+                  'p_12/4 d_1/2 p_12/4 d_1 p_1/5 d_1 <bar> p_1/5 d_1 p_6/5 d_2 p_1/5 d_1 <bar> p_1/5 d_1 p_12/4 d_3 ' \
+                  '<bar> p_9/4 d_2 p_6/4 d_1 p_6/4 d_1 <bar> p_6/4 d_2 p_1/3 d_1 p_4/4 d_1 <bar> p_6/4 d_1 p_6/4 ' \
+                  'd_1/2 p_9/4 d_1/2 p_11/4 d_1/2 p_12/4 d_1 p_1/5 d_1/2 <bar> p_1/5 d_1/2 p_6/5 d_1 p_12/4 d_1/2 ' \
+                  'p_12/4 d_1/2 p_11/4 d_1/2 p_9/4 d_1 <bar> p_6/2 d_2 p_6/4 d_2 <bar> p_1/5 d_3/2 p_12/4 d_1/2 ' \
+                  'p_12/4 d_1 p_1/5 d_1 <bar> p_1/5 d_1 p_6/5 d_2 p_1/5 d_1 <bar> p_1/5 d_1 p_8/5 d_3 <bar> p_8/5 d_2 '\
+                  'p_6/5 d_1 p_6/5 d_1 <bar> p_6/5 d_2 p_1/3 d_1 p_4/5 d_1 <bar> p_6/5 d_1 p_6/5 d_1/2 p_1/5 d_1/2 ' \
+                  'p_11/4 d_1/2 p_9/4 d_1 p_9/4 d_1/2 <bar> p_6/5 d_1/2 p_1/5 d_1/2 p_11/4 d_1/2 p_9/4 d_1/2 p_9/4 ' \
+                  'd_1 p_8/2 d_1 <bar> p_9/2 d_7/4 p_1/4 d_1/8 p_2/4 d_1/8 p_4/4 d_2 <bar> p_4/4 d_2 p_4/4 d_2 <bar> ' \
+                  'p_6/4 d_2 p_11/2 d_1 p_11/3 d_1 <bar> p_11/3 d_2 p_11/3 d_2 <bar> p_1/4 d_1 p_4/4 d_1 p_6/4 d_1 ' \
+                  'p_9/4 d_1 <bar> p_11/4 d_3/2 p_1/5 d_1/2 p_1/5 d_1 p_12/4 d_1 <bar> p_11/4 d_1 p_9/4 d_1 p_1/5 ' \
+                  'd_1/2 p_12/4 d_1/2 p_1/5 d_1/2 p_4/5 d_1/2 <bar> p_r d_1 p_1/5 d_1/2 p_12/4 d_1/2 p_1/5 d_1/2 ' \
+                  'p_4/5 d_3/2 <bar> p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 <bar> p_1/5 d_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 '\
+                  'p_6/5 d_1 <bar> p_6/5 d_3 p_9/5 d_1 <bar> p_9/5 d_1 p_6/5 d_3 <bar> p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 ' \
+                  '<bar> p_1/5 d_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> p_6/5 d_4 <bar> p_1/5 d_1/2 ' \
+                  'p_12/4 d_1 p_11/4 d_1/2 p_11/4 d_1/2 p_9/4 d_3/2 <bar> p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 <bar> p_1/5 ' \
+                  'd_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> p_6/5 d_3 p_9/5 d_1 <bar> p_9/5 d_1 p_6/5 ' \
+                  'd_3 <bar> p_6/5 d_2 p_6/5 d_2 <bar> p_6/5 d_2 p_6/5 d_2 <bar> p_6/5 d_1 p_6/5 d_3 <bar> p_5/5 ' \
+                  'd_1/2 p_5/5 d_1 p_6/5 d_1/2 p_6/5 d_3/4 p_r d_1/4 p_r d_1 </s> '
 
     def sanity_check_split():
         pre_tokenizer = pre_tokenizers.WhitespaceSplit()  # split on whitespace only
@@ -298,12 +364,38 @@ if __name__ == '__main__':
             mic(c)
     # train()
 
-    def check_trained():
+    def check_trained_property():
+        tokenizer = load_trained()
+        # mic(tokenizer)
+
+        # map_single = _CheckTrainedMap(mv, tokenizer)
+        # mic(map_single(sample_txt2))
+
+        sample_txt2_cleaned = tokenizer.vocab.clean_uncommon(sample_txt2)
+        encoded = tokenizer.tokenize(sample_txt2_cleaned)
+        mic(encoded)
+    check_trained_property()
+
+    def check_trained_has_single_token():
+        """
+        Check each single token in vanilla vocab can be encoded into single token, 
+        i.e. trained vocab has each single token, so that no `UNK` token needed
+        """
+        tokenizer = load_trained()
+        vocab = tokenizer.vocab
+        it = tqdm(vocab.tok2id.keys())
+        for tok in it:
+            it.set_postfix(tok=tok)
+            encoded = tokenizer.encode(tok)
+            it.set_postfix(dict(tok=tok, encoded=encoded))
+            assert len(encoded) == 1
+    # check_trained_has_single_token()
+
+    def check_trained_tokenize_all():
         from collections import Counter
 
-        from tqdm.auto import tqdm
-
-        fnm = '2022-06-06_17-39-34_Word-Piece-Music-Tokenizer, dnm=POP & MST, vsz=8192, n=2185'
+        # fnm = '2022-06-06_17-39-34_Word-Piece-Music-Tokenizer, dnm=POP & MST, vsz=8192, n=2185'
+        fnm = '2022-06-06_23-20-24_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
         tokenizer = WordPieceMusicTokenizer.from_file(fnm)
         # inputs = tokenizer(sample_txt)
         # mic(tokenizer.decode(inputs['input_ids']))
@@ -312,14 +404,14 @@ if __name__ == '__main__':
         check_dist = True
 
         # dnms = [pop]
-        dnms = [lmd]
-        # dnms = [pop, mst, lmd]
+        # dnms = [lmd]
+        dnms = [pop, mst, lmd]
         songs = load_songs(*dnms)
-        # concurrent = True
-        concurrent = False
+        concurrent = True
+        # concurrent = False
         if concurrent:
             map_single = _CheckTrainedMap(mv, tokenizer)
-            lst_ids = conc_map(map_single, songs, with_tqdm=dict(chunksize=16), mode='process')
+            lst_ids = conc_map(map_single, songs, with_tqdm=dict(chunksize=64), mode='process')
             c = Counter()
             for ids in tqdm(lst_ids):
                 c.update(tokenizer.convert_ids_to_tokens(ids))
@@ -338,4 +430,4 @@ if __name__ == '__main__':
                 if check_dist:
                     c.update(tokenizer.convert_ids_to_tokens(ids))
             mic(c)
-    check_trained()
+    # check_trained_tokenize_all()

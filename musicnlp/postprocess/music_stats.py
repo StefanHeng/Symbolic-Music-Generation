@@ -1,10 +1,10 @@
 import itertools
-from typing import Tuple, Dict, Iterable
+from typing import Dict, Iterable
 from fractions import Fraction
 from collections import Counter
 
 from musicnlp.util.music_lib import Dur
-from musicnlp.vocab import ElmType, MusicVocabulary
+from musicnlp.vocab import ElmType, MusicElement, MusicVocabulary
 from musicnlp.postprocess.music_converter import MusicConverter
 
 
@@ -34,10 +34,10 @@ class MusicStats:
         """
         if not isinstance(toks, list):
             toks = list(toks)
-        notes = [elm for elm in self.converter.str2notes(toks) if elm[0] in [ElmType.note, ElmType.tuplets]]
+        notes = [elm for elm in self.converter.str2notes(toks) if elm.type in [ElmType.note, ElmType.tuplets]]
 
-        def elm2notes(elm: Tuple[ElmType, Tuple]):
-            typ, compacts = elm
+        def elm2notes(elm: MusicElement):
+            typ, compacts = elm.type, elm.meta
             if typ == ElmType.note:
                 return [compacts]
             else:

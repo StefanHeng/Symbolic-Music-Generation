@@ -16,18 +16,19 @@ import datasets
 from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
-from musicnlp.vocab import MusicTokenizer, key_ordinal2str
+from musicnlp.vocab import MusicTokenizer, WordPieceMusicTokenizer, key_ordinal2str
 from musicnlp.preprocess import get_dataset, KeySampleDataset
 from musicnlp.models import MyReformerConfig, MyReformerModelWithLMHead, MyTransfoXLConfig, MyTransfoXLLMHeadModel
 from musicnlp.trainer import metrics
 
 
 def get_model_n_tokenizer(
-        model_name: str, model_size: str, prec: int = 5, model_config: Dict = None
+        model_name: str, model_size: str, prec: int = 5, wordpiece_tokenize: bool = False, model_config: Dict = None
 ) -> Tuple[MusicTokenizer, torch.nn.Module, OrderedDict]:
     ca.check_mismatch('Model Name', model_name, ['transf-xl', 'reformer'])
 
-    tokenizer = MusicTokenizer(precision=prec)  # needed for reformer config
+    cls = WordPieceMusicTokenizer if wordpiece_tokenize else MusicTokenizer
+    tokenizer = cls(precision=prec)  # needed for reformer config
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
             'transf-xl': (MyTransfoXLConfig, MyTransfoXLLMHeadModel),
@@ -255,15 +256,17 @@ class VanillaMap:
 
 def get_all_setup(
         model_name: str = None, model_size: str = None,
-        dataset_names: Union[str, List[str]] = None, prec: int = 5, n_sample=None, dataset_args: Dict = None,
+        dataset_names: Union[str, List[str]] = None, prec: int = 5, dataset_args: Dict = None,
         model_config: Dict = None, train_args: Dict = None, my_train_args: Dict = None
 ) -> Tuple[torch.nn.Module, MusicTokenizer, Trainer]:
-    # n_sample mainly for debugging
-    tokenizer, model_, meta = get_model_n_tokenizer(model_name, model_size, prec=prec, model_config=model_config)
     my_train_args = my_train_args or dict()
-    aug_key = my_train_args.pop('augment_key', False)
-    dset_args = dict(n_sample=n_sample)
-    dset_args.update(dataset_args or dict())
+    wordpiece_tokenize, aug_key = (my_train_args.pop(k, False) for k in ['wordpiece_tokenize', 'augment_key'])
+    mic(wordpiece_tokenize)
+    tokenizer, model, meta = get_model_n_tokenizer(
+        model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, model_config=model_config
+    )
+
+    dset_args = dataset_args or dict()
     if aug_key:
         # For now, just do non-deterministic sampling for eval set too, TODO?
         dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dset_args)
@@ -286,10 +289,10 @@ def get_all_setup(
         model_meta=meta,
         clm_acc_logging=clm_acc_logging, my_args=my_args,
         train_metrics=dict(ikr=cm.ikr),  # TODO: calculate IRK when key not given?
-        model=model_, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        model=model, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
         train_dataset=tr, eval_dataset=vl, compute_metrics=cm
     )
-    return model_, tokenizer, trainer_
+    return model, tokenizer, trainer_
 
 
 if __name__ == '__main__':
@@ -388,6 +391,7 @@ if __name__ == '__main__':
         model_config = dict(max_length=max_length)
 
         augment_key = False
+        wordpiece_tokenize = True
 
         pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
         mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
@@ -395,6 +399,7 @@ if __name__ == '__main__':
         dnms = [pop, mst, lmd]
         my_train_args = dict(
             augment_key=augment_key,
+            wordpiece_tokenize=wordpiece_tokenize,
             save_epochs=1
         )
         train_args = dict(gradient_accumulation_steps=gas)
