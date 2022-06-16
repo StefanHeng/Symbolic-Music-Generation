@@ -281,8 +281,8 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         return self.s2c.decode(self._tokenizer.decode(index).removeprefix(self.continuing_prefix))
 
 
-def load_trained(
-        fnm: str = '2022-06-15_11-02-57_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
+def load_trained(  # has independent global token & bar split
+        fnm: str = '2022-06-15_21-41-08_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
 ) -> WordPieceMusicTokenizer:
     return WordPieceMusicTokenizer.from_file(fnm)
 

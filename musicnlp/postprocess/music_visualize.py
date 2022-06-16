@@ -360,7 +360,7 @@ class MusicVisualize:
         def callback(ax):
             plt.gcf().canvas.draw()
             pch_ints = [-1, *range(6, ma + 6, 6)]
-            ax.set_xticks(pch_ints, labels=[self.tokenizer.vocab_.pitch_midi2name(p) for p in pch_ints])
+            ax.set_xticks(pch_ints, labels=[self.tokenizer.vocab.pitch_midi2name(p) for p in pch_ints])
         title, xlab = 'Distribution of Pitch', 'Pitch'
         if weighted:
             title = f'{title}, weighted by duration'
@@ -532,8 +532,8 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # dnms = ['POP909']
-    dnms = ['POP909', 'MAESTRO']
-    # dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['POP909', 'MAESTRO']
+    dnms = ['POP909', 'MAESTRO', 'LMD']
     dnm2path = dict(
         POP909='musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04',
         MAESTRO='musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28',
@@ -544,11 +544,11 @@ if __name__ == '__main__':
     #           'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
     fnms = [dnm2path[dnm] for dnm in dnms]
     if dnms == ['POP909']:
-        cnm = 'music visualize cache, pop, 06.14.22'
+        cnm = 'music visualize cache, pop, 06.16.22'
     elif dnms == ['POP909', 'MAESTRO']:
-        cnm = 'music visualize cache, pop & mst, 06.14.22'
+        cnm = 'music visualize cache, pop & mst, 06.16.22'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = 'music visualize cache, pop & ms & lmd, 06.14.22'
+        cnm = 'music visualize cache, POP & MST & LMD 0.1, 06.16.22'
     else:
         cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
