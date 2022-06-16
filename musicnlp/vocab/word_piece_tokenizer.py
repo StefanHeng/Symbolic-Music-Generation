@@ -17,8 +17,16 @@ from tokenizers import pre_tokenizers, models, decoders
 
 from stefutil import *
 from musicnlp.util import *
-from musicnlp.vocab.music_vocab import MusicVocabulary
+from musicnlp.vocab.music_vocab import MusicVocabulary, VocabType
 from musicnlp.vocab.music_tokenizer import MusicTokenizer
+
+
+def get_uni_chars_cache() -> List[str]:
+    """
+    :return: A list of mostly-printing friendly unicode characters
+    """
+    omit = {0x85, 0xa0}  # cos WhitespaceSplit pre-tokenizer filters out this char
+    return [chr(i) for i in range(0x0021, 0x02FF) if i not in omit]
 
 
 class Score2Chars:
@@ -26,31 +34,100 @@ class Score2Chars:
     To fit to existing WordPiece training, mapping between
         1) my music `score` format and 2) sequence of contiguous characters
     """
-    def __init__(self, vocab: MusicVocabulary, chars: List[str] = None, continuing_prefix: str = '##'):
+    uni_chars_cache = get_uni_chars_cache()
+
+    def __init__(
+            self, vocab: MusicVocabulary, chars: List[str] = None, continuing_prefix: str = '##',
+            independent_global_token: bool = False, punctuate: bool = False
+    ):
         """
         :param vocab: Handles music vocabulary processing, such as mapping from token to ordinal/id
         :param chars: A list of characters
-            Intended for mapping each ordinal,
+            Intended for mapping each ordinal
+        :param independent_global_token: If True, global metadata token are not merged
+            i.e. Time Signature, Tempo, Key
+            Analogous to maintaining the character
+        :param punctuate: If True, WordPiece merging stops at bar separation & tuplets
+            Analogous to punctuation
         """
         self.vocab = vocab
         if chars:
             assert len(chars) == len(vocab)
         else:
             chars = Score2Chars.get_uni_chars(len(vocab))
+        assert all(c != ' ' for c in chars)
         self.dec_chars = chars
         self.enc_chars = {c: i for i, c in enumerate(chars)}
         self.continuing_prefix = continuing_prefix
 
+        self.independent_global_token = independent_global_token
+        self.punctuate = punctuate
+        self.need_split = independent_global_token or punctuate
+        self.spec_toks = {
+            self.vocab.start_of_bar, self.vocab.start_of_tuplet, self.vocab.end_of_tuplet, self.vocab.end_of_song
+        }
+
     @staticmethod
     def get_uni_chars(n: int) -> List[str]:
-        """
-        :return: A list of mostly-printing friendly unicode characters
-        """
-        strt, end = 0x0021, 0x02FF
-        assert 0 < n <= end - strt + 1
-        return [chr(i) for i in range(strt, strt + n)]
+        assert 0 < n <= len(Score2Chars.uni_chars_cache)
+        return Score2Chars.uni_chars_cache[:n]
 
-    def __call__(self, s: Union[str, List[str]], clean: bool = True) -> str:
+    def __call__(self, score: str, clean: bool = True) -> str:
+        """
+        Vanilla music token representation => character string ready for training
+        """
+        if self.need_split:  # prevent merge via separating by space, see `__call__` pre_tokenizer
+            toks = self.split(score, join=False)  # efficient as `encode` can take split tokens
+            sanity_check = False
+            if sanity_check:
+                ret = ' '.join([self.encode(t) for t in toks])
+                _toks = ret.split()
+                _toks = [self.decode(_t) for _t in _toks]
+                assert ' '.join(_toks) == mv.clean_uncommon(score)
+                for t in _toks:
+                    mic(t)
+                exit(1)
+            return ' '.join([self.encode(t) for t in toks])
+        else:
+            return self.encode(score)
+
+    def split(self, score: str, join: bool = True) -> Union[List[str], List[List[str]]]:
+        toks = score.split()
+        if self.need_split:
+            ts, tp, toks = toks[0], toks[1], toks[2:]
+            assert self.vocab.type(ts) == VocabType.time_sig
+            assert self.vocab.type(tp) == VocabType.tempo
+            assert toks[0] == self.vocab.start_of_bar
+            assert toks[-1] == self.vocab.end_of_song
+            if self.independent_global_token:
+                words = [[ts], [tp]] if join else [ts, tp]
+                if self.punctuate:
+                    words += self._split_bar_notes(toks, join=join)
+                else:
+                    words += ' '.join(toks)
+                return words
+            else:  # punctuate is True
+                word_1st = f'{ts} {tp}'
+                if not join:
+                    word_1st = [word_1st]
+                return [word_1st] + self._split_bar_notes(toks, join=join)
+        else:
+            return toks
+
+    def _split_bar_notes(self, toks: List[str], join: bool = True) -> Union[List[str], List[List[str]]]:
+        words, curr_word = [], []  # word as in how it will look like after pre-tokenization
+        for tok in toks:
+            if tok in self.spec_toks:
+                words.append(curr_word)
+                words.append([tok])
+                curr_word = []
+            else:
+                curr_word.append(tok)
+        if curr_word:
+            words.append(curr_word)
+        return [' '.join(w) for w in words] if join else words
+
+    def encode(self, s: Union[str, List[str]], clean: bool = True) -> str:
         """
         score => chars
         """
@@ -63,7 +140,9 @@ class Score2Chars:
         """
         chars => score
         """
-        return ' '.join([self.vocab.id2tok[self.enc_chars[c]] for c in s])
+        def _decode(s_: str) -> str:
+            return ' '.join([self.vocab.id2tok[self.enc_chars[c]] for c in s_])
+        return ' '.join([_decode(s) for s in s.split()]) if self.need_split else _decode(s)
 
     def trained_tok2tok(self, tok: str) -> str:
         if tok.startswith(self.continuing_prefix):
@@ -85,9 +164,12 @@ class WordPieceMusicTrainer:
     """
     continuing_prefix = '##'
 
-    def __init__(self, vocab: MusicVocabulary):
+    def __init__(self, vocab: MusicVocabulary, **kwargs):
+        """
+        :param vocab: Music Vocabulary, for internal mapping between music tokens & characters
+        """
         self.vocab = vocab
-        self.s2c = Score2Chars(vocab=mv, continuing_prefix=WordPieceMusicTrainer.continuing_prefix)
+        self.s2c = Score2Chars(vocab=vocab, continuing_prefix=WordPieceMusicTrainer.continuing_prefix, **kwargs)
 
     def __call__(self, vocab_size: int = 2**13, songs: List[str] = None, save: Union[bool, str] = None):
         # TODO: don't need to pass `vocab` to `WordPiece`?
@@ -98,6 +180,8 @@ class WordPieceMusicTrainer:
         logger.info(f'Training launched with {log_dict(d_log)}')
 
         tokenizer = Tokenizer(model=models.WordPiece(vocab=None, max_input_chars_per_word=int(1e10)))
+        if self.s2c.need_split:
+            tokenizer.pre_tokenizer = pre_tokenizers.WhitespaceSplit()
         tokenizer.decoder = decoders.WordPiece(prefix=WordPieceMusicTrainer.continuing_prefix)
         trainer = WordPieceTrainer(
             vocab_size=vocab_size, initial_alphabet=self.s2c.dec_chars, show_progress=True,
@@ -116,7 +200,11 @@ class WordPieceMusicTrainer:
             with open(path_meta, 'w') as f:
                 json.dump(dict(  # For reconstructing class properties, see `WordPieceMusicTokenizer`
                     music_vocab=dict(prec=self.vocab.precision),
-                    score2chars=dict(chars=self.s2c.dec_chars),
+                    score2chars=dict(
+                        chars=self.s2c.dec_chars,
+                        independent_global_token=self.s2c.independent_global_token,
+                        punctuate=self.s2c.punctuate
+                    ),
                 ), f, indent=4)
             logger.info(f'{logi("Tokenizer")} music metadata saved to {logi(path_meta)}')
         return tokenizer
@@ -133,7 +221,7 @@ class MyPreTrainedTokenizerFast(PreTrainedTokenizerFast):
 
 
 class WordPieceMusicTokenizer(MusicTokenizer):
-    def __init__(self, tokenizer: Tokenizer, precision: int = 5, chars: List[str] = None, **kwargs):
+    def __init__(self, tokenizer: Tokenizer, precision: int = 5, s2c_args: Dict = None, **kwargs):
         """
         :param tokenizer: A trained WordPiece tokenizer on characters
         """
@@ -143,15 +231,15 @@ class WordPieceMusicTokenizer(MusicTokenizer):
             tokenizer_object=_tokenizer, pad_token=self.pad_token, eos_token=self.eos_token
         )
         self.continuing_prefix = _tokenizer.decoder.prefix
-        self.s2c = Score2Chars(vocab=self.vocab, chars=chars, continuing_prefix=self.continuing_prefix)
+        self.s2c = Score2Chars(vocab=self.vocab, continuing_prefix=self.continuing_prefix, **s2c_args)
 
     @classmethod
     def from_file(cls, fnm: str, output_path: str = u.tokenizer_path):
         _tokenizer = Tokenizer.from_file(os_join(output_path, f'{fnm}.json'))
         with open(os_join(output_path, f'{fnm}_music_meta.json'), 'r') as f:
             meta = json.load(f)
-        prec, chars = meta['music_vocab']['prec'], meta['score2chars']['chars']
-        return cls(_tokenizer, precision=prec, chars=chars)
+        prec = meta['music_vocab'].pop('prec')
+        return cls(_tokenizer, precision=prec, s2c_args=meta['score2chars'])
 
     @property
     def vocab_size(self) -> int:
@@ -163,10 +251,17 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         else:
             raise NotImplementedError('Not implemented for iterable input')
 
-    def tokenize(self, text, mode: str = 'music', **kwargs):
+    def tokenize(self, text, mode: str = 'music', entire_score: bool = True, **kwargs):
+        """
+        :param text: Music score
+        :param mode: One of [`music`, `char`], whether to return in human-readable representation
+        :param entire_score: If true, enforce check for entire score passed in
+            Otherwise, the tokens are not split at all
+                For this reason, **use with caution**, Intended for debugging, see `check_trained_has_single_token`
+        """
         ca.check_mismatch('Tokenization Mode', mode, ['music', 'char'])
         if isinstance(text, str):
-            encoded = self.s2c(text, clean=True)
+            encoded = self.s2c(text, clean=True) if entire_score else self.s2c.encode(text, clean=True)
             toks = self._tokenizer.tokenize(encoded, **kwargs)
             return [self.s2c.trained_tok2tok(t) for t in toks] if mode == 'music' else toks
         else:
@@ -187,7 +282,7 @@ class WordPieceMusicTokenizer(MusicTokenizer):
 
 
 def load_trained(
-        fnm: str = '2022-06-06_23-20-24_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
+        fnm: str = '2022-06-15_11-02-57_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
 ) -> WordPieceMusicTokenizer:
     return WordPieceMusicTokenizer.from_file(fnm)
 
@@ -212,19 +307,90 @@ if __name__ == '__main__':
     from stefutil.prettier import mic
     from musicnlp.preprocess.dataset import load_songs
 
-    sample_txt = 'TimeSig_1/4 Tempo_120 <bar> p_7/4 d_1/4 p_r d_1/4 p_12/4 d_1/4 p_r d_1/4 <bar> p_2/5 d_1/4 p_r ' \
-                 'd_1/4 p_4/5 d_1/2 <bar> p_4/5 d_1 <bar> p_4/5 d_1/2 p_5/5 d_1/4 p_r d_1/4 <bar> p_4/5 d_1 <bar> ' \
-                 'p_4/5 d_1/2 p_2/5 d_1/2 <bar> p_2/5 d_1 <bar> p_7/5 d_1 <bar> p_7/5 d_1/2 p_r d_1/2 <bar> p_12/4 ' \
-                 'd_1 <bar> p_12/4 d_1 <bar> p_2/5 d_1/4 p_r d_1/4 p_12/4 d_1/4 p_r d_1/4 <bar> p_12/4 d_1 <bar> ' \
-                 'p_11/4 d_1 <bar> p_11/4 d_1 <bar> p_11/4 d_1 <bar> p_11/4 d_1/2 p_4/4 d_1/2 <bar> p_5/5 d_1 <bar> ' \
-                 'p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_2/5 d_1 <bar> p_2/5 d_1 <bar> p_4/5 d_1 <bar> ' \
-                 'p_4/5 d_1/2 p_r d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_4/5 d_1/2 p_2/5 d_1/2 '\
-                 '<bar> p_2/5 d_1 <bar> p_2/5 d_1 <bar> p_11/4 d_1 <bar> p_12/4 d_1/2 p_2/5 d_1/4 p_r d_1/4 <bar> ' \
-                 'p_4/5 d_1 <bar> p_12/4 d_1 <bar> p_5/5 d_1/4 p_r d_1/4 p_4/5 d_1/2 <bar> p_4/5 d_1/2 p_12/4 d_1/4 ' \
-                 'p_r d_1/4 <bar> p_11/4 d_1/2 p_11/4 d_1/2 <bar> p_11/4 d_1/2 p_7/5 d_1/2 <bar> p_7/5 d_1 <bar> ' \
-                 'p_2/5 d_1/2 p_7/3 d_1/4 p_r d_1/4 <bar> p_12/4 d_1 <bar> p_12/4 d_1 <bar> p_4/5 d_1/2 p_4/5 d_1/2 ' \
-                 '<bar> p_4/5 d_1/2 p_9/4 d_1/2 <bar> p_11/4 d_1/2 p_9/5 d_1/2 <bar> p_9/5 d_1/2 p_7/5 d_1/2 <bar> ' \
-                 'p_7/5 d_1 <bar> p_7/5 d_1/2 p_12/4 d_1/4 p_r d_1/4 '
+    sample_txt = 'TimeSig_1/4 Tempo_120 <bar> p_1/5 d_1 <bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1/2 p_6/5 d_1/2 ' \
+                 '<bar> p_8/5 d_1/2 p_10/5 d_1/2 <bar> p_8/5 d_1/2 p_8/4 d_1/2 <bar> p_10/4 d_1/2 p_12/4 d_1/2 <bar> ' \
+                 'p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1/2 p_6/5 d_1/2 <bar> p_5/5 d_1/2 p_5/4 d_1/2 <bar> p_10/4 ' \
+                 'd_1/2 p_12/4 d_1/2 <bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1/2 p_6/5 d_1/2 <bar> p_5/5 d_1/2 ' \
+                 'p_12/3 d_1/2 <bar> p_3/4 d_1/2 p_8/4 d_1/2 <bar> p_12/4 d_1/2 p_1/5 d_1/2 <bar> p_12/4 d_1/2 p_11/4 '\
+                 'd_1/2 <bar> p_10/4 d_1/2 p_10/3 d_1/2 <bar> p_3/4 d_1/2 p_6/4 d_1/2 <bar> p_10/4 d_1/2 p_12/4 d_1/2 '\
+                 '<bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_1/5 d_1/2 p_8/5 d_1/2 <bar> p_1/5 d_1/2 p_8/4 d_1/2 <bar> ' \
+                 'p_8/5 d_1 <bar> p_8/5 d_1/2 p_5/5 d_1/2 <bar> p_6/5 d_1/2 p_5/5 d_1/2 <bar> p_1/5 d_1/2 p_8/4 d_1/2 '\
+                 '<bar> p_6/4 d_1/2 p_5/4 d_1/2 <bar> p_1/4 d_1/2 p_3/4 d_1/2 <bar> p_6/4 d_1 <bar> p_8/5 d_1 <bar> ' \
+                 'p_8/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1 <bar> ' \
+                 'p_5/4 d_1/2 p_8/3 d_1/2 <bar> p_5/4 d_1 <bar> p_5/4 d_1 <bar> p_5/4 d_1/2 p_10/4 d_1/2 <bar> p_8/4 ' \
+                 'd_1 <bar> p_3/4 d_1 <bar> p_8/4 d_1 <bar> p_3/4 d_1 <bar> p_1/4 d_1 <bar> p_1/4 d_1 <bar> p_5/4 ' \
+                 'd_1/2 p_5/3 d_1/2 <bar> p_1/4 d_1/4 p_r d_1/4 p_6/4 d_1/2 <bar> p_5/4 d_1 <bar> p_12/3 d_1 <bar> ' \
+                 'p_5/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_4/4 d_1/2 p_12/3 d_1/2 <bar> p_3/4 d_1 <bar> p_10/3 d_1/2 '\
+                 'p_3/4 d_1/4 p_r d_1/4 <bar> p_10/3 d_1/2 p_12/3 d_1/2 <bar> p_3/4 d_1/2 p_3/4 d_1/2 <bar> p_5/4 d_1 '\
+                 '<bar> p_8/3 d_1/2 p_5/4 d_1/2 <bar> p_5/4 d_1 <bar> p_2/4 d_1/2 p_5/4 d_1/2 <bar> p_6/4 d_1 <bar> ' \
+                 'p_3/4 d_1/2 p_10/3 d_1/2 <bar> p_10/4 d_1 <bar> p_5/4 d_1/2 p_10/3 d_1/2 <bar> p_3/4 d_1/2 p_8/4 ' \
+                 'd_1/2 <bar> p_12/4 d_1/2 p_5/5 d_1/2 <bar> p_6/5 d_1/2 p_5/5 d_1/2 <bar> p_3/5 d_1 <bar> p_1/5 d_1 ' \
+                 '<bar> p_1/5 d_1/2 p_5/5 d_1/2 <bar> p_5/5 d_1 <bar> p_1/5 d_1/2 p_1/5 d_1/2 <bar> p_12/4 d_1 <bar> ' \
+                 'p_12/4 d_1 <bar> p_8/4 d_1 <bar> p_9/4 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_5/4 d_1/2 p_10/4 '\
+                 'd_1/2 <bar> p_12/4 d_1/2 p_1/5 d_1/2 <bar> p_12/4 d_1 <bar> p_12/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 ' \
+                 '<bar> p_5/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_4/5 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_8/5 '\
+                 'd_1 <bar> p_6/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1/2 p_5/4 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 '\
+                 'p_5/4 d_1/2 <bar> p_6/5 d_1 <bar> p_5/5 d_1/2 p_10/3 d_1/2 <bar> p_12/4 d_1 <bar> p_3/5 d_1 <bar> ' \
+                 'p_1/5 d_1 <bar> p_3/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 d_1/2 p_1/5 d_1/2 <bar> p_1/5 d_1/2 p_8/4 ' \
+                 'd_1/2 <bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1 <bar> p_3/5 d_1 <bar> p_1/5 d_1/2 p_8/4 d_1/2 ' \
+                 '<bar> p_1/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_8/4 d_1/2 p_11/4 d_1/2 <bar> p_5/5 d_1 ' \
+                 '<bar> p_5/5 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_1/5 d_1/2 p_3/4 d_1/2 <bar> p_1/5 d_1 <bar> p_6/5 ' \
+                 'd_1/2 p_6/5 d_1/4 p_r d_1/4 <bar> p_12/4 d_1 <bar> p_12/4 d_1/2 p_6/4 d_1/2 <bar> p_5/5 d_1 <bar> ' \
+                 'p_5/5 d_1/2 p_6/5 d_1/2 <bar> p_8/5 d_1 <bar> p_5/5 d_1/2 p_3/4 d_1/2 <bar> p_1/5 d_1 <bar> p_1/5 ' \
+                 'd_1 <bar> p_12/4 d_1 <bar> p_8/4 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1/2 p_6/4 d_1/2 <bar> p_8/5 d_1 ' \
+                 '<bar> p_5/5 d_1/2 p_1/4 d_1/2 <bar> p_6/5 d_1 <bar> p_6/5 d_1/2 p_10/3 d_1/2 <bar> p_7/5 d_1 <bar> ' \
+                 'p_7/5 d_1 <bar> p_8/5 d_1 <bar> p_3/5 d_1 <bar> p_12/4 d_1 <bar> p_12/4 d_1/4 p_3/3 d_1/4 p_3/5 ' \
+                 'd_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_1/5 d_1/2 p_5/5 d_1/2 <bar> p_3/5 d_1 '\
+                 '<bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_6/5 d_1 <bar> p_6/5 d_1 <bar> p_8/5 d_1/2 ' \
+                 'p_6/5 d_1/2 <bar> p_5/5 d_1/2 p_3/5 d_1/4 p_r d_1/4 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 ' \
+                 'd_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_12/4 d_1 <bar> ' \
+                 'p_10/4 d_1/2 p_8/4 d_1/2 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_8/4 d_1 <bar> p_8/4 d_1 <bar> ' \
+                 'p_6/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1/2 p_8/5 ' \
+                 'd_1/2 <bar> p_8/5 d_1/2 p_8/5 d_1/2 <bar> p_8/5 d_1/2 p_8/5 d_1/2 <bar> p_8/3 d_1 <bar> p_12/3 ' \
+                 'd_1/2 p_5/4 d_1/2 <bar> p_5/4 d_1 <bar> p_5/4 d_1/2 p_1/4 d_1/2 <bar> p_1/5 d_1 <bar> p_11/4 d_1 ' \
+                 '<bar> p_9/4 d_1 <bar> p_1/5 d_1/2 p_1/5 d_1/2 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_12/4 d_1 ' \
+                 '<bar> p_12/4 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1/2 p_5/5 d_1/2 <bar> p_5/5 d_1 <bar> p_1/5 d_1/2 ' \
+                 'p_1/5 d_1/2 <bar> p_12/4 d_1 <bar> p_12/4 d_1 <bar> p_8/4 d_1 <bar> p_9/4 d_1 <bar> p_1/5 d_1 <bar> '\
+                 'p_1/5 d_1 <bar> p_5/4 d_1/2 p_10/4 d_1/2 <bar> p_1/4 d_1/4 p_r d_1/4 p_1/5 d_1/2 <bar> p_12/4 d_1 ' \
+                 '<bar> p_12/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_8/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_4/5 d_1 ' \
+                 '<bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_8/5 d_1 <bar> p_6/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1/2 ' \
+                 'p_5/4 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 p_5/4 d_1/2 <bar> p_6/5 d_1 <bar> p_5/5 d_1/2 p_10/3 ' \
+                 'd_1/2 <bar> p_12/4 d_1 <bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> p_3/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 ' \
+                 'd_1/2 p_1/5 d_1/2 <bar> p_1/5 d_1/2 p_8/4 d_1/2 <bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1 <bar> '\
+                 'p_3/5 d_1 <bar> p_1/5 d_1/2 p_8/4 d_1/2 <bar> p_1/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_8/4 '\
+                 'd_1/2 p_11/4 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_1/5 d_1/2 p_3/4 ' \
+                 'd_1/2 <bar> p_1/5 d_1 <bar> p_6/5 d_1/2 p_6/5 d_1/4 p_r d_1/4 <bar> p_12/4 d_1 <bar> p_12/4 d_1/2 ' \
+                 'p_6/4 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 p_6/5 d_1/2 <bar> p_8/5 d_1 <bar> p_5/5 d_1/2 p_3/4 ' \
+                 'd_1/2 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_12/4 d_1 <bar> p_8/4 d_1 <bar> p_1/5 d_1 <bar> p_1/5 ' \
+                 'd_1/2 p_6/4 d_1/2 <bar> p_8/5 d_1 <bar> p_5/5 d_1/2 p_1/4 d_1/2 <bar> p_6/5 d_1 <bar> p_6/5 d_1/2 ' \
+                 'p_10/3 d_1/2 <bar> p_7/5 d_1 <bar> p_7/5 d_1 <bar> p_8/5 d_1 <bar> p_3/5 d_1 <bar> p_12/4 d_1 <bar> '\
+                 'p_12/4 d_1/4 p_3/3 d_1/4 p_3/5 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_1/5 ' \
+                 'd_1/2 p_5/5 d_1/2 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_6/5 d_1 ' \
+                 '<bar> p_6/5 d_1 <bar> p_8/5 d_1/2 p_6/5 d_1/2 <bar> p_5/5 d_1/2 p_3/5 d_1/4 p_r d_1/4 <bar> p_5/5 ' \
+                 'd_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> ' \
+                 'p_1/5 d_1 <bar> p_12/4 d_1 <bar> p_10/4 d_1/2 p_8/4 d_1/2 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> ' \
+                 'p_8/4 d_1 <bar> p_8/4 d_1 <bar> p_6/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> ' \
+                 'p_1/5 d_1 <bar> p_1/5 d_1/2 p_3/4 d_1/4 p_r d_1/4 <bar> p_1/4 d_1 <bar> p_1/4 d_1/2 p_r d_1/2 <bar> '\
+                 'p_3/4 d_1 <bar> p_7/4 d_1/2 p_10/3 d_1/4 p_r d_1/4 <bar> p_3/4 d_1/2 p_5/4 d_1/2 <bar> p_7/4 d_1/2 ' \
+                 'p_8/4 d_1/4 p_r d_1/4 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_7/4 d_1/2 p_5/4 ' \
+                 'd_1/2 <bar> p_3/4 d_1 <bar> p_3/4 d_1 <bar> p_3/4 d_1/4 p_r d_1/4 p_5/4 d_1/2 <bar> p_7/4 d_1/4 p_r '\
+                 'd_1/4 p_8/4 d_1/2 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_10/4 d_1/2 p_10/3 d_1/4 p_r d_1/4 <bar> '\
+                 'p_7/4 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_2/5 d_1 <bar> p_10/4 d_1 <bar> p_3/5 d_1 <bar> ' \
+                 'p_3/5 d_1/2 p_8/4 d_1/2 <bar> p_10/5 d_1 <bar> p_7/5 d_1/2 p_3/4 d_1/2 <bar> p_8/5 d_1 <bar> p_8/5 ' \
+                 'd_1/2 p_12/3 d_1/2 <bar> p_9/5 d_1 <bar> p_9/5 d_1 <bar> p_10/5 d_1 <bar> p_5/5 d_1 <bar> p_2/5 d_1 '\
+                 '<bar> p_2/5 d_1/4 p_5/3 d_1/4 p_5/5 d_1/2 <bar> p_7/5 d_1 <bar> p_7/5 d_1 <bar> p_7/5 d_1 <bar> ' \
+                 'p_3/5 d_1/2 p_7/5 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_8/5 '\
+                 'd_1 <bar> p_8/5 d_1 <bar> p_10/5 d_1/2 p_8/5 d_1/2 <bar> p_7/5 d_1/2 p_5/5 d_1/4 p_r d_1/4 <bar> ' \
+                 'p_7/5 d_1 <bar> p_7/5 d_1 <bar> p_7/5 d_1/2 p_10/3 d_1/4 p_r d_1/4 <bar> p_5/5 d_1 <bar> p_3/5 d_1 ' \
+                 '<bar> p_3/5 d_1 <bar> p_2/5 d_1 <bar> p_12/4 d_1/2 p_10/4 d_1/2 <bar> p_12/4 d_1 <bar> p_12/4 d_1 ' \
+                 '<bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_8/5 d_1 <bar> p_7/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 ' \
+                 '<bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_10/5 ' \
+                 'd_1 <bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_8/4 d_1 <bar> p_3/4 d_1/2 p_8/4 d_1/2 <bar> p_8/4 ' \
+                 'd_1/2 p_12/4 d_1/2 <bar> p_12/4 d_1/2 p_5/4 d_1/2 <bar> p_5/4 d_1 <bar> <tup> p_2/4 p_5/4 p_8/4 d_1 '\
+                 '</tup> <bar> p_5/4 d_1 <bar> p_5/4 d_1/2 p_3/4 d_1/2 <bar> p_3/4 d_1/2 p_r d_1/2 <bar> p_3/4 d_1 ' \
+                 '<bar> p_3/4 d_1 <bar> p_5/4 d_1/4 p_7/4 d_1/4 p_7/4 d_1/8 p_10/4 d_3/8 <bar> p_3/5 d_1/4 p_10/2 ' \
+                 'd_1/4 p_5/5 d_1/4 p_10/2 d_1/4 <bar> p_7/5 d_1/4 p_10/2 d_3/4 <bar> p_10/5 d_1/4 p_3/6 d_3/4 <bar> ' \
+                 'p_3/2 d_1/2 p_r d_1/2 </s> '
     sample_txt2 = 'TimeSig_2/2 Tempo_230 <bar> p_6/3 d_2 p_1/4 d_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 d_1 <bar> p_8/3 ' \
                   'd_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 d_3/2 p_11/3 d_1/2 p_11/3 d_1 p_8/3 d_1 <bar> p_6/3 d_2 p_1/4 ' \
                   'd_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 d_1 <bar> p_8/3 d_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 d_3/2 ' \
@@ -323,33 +489,39 @@ if __name__ == '__main__':
 
         from tqdm.auto import tqdm
 
+        # dnms = [pop]
         dnms = [pop, mst, lmd]
-        vocab_size, sv = None, None
+        vocab_size, svs = None, None
+        sv = True
+        # sv = False
         if len(dnms) == 1:
             vocab_size = 4096
-            sv = 'Word-Piece-Music-Tokenizer, dnm=POP909'
+            if sv:
+                sv = 'Word-Piece-Music-Tokenizer, dnm=POP909'
         elif len(dnms) == 2:
             vocab_size = 4096 * 2
-            sv = 'Word-Piece-Music-Tokenizer, dnm=POP & MST'
+            if sv:
+                sv = 'Word-Piece-Music-Tokenizer, dnm=POP & MST'
         elif len(dnms) == 3:
             vocab_size = 4096 * 4
-            sv = 'Word-Piece-Music-Tokenizer, dnm=all'
-        wmt = WordPieceMusicTrainer(mv)
+            if sv:
+                sv = 'Word-Piece-Music-Tokenizer, dnm=all'
+        wmt = WordPieceMusicTrainer(mv, independent_global_token=True, punctuate=True)
         songs = load_songs(*dnms)
-        # sv = False
-        # sv = True
         tokenizer = wmt(vocab_size=vocab_size, songs=songs, save=sv)
 
         s2c = wmt.s2c
 
-        check_decode = False
-        if check_decode:
-            sample_txt_ = mv.clean_uncommon(sample_txt, return_joined=False)
+        check_preserve = False
+        # check_preserve = True
+        if check_preserve:
+            sample_txt_ = mv.clean_uncommon(sample_txt)
             encoded = s2c(sample_txt_)
             encoded = tokenizer.encode(encoded).ids
-            mic(tokenizer.decoder)
-            mic(encoded)
-            mic(tokenizer.decode(encoded))
+            decoded = tokenizer.decode(encoded)
+            decoded = s2c.decode(decoded)
+            assert decoded == sample_txt_
+            exit(1)
 
         check_dist = False
         # check_dist = True
@@ -359,13 +531,17 @@ if __name__ == '__main__':
             for song in it:
                 toks = mv.clean_uncommon(song, return_joined=False)
                 it.set_postfix(n_tok=len(toks))
-                chars = tokenizer.encode(' '.join(toks))
-                c.update([s2c.trained_tok2tok(t) for t in chars.tokens])
+                song = ' '.join(toks)
+                encoded = s2c(song)
+                encoded = tokenizer.encode(encoded)
+                c.update([s2c.trained_tok2tok(t) for t in encoded.tokens])
             mic(c)
     # train()
 
     def check_trained_property():
-        tokenizer = load_trained()
+        # fnm = '2022-06-15_20-50-15_Word-Piece-Music-Tokenizer, dnm=POP909, vsz=4096, n=909'
+        fnm = '2022-06-15_21-41-08_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
+        tokenizer = load_trained(fnm)
         # mic(tokenizer)
 
         # map_single = _CheckTrainedMap(mv, tokenizer)
@@ -374,22 +550,26 @@ if __name__ == '__main__':
         sample_txt2_cleaned = tokenizer.vocab.clean_uncommon(sample_txt2)
         encoded = tokenizer.tokenize(sample_txt2_cleaned)
         mic(encoded)
-    check_trained_property()
+    # check_trained_property()
 
     def check_trained_has_single_token():
         """
         Check each single token in vanilla vocab can be encoded into single token, 
         i.e. trained vocab has each single token, so that no `UNK` token needed
         """
-        tokenizer = load_trained()
+        # fnm = '2022-06-15_21-21-16_Word-Piece-Music-Tokenizer, dnm=POP909, vsz=4096, n=909'
+        fnm = '2022-06-15_21-41-08_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
+        tokenizer = load_trained(fnm)
         vocab = tokenizer.vocab
         it = tqdm(vocab.tok2id.keys())
         for tok in it:
-            it.set_postfix(tok=tok)
-            encoded = tokenizer.encode(tok)
+            encoded = tokenizer.encode(tok, entire_score=False)
             it.set_postfix(dict(tok=tok, encoded=encoded))
+            if len(encoded) != 1:
+                mic(tok, encoded)
+                mic(tokenizer.s2c.encode(tok))
             assert len(encoded) == 1
-    # check_trained_has_single_token()
+    check_trained_has_single_token()
 
     def check_trained_tokenize_all():
         from collections import Counter
