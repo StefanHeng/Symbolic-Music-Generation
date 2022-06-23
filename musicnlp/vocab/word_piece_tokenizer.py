@@ -8,7 +8,7 @@ Intended to trade sequence length with vocabulary size
 
 import json
 from os.path import join as os_join
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Iterable
 
 from transformers import PreTrainedTokenizerFast
 from tokenizers import Tokenizer
@@ -221,17 +221,28 @@ class MyPreTrainedTokenizerFast(PreTrainedTokenizerFast):
 
 
 class WordPieceMusicTokenizer(MusicTokenizer):
+
     def __init__(self, tokenizer: Tokenizer, precision: int = 5, s2c_args: Dict = None, **kwargs):
         """
         :param tokenizer: A trained WordPiece tokenizer on characters
         """
-        super().__init__(precision=precision, **kwargs)
-        _tokenizer = tokenizer
+        super().__init__(precision=precision, name_or_path=self.__class__.__qualname__, **kwargs)
         self._tokenizer = MyPreTrainedTokenizerFast(
-            tokenizer_object=_tokenizer, pad_token=self.pad_token, eos_token=self.eos_token
-        )
-        self.continuing_prefix = _tokenizer.decoder.prefix
+            tokenizer_object=tokenizer, pad_token=self.pad_token, eos_token=self.eos_token
+        )  # now vocab size is correctly set
+        self.continuing_prefix = tokenizer.decoder.prefix
         self.s2c = Score2Chars(vocab=self.vocab, continuing_prefix=self.continuing_prefix, **s2c_args)
+
+        # self._add_special_token(self.vocab.pad)
+        assert self._tokenizer.pad_token_id is None  # TODO: Unlike `MusicTokenizer`, not sure why not defined already
+        self._tokenizer.pad_token_id = tokenizer.token_to_id(self.s2c.encode(self.pad_token))
+
+        self._id2pchs: Dict[int, List[int]] = dict()  # cache, from each id to pitch if it contains any
+        for i in range(self.vocab_size):
+            # note the same token in vanilla tokenizer, may appear twice,
+            #   once for being part of base vocab, another time as part of WordPiece continuation subword
+            toks = self._convert_id_to_token(i).split()
+            self._id2pchs[i] = super().ids2pitches(toks)
 
     @classmethod
     def from_file(cls, fnm: str, output_path: str = u.tokenizer_path):
@@ -242,6 +253,16 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         return cls(_tokenizer, precision=prec, s2c_args=meta['score2chars'])
 
     @property
+    def model_max_length(self) -> int:
+        return self._model_max_length
+
+    @model_max_length.setter
+    def model_max_length(self, value: int):
+        if hasattr(self, '_tokenizer'):  # so that no error when parent __init__ runs
+            self._tokenizer.model_max_length = value
+        self._model_max_length = value
+
+    @property
     def vocab_size(self) -> int:
         return self._tokenizer.vocab_size
 
@@ -249,7 +270,8 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         if isinstance(text, str):
             return self._tokenizer(self.s2c(text, clean=True), **kwargs)
         else:
-            raise NotImplementedError('Not implemented for iterable input')
+            assert isinstance(text, (list, tuple)) and isinstance(text[0], str)
+            return self._tokenizer([self.s2c(t, clean=True) for t in text], **kwargs)
 
     def tokenize(self, text, mode: str = 'music', entire_score: bool = True, **kwargs):
         """
@@ -267,6 +289,12 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         else:
             raise NotImplementedError('Not implemented for iterable input')
 
+    def encode(self, text, **kwargs):
+        if isinstance(text, str):
+            return self._tokenizer.encode(self.s2c(text, clean=True), **kwargs)
+        else:
+            raise NotImplementedError('TODO')
+
     def decode(self, token_ids, **kwargs):
         decoded = self._tokenizer.decode(token_ids, **kwargs, clean_up_tokenization_spaces=False)
         if isinstance(decoded, str):
@@ -279,6 +307,9 @@ class WordPieceMusicTokenizer(MusicTokenizer):
 
     def _convert_id_to_token(self, index: int) -> str:
         return self.s2c.decode(self._tokenizer.decode(index).removeprefix(self.continuing_prefix))
+
+    def ids2pitches(self, ids: Iterable[int]) -> List[int]:
+        return sum([self._id2pchs[int(i)] for i in ids], start=[])
 
 
 def load_trained(  # has independent global token & bar split
@@ -548,8 +579,10 @@ if __name__ == '__main__':
         # mic(map_single(sample_txt2))
 
         sample_txt2_cleaned = tokenizer.vocab.clean_uncommon(sample_txt2)
-        encoded = tokenizer.tokenize(sample_txt2_cleaned)
-        mic(encoded)
+        # encoded = tokenizer.tokenize(sample_txt2_cleaned)
+        # mic(encoded)
+
+        inputs = tokenizer(sample_txt2_cleaned, padding=True)
     # check_trained_property()
 
     def check_trained_has_single_token():
@@ -569,7 +602,7 @@ if __name__ == '__main__':
                 mic(tok, encoded)
                 mic(tokenizer.s2c.encode(tok))
             assert len(encoded) == 1
-    check_trained_has_single_token()
+    # check_trained_has_single_token()
 
     def check_trained_tokenize_all():
         from collections import Counter
@@ -611,3 +644,16 @@ if __name__ == '__main__':
                     c.update(tokenizer.convert_ids_to_tokens(ids))
             mic(c)
     # check_trained_tokenize_all()
+
+    def check_id2pch():
+        tokenizer = MusicTokenizer()
+        ids = tokenizer.encode(sample_txt)
+        pchs = tokenizer.ids2pitches(ids)
+        mic(len(ids), len(pchs))
+
+        wp_tokenizer = load_trained()
+        ids = wp_tokenizer.encode(sample_txt)
+        wp_pchs = wp_tokenizer.ids2pitches(ids)
+        mic(len(ids), len(wp_pchs))
+        assert wp_pchs == pchs
+    check_id2pch()

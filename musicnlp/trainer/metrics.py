@@ -103,18 +103,14 @@ class IkrMetric:
             self, preds: List[int], key: Key,
             enable_heuristic: bool = False, heuristic_thres: int = 5
     ) -> float:
-
-        tok_lst = preds.split() if isinstance(preds, str) else preds
-        target_key = key
-        pitch_lst = list(filterfalse(
-            lambda x: self.vocab.type(x) != VocabType.pitch, tok_lst))
-        num_toks = len(pitch_lst)
+        lst_pch = self.tokenizer.ids2pitches(preds)
+        num_toks = len(lst_pch)
         if num_toks == 0:  # No pitch found, assume every pitch is off-note
             return 0
         # Process the given key
-        key_type, key_name = key_enum2tuple[target_key]
+        key_type, key_name = key_enum2tuple[key]
         # Extract midi values for all available pitches
-        pitch_midi = np.array([self.vocab.compact(p) for p in pitch_lst])
+        pitch_midi = np.array(lst_pch)
         key_offset = key_offset_dict[key_name]
         pred_offset = ((pitch_midi % 12) - key_offset) % 12
         in_key_lst = list(filterfalse(

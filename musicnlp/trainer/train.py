@@ -16,7 +16,9 @@ import datasets
 from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
-from musicnlp.vocab import MusicTokenizer, WordPieceMusicTokenizer, key_ordinal2str
+from musicnlp.vocab import (
+    MusicTokenizer, WordPieceMusicTokenizer, key_ordinal2str, load_trained as load_word_piece_tokenizer
+)
 from musicnlp.preprocess import get_dataset, KeySampleDataset
 from musicnlp.models import MyReformerConfig, MyReformerModelWithLMHead, MyTransfoXLConfig, MyTransfoXLLMHeadModel
 from musicnlp.trainer import metrics
@@ -26,9 +28,11 @@ def get_model_n_tokenizer(
         model_name: str, model_size: str, prec: int = 5, wordpiece_tokenize: bool = False, model_config: Dict = None
 ) -> Tuple[MusicTokenizer, torch.nn.Module, OrderedDict]:
     ca.check_mismatch('Model Name', model_name, ['transf-xl', 'reformer'])
-
-    cls = WordPieceMusicTokenizer if wordpiece_tokenize else MusicTokenizer
-    tokenizer = cls(precision=prec)  # needed for reformer config
+    if wordpiece_tokenize:
+        tokenizer: WordPieceMusicTokenizer = load_word_piece_tokenizer()
+        assert tokenizer.precision == prec
+    else:
+        tokenizer: MusicTokenizer = MusicTokenizer(precision=prec)
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
             'transf-xl': (MyTransfoXLConfig, MyTransfoXLLMHeadModel),
@@ -350,7 +354,7 @@ if __name__ == '__main__':
                 save_epochs=1
             ))
         mdl, tokenizer, trainer = get_all_setup(
-            model_name=md_nm, model_size=md_sz, dataset_names=dnms, n_sample=n,
+            model_name=md_nm, model_size=md_sz, dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
             train_args=train_args, my_train_args=my_train_args
         )
 
@@ -384,13 +388,15 @@ if __name__ == '__main__':
         # gas = 4
         n_ep = 4
 
-        mem_len = 256
+        # mem_len = 256
+        mem_len = None
         # max_length = 512
         # max_length = 1024
         max_length = None  # 2048 for non-debugging configs
         model_config = dict(max_length=max_length)
 
         augment_key = False
+        # wordpiece_tokenize = False
         wordpiece_tokenize = True
 
         pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
@@ -410,7 +416,8 @@ if __name__ == '__main__':
             my_train_args.update(dict(tqdm=True, logging_strategy='epoch'))
 
         if 'debug' not in md_sz:
-            model_config.update(mem_len=mem_len)
+            if mem_len:
+                model_config['mem_len'] = mem_len
             train_args.update(dict(
                 per_device_train_batch_size=20,
                 per_device_eval_batch_size=20,
@@ -418,7 +425,7 @@ if __name__ == '__main__':
             ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
-            dataset_names=dnms, n_sample=n, dataset_args=dict(shuffle_seed=seed),
+            dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
             train_args=train_args, my_train_args=my_train_args
         )
         sanity_check_eval = True
