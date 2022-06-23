@@ -38,6 +38,9 @@ def get_dataset(
     """
     def load_single(dnm: str) -> Union[Dataset, DatasetDict]:
         return datasets.load_from_disk(os_join(music_util.get_processed_path(), 'hf', dnm))
+
+    logger = get_logger('Get Dataset')
+    logger.info('Loading dataset from disk... ')
     if isinstance(dataset_names, (list, tuple)):
         dset = [load_single(dnm) for dnm in dataset_names]
         if isinstance(dset[0], DatasetDict):
@@ -56,12 +59,13 @@ def get_dataset(
     else:
         dset = load_single(dataset_names)
     if n_sample is not None:
+        logger.info(f'Sampling the first {logi(n_sample)} examples... ')
         if isinstance(dset, Dataset):
             dset = dset.select(range(n_sample))
         else:  # dict
             dset = DatasetDict({k: v.select(range(min(n_sample, len(v)))) for k, v in dset.items()})
     if map_func is not None:
-        num_proc = None
+        logger.info(f'Mapping... ')
         n_cpu = os.cpu_count()
         if fast and n_cpu >= 2:
             if not pbar:
@@ -70,8 +74,8 @@ def get_dataset(
         dset = dset.map(map_func, batched=True, remove_columns=remove_columns, num_proc=n_cpu)
         datasets.enable_progress_bar()
     if shuffle_seed:
+        logger.info(f'Shuffling with seed {logi(shuffle_seed)}... ')
         dset = dset.shuffle(seed=shuffle_seed)
-    # else, don't shuffle
     return dset
 
 

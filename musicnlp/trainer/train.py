@@ -92,14 +92,14 @@ class TrainArgs:
         'reformer': {
             'debug': dict(
                 batch_size=8,
-                learning_rate=3e-4,
+                learning_rate=1e-3,
                 weight_decay=0,
                 lr_scheduler_type=SchedulerType.CONSTANT,
                 num_train_epochs=32,
             ),
             'debug-large': dict(
                 batch_size=8,
-                learning_rate=3e-4,
+                learning_rate=1e-3,
                 weight_decay=0,
                 lr_scheduler_type=SchedulerType.CONSTANT,
                 num_train_epochs=32,
@@ -117,7 +117,7 @@ class TrainArgs:
                 learning_rate=3e-4,
                 weight_decay=1e-2,
                 lr_scheduler_type=SchedulerType.COSINE,
-                num_train_epochs=128,
+                num_train_epochs=64,
                 warmup_ratio=0.1
             ),
             'base': dict(
@@ -125,7 +125,7 @@ class TrainArgs:
                 learning_rate=3e-4,
                 weight_decay=1e-2,
                 lr_scheduler_type=SchedulerType.COSINE,
-                num_train_epochs=256,
+                num_train_epochs=64,
                 warmup_ratio=0.1
             )
         }
@@ -174,16 +174,17 @@ class TrainArgs:
             args.update(train_args)
 
         my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps', tqdm=False, augment_key=False)  # default
-        if my_train_args is not None:
-            my_args.update(my_train_args)
+        my_args.update(my_train_args or dict())
         bsz = args['per_device_train_batch_size'] * args.get('gradient_accumulation_steps', 1)
         my_args['steps_per_epoch'] = steps_per_epoch = math.ceil(len(train_dataset) / bsz)
-        if 'save_epochs' in my_args:  # this is not supported by Trainer
+        save_epochs = my_args.get('save_epochs', None)
+        if save_epochs:  # this is not supported by Trainer
             assert 'save_strategy' in args and args['save_strategy'] == 'epoch', \
                 f'Supporting {logi("save per epoch")} error: Save strategy to Trainer should be set to {logi("epoch")}'
-            args['save_strategy'] = 'steps'
-            # TODO: DDP not supported
-            args['save_steps'] = my_args['save_epochs'] * steps_per_epoch
+            if save_epochs > 1:
+                args['save_strategy'] = 'steps'
+                # TODO: DDP not supported
+                args['save_steps'] = save_epochs * steps_per_epoch
         assert args['logging_strategy'] == 'steps'  # for my own internal logging to run
         assert args['disable_tqdm']  # Always use my own tqdm, see `musicnlp.util.train.MyTrainer`
         logging_strategy = my_args['logging_strategy']
@@ -259,17 +260,25 @@ class VanillaMap:
 
 
 def get_all_setup(
-        model_name: str = None, model_size: str = None,
+        model_name: str = None, model_size: str = None, model_config: Dict = None,
         dataset_names: Union[str, List[str]] = None, prec: int = 5, dataset_args: Dict = None,
-        model_config: Dict = None, train_args: Dict = None, my_train_args: Dict = None
+        train_args: Dict = None, my_train_args: Dict = None
 ) -> Tuple[torch.nn.Module, MusicTokenizer, Trainer]:
+    logger = get_logger('Get Setup')
+    d_log = dict(
+        model_name=model_name, model_size=model_size, model_config=model_config,
+        dataset_names=dataset_names, prec=prec, dataset_args=dataset_args,
+        train_args=train_args, my_train_args=my_train_args
+    )
+    logger.info(f'Initializing training with {log_dict_pg(d_log)}... ')
     my_train_args = my_train_args or dict()
     wordpiece_tokenize, aug_key = (my_train_args.pop(k, False) for k in ['wordpiece_tokenize', 'augment_key'])
-    mic(wordpiece_tokenize)
+    logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
         model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, model_config=model_config
     )
 
+    logger.info('Loading datasets... ')
     dset_args = dataset_args or dict()
     if aug_key:
         # For now, just do non-deterministic sampling for eval set too, TODO?
@@ -286,7 +295,7 @@ def get_all_setup(
     )
 
     clm_acc_logging = True
-    cm = ComputeMetrics(tokenizer=tokenizer, mode='aug-key' if aug_key else 'vanilla')
+    cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if aug_key else 'vanilla')
     # if key not augmented, need to pass key info to each sample for eval
     cls = train_util.MyTrainer if aug_key else train_util.MyEvalTrainer
     trainer_ = cls(
@@ -313,6 +322,11 @@ if __name__ == '__main__':
 
     seed = sconfig('random-seed')
 
+    pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+    mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+    lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+    dnms = [pop, mst, lmd]
+
     def train_reformer(resume: str = None):
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
@@ -324,37 +338,39 @@ if __name__ == '__main__':
         # md_sz = 'base'
         mic(md_nm, md_sz)
 
-        pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-        mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
-        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
-        dnms = [pop, mst, lmd]
+        # TODO: smaller seq-len for now, until it shows longer dependency
+        model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
+
+        n_ep = 16
+        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
 
         augment_key = False
-        n_ep = 4
-        train_args = dict(num_train_epochs=n_ep)
-        my_train_args = dict(tqdm=True, logging_strategy='epoch')
+        # augment_key = True  # TODO: fix after WordPiece
+        wordpiece_tokenize = False
+        my_train_args = dict(
+            tqdm=True, logging_strategy='epoch',
+            augment_key=augment_key,
+            wordpiece_tokenize=wordpiece_tokenize,
+        )
 
         if 'debug' in md_sz or md_sz == 'tiny':
-            # n = None
-            n = 32
             train_args.update(dict(
                 per_device_train_batch_size=4,
-                # save_strategy='no',
-                save_strategy='epoch',
-                num_train_epochs=64
+                num_train_epochs=64,
             ))
-            my_train_args.update(dict(
-                save_epochs=4,
-                # tqdm=False,
-                augment_key=augment_key,
-            ))
+            my_train_args['save_epochs'] = 16
         else:
-            n = None
-            my_train_args.update(dict(
-                save_epochs=1
+            train_args.update(dict(
+                fp16=torch.cuda.is_available(),
+                per_device_train_batch_size=64,
             ))
+
+        # n = 64
+        n = None
+
         mdl, tokenizer, trainer = get_all_setup(
-            model_name=md_nm, model_size=md_sz, dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
+            model_name=md_nm, model_size=md_sz, model_config=model_config,
+            dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
             train_args=train_args, my_train_args=my_train_args
         )
 
@@ -363,7 +379,7 @@ if __name__ == '__main__':
         else:
             trainer.train()
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    # train_reformer()
+    train_reformer()
 
     # checkpoint_path = os_join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
     # train(resume_from_checkpoint=checkpoint_path)
@@ -399,23 +415,21 @@ if __name__ == '__main__':
         # wordpiece_tokenize = False
         wordpiece_tokenize = True
 
-        pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-        mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
-        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
-        dnms = [pop, mst, lmd]
+        train_args = dict(gradient_accumulation_steps=gas)
         my_train_args = dict(
             augment_key=augment_key,
             wordpiece_tokenize=wordpiece_tokenize,
             save_epochs=1
         )
-        train_args = dict(gradient_accumulation_steps=gas)
 
         # with_tqdm = False
         with_tqdm = True
         if with_tqdm:
             my_train_args.update(dict(tqdm=True, logging_strategy='epoch'))
 
-        if 'debug' not in md_sz:
+        if 'debug' in md_sz:
+            train_args['num_train_epochs'] = n_ep
+        else:
             if mem_len:
                 model_config['mem_len'] = mem_len
             train_args.update(dict(
@@ -440,6 +454,8 @@ if __name__ == '__main__':
             train_call_args['resume_from_checkpoint'] = resume
         trainer.train(**train_call_args)
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    train_xl()
+    # train_xl()
+    # with a large vocab size for WordPiece tokenizer, e.g. 16K, nested concat is the bottleneck in eval
+    # profile_runtime(train_xl)
     # resume = os_join(u.model_path, 'checkpoint-17526')
     # train_xl(resume)
