@@ -262,7 +262,7 @@ class VanillaMap:
 def get_all_setup(
         model_name: str = None, model_size: str = None, model_config: Dict = None,
         dataset_names: Union[str, List[str]] = None, prec: int = 5, dataset_args: Dict = None,
-        train_args: Dict = None, my_train_args: Dict = None
+        train_args: Dict = None, my_train_args: Dict = None, trainer_args: Dict = None
 ) -> Tuple[torch.nn.Module, MusicTokenizer, Trainer]:
     logger = get_logger('Get Setup')
     d_log = dict(
@@ -294,17 +294,18 @@ def get_all_setup(
         get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer.precision for ds in dset.values()
     )
 
-    clm_acc_logging = True
     cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if aug_key else 'vanilla')
-    # if key not augmented, need to pass key info to each sample for eval
+    # if key not augmented, need to pass key info to each song for IKR logging
     cls = train_util.MyTrainer if aug_key else train_util.MyEvalTrainer
-    trainer_ = cls(
+    trainer_args_ = dict(
         model_meta=meta,
-        clm_acc_logging=clm_acc_logging, my_args=my_args,
-        train_metrics=dict(ikr=cm.ikr),  # TODO: calculate IRK when key not given?
+        monitor_ntp_acc=True, my_args=my_args,
+        train_metrics=dict(ikr=cm.ikr),
         model=model, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
         train_dataset=tr, eval_dataset=vl, compute_metrics=cm
     )
+    trainer_args_.update(trainer_args or dict())
+    trainer_ = cls(**trainer_args_)
     return model, tokenizer, trainer_
 
 
@@ -365,13 +366,15 @@ if __name__ == '__main__':
                 per_device_train_batch_size=64,
             ))
 
-        # n = 64
-        n = None
+        n = 64
+        # n = None
 
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
             dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
-            train_args=train_args, my_train_args=my_train_args
+            train_args=train_args, my_train_args=my_train_args, trainer_args=dict(
+                disable_train_metrics=True
+            )
         )
 
         if resume:
@@ -384,7 +387,7 @@ if __name__ == '__main__':
     # checkpoint_path = os_join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
     # train(resume_from_checkpoint=checkpoint_path)
 
-    def train_xl(resume: str = None):
+    def train_xl(resume: str = None):  # TODO: support for disable NTP logging
         transformers.set_seed(seed)
 
         md_nm = 'transf-xl'
@@ -440,7 +443,9 @@ if __name__ == '__main__':
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
             dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
-            train_args=train_args, my_train_args=my_train_args
+            train_args=train_args, my_train_args=my_train_args, trainer_args=dict(
+                disable_train_metrics=True
+            )
         )
         sanity_check_eval = True
         if sanity_check_eval:

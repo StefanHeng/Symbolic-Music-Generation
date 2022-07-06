@@ -35,15 +35,18 @@ def meta2fnm_meta(meta: Dict) -> Dict:
 class MyTrainer(Trainer):
     def __init__(
             self, model_meta: Dict = None, my_args: Dict = None,
-            clm_acc_logging=True, train_metrics: Dict[str, Callable] = None, **kwargs
+            monitor_ntp_acc=True, train_metrics: Dict[str, Callable] = None,
+            disable_train_metrics=False,
+            **kwargs
     ):
         assert kwargs['args'].disable_tqdm  # Always disable
         super().__init__(**kwargs)
-        self.clm_acc_logging = clm_acc_logging
+        self.monitor_ntp_acc = monitor_ntp_acc
         self.model_meta = model_meta
         self.model_meta['parameter_count'] = get_model_num_trainable_parameter(self.model)
         self.name = self.model.__class__.__qualname__
         self.train_metrics = train_metrics
+        self.disable_train_metrics = disable_train_metrics
 
         self.my_args = my_args
         self.post_init()
@@ -58,8 +61,8 @@ class MyTrainer(Trainer):
                 "<class 'transformers.trainer_callback.PrinterCallback'>"
             ]
         ]
-        callback_cls = ColoredPrinterCallbackForClm if self.clm_acc_logging else ColoredPrinterCallback
-        if not self.clm_acc_logging:
+        callback_cls = ColoredPrinterCallbackForClm if self.monitor_ntp_acc else ColoredPrinterCallback
+        if not self.monitor_ntp_acc:
             raise NotImplementedError('on-CLM task logging not updated')
         if self.my_args['tqdm']:
             self.add_callback(MyProgressCallback(train_only=self.my_args['tqdm'] == 'train-only'))
@@ -82,7 +85,7 @@ class MyTrainer(Trainer):
         # ========================== Begin of added ==========================
         inputs: Dict[str, torch.Tensor]
         # don't need to calculate NTP acc here for eval, see `compute_ntp_acc`
-        if self.is_in_train and self.clm_acc_logging and 'labels' in inputs:
+        if self.is_in_train and self.monitor_ntp_acc and 'labels' in inputs and (not self.disable_train_metrics):
             preds = outputs.logits.detach().argmax(axis=-1)
             labels_ = inputs['labels'].detach()
             d_log = dict(src='compute_loss')
@@ -262,27 +265,28 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
             if 'src' in logs and logs['src'] == 'compute_loss':
                 del logs['src']
                 del logs['epoch']
+                mic(logs)
                 self._train_step_metrics.append(logs)  # the only metric needed for gathering
             else:
                 # Heuristics on the training step updates, see `Trainer._maybe_log_save_evaluate`
                 if self.mode == 'train' and all('runtime' not in k for k in logs):
                     # sanity check
-                    assert len(self._train_step_metrics) == self.gas
                     step = state.global_step
                     assert logs['epoch'] == round(state.epoch, 2)
                     n_ep = state.epoch  # The one originally is rounded, see `Trainer.log`
                     loss, lr = logs['loss'], logs['learning_rate']
-                    metrics = {
-                        k: sum(d[k] for d in self._train_step_metrics) / self.gas
-                        for k in self._train_step_metrics[0].keys()
-                    }
-                    self._train_step_metrics = []  # for next iter
 
-                    d_log = OrderedDict([
-                        ('step', step), ('epoch', n_ep), ('learning_rate', lr),
-                        ('loss', loss), ('ntp_acc', metrics['ntp_acc'])
-                    ])  # effectively prepend `ntp_acc` as the 1st metric to log
-                    d_log.update({k: v for k, v in metrics.items() if k != 'ntp_acc'})
+                    d_log = OrderedDict(dict(step=step, epoch=n_ep, learning_rate=lr, loss=loss))
+                    if not self.trainer.disable_train_metrics:
+                        assert len(self._train_step_metrics) == self.gas
+                        metrics = {
+                            k: sum(d[k] for d in self._train_step_metrics) / self.gas
+                            for k in self._train_step_metrics[0].keys()
+                        }
+                        mic(metrics)
+                        self._train_step_metrics = []  # for next iter
+                        d_log['ntp_acc'] = metrics.pop('ntp_acc')  # always log NTP acc first
+                        d_log.update(metrics.items())
 
                     # `should_log` in Trainer just prevents the `on_log` call, I only filter console logging
                     should_log = False
