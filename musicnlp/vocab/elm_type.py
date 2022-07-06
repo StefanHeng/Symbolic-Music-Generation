@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Dict, Optional, Union
 from dataclasses import dataclass
 
 
@@ -20,7 +20,7 @@ class MusicElement:
     an intermediate representation, for conversion between music string & MXL
     """
     type: ElmType
-    meta: Optional[Tuple] = None
+    meta: Optional[Union[int, Tuple]] = None
 
 
 class Key(Enum):

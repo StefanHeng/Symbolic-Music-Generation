@@ -4,11 +4,10 @@ Generate from trained reformer, no seed per `hash_seed`
 import os
 from os.path import join as os_join
 import datetime
-from typing import Dict, Iterable, Any, Union
+from typing import Tuple, Dict, Iterable, Any, Union
 from collections import OrderedDict
 
 import torch
-from transformers import ReformerModelWithLMHead
 
 from stefutil import *
 from musicnlp.util import *
@@ -16,25 +15,34 @@ from musicnlp.vocab.music_vocab import VocabType
 from musicnlp.vocab import MusicTokenizer
 from musicnlp.preprocess import KeyFinder
 from musicnlp.postprocess import MusicConverter
+from musicnlp.models import MyReformerModelWithLMHead, MyTransfoXLLMHeadModel
 
 
-def load_trained(model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: str = None):
+def load_trained(
+        model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: Tuple[str, str] = None
+) -> Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel]:
     if not hasattr(load_trained, 'key2path'):
         load_trained.key2path = {
-            'reformer, 14_32ep': ['reformer', '2022-04-16_16-08-03', 'checkpoint-4802'],
-            'reformer, 20_64ep': ['reformer', '2022-04-19_13-48-54', 'checkpoint-6860']
+            ('reformer', '14_32ep'): ['reformer', '2022-04-16_16-08-03', 'checkpoint-4802'],
+            ('reformer', '20_64ep'): ['reformer', '2022-04-19_13-48-54', 'checkpoint-6860'],
+            ('reformer', '2_16ep'): ['2022-06-23_01-11-20_reformer', 'checkpoint-5478'],
+            ('transf-xl', '7_10ep'): ['2022-06-19_10-59-06_transf-xl', 'checkpoint-61341']
         }
-    paths = [BASE_PATH, PROJ_DIR, MODEL_DIR]
+    paths = [u.model_path]
     if model_key:
+        model_name = model_key[0]
         paths.extend(load_trained.key2path[model_key])
     else:
-        paths.append(model_name)
         if isinstance(directory_name, str):
             paths.append(directory_name)
         else:
             paths.extend(directory_name)
     path = os_join(*paths)
-    return ReformerModelWithLMHead.from_pretrained(path)
+    cls = MyReformerModelWithLMHead if model_name == 'reformer' else MyTransfoXLLMHeadModel
+    logger = get_logger('Load Trained')
+    model = cls.from_pretrained(path)
+    logger.info(f'Loaded {logi(cls.__qualname__)} with config {log_dict_pg(model.config.to_dict())}')
+    return model
 
 
 class MusicGenerator:
@@ -48,14 +56,22 @@ class MusicGenerator:
         n_bar='#bar'
     ))
 
-    def __init__(self, model: ReformerModelWithLMHead, deprecated: bool = False):
+    def __init__(self, model: Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel], max_length: int = None):
         self.model = model
-        self.max_len = model.config.max_position_embeddings
-        self.tokenizer = MusicTokenizer(model_max_length=self.max_len, deprecated=deprecated)
+        if max_length:
+            self.max_len = max_length
+        else:
+            if isinstance(model, MyReformerModelWithLMHead):
+                self.max_len = model.config.max_position_embeddings
+            else:  # transf xl
+                self.max_len = model.config.max_length_
+        self.tokenizer = MusicTokenizer(model_max_length=self.max_len)
         self.vocab = self.tokenizer.vocab
         self.converter = MusicConverter()
 
         self.logger = get_logger('Music Generator')
+        d_log = dict(model_max_length=self.max_len)
+        self.logger.info(f'{logi(self.__class__.__qualname__)} initialized with max_len={logi(d_log)}')
 
     @staticmethod
     def args2fnm(args: dict):
@@ -114,7 +130,7 @@ class MusicGenerator:
             else:
                 generate_args['do_sample'] = False
         elif strategy == 'sample':
-            assert all(k in ['do_sample', 'top_k', 'top_p'] for k in generate_args)
+            assert all(k in ['do_sample', 'top_k', 'top_p', 'temperature'] for k in generate_args)
             if 'do_sample' in generate_args:
                 assert generate_args['do_sample'], f'{logi("do_sample")} must be True for sample generation'
             else:
@@ -131,6 +147,7 @@ class MusicGenerator:
         d_log = dict(mode=mode, strategy=strategy, args=generate_args | prompt_args, prompt=prompt_colored)
         self.logger.info(f'Generating with {log_dict(d_log)}')
         t = datetime.datetime.now()
+        self.model.eval()
         output = self.model.generate(**inputs, **args)  # for now, generate one at a time
         self.logger.info(f'Model generation finished in {logi(fmt_delta(datetime.datetime.now() - t))}')
         assert len(output) == 1  # sanity check
@@ -141,18 +158,17 @@ class MusicGenerator:
             assert len(idxs_eob) > 0, f'No start of bar token found when {logi("truncate_to_sob")} enabled'
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
-        title = f'{save}-generated' if save is not None else None
+        # mic(decoded)
+        title = f'{save}-generated' if save else None
         score = self.converter.str2score(decoded, omit_eos=True, title=title)  # incase model can't finish generation
         if save:
             # `makeNotations` disabled any clean-up by music21, intended to remove `tie`s added
             str_args = MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args)
-            out_path = self.eval_path
+            out_path = u.eval_path
             if save_dir:
                 out_path = os_join(out_path, save_dir)
-                ic('joined', out_path)
                 os.makedirs(out_path, exist_ok=True)
-            ic(save_dir, out_path)
-            path = os_join(out_path, f'{title}, {str_args}, {now(for_path=True)}.mxl')
+            path = os_join(out_path, f'{now(for_path=True)}, {title}, {str_args}.mxl')
             score.write(fmt='mxl', fp=path, makeNotation=False)
         else:
             score.show()
@@ -171,20 +187,15 @@ if __name__ == '__main__':
 
     import musicnlp.util.music as music_util
 
-    # dir_nm = os_join('2022-04-01_09-40-48', 'trained')
-    # dir_nm = os_join('2022-04-03_11-01-04', 'checkpoint-3712')
-    # dir_nm = os_join('2022-04-11_00-26-05', 'trained')
-    # dir_nm = ['2022-04-16_16-08-03', 'checkpoint-4802']
-    # mdl = load_trained(model_name='reformer', directory_name=dir_nm)
-    # save_dir_ = k = 'reformer, 14_32ep'
-    save_dir_ = k = 'reformer, 20_64ep'
-    mdl = load_trained(model_key=k)
+    # md_k = 'transf-xl', '7_10ep'
+    md_k = 'reformer', '2_16ep'
+    mdl = load_trained(model_key=md_k)
+    sv_dir = f'{md_k[0]}, {md_k[1]}'
     # save_dir_ = 'reformer-base, 14/32ep'
     # ic(get_model_num_trainable_parameter(mdl))
-    # mg = MusicGenerator(mdl)
-    # deprec = True
-    deprec = False
-    mg = MusicGenerator(mdl, deprecated=deprec)
+    mg = MusicGenerator(mdl)
+
+    key_aug = False
 
     def explore_generate_unconditional():
         # as in `CTRL` paper
@@ -192,22 +203,24 @@ if __name__ == '__main__':
         # gen_args = dict(repetition_penalty=1.2)
         # how to set hyperparameters?; smaller k for smaller vocab size
         # gen_args = dict(temperature=1, top_k=16)
-        gen_args = dict(top_k=0, top_p=0.9)
+        gen_args = dict(top_k=32, top_p=0.9)
         mg(mode='unconditional', strategy='sample', generate_args=gen_args)
     # explore_generate_unconditional()
 
     def explore_generate_conditional():
-        fnm = 'Merry Go Round of Life'
+        # fnm = 'Merry Go Round of Life'
+        fnm = 'Canon piano'
         path = music_util.get_my_example_songs(k=fnm, extracted=True)
         # strat = 'greedy', None
-        strat, gen_args = 'sample', dict(top_k=32, top_p=0.9)
+        # strat, gen_args = 'sample', dict(top_k=32, top_p=0.9)
+        strat, gen_args = 'sample', dict(top_k=64, top_p=0.9, temperature=1)
         # strat, gen_args = 'beam', dict(num_beams=4, num_beam_groups=2)
-        prompt_args = dict(path=path, n_bar=4, insert_key=not deprec)
+        prompt_args = dict(path=path, n_bar=4, insert_key=key_aug)
         mg(
             mode='conditional', strategy=strat, generate_args=gen_args, prompt_args=prompt_args, save=fnm,
-            save_dir=save_dir_
+            save_dir=sv_dir
         )
-    # explore_generate_conditional()
+    explore_generate_conditional()
 
     def check_why_tie_in_output():
         import music21 as m21
@@ -220,23 +233,23 @@ if __name__ == '__main__':
     # check_why_tie_in_output()
 
     def export_generated():
-        # fnms = ['Merry Go Round of Life',  'Faded', 'Piano Sonata', 'Merry Christmas']
-        fnms = ['Piano Sonata']
-        # fnms = ['Canon piano', 'Shape of You']
+        # fnms = ['Merry Go Round of Life', 'Canon piano', 'Shape of You', 'Merry Christmas']
+        fnms = ['Merry Christmas']
+        # fnms = ['Faded', 'Piano Sonata', 'Merry Christmas']
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
-        # gen_args = dict(top_k=32, top_p=0.9)
-        gen_args = dict(top_k=32, top_p=0.75)
+        # gen_args = dict(top_k=32, top_p=0.95)
+        gen_args = dict(top_k=64, top_p=0.9)
+        # gen_args = dict(top_k=32, top_p=0.75)
         n_bar = 4
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True)
-            prompt = dict(path=path, n_bar=n_bar, insert_key=not deprec)
+            prompt = dict(path=path, n_bar=n_bar, insert_key=key_aug)
             mg(
                 mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt,
-                save=fnm, save_dir=save_dir_
+                save=fnm, save_dir=sv_dir
             )
     export_generated()
 
     def eval_ikr():
         md_sz = 'debug'
-
     # eval_ikr()
