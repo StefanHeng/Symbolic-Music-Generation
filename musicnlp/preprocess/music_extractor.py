@@ -958,8 +958,8 @@ if __name__ == '__main__':
         # fnm = 'Faded'
         # fnm = 'Piano Sonata'
         # fnm = 'Merry Christmas'
-        # fnm = 'Merry Go Round of Life'
-        fnm = '易燃易爆炸'
+        fnm = 'Merry Go Round of Life'
+        # fnm = '易燃易爆炸'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         # fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
         # fnm = music_util.get_my_example_songs('平凡之路', fmt='MXL')
@@ -982,11 +982,11 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             ic(d_out)
-        check_mxl_out()
+        # check_mxl_out()
         # check_str()
-        # check_visualize()
+        check_visualize()
         # check_return_meta_n_key()
-    # toy_example()
+    toy_example()
 
     def encode_a_few():
         # dnm = 'POP909'
@@ -2316,7 +2316,7 @@ if __name__ == '__main__':
                 # exp = 'mxl'
                 print(me(path, exp=exp))
                 exit(1)
-    check_edge_case_batched()
+    # check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """
