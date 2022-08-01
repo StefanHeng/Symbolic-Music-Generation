@@ -45,7 +45,7 @@ __all__ = [
     'note2pitch', 'note2dur', 'note2note_cleaned', 'notes2offset_duration',
     'time_sig2bar_dur',
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
-    'is_drum_track', 'is_empty_bars',
+    'is_drum_track', 'is_empty_bars', 'is_rest',
     'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes', 'fill_with_rest',
     'get_offset', 'get_end_qlen',
     'PrecisionChecker',
@@ -285,6 +285,10 @@ def is_empty_bars(bars: Iterable[Measure]):
             elms += sum((stream2elms(v) for v in b.voices), start=[])
         return elms
     return all(all(isinstance(e, Rest) for e in bar2elms(b)) for b in bars)
+
+
+def is_rest(note: ExtNote) -> bool:
+    return all(isinstance(n, Rest) for n in note) if isinstance(note, tuple) else isinstance(note, Rest)
 
 
 def it_m21_elm(stream: Union[Measure, Part, Score, Voice], types=(Note, Rest)):
@@ -567,21 +571,25 @@ def get_score_skeleton(title: str = None, composer: str = PKG_NM, mode: str = 'm
     :return: A `Score` skeleton with title, composer as metadata and a single piano `Part`
     """
     assert mode in ['melody', 'full']
-    if mode != 'melody':
-        raise NotImplementedError('Full mode not implemented yet')
     score = Score()
     score.insert(m21.metadata.Metadata())
-    post = 'Melody only' if mode == 'melody' else 'Melody & Chord'
+    post = 'Melody only' if mode == 'melody' else 'Melody & Bass'
     title = f'{title}, {post}'
     score.metadata.title = title
     score.metadata.composer = composer
 
-    part_nm = 'Melody, Ch#1'  # TODO: a 2nd chord part
-    part = m21.stream.Part(partName=part_nm)
-    part.partName = part_nm
-    instr = m21.instrument.Piano()
-    part.append(instr)
-    score.append(part)
+    def get_part(pnm: str):
+        part = m21.stream.Part(partName=pnm)
+        part.partName = pnm
+        instr = m21.instrument.Piano()
+        part.append(instr)
+        return part
+
+    part_melody = get_part('Melody, Ch#1')
+    score.append(part_melody)
+    if mode == 'full':
+        part_bass = get_part('Bass, Ch#2')
+        score.append(part_bass)
     return score
 
 
@@ -594,23 +602,30 @@ def insert_ts_n_tp_to_part(part: Part, time_sig: str, tempo: int) -> Part:
 
 def make_score(
         title: str = f'{PKG_NM} Song', composer: str = PKG_NM, mode: str = 'melody',
-        time_sig: str = '4/4', tempo: int = 120, lst_note: List[List[SNote]] = None
+        time_sig: str = '4/4', tempo: int = 120, d_note: Dict[str, List[List[SNote]]] = None
 ) -> Score:
     score = get_score_skeleton(title=title, composer=composer, mode=mode)
     parts = list(score.parts)
-    assert len(parts) == 1, 'should have only one part for melody only'
-    part = parts[0]
+    assert len(parts) <= 2  # sanity check, see `get_score_skeleton`
+    part_melody = parts[0]
+    assert 'Melody' in part_melody.partName
 
-    lst_bars = []
-    for i, notes in enumerate(lst_note):
-        bar = Measure(number=i)  # Original bar number may not start from 0
-        bar.append(notes)
-        lst_bars.append(bar)
-    part.append(lst_bars)
-
-    bar0 = part.measure(0)  # Insert metadata into 1st bar
+    def get_bars(lst_notes: List[List[SNote]]) -> List[Measure]:
+        lst_bars = []
+        for i, notes in enumerate(lst_notes):
+            bar = Measure(number=i)  # Original bar number may not start from 0
+            bar.append(notes)
+            lst_bars.append(bar)
+        return lst_bars
+    part_melody.append(get_bars(d_note['melody']))
+    bar0 = part_melody.measure(0)  # Insert metadata into 1st bar
     bar0.insert(MetronomeMark(number=tempo))
     bar0.insert(TimeSignature(time_sig))
+
+    if mode == 'full':
+        part_bass = parts[1]  # see `get_score_skeleton`
+        assert 'Bass' in part_bass.partName
+        part_bass.append(get_bars(d_note['bass']))
     return score
 
 
