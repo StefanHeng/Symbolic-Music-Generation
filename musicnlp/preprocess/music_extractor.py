@@ -38,7 +38,7 @@ ExtractedNotes = List[List[ExtNote]]
 def _debug_pprint_lst_notes(notes: List[ExtNote]):
     for n in notes:
         strt, end = get_offset(n), get_end_qlen(n)
-        p = n.pitch.nameWithOctave
+        p = n.pitch.nameWithOctave if isinstance(n, Note) else None
         mic(n, strt, end, p)
 
 
@@ -613,6 +613,8 @@ class MusicExtractor:
         is_high = keep == 'high'
         ns_out = []
         last_end = 0  # Last added note, end time in quarter length
+        if number == 5 and not is_high:
+            mic('in get notes out', groups)
         for offset in sorted(groups.keys()):  # Pass through notes in order
             notes_ = groups[offset]
             if len(notes_) == 0:  # As a result of removing triplets
@@ -620,6 +622,8 @@ class MusicExtractor:
                 continue
             nt = notes_[-1]  # Note with the highest pitch if `high`, the lowest if `low`
             nt_end = get_end_qlen(nt)
+            if number == 5 and not is_high:
+                mic(nt, offset, nt_end)
             if last_end - offset > self.eps:
                 # Current note starts before the last added note ends
                 # Tuplet notes not normalized at this point, remain faithful to the weighted average pitch
@@ -631,7 +635,7 @@ class MusicExtractor:
                         # The triplet must've been the last note added, and it's joint offset is known
                         del groups[get_offset(note_last)][-1]
                         self.log_warn(warn_name=WarnLog.HighPchOvlTup, bar_num=number)
-                        return self.get_notes_out(groups, number)
+                        return self.get_notes_out(groups, number, keep=keep)
                     else:
                         self.log_warn(warn_name=WarnLog.HighPchOvl, bar_num=number)
 
@@ -650,7 +654,7 @@ class MusicExtractor:
                     last_end = nt_end
                 # Current note to add has lower pitch, but ends later in time than the last note added
                 # Truncate current note, add back into group based on new start time, recompute
-                elif not later_note_better_pitch and (nt_end - last_end) > self.eps:  # do so for bass too
+                elif (not later_note_better_pitch) and (nt_end - last_end) > self.eps:  # do so for bass too
                     if not isinstance(nt, tuple):
                         # Move the truncated note to later group, restart
                         del groups[offset][-1]
@@ -669,12 +673,14 @@ class MusicExtractor:
                             groups[last_end] = [nt_]
                         MusicExtractor.sort_groups(groups, reverse=not is_high)  # sort in reverse for bass
                         self.log_warn(warn_name=WarnLog.LowPchMakeup, bar_num=number)
-                        return self.get_notes_out(groups, number)
+                        return self.get_notes_out(groups, number, keep=keep)
                     # Skip adding tuplets, this potentially leads to gaps in extraction output
                 # Otherwise, skip if later note is lower in pitch and is covered by the prior note duration
             else:
                 ns_out.append(nt)
                 last_end = nt_end
+        if number == 5 and not is_high:
+            mic(ns_out)
         return ns_out
 
     @staticmethod
@@ -752,20 +758,18 @@ class MusicExtractor:
                 check_dur = False
             else:
                 check_dur = True
-            # if not is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur):
-            #     ic(i_bar)
-            #     for n in notes:
-            #         strt, end = get_offset(n), get_end_qlen(n)
-            #         ic(n, strt, end)
-            #
-            #     dur_bar = time_sig2bar_dur(time_sig)
-            #     pos_dur = is_notes_pos_duration(notes)
-            #     no_ovl = not notes_overlapping(notes)
-            #     have_gap = notes_have_gap(notes)
-            #     match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
-            #                                  abs_tol=self.eps)
-            #     ic(pos_dur, no_ovl, (not have_gap), match_bar_dur, time_sig, dur_bar)
-            #     exit(1)
+            if not is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur):
+                mic(i_bar)
+                _debug_pprint_lst_notes(notes)
+                dur_bar = time_sig2bar_dur(time_sig)
+                pos_dur = is_notes_pos_duration(notes)
+                no_ovl = not notes_overlapping(notes)
+                have_gap = notes_have_gap(notes)
+                match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
+                                             abs_tol=self.eps)
+                mic(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar)
+                mic(pos_dur, no_ovl, (not have_gap), match_bar_dur, time_sig, dur_bar)
+                exit(1)
             assert is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur)
         return lst_notes
 
@@ -792,20 +796,22 @@ class MusicExtractor:
             # For now, with melody only or melody + bass, always convert Chords into single notes TODO
             all_notes = sum((self.expand_bar(b, time_sig, keep_chord=False, number=number) for b in bars), [])
 
-            groups: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
+            groups_melody: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in all_notes:
-                groups[get_offset(n)].append(n)
-            MusicExtractor.sort_groups(groups)
-            groups = self._fix_edge_case(groups, number, time_sig)
+                groups_melody[get_offset(n)].append(n)
+            MusicExtractor.sort_groups(groups_melody)
+            groups_melody = self._fix_edge_case(groups_melody, number, time_sig)
             groups_bass = None
             if self.mode == 'full':
                 # make deep copy, since melody extraction in `get_notes_out` modify `groups`
                 # filter out all Rests to try to get notes TODO: update Bar gap warning?
                 groups_bass = {
-                    k: [MusicExtractor._deep_copy_note(n) for n in v if not is_rest(n)] for k, v in groups.items()
+                    k: [MusicExtractor._deep_copy_note(n) for n in v if not is_rest(n)] for k, v in groups_melody.items()
                 }
                 # so that accessing last element gives the smallest pitch, see `get_notes_out`
                 MusicExtractor.sort_groups(groups_bass, reverse=True)
+                if number == 5:
+                    _debug_pprint_lst_notes(groups_bass[0])
                 # groups = {k: [] for k, v in groups.items()}
                 # mic(groups_bass, groups)
                 # exit(1)
@@ -827,24 +833,28 @@ class MusicExtractor:
             def _get_notes(groups_, keep: str = 'high'):
                 with RecurseLimit(2 ** 14):
                     return self.get_notes_out(groups_, number, keep=keep)
-            notes_melody = _get_notes(groups, 'high')
+            notes_melody = _get_notes(groups_melody, 'high')
             if self.mode == 'full':
                 _notes_bass = _get_notes(groups_bass, 'low')
-                # mic(notes_melody, _notes_bass)
-                # _debug_pprint_lst_notes(notes_melody)
-                # mic('sep')
-                # _debug_pprint_lst_notes(_notes_bass)
 
                 notes_bass = []
                 for nb in _notes_bass:
                     # only keep the notes that are unique to bass
                     # mic(nb, [MusicExtractor._ext_notes_eq(nb, nm) for nm in notes_melody])
-                    if not all(MusicExtractor._ext_notes_eq(nb, nm) for nm in notes_melody):
+                    if not any(MusicExtractor._ext_notes_eq(nb, nm) for nm in notes_melody):
                         notes_bass.append(nb)
                     else:
-                        self.logger.info(f'Skipping {logi("bass")} note: {nb}')
-                # mic(notes_bass)
-                # exit(1)
+                        self.logger.info(f'Skipping {logi("bass")} note: {logi(nb)}')
+
+                # if number == 5:
+                #     mic(groups_melody, groups_bass)
+                #     mic(notes_melody)
+                #     _debug_pprint_lst_notes(notes_melody)
+                #     mic(_notes_bass)
+                #     _debug_pprint_lst_notes(_notes_bass)
+                #     mic(notes_bass)
+                #     _debug_pprint_lst_notes(notes_bass)
+                #     exit(1)
                 lst_bass.append(_local_post_process(notes_bass))
             # if number == 1:
             #     ic(notes_out)
