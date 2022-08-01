@@ -57,7 +57,7 @@ scipy==1.8.1
 seaborn==0.11.2
 setuptools==61.2.0
 six==1.16.0
-stefutils==0.10.3
+stefutils==0.11.0
 sty==1.0.4
 tensorboard==2.9.1
 tensorboard-data-server==0.6.1

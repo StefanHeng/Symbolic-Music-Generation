@@ -21,6 +21,7 @@ from music21.stream import Voice
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from stefutil import *
 from musicnlp.util.util import *
 from musicnlp.util.data_path import PKG_NM
 
@@ -44,10 +45,12 @@ __all__ = [
     'note2pitch', 'note2dur', 'note2note_cleaned', 'notes2offset_duration',
     'time_sig2bar_dur',
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
-    'is_drum_track',
+    'is_drum_track', 'is_empty_bars',
     'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes', 'fill_with_rest',
     'get_offset', 'get_end_qlen',
-    'notes_have_gap', 'notes_overlapping', 'is_notes_pos_duration', 'is_valid_bar_notes',
+    'PrecisionChecker',
+    'notes_have_gap', 'notes_overlapping', 'non_tuplet_notes_overlapping',
+    'is_notes_pos_duration', 'is_valid_bar_notes',
     'get_score_skeleton', 'insert_ts_n_tp_to_part', 'make_score'
 ]
 
@@ -273,6 +276,17 @@ def is_drum_track(part: Part) -> bool:
     return (has_unpitched or has_percussion) and not has_note
 
 
+def is_empty_bars(bars: Iterable[Measure]):
+    def bar2elms(b: Measure):
+        def stream2elms(stm: Union[Measure, Voice]):
+            return list(chain_its((stm[Note], stm[Rest], stm[Chord])))  # Get all relevant notes
+        elms = stream2elms(b)
+        if b.hasVoices():
+            elms += sum((stream2elms(v) for v in b.voices), start=[])
+        return elms
+    return all(all(isinstance(e, Rest) for e in bar2elms(b)) for b in bars)
+
+
 def it_m21_elm(stream: Union[Measure, Part, Score, Voice], types=(Note, Rest)):
     """
     Iterates elements in a stream, for those that are instances of that of `type`, in the original order
@@ -397,6 +411,21 @@ def get_end_qlen(note: ExtNote):
         return note.offset + note.duration.quarterLength
 
 
+class PrecisionChecker:
+    def __init__(self, precision: int = 5):
+        self.prec = precision
+        self.dur_slot = 4 / 2 ** precision  # quarterLength by quantization precision
+
+    def _val_within_prec(self, val: float) -> bool:
+        return (val / self.dur_slot).is_integer()
+
+    def note_within_prec(self, note: ExtNote):
+        return self._val_within_prec(note2dur(note)) and self._val_within_prec(get_offset(note))
+
+    def notes_within_prec(self, notes: Iterable[ExtNote]):
+        return all(self.note_within_prec(n) for n in notes)
+
+
 def get_offset(note: ExtNote) -> float:
     """
     :return: Starting time in quarter length
@@ -499,6 +528,21 @@ def notes_overlapping(notes: Iterable[ExtNote]) -> bool:
             else:
                 return True
         return False
+
+
+def _tup2note(t: Tuple[Note]):
+    note = Note()
+    note.offset = min(note_.offset for note_ in t)
+    q_len_max = max(note_.offset + note_.duration.quarterLength for note_ in t) - note.offset
+    note.duration = Duration(quarterLength=q_len_max)
+    return note
+
+
+def non_tuplet_notes_overlapping(notes: Iterable[ExtNote]) -> bool:
+    # Convert tuplet to single note by duration, pitch doesn't matter, prep for overlap check, see `_tup2note`
+    notes_cleaned = [_tup2note(n) if isinstance(n, tuple) else n for n in notes]
+    return notes_overlapping(notes_cleaned)
+
 
 
 def is_notes_pos_duration(notes: Iterable[ExtNote]) -> bool:
