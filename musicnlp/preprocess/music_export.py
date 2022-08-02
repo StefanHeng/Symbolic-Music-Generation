@@ -326,60 +326,69 @@ if __name__ == '__main__':
     def export2json():
         # dnm = 'POP909'
         # dnm = 'MAESTRO'
-        # dnm = 'LMD, MS/000000-010000'
         dnm = 'LMD, MS'
         # dnm = 'LMD, LP'
         # dir_nm_ = f'{now(for_path=True)}_{dnm}'
-        # grp_nm = 'many'
-        # grp_nm = '090000-100000'
-        grp_nm = '150000-160000'
-        # grp_nm = '170000-178561'
-        dir_nm_ = f'2022-05-20_09-39-16_LMD, MS/{grp_nm}'
-        path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
-        # dnm = 'LMD-cleaned-subset'
-        # me(dnm)
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
         # pl_md = 'thread-in-process'  # ~20% slower
-        args = dict(greedy_tuplet_pitch_threshold=1)
-
-        def get_lmd_paths(dir_nm: str) -> List[str]:
-            pattern = os_join(u.dset_path, 'converted', dnm, dir_nm, '*.mxl')
-            ic(pattern)
-            return sorted(glob.iglob(pattern, recursive=True))
-        paths = sum([get_lmd_paths(d) for d in [
-            # '000000-010000',
-            # '010000-020000',
-            # '020000-030000',
-            # '030000-040000',
-            # '040000-050000',
-            # '050000-060000',
-            # '060000-070000',
-            # '070000-080000',
-            # '080000-090000',
-            # '090000-100000',
-            # '100000-110000',
-            # '110000-120000',
-            # '120000-130000',
-            # '130000-140000',
-            # '140000-150000',
-            # '150000-160000',
-            # '160000-170000',
-            # '170000-178561'
-            grp_nm
-            # '170000-178561',
-            # '160000-170000',
-            # '130000-140000',
-        ]], start=[])
-        me(
-            # dnm,
-            paths,
-            extractor_args=args, path_out=path_out, save_each=True,
-            # parallel=1,
-            with_tqdm=True, parallel_mode=pl_md,
+        mode = 'full'
+        args = dict(
+            extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1),
+            save_each=True,
+            with_tqdm=True,
+            parallel=64,
+            parallel_mode=pl_md,
             # n_worker=16
         )
-    # export2json()
+
+        if 'LMD' in dnm:
+            # grp_nm = 'many'
+            grp_nm = '000000-010000'
+            # grp_nm = '150000-160000'
+            # grp_nm = '170000-178561'
+            # dir_nm_ = f'{now(for_path=True)}_LMD, md={mode[0]}'
+            dir_nm_ = '2022-08-02_19-16-56_LMD, md=f'
+            path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_, grp_nm)
+            # dnm = 'LMD-cleaned-subset'
+
+            def get_lmd_paths(dir_nm: str) -> List[str]:
+                pattern = os_join(u.dset_path, 'converted', dnm, dir_nm, '*.mxl')
+                ic(pattern)
+                return sorted(glob.iglob(pattern, recursive=True))
+            paths = sum([get_lmd_paths(d) for d in [
+                # '000000-010000',
+                # '010000-020000',
+                # '020000-030000',
+                # '030000-040000',
+                # '040000-050000',
+                # '050000-060000',
+                # '060000-070000',
+                # '070000-080000',
+                # '080000-090000',
+                # '090000-100000',
+                # '100000-110000',
+                # '110000-120000',
+                # '120000-130000',
+                # '130000-140000',
+                # '140000-150000',
+                # '150000-160000',
+                # '160000-170000',
+                # '170000-178561'
+                grp_nm
+                # '170000-178561',
+                # '160000-170000',
+                # '130000-140000',
+            ]], start=[])
+            args['filenames'] = paths
+        else:
+            args['filenames'] = dnm
+            # dir_nm = f'{now(for_path=True)}_{dnm}, md={mode[0]}'
+            dir_nm_ = '2022-08-02_17-47-08_MAESTRO, md=f'
+            path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
+        args['path_out'] = path_out
+        me(**args)
+    export2json()
 
     def export2json_save_each(
             filenames: Union[str, List[str]] = 'LMD-cleaned-subset',
@@ -387,7 +396,7 @@ if __name__ == '__main__':
     ):
         path_out = os_join(music_util.get_processed_path(), 'intermediate', save_dir)
         # parallel = 3
-        parallel = 64
+        parallel = 32
         me(
             filenames, parallel=parallel, extractor_args=dict(greedy_tuplet_pitch_threshold=1),
             path_out=path_out, save_each=True
@@ -438,7 +447,7 @@ if __name__ == '__main__':
         ic(dset)
         ic(len(dset['train']), len(dset['test']))
         ic(dset['train'][:2], dset['test'][:2])
-    json2dset_with_split()
+    # json2dset_with_split()
 
     def fix_insert_key():
         """
