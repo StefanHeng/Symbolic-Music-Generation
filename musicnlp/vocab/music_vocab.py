@@ -216,7 +216,10 @@ class MusicVocabulary:
         keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
 
         # TODO: with music-theory, mod-7 scale degree, vocab size would increase
-        special = [specs[k] for k in ('end_of_song', 'start_of_bar', 'start_of_tuplet', 'end_of_tuplet')]
+        # TODO: changed the order of sob & eos and added melody & bass prefix, this will affect prior models trained
+        special = [specs[k] for k in (
+            'start_of_bar', 'end_of_song', 'start_of_melody', 'start_of_bass', 'start_of_tuplet', 'end_of_tuplet'
+        )]
         special.append(MusicVocabulary.pad)
         self.toks: Dict[str, List[str]] = OrderedDict(dict(
             special=special,

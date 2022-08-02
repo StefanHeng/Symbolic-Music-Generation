@@ -88,8 +88,14 @@ if __name__ == '__main__':
 
     from musicnlp.preprocess import get_dataset
 
-    fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-    # fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+    # mode = 'melody'
+    mode = 'full'
+    if mode == 'melody':
+        fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+        # fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+    else:
+        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, 2022-08-02_20-11-17'
+        fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, 2022-08-02_20-12-23'
 
     def implementation_check():
         dsets = get_dataset(fnm)
@@ -106,6 +112,22 @@ if __name__ == '__main__':
         ids_ = input_['input_ids']
         mic(input_, ids_, tkzer.decode(ids_))
     # implementation_check()
+
+    def check_one_pass_all_data():
+        """
+        Make sure tokenization doesn't break
+        """
+        from tqdm.auto import trange
+        dsets = get_dataset(fnm)
+        tokenizer = MusicTokenizer(model_max_length=4096*16)
+        for split, dset in dsets.items():
+            it = trange(len(dset), desc=f'Tokenizing {split}', unit='song')
+            for i in it:
+                inputs = dset[i]
+                ids = tokenizer(inputs['score'])['input_ids']
+                it.set_postfix(len=len(ids))
+    check_one_pass_all_data()
+
 
     def check_pad_n_eos():
         tkzer = MusicTokenizer(model_max_length=12)
@@ -178,4 +200,4 @@ if __name__ == '__main__':
             mic(len(songs))
             c = count(songs)
             mic(c)
-    check_n_note_in_tup()
+    # check_n_note_in_tup()

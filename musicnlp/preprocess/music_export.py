@@ -209,8 +209,8 @@ class MusicExport:
         logger = get_logger('Combine Single-Extracted Songs')
         logger.info(f'Combining {logi(len(filenames))} songs... ')
 
-        def load_single(f):
-            with open(f, 'r') as f_:
+        def load_single(fl):
+            with open(fl, 'r') as f_:
                 return json.load(f_)
         songs = []
         it = tqdm(filenames, desc='Loading songs', unit='song')
@@ -390,59 +390,50 @@ if __name__ == '__main__':
         me(**args)
     export2json()
 
-    def export2json_save_each(
-            filenames: Union[str, List[str]] = 'LMD-cleaned-subset',
-            save_dir: str = 'LMD-cleaned_subset save single 04-09_21-51'
-    ):
-        path_out = os_join(music_util.get_processed_path(), 'intermediate', save_dir)
-        # parallel = 3
-        parallel = 32
-        me(
-            filenames, parallel=parallel, extractor_args=dict(greedy_tuplet_pitch_threshold=1),
-            path_out=path_out, save_each=True
-        )
-    # export2json_save_each()
-    # export2json_save_each(filenames='POP909', save_dir='POP909 save single 04-10_02.15')
-    # export2json_save_each(filenames=music_util.get_cleaned_song_paths('LMD-cleaned-subset', fmt='mxl')[3000:])
-
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
-        fnms = sorted(glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, '**/*.json')))
+        fl_pattern = '*.json'
+        if 'LMD' in dataset_name:
+            fl_pattern = f'**/{fl_pattern}'
+        fnms = sorted(glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, fl_pattern)))
+        mic(len(fnms))
         # fnms = fnms[:1024]  # TODO: debugging
         out_fnm = f'{PKG_NM} music extraction, dnm={dataset_name}'
         songs = me.combine_saved_songs(filenames=fnms, output_filename=out_fnm)
         ic(songs.keys(), len(songs['music']))
-    # combine_single_json_songs(singe_song_dir='POP909 save single 04-10_02.15', dataset_name='POP909')
-    # combine_single_json_songs(
-    #     singe_song_dir='LMD-cleaned_subset save single 04-09_21-51',
-    #     dataset_name='LMD-cleaned_subset'
-    # )
-    # combine_single_json_songs(singe_song_dir='2022-05-19_17-07-40_POP909', dataset_name='POP909')
-    # combine_single_json_songs(singe_song_dir='2022-05-19_17-20-29_MAESTRO', dataset_name='MAESTRO')
-    # combine_single_json_songs(singe_song_dir='2022-05-20_09-39-16_LMD', dataset_name='LMD')
 
-    def json2dset():
-        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-        # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
-        fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
-        dset = me.json2dataset(fnm)
-        ic(dset, len(dset), dset[:5])
-    # json2dset()
+    def combine():
+        md = 'full'
+        if md == 'melody':
+            # combine_single_json_songs(singe_song_dir='2022-05-19_17-07-40_POP909', dataset_name='POP909')
+            # combine_single_json_songs(singe_song_dir='2022-05-19_17-20-29_MAESTRO', dataset_name='MAESTRO')
+            combine_single_json_songs(singe_song_dir='2022-05-20_09-39-16_LMD', dataset_name='LMD')
+        else:
+            # combine_single_json_songs(
+            #     singe_song_dir='2022-08-02_17-28-41_POP909', dataset_name='POP909')
+            # combine_single_json_songs(
+            #     singe_song_dir='2022-08-02_17-47-08_MAESTRO', dataset_name='MAESTRO')
+            combine_single_json_songs(singe_song_dir='2022-08-02_19-16-56_LMD', dataset_name='LMD')
+    # combine()
 
     def json2dset_with_split():
         """
         Split the data for now, when amount of data is not huge
         """
         seed = sconfig('random-seed')
-        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
-        # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-        #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
-        # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
-        # fnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-        #       'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
-        # for 10k data in the LMD-cleaned subset dataset, this is like 200 songs, should be good enough
-        fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-        # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
-        # fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+        # mode = 'melody'
+        mode = 'full'
+        if mode == 'melody':
+            # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, ' \
+            #       '2022-05-20_14-52-04'
+            # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, ' \
+            #       '2022-05-20_14-52-28'
+            fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, ' \
+                  '2022-05-27_15-23-20'
+        else:
+            # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, ' \
+            #       '2022-08-02_20-11-17'
+            fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, ' \
+                  '2022-08-02_20-12-23'
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
         ic(dset)
         ic(len(dset['train']), len(dset['test']))
