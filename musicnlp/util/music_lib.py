@@ -441,7 +441,7 @@ def get_offset(note: ExtNote) -> float:
 
 
 def fill_with_rest(
-        notes: Iterable[ExtNote], serializable: bool = True, duration: Dur = None,
+        notes: Iterable[ExtNote], serializable: bool = True, duration: Dur = None, fill_start: bool = False
 ) -> Tuple[List[ExtNote], List[Tuple[float, float]]]:
     """
     Fill the missing time with rests
@@ -452,6 +452,7 @@ def fill_with_rest(
     :param serializable: If True, `Fraction`s in unfilled ranges will be converted to string
         Intended for json output
     :param duration: If given, notes are filled up until this ending time
+    :param fill_start: If true, fill potentially-mussing starting time with rest
     :return: 2 tuple of (notes with rests added, list of 2-tuple of (start, end) of missing time)
 
     .. note:: Tuplet group is treated as a whole
@@ -476,8 +477,8 @@ def fill_with_rest(
         note = next(it, None)
         while note is not None:
             new_begin = get_offset(note)
-            assert last_end <= new_begin  # verify input
-            if last_end < new_begin:  # Found gap
+            assert new_begin-last_end >= -eps  # verify input, allow a small eps
+            if new_begin-last_end > eps:  # Found gap
                 fill(last_end, new_begin)
             lst.append(note)
 
@@ -487,6 +488,16 @@ def fill_with_rest(
             diff = duration - last_end
             if diff - eps > 0:
                 fill(last_end, duration)
+        if fill_start:
+            n0 = lst[0]
+            if isinstance(n0, tuple):
+                n0 = n0[0]
+            end_ = n0.offset
+            if end_ != 0:
+                lst.insert(0, get_rest_note(0, end_))
+                if serializable:
+                    end_ = serialize_frac(end_)
+                meta.insert(0, (0, end_))
         return lst, meta
 
 
@@ -602,7 +613,7 @@ def insert_ts_n_tp_to_part(part: Part, time_sig: str, tempo: int) -> Part:
 
 def make_score(
         title: str = f'{PKG_NM} Song', composer: str = PKG_NM, mode: str = 'melody',
-        time_sig: str = '4/4', tempo: int = 120, d_note: Dict[str, List[List[SNote]]] = None
+        time_sig: str = '4/4', tempo: int = 120, d_notes: Dict[str, List[List[SNote]]] = None
 ) -> Score:
     score = get_score_skeleton(title=title, composer=composer, mode=mode)
     parts = list(score.parts)
@@ -610,14 +621,16 @@ def make_score(
     part_melody = parts[0]
     assert 'Melody' in part_melody.partName
 
-    def get_bars(lst_notes: List[List[SNote]]) -> List[Measure]:
+    def get_bars(lst_notes: List[List[SNote]], is_base: bool = False) -> List[Measure]:
         lst_bars = []
         for i, notes in enumerate(lst_notes):
             bar = Measure(number=i)  # Original bar number may not start from 0
             bar.append(notes)
+            if is_base and i == 0:
+                bar.insert(m21.clef.BassClef())
             lst_bars.append(bar)
         return lst_bars
-    part_melody.append(get_bars(d_note['melody']))
+    part_melody.append(get_bars(d_notes['melody']))
     bar0 = part_melody.measure(0)  # Insert metadata into 1st bar
     bar0.insert(MetronomeMark(number=tempo))
     bar0.insert(TimeSignature(time_sig))
@@ -625,7 +638,7 @@ def make_score(
     if mode == 'full':
         part_bass = parts[1]  # see `get_score_skeleton`
         assert 'Bass' in part_bass.partName
-        part_bass.append(get_bars(d_note['bass']))
+        part_bass.append(get_bars(d_notes['bass'], is_base=True))
     return score
 
 

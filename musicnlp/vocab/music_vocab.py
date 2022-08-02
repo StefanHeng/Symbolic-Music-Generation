@@ -70,6 +70,8 @@ class MusicVocabulary:
     & support the conversion, from relevant `music21` objects to [`str`, `int] conversion
     """
     start_of_bar = '<bar>'
+    start_of_melody = '<melody>'
+    start_of_bass = '<bass>'
     end_of_song = '</s>'
     start_of_tuplet = '<tup>'
     end_of_tuplet = '</tup>'
@@ -105,7 +107,9 @@ class MusicVocabulary:
         end_of_song=end_of_song,
         prefix_time_sig=time_sig_pref,
         prefix_tempo=tempo_pref,
-        prefix_key='Key'
+        prefix_key='Key',
+        start_of_melody=start_of_melody,
+        start_of_bass=start_of_bass
     )
     # # Uncommon Time Signatures in music theory, but empirically seen in MIDI data
     # # See music_visualize.py for distribution

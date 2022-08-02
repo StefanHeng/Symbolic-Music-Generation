@@ -613,8 +613,8 @@ class MusicExtractor:
         is_high = keep == 'high'
         ns_out = []
         last_end = 0  # Last added note, end time in quarter length
-        if number == 5 and not is_high:
-            mic('in get notes out', groups)
+        # if number == 5 and not is_high:
+        #     mic('in get notes out', groups)
         for offset in sorted(groups.keys()):  # Pass through notes in order
             notes_ = groups[offset]
             if len(notes_) == 0:  # As a result of removing triplets
@@ -622,8 +622,8 @@ class MusicExtractor:
                 continue
             nt = notes_[-1]  # Note with the highest pitch if `high`, the lowest if `low`
             nt_end = get_end_qlen(nt)
-            if number == 5 and not is_high:
-                mic(nt, offset, nt_end)
+            # if number == 5 and not is_high:
+            #     mic(nt, offset, nt_end)
             if last_end - offset > self.eps:
                 # Current note starts before the last added note ends
                 # Tuplet notes not normalized at this point, remain faithful to the weighted average pitch
@@ -679,8 +679,6 @@ class MusicExtractor:
             else:
                 ns_out.append(nt)
                 last_end = nt_end
-        if number == 5 and not is_high:
-            mic(ns_out)
         return ns_out
 
     @staticmethod
@@ -758,18 +756,18 @@ class MusicExtractor:
                 check_dur = False
             else:
                 check_dur = True
-            if not is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur):
-                mic(i_bar)
-                _debug_pprint_lst_notes(notes)
-                dur_bar = time_sig2bar_dur(time_sig)
-                pos_dur = is_notes_pos_duration(notes)
-                no_ovl = not notes_overlapping(notes)
-                have_gap = notes_have_gap(notes)
-                match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
-                                             abs_tol=self.eps)
-                mic(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar)
-                mic(pos_dur, no_ovl, (not have_gap), match_bar_dur, time_sig, dur_bar)
-                exit(1)
+            # if not is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur):
+            #     mic(i_bar)
+            #     _debug_pprint_lst_notes(notes)
+            #     dur_bar = time_sig2bar_dur(time_sig)
+            #     pos_dur = is_notes_pos_duration(notes)
+            #     no_ovl = not notes_overlapping(notes)
+            #     have_gap = notes_have_gap(notes)
+            #     match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
+            #                                  abs_tol=self.eps)
+            #     mic(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar)
+            #     mic(pos_dur, no_ovl, (not have_gap), match_bar_dur, time_sig, dur_bar)
+            #     exit(1)
             assert is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur)
         return lst_notes
 
@@ -810,8 +808,8 @@ class MusicExtractor:
                 }
                 # so that accessing last element gives the smallest pitch, see `get_notes_out`
                 MusicExtractor.sort_groups(groups_bass, reverse=True)
-                if number == 5:
-                    _debug_pprint_lst_notes(groups_bass[0])
+                # if number == 5:
+                #     _debug_pprint_lst_notes(groups_bass[0])
                 # groups = {k: [] for k, v in groups.items()}
                 # mic(groups_bass, groups)
                 # exit(1)
@@ -837,16 +835,26 @@ class MusicExtractor:
             if self.mode == 'full':
                 _notes_bass = _get_notes(groups_bass, 'low')
 
-                notes_bass = []
+                notes_bass, removed = [], False
                 for nb in _notes_bass:
                     # only keep the notes that are unique to bass
                     # mic(nb, [MusicExtractor._ext_notes_eq(nb, nm) for nm in notes_melody])
                     if not any(MusicExtractor._ext_notes_eq(nb, nm) for nm in notes_melody):
                         notes_bass.append(nb)
+                        removed = True
                     else:
-                        self.logger.info(f'Skipping {logi("bass")} note: {logi(nb)}')
+                        self.logger.info(f'Skipping {logi("bass")} note at bar#{number}: {logi(nb)}')
+                if removed:
+                    # if number == 88:
+                    #     mic('in removed', notes_bass)
+                    #     _debug_pprint_lst_notes(notes_bass)
+                    # skip unfilled range
+                    notes_bass = fill_with_rest(notes_bass, duration=time_sig2bar_dur(time_sig), fill_start=True)[0]
+                    # if number == 19:
+                    #     mic('in removed', notes_bass)
+                    #     _debug_pprint_lst_notes(notes_bass)
 
-                # if number == 5:
+                # if number == 19:
                 #     mic(groups_melody, groups_bass)
                 #     mic(notes_melody)
                 #     _debug_pprint_lst_notes(notes_melody)
@@ -981,7 +989,7 @@ class MusicExtractor:
         d_notes = {k: [list(flatten_notes(notes)) for notes in lst_notes] for k, lst_notes in d_notes.items()}
         if exp == 'mxl':
             scr_out = make_score(
-                title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo, d_note=d_notes
+                title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo, d_notes=d_notes
             )
             dir_nm = sconfig(f'{DSET_DIR}.mxl-eg.dir_nm_extracted')
             fmt = 'mxl'  # sometimes file-writes via `mxl` couldn't be read by MuseScore
@@ -994,16 +1002,25 @@ class MusicExtractor:
             color = exp == 'visualize'
             self.vocab.color = color
 
-            def e2s(elm):  # Syntactic sugar
+            def e2s(elm) -> List[str]:  # Syntactic sugar
                 return self.vocab(elm, color=color)
 
-            groups_: List[List[str]] = [
-                [*e2s(time_sig_mode), *e2s(mean_tempo)],
-                *(([self.vocab['start_of_bar']] + sum([e2s(n) for n in notes], start=[])) for notes in d_notes['melody']),
-                [self.vocab['end_of_song']]
-            ]  # TODO: adding Chords as 2nd part?
-            mic(groups_)
-            exit(1)
+            groups_: List[List[str]] = [[*e2s(time_sig_mode), *e2s(mean_tempo)]]
+            if self.mode == 'melody':
+                def notes2group(notes: List[SNote]) -> List[str]:
+                    return [self.vocab['start_of_bar']] + sum([e2s(n) for n in notes], start=[])
+                groups_.extend([notes2group(notes) for notes in d_notes['melody']])
+            else:
+                def notes2group(notes_melody: List[SNote], notes_bass: List[SNote]) -> List[str]:
+                    return (
+                        [self.vocab['start_of_bar']] +
+                        [self.vocab['start_of_melody']] + sum([e2s(n) for n in notes_melody], start=[]) +
+                        [self.vocab['start_of_bass']] + sum([e2s(n) for n in notes_bass], start=[])
+                    )
+                groups_.extend([notes2group(nm, nb) for nm, nb in zip(d_notes['melody'], d_notes['bass'])])
+            groups_.append([self.vocab['end_of_song']])
+            # mic(groups_)
+            # exit(1)
             if exp == 'visualize':
                 n_pad = len(str(len(groups_)))
 
@@ -1066,7 +1083,7 @@ if __name__ == '__main__':
 
         def check_str():
             toks = me(fnm, exp='str')
-            ic(len(toks), toks[:20])
+            ic(len(toks), toks[:100])
 
         def check_visualize():
             s = me(fnm, exp='visualize')
@@ -1075,8 +1092,8 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             ic(d_out)
-        check_mxl_out()
-        # check_str()
+        # check_mxl_out()
+        check_str()
         # check_visualize()
         # check_return_meta_n_key()
     toy_example()
