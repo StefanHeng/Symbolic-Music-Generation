@@ -337,15 +337,15 @@ if __name__ == '__main__':
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1),
             save_each=True,
             with_tqdm=True,
-            parallel=64,
+            parallel=16,
             parallel_mode=pl_md,
             # n_worker=16
         )
 
         if 'LMD' in dnm:
             # grp_nm = 'many'
-            grp_nm = '000000-010000'
-            # grp_nm = '150000-160000'
+            # grp_nm = '090000-100000'
+            grp_nm = '100000-110000'
             # grp_nm = '170000-178561'
             # dir_nm_ = f'{now(for_path=True)}_LMD, md={mode[0]}'
             dir_nm_ = '2022-08-02_19-16-56_LMD, md=f'
@@ -376,9 +376,6 @@ if __name__ == '__main__':
                 # '160000-170000',
                 # '170000-178561'
                 grp_nm
-                # '170000-178561',
-                # '160000-170000',
-                # '130000-140000',
             ]], start=[])
             args['filenames'] = paths
         else:
@@ -550,7 +547,7 @@ if __name__ == '__main__':
         import re
         import shutil
 
-        dir_nm = '2022-05-20_09-39-16_LMD, MS'
+        dir_nm = '2022-08-02_19-16-56_LMD, md=f'
         path_process_base = os_join(u.dset_path, 'processed', 'intermediate', dir_nm)
         path_to_process = os_join(path_process_base, 'many')
         ic(path_to_process)
