@@ -216,6 +216,7 @@ class ComputeMetrics:
     def __init__(self, tokenizer: MusicTokenizer, mode: str = 'vanilla'):
         self.acc = datasets.load_metric('accuracy')
         self.ikr = metrics.IkrMetric(tokenizer=tokenizer, mode=mode)
+        ca.check_mismatch('Training Mode', mode, ['vanilla', 'key-aug'])
         self.mode = mode
 
     def __call__(self, eval_pred):
@@ -323,9 +324,9 @@ if __name__ == '__main__':
 
     seed = sconfig('random-seed')
 
-    # mode = 'melody'
-    mode = 'full'
-    if mode == 'melody':
+    # md = 'melody'
+    md = 'full'
+    if md == 'melody':
         pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
         mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
         lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
@@ -352,8 +353,8 @@ if __name__ == '__main__':
         n_ep = 16
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
 
-        augment_key = False
-        # augment_key = True  # TODO: fix after WordPiece
+        # augment_key = False
+        augment_key = True  # TODO: fix after WordPiece
         wordpiece_tokenize = False
         my_train_args = dict(
             tqdm=True, logging_strategy='epoch',

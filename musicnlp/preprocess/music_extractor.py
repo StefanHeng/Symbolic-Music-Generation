@@ -502,6 +502,17 @@ class MusicExtractor:
         groups[offset] = _notes_out
         return groups
 
+    @staticmethod
+    def _fix_truncate_note(groups, ts_tup: Tuple[int, int], offset, wrong_end_time):
+        if offset in groups:
+            notes_out = []
+            dur_bar = time_sig2bar_dur(ts_tup)
+            for n in groups[offset]:
+                if isinstance(n, Note) and get_end_qlen(n) == wrong_end_time:
+                    n.duration = Duration(quarterLength=dur_bar - n.offset)
+                notes_out.append(n)
+            groups[offset] = notes_out
+
     def _fix_edge_case(self, groups, number, time_sig):
         """
         the original file is broken in that note durations don't align with duration by time signature
@@ -538,33 +549,16 @@ class MusicExtractor:
                 _notes_out = []
                 _dur_bar = time_sig2bar_dur(ts_tup)
                 for _n in groups[0.0]:
-                    wrong_dur = Fraction(33, 8)
                     # assume correct duration of max bar length, 1/8 qlen more than it should
-                    if isinstance(_n, tuple) and get_end_qlen(_n) == wrong_dur:
+                    if isinstance(_n, tuple) and get_end_qlen(_n) == Fraction(33, 8):
                         _n = note2note_cleaned(_n, q_len=_dur_bar)  # Keep, but normalize
                     _notes_out.append(_n)
                 groups[0.0] = _notes_out
-            if number == 12 and 3.875 in groups:
-                # for `LMD::090283`
-                _notes_out = []
-                _dur_bar = time_sig2bar_dur(ts_tup)
-                for _n in groups[3.875]:
-                    # assume correct duration of max bar length, 1/8 qlen more than it should
-                    if isinstance(_n, Note) and get_end_qlen(_n) == 4.875:
-                        _n.duration = Duration(quarterLength=_dur_bar - _n.offset)
-                    _notes_out.append(_n)
-                groups[3.875] = _notes_out
-            elif number == 27 and 3.25 in groups:
-                _notes_out = []
-                _dur_bar = time_sig2bar_dur(ts_tup)
-                for _n in groups[3.25]:
-                    # 0.25 qlen more than it should
-                    if isinstance(_n, Note) and get_end_qlen(_n) == 4.25:
-                        _n = note2note_cleaned(_n, q_len=_dur_bar - _n.offset)  # Keep, but truncate
-                    _notes_out.append(_n)
-                groups[3.25] = _notes_out
-            elif number == 46 and 4.0 in groups:
-                # for `LMD::086800`
+            elif number == 12:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 3.875, 4.875)  # for `LMD::090283`
+            elif number == 27:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 3.25, 4.25)
+            elif number == 46 and 4.0 in groups:  # for `LMD::086800`
                 _notes_out = []
                 for _n in groups[4.0]:  # starts at offset 4
                     e = get_end_qlen(_n)
@@ -573,35 +567,35 @@ class MusicExtractor:
                         continue  # ignore
                     _notes_out.append(_n)
                 groups[4.0] = _notes_out
+            elif number == 65:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 3.25, 4.25)  # for `LMD::173000`
+            elif number == 108:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 3.75, 4.75)  # for `LMD::173000`
         elif ts_tup == (3, 4):
-            if number == 22 and 2.125 in groups:
+            if number == 22:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 2.125, 3.125)
                 # A chord starts in 2.125, and all its notes have duration 1 in quarter length,
                 # 1/8 more than it should
                 # TODO: only fixing the case where Chords are broken down into notes
-                if self.mode == 'melody':
-                    _notes_out = []
-                    _dur_bar = time_sig2bar_dur(ts_tup)
-                    for _n in groups[2.125]:
-                        if isinstance(_n, Note) and get_end_qlen(_n) == 3.125:
-                            _n.duration = Duration(quarterLength=_dur_bar - _n.offset)
-                        _notes_out.append(_n)
-                    groups[2.125] = _notes_out
-            if number == 91 and 2.875 in groups:
-                # for `LMD::060134`
+            elif number == 48:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 2.375, 3.375)  # for `LMD::104680`
+            elif number == 85:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 2.625, 3.625)  # for `LMD::104680`
+            elif number == 91:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 2.875, 3.875)  # for `LMD::060134`
+            elif number == 96:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 2.5, 3.5)  # for `LMD::161651`
+            elif number == 126:
+                MusicExtractor._fix_truncate_note(groups, ts_tup, 2.75, 3.75)  # for `LMD::051872`
+            elif number == 674 and 0.0 in groups:
+                # for `LMD::107205`
                 _notes_out = []
                 _dur_bar = time_sig2bar_dur(ts_tup)
-                for _n in groups[2.875]:
-                    if isinstance(_n, Note) and get_end_qlen(_n) == 3.875:
-                        _n.duration = Duration(quarterLength=_dur_bar - _n.offset)
+                for _n in groups[0.0]:
+                    if isinstance(_n, tuple) and get_end_qlen(_n) == Fraction(4, 1):
+                        _n = note2note_cleaned(_n, q_len=_dur_bar)  # Keep, but normalize
                     _notes_out.append(_n)
-            if number == 126 and 2.75 in groups:
-                # for `LMD::051872`
-                _notes_out = []
-                _dur_bar = time_sig2bar_dur(ts_tup)
-                for _n in groups[2.75]:
-                    if isinstance(_n, Note) and get_end_qlen(_n) == 3.75:
-                        _n.duration = Duration(quarterLength=_dur_bar - _n.offset)
-                    _notes_out.append(_n)
+                groups[0.0] = _notes_out
         return groups
 
     def get_notes_out(self, groups: Dict[float, List[ExtNote]], number: int, keep: str = 'high') -> List[ExtNote]:
@@ -750,24 +744,23 @@ class MusicExtractor:
                     # Merges complex durations into one for MXL output
                     n.duration.consolidate()
         for i_bar, (notes, time_sig) in enumerate(zip(lst_notes, time_sigs)):  # Final check before output
-            # Edge case, see `notes2quantized_notes`
-            if self.mode == 'melody' and \
-                    self.prec == 5 and (time_sig.numerator, time_sig.denominator) == (21, 64) and i_bar == 51:
+            # for `LMD::125135`, edge case, see `notes2quantized_notes`
+            if self.prec == 5 and (time_sig.numerator, time_sig.denominator) == (21, 64) and i_bar == 51:
                 check_dur = False
             else:
                 check_dur = True
-            if not is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur):
-                mic(i_bar)
-                _debug_pprint_lst_notes(notes)
-                dur_bar = time_sig2bar_dur(time_sig)
-                pos_dur = is_notes_pos_duration(notes)
-                no_ovl = not notes_overlapping(notes)
-                have_gap = notes_have_gap(notes)
-                match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
-                                             abs_tol=self.eps)
-                mic(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar)
-                mic(pos_dur, no_ovl, (not have_gap), match_bar_dur, time_sig, dur_bar)
-                exit(1)
+            # if not is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur):
+            #     mic(i_bar)
+            #     _debug_pprint_lst_notes(notes)
+            #     dur_bar = time_sig2bar_dur(time_sig)
+            #     pos_dur = is_notes_pos_duration(notes)
+            #     no_ovl = not notes_overlapping(notes)
+            #     have_gap = notes_have_gap(notes)
+            #     match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar,
+            #                                  abs_tol=self.eps)
+            #     mic(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar)
+            #     mic(pos_dur, no_ovl, (not have_gap), match_bar_dur, time_sig, dur_bar)
+            #     exit(1)
             assert is_valid_bar_notes(notes, time_sig, check_match_time_sig=check_dur)
         return lst_notes
 
@@ -805,10 +798,10 @@ class MusicExtractor:
                 groups_bass = {
                     k: [MusicExtractor._deep_copy_note(n) for n in v if not is_rest(n)] for k, v in groups_melody.items()
                 }
-                if number == 12:
-                    mic(groups_bass)
-                    _debug_pprint_lst_notes(groups_bass[3.875])
-                    _debug_pprint_lst_notes(groups_bass[3.9375])
+                # if number == 108:
+                #     mic(groups_bass)
+                #     for offset in groups_bass:
+                #         _debug_pprint_lst_notes(groups_bass[offset])
                 # so that accessing last element gives the smallest pitch, see `get_notes_out`
                 MusicExtractor.sort_groups(groups_bass, reverse=True)
 
@@ -1119,12 +1112,16 @@ if __name__ == '__main__':
 
             # from _test_broken_files import broken_files
             broken_files = [
-                # '018347.mxl',
                 # '035317.mxl',
                 # '060134.mxl',
                 # '051872.mxl',
                 # '067436.mxl',
-                '090283.mxl',
+                # '090283.mxl',
+                # '104680.mxl',
+                # '107205.mxl',
+                # '125135.mxl',
+                # '161651.mxl',
+                '173000.mxl',
             ]
 
             o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
@@ -1133,7 +1130,6 @@ if __name__ == '__main__':
                 _, _dir_nm = o2f(int(stem(f)), return_parts=True)
                 return os_join(_dir_nm, f)
             broken_files = [map_fnm(f) for f in broken_files]
-            mic(broken_files)
         else:
             broken_files = [
                 # "Claude Debussy - L'isle Joyeuse, L. 106.mxl",

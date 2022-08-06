@@ -337,16 +337,18 @@ if __name__ == '__main__':
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1),
             save_each=True,
             with_tqdm=True,
-            parallel=16,
+            parallel=False,
+            # parallel=1,
             parallel_mode=pl_md,
             # n_worker=16
         )
 
         if 'LMD' in dnm:
             # grp_nm = 'many'
+            # grp_nm = 'many, lp'
             # grp_nm = '090000-100000'
-            grp_nm = '100000-110000'
-            # grp_nm = '170000-178561'
+            # grp_nm = '160000-170000'
+            grp_nm = '170000-178561'
             # dir_nm_ = f'{now(for_path=True)}_LMD, md={mode[0]}'
             dir_nm_ = '2022-08-02_19-16-56_LMD, md=f'
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_, grp_nm)
@@ -549,7 +551,7 @@ if __name__ == '__main__':
 
         dir_nm = '2022-08-02_19-16-56_LMD, md=f'
         path_process_base = os_join(u.dset_path, 'processed', 'intermediate', dir_nm)
-        path_to_process = os_join(path_process_base, 'many')
+        path_to_process = os_join(path_process_base, 'many, lp')
         ic(path_to_process)
         paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
         pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$')
@@ -569,6 +571,8 @@ if __name__ == '__main__':
             os.makedirs(path_out, exist_ok=True)
 
             path_out = os_join(path_out, fnm)
+            # if os.path.exists(path_out):
+            #     print(f'{logi(path_out)} already exists')
             assert not os.path.exists(path_out)
             # ic(path, path_out)
             # exit(1)
