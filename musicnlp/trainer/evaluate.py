@@ -19,19 +19,27 @@ from musicnlp.models import MyReformerModelWithLMHead, MyTransfoXLLMHeadModel
 
 
 def load_trained(
-        model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: Tuple[str, str] = None
+        model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: Tuple[str, str] = None,
+        mode: str = 'full'
 ) -> Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel]:
     if not hasattr(load_trained, 'key2path'):
-        load_trained.key2path = {
-            ('reformer', '14_32ep'): ['reformer', '2022-04-16_16-08-03', 'checkpoint-4802'],
-            ('reformer', '20_64ep'): ['reformer', '2022-04-19_13-48-54', 'checkpoint-6860'],
-            ('reformer', '2_16ep'): ['2022-06-23_01-11-20_reformer', 'checkpoint-5478'],
-            ('transf-xl', '7_10ep'): ['2022-06-19_10-59-06_transf-xl', 'checkpoint-61341']
-        }
+        load_trained.key2path = dict(
+            melody={
+                ('reformer', '14_32ep'): ['reformer', '2022-04-16_16-08-03', 'checkpoint-4802'],
+                ('reformer', '20_64ep'): ['reformer', '2022-04-19_13-48-54', 'checkpoint-6860'],
+                ('reformer', '2_16ep'): ['2022-06-23_01-11-20_reformer', 'checkpoint-5478'],
+                ('transf-xl', '7_10ep'): ['2022-06-19_10-59-06_transf-xl', 'checkpoint-61341']
+            },
+            full={
+                ('reformer', '32_32ep'): ['2022-08-07_05-12-51_reformer', 'trained']
+            }
+        )
     paths = [u.model_path]
+    if mode == 'melody':  # different # of tokens in vocab
+        raise NotImplementedError('Current Tokenizer don\'t support prior melody-only representation ')
     if model_key:
         model_name = model_key[0]
-        paths.extend(load_trained.key2path[model_key])
+        paths.extend(load_trained.key2path[mode][model_key])
     else:
         if isinstance(directory_name, str):
             paths.append(directory_name)
@@ -56,7 +64,10 @@ class MusicGenerator:
         n_bar='#bar'
     ))
 
-    def __init__(self, model: Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel], max_length: int = None):
+    def __init__(
+            self, model: Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel], mode: str = 'full',
+            max_length: int = None
+    ):
         self.model = model
         if max_length:
             self.max_len = max_length
@@ -65,9 +76,10 @@ class MusicGenerator:
                 self.max_len = model.config.max_position_embeddings
             else:  # transf xl
                 self.max_len = model.config.max_length_
-        self.tokenizer = MusicTokenizer(model_max_length=self.max_len)
+        tk_args = dict(model_max_length=self.max_len)
+        self.tokenizer = MusicTokenizer(**tk_args)
         self.vocab = self.tokenizer.vocab
-        self.converter = MusicConverter()
+        self.converter = MusicConverter(mode=mode, tokenizer_kw=tk_args)
 
         self.logger = get_logger('Music Generator')
         d_log = dict(model_max_length=self.max_len)
@@ -188,14 +200,16 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # md_k = 'transf-xl', '7_10ep'
-    md_k = 'reformer', '2_16ep'
-    mdl = load_trained(model_key=md_k)
+    md_k = 'reformer', '32_32ep'
+    md = 'full'
+    mdl = load_trained(model_key=md_k, mode=md)
     sv_dir = f'{md_k[0]}, {md_k[1]}'
     # save_dir_ = 'reformer-base, 14/32ep'
     # ic(get_model_num_trainable_parameter(mdl))
-    mg = MusicGenerator(mdl)
+    mg = MusicGenerator(model=mdl, mode=md)
 
-    key_aug = False
+    # key_aug = False
+    key_aug = True
 
     def explore_generate_unconditional():
         # as in `CTRL` paper
@@ -220,7 +234,7 @@ if __name__ == '__main__':
             mode='conditional', strategy=strat, generate_args=gen_args, prompt_args=prompt_args, save=fnm,
             save_dir=sv_dir
         )
-    explore_generate_conditional()
+    # explore_generate_conditional()
 
     def check_why_tie_in_output():
         import music21 as m21
@@ -233,16 +247,17 @@ if __name__ == '__main__':
     # check_why_tie_in_output()
 
     def export_generated():
-        # fnms = ['Merry Go Round of Life', 'Canon piano', 'Shape of You', 'Merry Christmas']
-        fnms = ['Merry Christmas']
+        fnms = ['Merry Go Round of Life', 'Canon piano', 'Shape of You', 'Merry Christmas']
+        # fnms = ['Merry Christmas']
         # fnms = ['Faded', 'Piano Sonata', 'Merry Christmas']
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
         # gen_args = dict(top_k=32, top_p=0.95)
-        gen_args = dict(top_k=64, top_p=0.9)
-        # gen_args = dict(top_k=32, top_p=0.75)
+        # gen_args = dict(top_k=32, top_p=0.9)
+        # gen_args = dict(top_k=64, top_p=0.9)
+        gen_args = dict(top_k=32, top_p=0.75)
         n_bar = 4
         for fnm in fnms:
-            path = music_util.get_my_example_songs(k=fnm, extracted=True)
+            path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='full')
             prompt = dict(path=path, n_bar=n_bar, insert_key=key_aug)
             mg(
                 mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt,

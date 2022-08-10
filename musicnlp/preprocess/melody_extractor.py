@@ -471,7 +471,7 @@ class MxlMelodyExtractor:
         :param vert_bars: `VerticalBar`s for the score
         :param as_str: If true, a human-readable string representation is returned
         """
-        s = int(sum(vb.tempo.durationToSeconds(next(iter(vb.bars.values())).duration) for vb in vert_bars))
+        s = int(sum(vb.tempo.durationToSeconds(next(iter(vb.toks.values())).duration) for vb in vert_bars))
         return sec2mmss(s) if as_str else s
 
     @property

@@ -273,7 +273,7 @@ def get_all_setup(
     )
     logger.info(f'Initializing training with {log_dict_pg(d_log)}... ')
     my_train_args = my_train_args or dict()
-    wordpiece_tokenize, aug_key = (my_train_args.pop(k, False) for k in ['wordpiece_tokenize', 'augment_key'])
+    wordpiece_tokenize, aug_key = (my_train_args.get(k, False) for k in ['wordpiece_tokenize', 'augment_key'])
     logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
         model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, model_config=model_config
@@ -282,7 +282,7 @@ def get_all_setup(
     logger.info('Loading datasets... ')
     dset_args = dataset_args or dict()
     if aug_key:
-        # For now, just do non-deterministic sampling for eval set too, TODO?
+        logger.info(f'Loading {logi("Key-Augmented")} dataset')
         dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dset_args)
     else:
         dset = get_dataset(

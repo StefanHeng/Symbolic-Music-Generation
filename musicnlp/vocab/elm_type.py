@@ -11,7 +11,7 @@ __all__ = [
 
 
 class ElmType(Enum):
-    bar_start, song_end, time_sig, tempo, key, note, tuplets = list(range(7))
+    bar_start, melody, bass, song_end, time_sig, tempo, key, note, tuplets = list(range(9))
 
 
 @dataclass

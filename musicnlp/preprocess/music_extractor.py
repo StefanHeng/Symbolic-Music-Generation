@@ -35,13 +35,6 @@ class BarInfo:
 ExtractedNotes = List[List[ExtNote]]
 
 
-def _debug_pprint_lst_notes(notes: List[ExtNote]):
-    for n in notes:
-        strt, end = get_offset(n), get_end_qlen(n)
-        p = n.pitch.nameWithOctave if isinstance(n, Note) else None
-        mic(n, strt, end, p)
-
-
 class MusicExtractor:
     """
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation

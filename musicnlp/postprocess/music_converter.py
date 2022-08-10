@@ -1,6 +1,7 @@
+from enum import Enum
 from typing import List, Dict, Union
+from dataclasses import dataclass
 
-import numpy as np
 import music21 as m21
 
 from stefutil import *
@@ -9,10 +10,25 @@ from musicnlp.vocab import ElmType, MusicElement, VocabType, MusicVocabulary, Mu
 from musicnlp.preprocess import KeyFinder
 
 
+class Channel(Enum):
+    melody, bass = list(range(2))
+
+
+@dataclass
+class PartExtractOutput:
+    time_sig: TsTup = None
+    tempo: int = None
+    key: str = None
+    toks: List[List[str]] = None  # List of tokens for each bar
+
+
 class MusicConverter:
-    def __init__(self, prec: int = 5, tokenizer_kw: Dict = None):
+    error_prefix = 'MusicConvertor Song Input Format Check'
+
+    def __init__(self, prec: int = 5, mode: str = 'full', tokenizer_kw: Dict = None):
         self.prec = prec
         self.tokenizer = MusicTokenizer(precision=prec, **(tokenizer_kw or dict()))
+        self.mode = mode
         self.vocab: MusicVocabulary = self.tokenizer.vocab
 
     def _bar2grouped_bar(self, bar: Measure) -> List[ExtNote]:
@@ -44,10 +60,41 @@ class MusicConverter:
                 lst.append(elm)
             elif isinstance(elm, Chord):  # TODO
                 raise NotImplementedError('Chord not supported yet')
-            elif not isinstance(elm, (TimeSignature, MetronomeMark)):  # which will be skipped
+            elif not isinstance(elm, (TimeSignature, MetronomeMark, m21.clef.BassClef)):  # which will be skipped
                 raise ValueError(f'Unexpected element type: {logi(elm)} with type {logi(type(elm))}')
             elm = next(it, None)
         return lst
+
+    @staticmethod
+    def _input_format_error(check: bool, msg: str):
+        if not check:
+            raise ValueError(f'{MusicConverter.error_prefix}: {msg}')
+
+    def _part2toks(self, part: Part, insert_key, n_bar, song, check_meta: bool = True) -> PartExtractOutput:
+        bars = list(part[Measure])
+        MusicConverter._input_format_error(
+            [bar.number for bar in bars] == list(range(len(bars))), f'Invalid #Bar numbers ')
+        bar0 = bars[0]
+        time_sigs, tempos = bar0[TimeSignature], bar0[MetronomeMark]
+        if check_meta:
+            MusicConverter._input_format_error(len(time_sigs) == 1, f'Expect only 1 time signature ')
+            MusicConverter._input_format_error(len(tempos) == 1, f'Expect only 1 tempo ')
+        time_sig, tempo = next(time_sigs, None), next(tempos, None)
+
+        key = None
+        if insert_key:
+            key = insert_key if isinstance(insert_key, str) else pt_sample(KeyFinder(song).find_key(return_type='dict'))
+
+        if n_bar is not None:  # for conditional generation
+            MusicConverter._input_format_error(n_bar > 0, f'{logi("n_bar")} should be positive integer')
+            bars = bars[:min(n_bar, len(bars))]
+        toks = []
+        for i, bar in enumerate(bars):
+            MusicConverter._input_format_error(
+                all(not isinstance(e, m21.stream.Voice) for e in bar), f'Expect no voice in bar#{logi(i)}')
+            # as `vocab` converts each music element to a list
+            toks.append(sum([self.vocab(e) for e in self._bar2grouped_bar(bar)], start=[]))
+        return PartExtractOutput(time_sig=time_sig, tempo=tempo, key=key, toks=toks)
 
     def mxl2str(
             self, song: Union[str, Score], join: bool = True, n_bar: int = None, insert_key: Union[bool, str] = False
@@ -58,7 +105,7 @@ class MusicConverter:
         :param song: a music 21 Score or path to an MXL file
             Should be MusicExtractor output
         :param join: If true, individual tokens are jointed
-        :param n_bar: If given, only return the decoded first n bars, star of bar is appended
+        :param n_bar: If given, only return the decoded first n bars, star of bar is appended at the end
                 Intended for conditional generation
             Otherwise, the entire song is converted and end of song token is appended
         :param insert_key: A key is inserted accordingly, intended for generation
@@ -67,33 +114,36 @@ class MusicConverter:
             song = m21.converter.parse(song)
         song: Score
         parts = list(song.parts)
-        warn = f'Check if the score is {logi("MusicExtractor")} output'
-        # TODO: since melody only for now
-        assert len(parts) == 1, f'Invalid #Parts: Expect only 1 part from the extracted score - {warn}'
-        part = parts[0]
-        bars = list(part[Measure])
-        bar_nums = np.array([bar.number for bar in bars])
-        assert np.array_equal(bar_nums, np.arange(0, len(bars))), \
-            f'Invalid Bar numbers: Bar numbers should be consecutive integers starting from 0 - {warn}'
-        bar0 = bars[0]
-        time_sigs, tempos = bar0[TimeSignature], bar0[MetronomeMark]
-        assert len(time_sigs) == 1, f'Invalid #Time Signatures: Expect only 1 time signature - {warn}'
-        assert len(tempos) == 1, f'Invalid #Tempo: Expect only 1 tempo - {warn}'
-        time_sig, tempo = time_sigs[0], tempos[0]
-        toks = [self.vocab(time_sig), self.vocab(tempo)]
-        if insert_key:
-            key = insert_key if isinstance(insert_key, str) else pt_sample(KeyFinder(song).find_key(return_type='dict'))
-            toks.append(self.vocab(key))
+        correct_n_part = (self.mode == 'melody' and len(parts) == 1) or (self.mode == 'full' and len(parts) == 2)
+        MusicConverter._input_format_error(correct_n_part, f'Invalid #Part for f{logi(self.mode)} ')
+        part_melody = next(p for p in parts if 'Melody' in p.partName)  # See `make_score`
+        part_bass = None
+        if self.mode == 'full':
+            part_bass = next(p for p in parts if 'Bass' in p.partName)
 
+        out_m = self._part2toks(part_melody, insert_key, n_bar, song)
+        time_sig, tempo, key = out_m.time_sig, out_m.tempo, out_m.key
+        out_b = None
+        if self.mode == 'full':  # sanity check
+            out_b = self._part2toks(part_bass, insert_key, n_bar, song, check_meta=False)
+            assert not out_b.time_sig or time_sig == out_b.time_sig
+            assert not out_b.tempo or tempo == out_b.tempo
+            assert not out_b.key or key == out_b.key
+        toks = [self.vocab(time_sig)[0], self.vocab(tempo)[0]]
+        if insert_key:
+            toks.append(self.vocab(key)[0])
+
+        if self.mode == 'melody':
+            for ts in out_m.toks:
+                toks.append(self.vocab.start_of_bar)
+                toks.extend(ts)
+        else:  # 'full'
+            for ts_m, ts_b in zip(out_m.toks, out_b.toks):
+                toks.extend([self.vocab.start_of_bar, self.vocab.start_of_melody])
+                toks.extend(ts_m)
+                toks.append(self.vocab.start_of_bass)
+                toks.extend(ts_b)
         for_gen = n_bar is not None
-        if for_gen:
-            assert n_bar > 0, f'Invalid {logi("n_bar")}: Expects positive integer'
-            bars = bars[:min(n_bar, len(bars))]
-        for bar in bars:
-            assert all(not isinstance(e, m21.stream.Voice) for e in bar), f'Invalid Bar: Expect no voice - {warn}'
-            toks.extend([[self.vocab.start_of_bar]] + [self.vocab(e) for e in self._bar2grouped_bar(bar)])
-        # as `vocab` converts each music element to a list
-        toks = sum(toks, start=[])
         toks += [self.vocab.start_of_bar if for_gen else self.vocab.end_of_song]
         return ' '.join(toks) if join else toks
 
@@ -130,6 +180,13 @@ class MusicConverter:
                         type=ElmType.tuplets,
                         meta=(tuple([self.vocab.compact(tok) for tok in toks_p]), self.vocab.compact(tok_d))
                     ))
+                elif tok == self.vocab.start_of_melody:
+                    assert self.mode == 'full'
+                    lst_out.append(MusicElement(type=ElmType.melody, meta=None))
+                else:
+                    assert tok == self.vocab.start_of_bass
+                    assert self.mode == 'full'
+                    lst_out.append(MusicElement(type=ElmType.bass, meta=None))
             elif typ == VocabType.time_sig:
                 lst_out.append(MusicElement(type=ElmType.time_sig, meta=(self.vocab.compact(tok))))
             elif typ == VocabType.tempo:
@@ -166,13 +223,33 @@ class MusicConverter:
             dur_ea = quarter_len2fraction(q_len) / len(pitch)
             return sum([MusicConverter.note_elm2m21(MusicElement(ElmType.note, (p, dur_ea))) for p in pitch], start=[])
 
+    @staticmethod
+    def bar2notes(notes: List[MusicElement]) -> List[SNote]:
+        return sum([MusicConverter.note_elm2m21(n) for n in notes], start=[])
+
+    @staticmethod
+    def split_notes(notes: List[MusicElement]) -> Dict[str, List[MusicElement]]:
+        """
+        Split the notes in a bar into two lists for Melody & Bass
+        """
+        lst_melody, lst_bass = [], []
+        it = iter(notes)
+        c = Channel.melody if next(it).type == ElmType.melody else Channel.bass  # 1st note have to specify this
+        for n in notes:
+            if n.type == ElmType.melody:
+                c = Channel.melody
+            elif n.type == ElmType.bass:
+                c = Channel.bass
+            else:
+                (lst_melody if c == Channel.melody else lst_bass).append(n)
+        return dict(melody=lst_melody, bass=lst_bass)
+
     def str2score(
-            self, decoded: Union[str, List[str]], mode: str = 'melody', omit_eos: bool = False,
+            self, decoded: Union[str, List[str]], omit_eos: bool = False,
             title: str = None
     ) -> Score:
         """
         :param decoded: A string of list of tokens to convert to a music21 score
-        :param mode: On of [`melody`, `chord`]
         :param omit_eos: If true, eos token at the end is not required for conversion
             All occurrences of eos in the sequence are ignored
         :param title: Title of the music
@@ -191,90 +268,59 @@ class MusicConverter:
         idxs_bar_start = [i for i, e in enumerate(lst) if e.type == ElmType.bar_start]
         lst = [lst[idx:idxs_bar_start[i+1]] for i, idx in enumerate(idxs_bar_start[:-1])] + \
               [lst[idxs_bar_start[-1]:]]
-        assert all((len(bar) > 1) for bar in lst), 'Bar should contain at least one note'
-        lst = [sum([MusicConverter.note_elm2m21(n) for n in notes[1:]], start=[]) for notes in lst]
+        lst = [notes[1:] for notes in lst]  # by construction, the 1st element is `bar_start`
+        assert all((len(bar) > 0) for bar in lst), 'Bar should contain at least one note'
+
+        if self.mode == 'melody':
+            d_notes = dict(melody=[MusicConverter.bar2notes(notes) for notes in lst])
+        else:  # `full`
+            d_notes = dict(melody=[], bass=[])
+            for notes in lst:
+                d = MusicConverter.split_notes(notes)
+                d_notes['melody'].append(MusicConverter.bar2notes(d['melody']))
+                d_notes['bass'].append(MusicConverter.bar2notes(d['bass']))
         time_sig = f'{e1.meta[0]}/{e1.meta[1]}'
-        return make_score(title=title, mode=mode, time_sig=time_sig, tempo=e2.meta, lst_note=lst)
+        return make_score(title=title, mode=self.mode, time_sig=time_sig, tempo=e2.meta, d_notes=d_notes)
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
     import musicnlp.util.music as music_util
+    from _sample_score import sample_melody, sample_full
 
-    mc = MusicConverter()
+    md = 'full'
+    mc = MusicConverter(mode=md)
 
-    sample_text = 'TimeSig_4/4 Tempo_58 <bar> p_7/5 d_1/4 p_10/4 d_1/4 p_3/5 d_1/4 p_7/5 d_1/4 p_5/5 d_1/4 p_10/4 d_1/4 p_2/5 d_1/4 ' \
-              'p_5/5 d_1/4 p_3/5 d_1/4 p_7/4 d_1/4 p_12/4 d_1/4 p_3/5 d_1/4 p_2/5 d_1/4 p_7/4 d_1/4 p_10/4 d_1/4 p_2/5 d_1/4 <bar> ' \
-              'p_12/4 d_1/4 p_3/4 d_1/4 p_8/4 d_1/4 p_12/4 d_1/4 p_10/4 d_1/4 p_3/4 d_1/4 p_7/4 d_1/4 p_10/4 d_1/4 p_12/4 d_1/4 ' \
-              'p_5/4 d_1/4 p_12/4 d_1/4 p_3/5 d_1/4 p_2/5 d_1/4 p_5/4 d_1/4 p_10/4 d_1/4 p_5/4 d_1/4 <bar> p_8/5 d_1 p_7/5 d_1 ' \
-              'p_5/5 d_1 p_3/5 d_1 <bar> p_1/5 d_3/4 p_2/5 d_1/4 p_3/5 d_1/4 p_2/5 d_1/4 p_12/4 d_1/4 p_10/4 d_1/4 p_10/4 d_3/4 ' \
-              'p_12/4 d_1/4 p_3/5 d_1 <bar> p_10/4 d_3/4 p_3/5 d_1/4 p_5/5 d_1/4 p_3/5 d_1/4 p_1/5 d_1/4 p_12/4 d_1/4 p_3/5 d_1/4 ' \
-              'p_10/4 d_1/4 p_10/4 d_1/4 p_10/4 d_1/4 p_10/4 d_1/4 p_7/4 d_1/4 p_10/4 d_1/4 p_7/4 d_1/4 <bar> p_5/4 d_3/4 p_12/4 ' \
-              'd_1/4 p_12/4 d_1/4 p_8/4 d_1/4 p_12/4 d_1/4 p_8/4 d_1/4 p_7/4 d_1/4 p_5/4 d_1/4 p_10/4 d_1/4 p_7/4 d_1/4 p_10/4 ' \
-              'd_1/4 p_7/4 d_1/4 p_10/4 d_1/4 p_7/4 d_1/4 <bar> p_5/5 d_1 p_8/5 d_1 p_7/5 d_1 p_3/5 d_1 <bar> p_1/5 d_3/4 p_3/5 ' \
-              'd_1/4 p_5/5 d_1/4 p_3/5 d_1/4 p_1/5 d_1/4 p_3/5 d_1/4 p_12/4 d_1/4 p_8/4 d_1/4 p_10/4 d_1/4 p_7/4 d_1/4 p_10/4 d_1/4 ' \
-              'p_10/4 d_1/4 p_7/4 d_1/4 p_10/4 d_1/4 <bar> p_5/5 d_1 p_r d_1 p_r d_2 <bar> p_10/4 d_1 p_r d_1/2 <tup> p_12/5 p_8/5 ' \
-              'p_3/5 p_10/5 p_8/5 d_2 </tup> <bar> p_7/5 d_1 p_10/4 d_1 p_8/5 d_2 <bar> p_12/4 d_1 p_r d_1/2 <tup> p_12/5 p_5/5 ' \
-              'p_5/5 p_8/5 p_12/4 d_2 </tup> <bar> p_3/5 d_1 p_r d_1/2 <tup> p_r p_12/5 p_5/5 d_1/2 </tup> p_5/5 d_1/4 p_3/5 d_1/4 ' \
-              'p_1/5 d_1/4 p_3/5 d_1/4 p_12/4 d_1/4 p_10/4 d_1/4 p_10/4 d_1/4 p_10/4 d_1/4 <bar> p_10/4 d_1/4 p_10/4 d_1/4 p_10/4 ' \
-              'd_1/4 p_10/4 d_1/4 p_7/4 d_1/4 p_3/5 d_1/4 p_3/5 d_1/4 p_5/5 d_1/4 p_5/5 d_1/2 p_5/5 d_1/4 p_3/5 d_1/4 p_1/5 d_1/4 ' \
-              'p_12/4 d_1/4 p_10/4 d_1/4 p_10/4 d_1/4 <bar> p_2/5 d_1/2 p_3/5 d_1/4 p_3/5 d_1/4 p_3/5 d_1/4 p_5/5 d_1/4 p_5/5 d_1/4 ' \
-              'p_3/5 d_1/4 p_1/5 d_1/4 p_3/5 d_1/4 p_12/4 d_1/4 p_10/4 d_1/4 p_8/5 d_1/2 p_7/5 d_1/2 <bar> p_5/5 d_1 p_r d_1/2 p_r ' \
-              'd_1/4 p_5/4 d_1/4 p_7/4 d_3/4 p_8/4 d_1/4 p_12/4 d_1/4 p_10/4 d_1/4 p_3/5 d_1/4 p_2/5 d_1/4 <bar> p_5/5 d_1 p_r ' \
-              'd_1/2 p_r d_1/4 p_5/4 d_1/4 p_7/4 d_1/4 p_8/4 d_1/4 p_10/4 d_1/2 p_10/4 d_1/4 p_12/4 d_1/4 p_1/5 d_1/4 p_3/5 d_1/4 ' \
-              '<bar> p_5/5 d_1 p_10/5 d_1 p_2/5 d_1/2 p_3/5 d_1/4 p_3/5 d_1/4 p_1/5 d_1/4 p_12/4 d_1/4 p_3/5 d_1/4 p_2/5 d_1/4 ' \
-              '<bar> p_3/5 d_1 p_r d_1/8 p_r d_1/8 p_7/4 d_1/4 p_8/4 d_1/4 p_11/4 d_1/4 p_3/5 d_1/4 p_5/5 d_1 p_8/5 d_1 <bar> p_7/5 ' \
-              'd_1 p_1/5 d_3/4 p_7/5 d_1/4 p_8/5 d_1 p_10/5 d_1 <bar> p_8/5 d_4 <bar> p_8/4 d_3/4 p_9/5 d_1/4 p_10/5 d_3/4 p_3/5 ' \
-              'd_1/4 p_5/5 d_1 p_6/5 d_1/2 p_5/5 d_1/2 <bar> p_8/5 d_1 p_8/5 d_1/2 p_6/5 d_1/4 p_5/5 d_1/4 p_3/5 d_2 <bar> p_3/5 ' \
-              'd_3/4 p_1/6 d_1/4 p_1/6 d_1 p_10/5 d_1/4 p_5/5 d_3/4 p_12/4 d_1 <bar> p_7/5 d_1 p_5/5 d_1/4 p_3/5 d_1/4 p_5/5 d_1/4 ' \
-              'p_3/5 d_1/4 p_1/5 d_1/4 p_12/4 d_1/4 p_1/5 d_3/4 p_3/5 d_1/4 <bar> p_5/5 d_1 p_6/5 d_1 p_8/5 d_1 p_3/4 d_1/2 p_10/4 ' \
-              'd_1/4 p_12/4 d_1/4 <bar> p_5/5 d_1 p_5/5 d_1 p_8/5 d_1 p_12/5 d_1 <bar> p_10/5 d_4 <bar> p_8/5 d_1 p_12/5 d_1 p_1/6 ' \
-              'd_1/4 p_12/4 d_1/4 p_12/4 d_1/2 p_6/5 d_1 <bar> p_1/3 d_1/8 p_12/5 d_1/8 p_10/5 d_3/4 p_12/5 d_1 p_1/6 d_3/4 p_8/5 ' \
-              'd_1/4 p_12/4 d_1/4 p_8/5 d_1/4 p_7/5 d_1/4 p_5/5 d_1/4 <bar> p_1/5 d_1/2 p_2/5 d_1/4 p_3/5 d_1/4 p_1/5 d_1/4 p_3/5 ' \
-              'd_1/4 p_12/4 d_1/4 p_10/4 d_1/4 p_10/5 d_1 p_10/5 d_1 <bar> p_12/4 d_1/2 p_10/4 d_1/4 p_10/4 d_1/4 p_7/4 d_1/4 p_3/5 ' \
-              'd_1/4 p_3/5 d_1/4 p_10/4 d_1/4 p_12/4 d_1/4 p_10/4 d_1/4 p_8/5 d_3/2 <bar> p_3/5 d_1 p_3/5 d_1/4 p_7/5 d_1/4 p_7/5 ' \
-              'd_1/4 p_3/5 d_1/4 p_10/4 d_1/4 p_7/5 d_1/4 p_3/5 d_1/4 p_10/4 d_1/4 p_7/5 d_1 <bar> p_10/5 d_1 p_10/5 d_1 p_3/6 d_1 ' \
-              'p_1/6 d_1 <bar> p_r d_3/8 p_10/5 d_1/8 p_10/5 d_1/2 p_12/5 d_1/2 p_1/6 d_1/2 p_12/5 d_1/2 p_1/6 d_1/2 p_12/5 d_1/2 ' \
-              'p_1/6 d_1/2 <bar> p_8/5 d_1/4 p_10/5 d_1/4 p_8/5 d_1/4 p_7/5 d_1/4 p_5/5 d_1/4 p_1/5 d_1/4 p_3/5 d_1/4 p_7/5 d_1/4 ' \
-              'p_7/5 d_1/4 p_3/5 d_1/4 p_1/5 d_1/4 p_7/4 d_1/4 p_10/4 d_1/4 p_5/5 d_1/4 p_3/5 d_1/4 p_7/5 d_1/4 <bar> p_7/5 d_1/4 ' \
-              'p_3/5 d_1/4 p_2/5 d_1/4 p_3/5 d_1/4 p_5/5 d_1/4 p_3/5 d_1/4 p_5/5 d_1/8 p_3/5 d_1/8 p_2/5 d_1/4 p_10/5 d_1/8 p_10/5 ' \
-              'd_1/8 p_7/5 d_1/8 p_3/5 d_1/8 p_2/5 d_1/8 p_12/4 d_1/8 p_9/4 d_1/4 p_10/4 d_1/8 p_10/4 d_1/8 p_7/4 d_1/2 <bar> p_8/4 ' \
-              'd_3/4 p_7/4 d_1/4 p_8/4 d_1/4 p_7/4 d_1/4 p_12/3 d_1/4 p_8/3 d_1/4 p_8/3 d_1/4 p_8/3 d_1/4 p_3/3 d_1/4 <tup> p_3/3 ' \
-              'p_3/3 p_12/2 d_1/2 </tup> <tup> p_10/2 p_3/3 p_5/3 d_1/2 </tup> <tup> p_12/2 p_10/2 p_11/2 d_1/2 </tup> <bar> p_5/4 ' \
-              'd_3/4 p_2/4 d_1/4 p_3/4 d_1/4 p_3/4 d_1/4 p_7/3 d_1/4 p_12/3 d_1/4 p_12/2 d_1/4 p_8/3 d_1/4 p_8/3 d_1/4 p_7/3 d_1/4 ' \
-              '<tup> p_12/3 p_5/3 p_5/3 d_1/2 </tup> <tup> p_3/4 p_8/3 p_5/3 d_1/2 </tup> <bar> <tup> p_8/3 p_5/3 p_7/3 d_1/2 ' \
-              '</tup> <tup> p_5/3 p_8/3 p_10/3 d_1/2 </tup> <tup> p_8/2 p_1/4 p_2/4 d_1/2 </tup> <tup> p_5/2 p_9/3 p_12/3 d_1/2 ' \
-              '</tup> <tup> p_5/2 p_5/3 p_5/3 d_1/2 </tup> <tup> p_12/2 p_10/2 p_10/3 d_1/2 </tup> p_3/4 d_1/2 <bar> p_3/4 d_1 ' \
-              'p_3/4 d_1/2 p_12/3 d_1/2 p_12/3 d_1/2 p_8/3 d_1/2 p_2/4 d_1/2 p_2/4 d_1/2 <bar> p_3/4 d_1 p_8/3 d_1 p_7/3 d_1/2 ' \
-              'p_8/3 d_1/4 p_7/3 d_1/4 p_8/3 d_1/2 p_10/3 d_1/4 <bar> p_10/2 d_3/4 p_10/5 d_1/4 p_10/5 d_3 <bar> p_1/3 d_1/2 p_9/2 ' \
-              'd_1/4 p_12/2 d_1/4 p_10/3 d_1/2 <tup> p_1/3 p_1/3 p_1/4 d_1/2 </tup> p_r d_1/8 p_1/4 d_1/8 <tup> p_1/3 p_8/3 p_r ' \
-              'd_1/2 </tup> p_10/1 d_1/8 p_7/3 d_1/4 p_5/4 d_1/2 p_8/4 d_1/2 <bar> p_5/5 d_1/2 <tup> p_3/5 p_2/5 p_8/4 d_1/2 </tup> ' \
-              'p_2/5 d_1/4 p_2/5 d_1/4 p_11/4 d_1/4 p_8/4 d_1/4 p_7/4 d_1/2 <tup> p_4/4 p_7/4 p_3/3 d_1/2 </tup> p_5/5 d_1/4 p_3/5 ' \
-              'd_1/4 p_2/5 d_1/4 p_12/4 d_1/4 p_10/4 d_1/4 p_12/5 d_1 <bar> p_3/4 d_2 p_3/5 d_2 <bar> p_8/5 d_2 p_7/5 d_2 <bar> ' \
-              'p_7/5 d_2 p_10/5 d_1 p_5/5 d_1 <bar> p_11/5 d_1 p_10/5 d_1 p_10/5 d_1/2 p_10/5 d_1/2 p_10/5 d_1 <bar> p_10/5 d_1/2 ' \
-              'p_7/5 d_1/2 p_6/5 d_1/2 p_7/5 d_1/2 p_9/5 d_3/4 p_5/2 d_1/4 <tup> p_6/5 p_5/5 p_9/5 d_1 </tup> <bar> p_8/5 d_1 p_9/5 ' \
-              'd_1/4 p_5/5 d_1/4 p_9/5 d_1/8 p_r d_1/8 p_7/5 d_1/4 p_6/5 d_1/2 p_7/5 d_1/2 p_6/5 d_1/2 p_7/5 d_1/2 p_6/5 d_1/2 ' \
-              '<bar> p_5/5 d_1/4 p_9/5 d_3/4 p_8/5 d_1/2 p_9/5 d_1/2 p_7/5 d_1/2 p_6/5 d_1/2 p_7/5 d_1/2 p_6/5 d_1/2 <bar> p_4/5 ' \
-              'd_5/4 p_8/5 d_1/4 p_11/5 d_1 p_11/5 d_1'
+    def check_map_elm():
+        text = music_util.get_extracted_song_eg(k='平凡之路')
+        mic(text)
+        toks = mc.str2notes(text)
+        mic(toks)
+        scr = mc.str2score(text)
+        scr.show()
+    # check_map_elm()
 
     def check_encode():
-        # text = get_extracted_song_eg(k=2)  # this one has tuplets
-        # text = music_util.get_extracted_song_eg(k='平凡之路')  # this one has tuplets
-        # ic(text)
-        # toks = mc.str2notes(text)
-        # ic(toks)
-        # scr = mc.str2score(text)
-        scr = mc.str2score(sample_text, omit_eos=True)
-        ic(scr)
-        # scr.show()
-    check_encode()
+        scr = mc.str2score(sample_full, omit_eos=True, title='Test')
+        mic(scr)
+        scr.show()
+    # check_encode()
 
     def check_decode():
         # fnm = 'Shape of You'
         fnm = 'Merry Go Round'
         path = music_util.get_my_example_songs(k=fnm, extracted=True)
-        ic(path)
+        mic(path)
         # ic(mc.mxl2str(path))
-        ic(mc.mxl2str(path, n_bar=4))
+        mic(mc.mxl2str(path, n_bar=4))
     # check_decode()
+
+    def check_encode_decode():
+        fnm = '平凡之路'
+        path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='full')
+        txt = mc.mxl2str(path, n_bar=None)
+        mic(txt)
+
+        scr = mc.str2score(txt, omit_eos=False, title='Test')
+        mic(scr)
+        scr.show()
+    check_encode_decode()

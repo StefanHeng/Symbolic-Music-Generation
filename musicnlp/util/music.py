@@ -19,7 +19,7 @@ def get_processed_path():
     return os_join(u.dset_path, sconfig('datasets.my.dir_nm'))
 
 
-def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False):
+def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False, postfix: str = None):
     """
     :return: A list of or single MIDI file path
     """
@@ -42,13 +42,20 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
             return paths[k]
         else:  # Expect str
             k = k.lower()
-            return next(p for p in paths if p.lower().find(k) != -1)
+
+            def match(p_: str) -> bool:
+                p_ = stem(p_).lower()
+                ret = p_.find(k) != -1
+                if postfix:
+                    ret = ret and p_.endswith(postfix)
+                return ret
+            return next(p for p in paths if match(p))
     else:
         return [stem(p) for p in paths] if pretty else paths
 
 
 def get_extracted_song_eg(
-        fnm='musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01',
+        fnm='musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, 2022-08-02_20-11-17',
         dir_=get_processed_path(),
         k: Union[int, str] = 0
 ) -> str:
@@ -290,7 +297,6 @@ def get_lmd_conversion_meta():
         d_dset = sconfig(f'datasets.{dnm}.original')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
         return sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
-
     ori_dir_nm = sconfig(f'datasets.{dnm}.original.dir_nm')
 
     def original_abs2rel(path: str) -> str:

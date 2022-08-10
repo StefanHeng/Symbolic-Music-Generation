@@ -47,7 +47,7 @@ __all__ = [
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
     'is_drum_track', 'is_empty_bars', 'is_rest',
     'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes', 'fill_with_rest',
-    'get_offset', 'get_end_qlen',
+    'get_offset', 'get_end_qlen', 'debug_pprint_lst_notes',
     'PrecisionChecker',
     'notes_have_gap', 'notes_overlapping', 'non_tuplet_notes_overlapping',
     'is_notes_pos_duration', 'is_valid_bar_notes',
@@ -415,6 +415,14 @@ def get_end_qlen(note: ExtNote):
         return note.offset + note.duration.quarterLength
 
 
+
+def debug_pprint_lst_notes(notes: List[ExtNote]):
+    for n in notes:
+        strt, end = get_offset(n), get_end_qlen(n)
+        p = n.pitch.nameWithOctave if isinstance(n, Note) else None
+        mic(n, strt, end, p)
+
+
 class PrecisionChecker:
     def __init__(self, precision: int = 5):
         self.prec = precision
@@ -625,7 +633,12 @@ def make_score(
         lst_bars = []
         for i, notes in enumerate(lst_notes):
             bar = Measure(number=i)  # Original bar number may not start from 0
-            bar.append(notes)
+            try:
+                bar.append(notes)
+            except Exception as e:
+                mic(notes)
+                debug_pprint_lst_notes(notes)
+                print(e)
             if is_base and i == 0:
                 bar.insert(m21.clef.BassClef())
             lst_bars.append(bar)
