@@ -1,5 +1,6 @@
 import os
 import json
+import random
 from os.path import join as os_join
 from typing import List, Dict, Callable, Union
 
@@ -8,7 +9,8 @@ from datasets import Dataset, DatasetDict
 
 from stefutil import *
 import musicnlp.util.music as music_util
-from musicnlp.vocab import VocabType, MusicTokenizer
+from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicTokenizer
+from musicnlp.preprocess.music_converter import MusicConverter
 
 
 def load_songs(*dnms) -> List[str]:
@@ -79,14 +81,20 @@ def get_dataset(
     return dset
 
 
-class KeySampleDataset:
+class AugmentedDataset:
     """
-    A wrapper around a datasets.Dataset, with my custom augmentation about inserting keys
+    A wrapper around a datasets.Dataset, with my custom augmentation about
+        1) inserting a likely key
+        2) mix-up relative order between melody & bass
 
     For each song, sample one of the potential keys based on confidence
         See `musicnlp.preprocess.key_finder.py`
     """
-    def __init__(self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None):
+    def __init__(
+            self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None,
+            augment_key: bool = False, mix_up: bool = False, mode: str = None
+    ):
+        ca(extract_mode=mode)
         if isinstance(dataset, str):
             self.dset = datasets.load_from_disk(os_join(music_util.get_processed_path(), 'processed', dataset))
         else:
@@ -101,16 +109,26 @@ class KeySampleDataset:
         else:
             self.tokenizer = MusicTokenizer(precision=prec)
 
+        self.augment_key = augment_key
+        self.mix_up = mix_up
+        if mix_up and mode != 'full':
+            raise ValueError(f'{logi("mix_up")} only works with mode={logi("full")}')
+        self.mc = MusicConverter(mode=mode, precision=prec)
+
     @classmethod
     def from_hf(
             cls, dataset_names: Union[str, List[str]], tokenizer: MusicTokenizer = None,
-            get_dataset_kwargs: Dict = None
-    ) -> Union['KeySampleDataset', Dict[str, 'KeySampleDataset']]:
+            get_dataset_kwargs: Dict = None, **kwargs
+    ) -> Union['AugmentedDataset', Dict[str, 'AugmentedDataset']]:
         """
         From path(s) to huggingface dataset(s), based on `get_dataset`
         """
         dset = get_dataset(dataset_names, **(get_dataset_kwargs or dict()))
-        return cls(dset, tokenizer) if isinstance(dset, Dataset) else {k: cls(v, tokenizer) for k, v in dset.items()}
+        if isinstance(dset, Dataset):
+            return cls(dset, tokenizer, **kwargs)
+        else:
+            dset: DatasetDict
+            return {dnm: cls(ds, tokenizer, **kwargs) for dnm, ds in dset.items()}
 
     @property
     def info(self) -> datasets.DatasetInfo:
@@ -119,17 +137,102 @@ class KeySampleDataset:
     def __len__(self):
         return len(self.dset)
 
-    def __getitem__(self, idx):
-        assert isinstance(idx, int), 'Batched indexing not supported'
+    @staticmethod
+    def _bin_sample() -> bool:
+        return random.randint(0, 1) == 0
+
+    def _mix_up_bar_notes(self, elms: List[MusicElement]):
+        """
+        Reorder notes across channels while keeping the order within the channel
+
+        For each change of channel, prefix it
+        """
+        d_notes = self.mc.split_notes(elms)
+        notes_m, notes_b = iter(d_notes['melody']), iter(d_notes['bass'])
+        elms = []
+        note_m, note_b = next(notes_m, None), next(notes_b, None)
+        c_cur, c_prev = None, None
+        add_mel = None
+        e_m, e_b = MusicElement(type=ElmType.melody), MusicElement(type=ElmType.bass)
+        while note_m and note_b:
+            add_mel = AugmentedDataset._bin_sample()
+            c_cur = Channel.melody if add_mel else Channel.bass
+            diff_c = c_cur != c_prev
+            if diff_c:
+                elms.append(e_m if add_mel else e_b)
+            if c_cur == Channel.melody:
+                elms.append(note_m)
+                note_m = next(notes_m, None)
+            else:
+                elms.append(note_b)
+                note_b = next(notes_b, None)
+            c_prev = c_cur
+                # if c_cur == Channel.melody:
+                #     elms.append(note_m)
+                #     note_m = next(notes_m, None)
+                # else:
+                #     elms.append(note_b)
+                #     note_b = next(notes_b, None)
+                # c_prev = c_cur
+        assert add_mel is not None  # sanity check
+        if note_m:
+            if not add_mel:
+                elms.append(e_m)
+            elms.append(note_m)
+            elms.extend(notes_m)
+        else:
+            if add_mel:
+                elms.append(e_b)
+            assert note_b
+            elms.append(note_b)
+            elms.extend(notes_b)
+        # mic(elms)
+        # if use_mel:
+        #     elms.append(note_m)
+        #     note_m = next(notes_m, None)
+        # else:
+        #     elms.append(note_b)
+        #     note_b = next(notes_b, None)
+        # if note_m:
+        #     while note_m:
+        #         elms.append(note_m)
+        #         note_m = next(notes_m, None)
+        # else:
+        #     assert note_b
+        #     while note_b:
+        #         elms.append(note_b)
+        #         note_b = next(notes_b, None)
+        # mic(elms)
+        # exit(1)
+        return elms
+
+    def __getitem__(self, idx: int):
+        if not isinstance(idx, int):
+            raise ValueError('Batched indexing not supported')
+
         item = self.dset[idx]
-        toks = self.tokenizer.tokenize(item['score'])
-        assert self.tokenizer.vocab.type(toks[0]) == VocabType.time_sig  # sanity check data well-formed
-        assert self.tokenizer.vocab.type(toks[1]) == VocabType.tempo
+        text = item['score']
+        if self.mix_up:
+            # mic(text)
+            out = self.mc.str2notes(text, group=True)
+            # mic(out)
+            # mic(self._mix_up_bar_notes(out.elms_by_bar[0]))
+            for elms in out.elms_by_bar:
+                out = self._mix_up_bar_notes(elms)
+                d = self.mc.split_notes(out)
+                mic(elms, out, d)
+                recon = [MusicElement(type=ElmType.melody), *d['melody'], MusicElement(type=ElmType.bass), *d['bass']]
+                assert elms == recon  # sanity check reconstruction, no info loss
+            exit(1)
+        if self.augment_key:
+            toks = text.split()
+            assert self.tokenizer.vocab.type(toks[0]) == VocabType.time_sig  # sanity check data well-formed
+            assert self.tokenizer.vocab.type(toks[1]) == VocabType.tempo
 
-        key_tok = self.tokenizer.vocab(pt_sample(item['keys']))[0]
-        toks.insert(2, key_tok)
-
-        return self.tokenizer(toks, padding='max_length', truncation=True, is_split_into_words=True)
+            key_tok = self.tokenizer.vocab(pt_sample(item['keys']))[0]
+            toks.insert(2, key_tok)
+            text = ' '.join(toks)
+        return self.tokenizer(text, padding='max_length', truncation=True)
 
 
 if __name__ == '__main__':
@@ -163,7 +266,7 @@ if __name__ == '__main__':
               'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
         tokenizer = MusicTokenizer()
         ic(tokenizer)
-        dset = KeySampleDataset.from_hf(dnm, tokenizer=tokenizer)
+        dset = AugmentedDataset.from_hf(dnm, tokenizer=tokenizer)
         tr, vl = dset['train'], dset['test']
         for i in range(16):
             ids = tr[i]['input_ids']
@@ -184,6 +287,3 @@ if __name__ == '__main__':
         tr = dset['train']
         ic(tr[:2])
     # check_keys_stored_in_dset()
-
-
-

@@ -59,7 +59,7 @@ config_dict: dict = {
         ),
         'POP909': dict(
             nm='POP909 Dataset for Music Arrangement Generation',
-            dir_nm='original/POP909',
+            dir_nm='original/POP909-Dataset',
             original=dict(song_fmt_mid='*.mid'),
             converted=dict(
                 song_fmt_mid='*.mid',
@@ -85,6 +85,10 @@ config_dict: dict = {
     },
     'random-seed': 77,
     'check-arg': [
+        dict(
+            display_name='Song Representation/Extraction Mode', attr_name='extract_mode',
+            accepted_values=['melody', 'full']
+        ),
         dict(
             display_name='Extraction Export Type', attr_name='exp',
             accepted_values=['mxl', 'str', 'id', 'str_join', 'visualize']
@@ -139,7 +143,7 @@ def get_dataset_meta(dataset_name: str):
             def map_single(d: Dict):
                 return dict(artist=d['artist'], title=d['name'])
             songs = [map_single(d) for d in df.T.to_dict().values()]
-        else:
+        else:  # `LMD-cleaned`
             d_dset = get(config_dict, f'datasets.{dataset_name}.original')
             path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
 

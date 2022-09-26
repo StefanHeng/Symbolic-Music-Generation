@@ -7,9 +7,9 @@
                 "song_fmt_mid": "**/*.mid"
             },
             "converted": {
+                "dir_nm": "converted/LMD",
                 "song_fmt_mid": "**/*.mid",
-                "song_fmt_mxl": "**/*.mxl",
-                "dir_nm": "converted/LMD"
+                "song_fmt_mxl": "**/*.mxl"
             },
             "meta": {
                 "n_song": 178561
@@ -76003,7 +76003,7 @@
         },
         "POP909": {
             "nm": "POP909 Dataset for Music Arrangement Generation",
-            "dir_nm": "original/POP909",
+            "dir_nm": "original/POP909-Dataset",
             "original": {
                 "song_fmt_mid": "*.mid"
             },
@@ -79674,6 +79674,14 @@
     },
     "random-seed": 77,
     "check-arg": [
+        {
+            "display_name": "Song Representation/Extraction Mode",
+            "attr_name": "extract_mode",
+            "accepted_values": [
+                "melody",
+                "full"
+            ]
+        },
         {
             "display_name": "Extraction Export Type",
             "attr_name": "exp",

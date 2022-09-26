@@ -387,7 +387,7 @@ if __name__ == '__main__':
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    export2json()
+    # export2json()
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
         fl_pattern = '*.json'
@@ -408,10 +408,10 @@ if __name__ == '__main__':
             combine_single_json_songs(singe_song_dir='2022-05-20_09-39-16_LMD', dataset_name='LMD')
         else:
             # combine_single_json_songs(
-            #     singe_song_dir='2022-08-02_17-28-41_POP909', dataset_name='POP909')
+            #     singe_song_dir='2022-08-02_17-28-41_POP909, md=f', dataset_name='POP909')
             # combine_single_json_songs(
-            #     singe_song_dir='2022-08-02_17-47-08_MAESTRO', dataset_name='MAESTRO')
-            combine_single_json_songs(singe_song_dir='2022-08-02_19-16-56_LMD', dataset_name='LMD')
+            #     singe_song_dir='2022-08-02_17-47-08_MAESTRO, md=f', dataset_name='MAESTRO')
+            combine_single_json_songs(singe_song_dir='2022-08-02_19-16-56_LMD, md=f', dataset_name='LMD')
     # combine()
 
     def json2dset_with_split():
@@ -426,18 +426,18 @@ if __name__ == '__main__':
             #       '2022-05-20_14-52-04'
             # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, ' \
             #       '2022-05-20_14-52-28'
-            fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, ' \
-                  '2022-05-27_15-23-20'
+            fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
         else:
             # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, ' \
             #       '2022-08-02_20-11-17'
-            fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, ' \
-                  '2022-08-02_20-12-23'
+            # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, ' \
+            #       '2022-08-02_20-12-23'
+            fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=full, prec=5, th=1}, 2022-09-24_13-26-34'
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
         ic(dset)
         ic(len(dset['train']), len(dset['test']))
         ic(dset['train'][:2], dset['test'][:2])
-    # json2dset_with_split()
+    json2dset_with_split()
 
     def fix_insert_key():
         """

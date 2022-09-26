@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 __all__ = [
-    'ElmType', 'MusicElement',
+    'ElmType', 'Channel', 'MusicElement',
     'Key', 'key_str2enum', 'key_enum2tuple', 'key_str2ordinal', 'key_ordinal2str', 'key_ordinal2key_enum',
     'key_offset_dict', 'OFFKEY_OFFSET'
 ]
@@ -12,6 +12,10 @@ __all__ = [
 
 class ElmType(Enum):
     bar_start, melody, bass, song_end, time_sig, tempo, key, note, tuplets = list(range(9))
+
+
+class Channel(Enum):
+    melody, bass = list(range(2))
 
 
 @dataclass

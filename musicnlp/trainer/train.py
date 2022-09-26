@@ -19,7 +19,7 @@ import musicnlp.util.train as train_util
 from musicnlp.vocab import (
     MusicTokenizer, WordPieceMusicTokenizer, key_ordinal2str, load_trained as load_word_piece_tokenizer
 )
-from musicnlp.preprocess import get_dataset, KeySampleDataset
+from musicnlp.preprocess import get_dataset, AugmentedDataset
 from musicnlp.models import MyReformerConfig, MyReformerModelWithLMHead, MyTransfoXLConfig, MyTransfoXLLMHeadModel
 from musicnlp.trainer import metrics
 
@@ -273,7 +273,9 @@ def get_all_setup(
     )
     logger.info(f'Initializing training with {log_dict_pg(d_log)}... ')
     my_train_args = my_train_args or dict()
-    wordpiece_tokenize, aug_key = (my_train_args.get(k, False) for k in ['wordpiece_tokenize', 'augment_key'])
+    wordpiece_tokenize, aug_key, mix_up = (
+        my_train_args.get(k, False) for k in ['wordpiece_tokenize', 'augment_key', 'mix_up']
+    )
     logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
         model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, model_config=model_config
@@ -281,9 +283,12 @@ def get_all_setup(
 
     logger.info('Loading datasets... ')
     dset_args = dataset_args or dict()
-    if aug_key:
-        logger.info(f'Loading {logi("Key-Augmented")} dataset')
-        dset = KeySampleDataset.from_hf(dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dset_args)
+    if aug_key or mix_up:
+        logger.info(f'Loading {logi("Augmented")} dataset')
+        dset = AugmentedDataset.from_hf(
+            dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dset_args,
+            augment_key=aug_key, mix_up=mix_up, mode=my_train_args['mode']
+        )
     else:
         dset = get_dataset(
             dataset_names=dataset_names, map_func=VanillaMap(tokenizer),
@@ -354,12 +359,18 @@ if __name__ == '__main__':
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
 
         # augment_key = False
-        augment_key = True  # TODO: fix after WordPiece
-        wordpiece_tokenize = False
+        augment_key = True
+        # wordpiece_tokenize = False
+        wordpiece_tokenize = True
+        # mix_up = False
+        mix_up = True
+
         my_train_args = dict(
             tqdm=True, logging_strategy='epoch',
             augment_key=augment_key,
             wordpiece_tokenize=wordpiece_tokenize,
+            mix_up=mix_up,
+            mode=md
         )
 
         if 'debug' in md_sz or md_sz == 'tiny':

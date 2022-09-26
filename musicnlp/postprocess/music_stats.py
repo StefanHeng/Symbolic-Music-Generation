@@ -5,7 +5,7 @@ from collections import Counter
 
 from musicnlp.util.music_lib import Dur
 from musicnlp.vocab import ElmType, MusicElement, MusicVocabulary
-from musicnlp.postprocess.music_converter import MusicConverter
+from musicnlp.preprocess.music_converter import MusicConverter
 
 
 class MusicStats:

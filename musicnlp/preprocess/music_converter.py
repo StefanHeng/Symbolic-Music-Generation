@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import List, Dict, Union
 from dataclasses import dataclass
 
@@ -6,12 +5,8 @@ import music21 as m21
 
 from stefutil import *
 from musicnlp.util.music_lib import *
-from musicnlp.vocab import ElmType, MusicElement, VocabType, MusicVocabulary, MusicTokenizer
+from musicnlp.vocab import ElmType, Channel, MusicElement, VocabType, MusicVocabulary
 from musicnlp.preprocess import KeyFinder
-
-
-class Channel(Enum):
-    melody, bass = list(range(2))
 
 
 @dataclass
@@ -22,14 +17,22 @@ class PartExtractOutput:
     toks: List[List[str]] = None  # List of tokens for each bar
 
 
+@dataclass
+class ElmParseOutput:
+    elms: List[MusicElement] = None
+    time_sig: MusicElement = None
+    tempo: MusicElement = None
+    key: MusicElement = None
+    elms_by_bar: List[List[MusicElement]] = None
+
+
 class MusicConverter:
     error_prefix = 'MusicConvertor Song Input Format Check'
 
-    def __init__(self, prec: int = 5, mode: str = 'full', tokenizer_kw: Dict = None):
-        self.prec = prec
-        self.tokenizer = MusicTokenizer(precision=prec, **(tokenizer_kw or dict()))
+    def __init__(self, mode: str = 'full', precision: int = 5):
+        ca(extract_mode=mode)
         self.mode = mode
-        self.vocab: MusicVocabulary = self.tokenizer.vocab
+        self.vocab = MusicVocabulary(precision=precision, color=False)
 
     def _bar2grouped_bar(self, bar: Measure) -> List[ExtNote]:
         """
@@ -70,7 +73,10 @@ class MusicConverter:
         if not check:
             raise ValueError(f'{MusicConverter.error_prefix}: {msg}')
 
-    def _part2toks(self, part: Part, insert_key, n_bar, song, check_meta: bool = True) -> PartExtractOutput:
+    def _part2toks(
+            self, part: Part, insert_key: str = None, n_bar: int = None, song: Union[str, Score] = None,
+            check_meta: bool = True
+    ) -> PartExtractOutput:
         bars = list(part[Measure])
         MusicConverter._input_format_error(
             [bar.number for bar in bars] == list(range(len(bars))), f'Invalid #Bar numbers ')
@@ -121,11 +127,11 @@ class MusicConverter:
         if self.mode == 'full':
             part_bass = next(p for p in parts if 'Bass' in p.partName)
 
-        out_m = self._part2toks(part_melody, insert_key, n_bar, song)
+        out_m = self._part2toks(part=part_melody, insert_key=insert_key, n_bar=n_bar, song=song)
         time_sig, tempo, key = out_m.time_sig, out_m.tempo, out_m.key
         out_b = None
         if self.mode == 'full':  # sanity check
-            out_b = self._part2toks(part_bass, insert_key, n_bar, song, check_meta=False)
+            out_b = self._part2toks(part=part_bass, insert_key=insert_key, n_bar=n_bar, song=song, check_meta=False)
             assert not out_b.time_sig or time_sig == out_b.time_sig
             assert not out_b.tempo or tempo == out_b.tempo
             assert not out_b.key or key == out_b.key
@@ -147,14 +153,14 @@ class MusicConverter:
         toks += [self.vocab.start_of_bar if for_gen else self.vocab.end_of_song]
         return ' '.join(toks) if join else toks
 
-    def str2notes(self, decoded: Union[str, List[str]]) -> List[MusicElement]:
+    def str2notes(self, decoded: Union[str, List[str]], group: bool = True, omit_eos: bool = False) -> ElmParseOutput:
         """
         Convert token string or pre-tokenized tokens into a compact format of music element tuples
 
         Expects each music element to be in the correct format
         """
         if isinstance(decoded, str):
-            decoded = self.tokenizer.tokenize(decoded)
+            decoded = decoded.split()
         it = iter(decoded)
 
         tok = next(it, None)
@@ -202,7 +208,25 @@ class MusicConverter:
                     MusicElement(type=ElmType.note, meta=(self.vocab.compact(tok), self.vocab.compact(tok_d)))
                 )
             tok = next(it, None)
-        return lst_out
+
+        ts, tp, key, bar_lst = None, None, None, None
+        if group:
+            ts, tp, lst = lst_out[0], lst_out[1], lst_out[2:]
+            assert ts.type == ElmType.time_sig, 'First element must be time signature'
+            assert tp.type == ElmType.tempo, 'Second element must be tempo'
+            if lst[0].type == ElmType.key:  # ignore
+                key, lst = lst[0], lst[1:]
+            if omit_eos:
+                lst = [e for e in lst if e.type != ElmType.song_end]
+            else:
+                lst, e_l = lst[:-1], lst[-1]
+                assert e_l.type == ElmType.song_end, 'Last element must be end of song'
+            idxs_bar_start = [i for i, e in enumerate(lst) if e.type == ElmType.bar_start]
+            bar_lst = [lst[idx:idxs_bar_start[i + 1]] for i, idx in enumerate(idxs_bar_start[:-1])] + \
+                      [lst[idxs_bar_start[-1]:]]
+            bar_lst = [notes[1:] for notes in bar_lst]  # by construction, the 1st element is `bar_start`
+            assert all((len(bar) > 0) for bar in bar_lst), 'Bar should contain at least one note'
+        return ElmParseOutput(elms=lst_out, time_sig=ts, tempo=tp, key=key, elms_by_bar=bar_lst)
 
     @staticmethod
     def note_elm2m21(note: MusicElement) -> List[SNote]:
@@ -254,22 +278,8 @@ class MusicConverter:
             All occurrences of eos in the sequence are ignored
         :param title: Title of the music
         """
-        lst = self.str2notes(decoded)
-        e1, e2, lst = lst[0], lst[1], lst[2:]
-        assert e1.type == ElmType.time_sig, 'First element must be time signature'
-        assert e2.type == ElmType.tempo, 'Second element must be tempo'
-        if lst[0].type == ElmType.key:
-            lst = lst[1:]  # ignore
-        if omit_eos:
-            lst = [e for e in lst if e.type != ElmType.song_end]
-        else:
-            lst, e_l = lst[:-1], lst[-1]
-            assert e_l.type == ElmType.song_end, 'Last element must be end of song'
-        idxs_bar_start = [i for i, e in enumerate(lst) if e.type == ElmType.bar_start]
-        lst = [lst[idx:idxs_bar_start[i+1]] for i, idx in enumerate(idxs_bar_start[:-1])] + \
-              [lst[idxs_bar_start[-1]:]]
-        lst = [notes[1:] for notes in lst]  # by construction, the 1st element is `bar_start`
-        assert all((len(bar) > 0) for bar in lst), 'Bar should contain at least one note'
+        lst = self.str2notes(decoded, group=True, omit_eos=omit_eos)
+        ts, tp, key, lst = lst.time_sig, lst.tempo, lst.key, lst.elms_by_bar
 
         if self.mode == 'melody':
             d_notes = dict(melody=[MusicConverter.bar2notes(notes) for notes in lst])
@@ -279,13 +289,13 @@ class MusicConverter:
                 d = MusicConverter.split_notes(notes)
                 d_notes['melody'].append(MusicConverter.bar2notes(d['melody']))
                 d_notes['bass'].append(MusicConverter.bar2notes(d['bass']))
-        time_sig = f'{e1.meta[0]}/{e1.meta[1]}'
-        return make_score(title=title, mode=self.mode, time_sig=time_sig, tempo=e2.meta, d_notes=d_notes)
+        time_sig = f'{ts.meta[0]}/{ts.meta[1]}'
+        return make_score(title=title, mode=self.mode, time_sig=time_sig, tempo=tp.meta, d_notes=d_notes)
 
 
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
-    from _sample_score import sample_melody, sample_full
+    from musicnlp._sample_score import sample_melody, sample_full
 
     md = 'full'
     mc = MusicConverter(mode=md)

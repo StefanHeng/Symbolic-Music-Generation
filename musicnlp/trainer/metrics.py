@@ -205,7 +205,7 @@ if __name__ == '__main__':
         """
         Pass through all songs in the dataset, make sure no errors raised during training
         """
-        from musicnlp.preprocess import get_dataset, KeySampleDataset
+        from musicnlp.preprocess import get_dataset, AugmentedDataset
 
         # dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
         #           'meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
@@ -225,7 +225,7 @@ if __name__ == '__main__':
         #         x['score'], padding='max_length', truncation=True),
         #     remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=seed
         # )
-        dset = KeySampleDataset.from_hf(dnms, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
+        dset = AugmentedDataset.from_hf(dnms, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
         # effectively get the fist tokens of model size, simulating training data-loading
         for split, ds in dset.items():
             strt, end = 4900, len(ds)

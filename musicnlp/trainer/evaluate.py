@@ -13,8 +13,7 @@ from stefutil import *
 from musicnlp.util import *
 from musicnlp.vocab.music_vocab import VocabType
 from musicnlp.vocab import MusicTokenizer
-from musicnlp.preprocess import KeyFinder
-from musicnlp.postprocess import MusicConverter
+from musicnlp.preprocess import KeyFinder, MusicConverter
 from musicnlp.models import MyReformerModelWithLMHead, MyTransfoXLLMHeadModel
 
 

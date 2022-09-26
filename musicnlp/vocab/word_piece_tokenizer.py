@@ -47,7 +47,7 @@ class Score2Chars:
         :param independent_global_token: If True, global metadata token are not merged
             i.e. Time Signature, Tempo, Key
             Analogous to maintaining the character
-        :param punctuate: If True, WordPiece merging stops at bar separation & tuplets
+        :param punctuate: If True, WordPiece merging stops at bar separation, melody and bass prefixes, and tuplets
             Analogous to punctuation
         """
         self.vocab = vocab
@@ -64,7 +64,8 @@ class Score2Chars:
         self.punctuate = punctuate
         self.need_split = independent_global_token or punctuate
         self.spec_toks = {
-            self.vocab.start_of_bar, self.vocab.start_of_tuplet, self.vocab.end_of_tuplet, self.vocab.end_of_song
+            self.vocab.start_of_bar, self.vocab.start_of_tuplet, self.vocab.end_of_tuplet, self.vocab.end_of_song,
+            self.vocab.start_of_melody, self.vocab.start_of_bass
         }
 
     @staticmethod
@@ -192,7 +193,7 @@ class WordPieceMusicTrainer:
             if isinstance(save, bool):
                 save = 'Word-Piece-Music-Tokenizer'
             now_ = now(for_path=True)
-            fnm = f'{now_}_{save}, vsz={vocab_size}, n={len(songs)}'
+            fnm = f'{now_}_{save}_{{vsz={vocab_size}, n={len(songs)}}}'
             path_tok = os_join(u.tokenizer_path, f'{fnm}.json')
             tokenizer.save(path_tok)
             logger.info(f'{logi("Tokenizer")} saved to {logi(path_tok)}')
@@ -313,7 +314,7 @@ class WordPieceMusicTokenizer(MusicTokenizer):
 
 
 def load_trained(  # has independent global token & bar split
-        fnm: str = '2022-06-15_21-41-08_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
+        fnm: str = '2022-09-24_14-27-49_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
 ) -> WordPieceMusicTokenizer:
     return WordPieceMusicTokenizer.from_file(fnm)
 
@@ -480,9 +481,17 @@ if __name__ == '__main__':
     # vocab = list(mv.tok2id.keys())
     # ic(vocab, len(vocab))
 
-    pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-    mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
-    lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+    # md = 'melody'
+    md = 'full'
+    if md == 'melody':
+        pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
+        mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
+        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+    else:
+        pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, 2022-08-02_20-11-17'
+        mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, 2022-08-02_20-12-23'
+        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=full, prec=5, th=1}, 2022-09-24_13-26-34'
+
     # songs = [songs[0][:256], songs[1][:256]]
     # ic(type(songs))
     # ic(len(songs))
@@ -528,15 +537,15 @@ if __name__ == '__main__':
         if len(dnms) == 1:
             vocab_size = 4096
             if sv:
-                sv = 'Word-Piece-Music-Tokenizer, dnm=POP909'
+                sv = 'Word-Piece-Music-Tokenizer_{dnm=POP909}'
         elif len(dnms) == 2:
             vocab_size = 4096 * 2
             if sv:
-                sv = 'Word-Piece-Music-Tokenizer, dnm=POP & MST'
+                sv = 'Word-Piece-Music-Tokenizer_{dnm=POP&MST}'
         elif len(dnms) == 3:
             vocab_size = 4096 * 4
             if sv:
-                sv = 'Word-Piece-Music-Tokenizer, dnm=all'
+                sv = 'Word-Piece-Music-Tokenizer_{dnm=all}'
         wmt = WordPieceMusicTrainer(mv, independent_global_token=True, punctuate=True)
         songs = load_songs(*dnms)
         tokenizer = wmt(vocab_size=vocab_size, songs=songs, save=sv)
@@ -558,7 +567,7 @@ if __name__ == '__main__':
         # check_dist = True
         if check_dist:
             c = Counter()
-            it = tqdm(songs)
+            it = tqdm(songs, desc='Counting token dist', unit='song')
             for song in it:
                 toks = mv.clean_uncommon(song, return_joined=False)
                 it.set_postfix(n_tok=len(toks))
@@ -608,7 +617,8 @@ if __name__ == '__main__':
         from collections import Counter
 
         # fnm = '2022-06-06_17-39-34_Word-Piece-Music-Tokenizer, dnm=POP & MST, vsz=8192, n=2185'
-        fnm = '2022-06-06_23-20-24_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
+        # fnm = '2022-06-06_23-20-24_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
+        fnm = '2022-09-24_14-27-49_Word-Piece-Music-Tokenizer, dnm=all, vsz=16384, n=178825'
         tokenizer = WordPieceMusicTokenizer.from_file(fnm)
         # inputs = tokenizer(sample_txt)
         # mic(tokenizer.decode(inputs['input_ids']))
@@ -624,7 +634,9 @@ if __name__ == '__main__':
         # concurrent = False
         if concurrent:
             map_single = _CheckTrainedMap(mv, tokenizer)
-            lst_ids = conc_map(map_single, songs, with_tqdm=dict(chunksize=64), mode='process')
+            lst_ids = conc_map(
+                map_single, songs, with_tqdm=dict(desc='Checking trained tokenizer', chunksize=64), mode='process'
+            )
             c = Counter()
             for ids in tqdm(lst_ids):
                 c.update(tokenizer.convert_ids_to_tokens(ids))
@@ -643,7 +655,7 @@ if __name__ == '__main__':
                 if check_dist:
                     c.update(tokenizer.convert_ids_to_tokens(ids))
             mic(c)
-    # check_trained_tokenize_all()
+    check_trained_tokenize_all()
 
     def check_id2pch():
         tokenizer = MusicTokenizer()
@@ -656,4 +668,4 @@ if __name__ == '__main__':
         wp_pchs = wp_tokenizer.ids2pitches(ids)
         mic(len(ids), len(wp_pchs))
         assert wp_pchs == pchs
-    check_id2pch()
+    # check_id2pch()
