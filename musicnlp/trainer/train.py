@@ -284,11 +284,11 @@ def get_all_setup(
     logger.info('Loading datasets... ')
     dset_args = dataset_args or dict()
     if aug_key or mix_up:
-        logger.info(f'Loading {logi("Augmented")} dataset')
-        dset = AugmentedDataset.from_hf(
-            dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dset_args,
-            augment_key=aug_key, channel_mixup=mix_up, mode=my_train_args['mode']
+        dset_args_ = dict(
+            get_dataset_kwargs=dset_args, augment_key=aug_key, channel_mixup=mix_up, mode=my_train_args['mode']
         )
+        logger.info(f'Loading {logi("Augmented")} dataset w/ {logi(dset_args_)}... ')
+        dset = AugmentedDataset.from_hf(dataset_names, tokenizer=tokenizer, **dset_args_)
     else:
         dset = get_dataset(
             dataset_names=dataset_names, map_func=VanillaMap(tokenizer),

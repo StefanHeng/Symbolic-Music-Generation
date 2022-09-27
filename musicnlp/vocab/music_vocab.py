@@ -249,6 +249,8 @@ class MusicVocabulary:
             id_: self.compact(tok) for id_, tok in self.id2tok.items() if self.has_compact(tok)
         }
 
+        self.logger = get_logger('Music Vocab')
+
     def to_dict(self, save=False):
         d_out = dict(
             precision=self.precision,
@@ -325,7 +327,7 @@ class MusicVocabulary:
         m = tpl.match(tok)
         return int(m.group('numer')), int(m.group('denom'))
 
-    def compact(self, tok: Union[str, Int]) -> Compact:
+    def compact(self, tok: Union[str, Int], strict: bool = True) -> Compact:
         """
         Convert tokens to the numeric format
 
@@ -333,6 +335,8 @@ class MusicVocabulary:
 
         Raise error is special tokens passed
 
+        :param tok: token to compress
+        :param strict: If true, enforce that the token must be in the vocabulary
         :return: If time signature, returns 2-tuple of (int, int),
             If tempo, returns integer of tempo number
             If pitch, returns the pitch MIDI number
@@ -351,7 +355,8 @@ class MusicVocabulary:
             if typ == VocabType.duration:
                 if '/' in tok:
                     numer, denom = MusicVocabulary._get_group2(tok, tpl['frac'])
-                    assert math.log2(denom).is_integer()
+                    if strict and not math.log2(denom).is_integer():
+                        raise ValueError(f'Duration token not well-formed: {logi(tok)}')
                     # Quantized so definitely an exact float, but keep Fraction for exact additions
                     return Fraction(numer, denom)
                 else:
@@ -467,22 +472,8 @@ class MusicVocabulary:
             exit(1)
 
     def music_elm2toks(self, e: MusicElement) -> List[str]:
-        # if e.type == ElmType.bar_start:
-        #     return [self.start_of_bar]
-        # elif e.type == ElmType.melody:
-        #     return [self.start_of_melody]
-        # elif e.type == ElmType.bass:
-        #     return [self.start_of_bass]
-        # elif e.type == ElmType.song_end:
-        #     return [self.end_of_song]
         if e.type in MusicVocabulary.special_elm_type2tok:
             return [MusicVocabulary.special_elm_type2tok[e.type]]
-        # elif e.type == ElmType.time_sig:
-        #     return self.__call__(e.meta, color=False)
-        # elif e.type == ElmType.tempo:
-        #     return self.__call__(e.meta, color=False)
-        # elif e.type == ElmType.key:
-        #     return self.__call__(e.meta, color=False)
         elif e.type in (ElmType.time_sig, ElmType.tempo, ElmType.key):
             return self.__call__(e.meta, color=False)
         elif e.type == ElmType.note:

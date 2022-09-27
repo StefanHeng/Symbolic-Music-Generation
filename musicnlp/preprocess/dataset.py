@@ -94,7 +94,7 @@ class ChannelMixer:
 
     def __call__(self, text: str, return_as_list: bool = False) -> str:
         # mic(text)
-        out = self.mc.str2notes(text, group=True)
+        out = self.mc.str2notes(text, group=True, strict=False)
 
         # sanity_check = True
         sanity_check = False
@@ -107,17 +107,12 @@ class ChannelMixer:
                     MusicElement(type=ElmType.melody), *d['melody'], MusicElement(type=ElmType.bass), *d['bass']
                 ]
                 assert elms == recon  # sanity check reconstruction, no info loss
+            exit(1)
         ret = self.vocab.music_elm2toks(out.time_sig) + self.vocab.music_elm2toks(out.tempo)
         if out.key:
             ret += self.vocab.music_elm2toks(out.key)
         ret += sum((self._bar_music_elms2str(elms) for elms in out.elms_by_bar), start=[])
         ret += [self.vocab.end_of_song]
-        if sanity_check:
-            out_ = self.mc.str2notes(' '.join(ret), group=True)
-            for elms_ori, elms_aug in zip(out.elms_by_bar, out_.elms_by_bar):
-                mic(elms_ori, elms_aug)
-            assert out == out_
-            exit(1)
         return ret if return_as_list else ' '.join(ret)
 
     def _bar_music_elms2str(self, elms: List[MusicElement]):
@@ -229,7 +224,7 @@ class AugmentedDataset:
 
         item = self.dset[idx]
         toks = item['score']
-        mic(toks)
+        # mic(toks)
         if self.channel_mixup:
             toks = self.cm(toks, return_as_list=True)
         if self.augment_key:
@@ -244,8 +239,8 @@ class AugmentedDataset:
             toks.insert(2, key_tok)
         if isinstance(toks, list):
             toks = ' '.join(toks)
-            mic(toks)
-            exit(1)
+            # mic(toks)
+            # exit(1)
         return self.tokenizer(toks, padding='max_length', truncation=True)
 
 

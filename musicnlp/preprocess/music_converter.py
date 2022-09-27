@@ -157,12 +157,17 @@ class MusicConverter:
         toks += [self.vocab.start_of_bar if for_gen else self.vocab.end_of_song]
         return ' '.join(toks) if join else toks
 
-    def str2notes(self, decoded: Union[str, List[str]], group: bool = True, omit_eos: bool = False) -> ElmParseOutput:
+    def str2notes(
+            self, decoded: Union[str, List[str]], group: bool = True, omit_eos: bool = False, strict: bool = True
+    ) -> ElmParseOutput:
         """
         Convert token string or pre-tokenized tokens into a compact format of music element tuples
 
         Expects each music element to be in the correct format
         """
+        def comp(x):  # syntactic sugar
+            return self.vocab.compact(x, strict=strict)
+
         if isinstance(decoded, str):
             decoded = decoded.split()
         it = iter(decoded)
@@ -187,8 +192,7 @@ class MusicConverter:
                     assert all(self.vocab.type(tok) == VocabType.pitch for tok in toks_p)
                     assert self.vocab.type(tok_d) == VocabType.duration
                     lst_out.append(MusicElement(
-                        type=ElmType.tuplets,
-                        meta=(tuple([self.vocab.compact(tok) for tok in toks_p]), self.vocab.compact(tok_d))
+                        type=ElmType.tuplets, meta=(tuple([comp(tok) for tok in toks_p]), comp(tok_d))
                     ))
                 elif tok == self.vocab.start_of_melody:
                     assert self.mode == 'full'
@@ -198,9 +202,9 @@ class MusicConverter:
                     assert self.mode == 'full'
                     lst_out.append(MusicElement(type=ElmType.bass, meta=None))
             elif typ == VocabType.time_sig:
-                lst_out.append(MusicElement(type=ElmType.time_sig, meta=(self.vocab.compact(tok))))
+                lst_out.append(MusicElement(type=ElmType.time_sig, meta=(comp(tok))))
             elif typ == VocabType.tempo:
-                lst_out.append(MusicElement(type=ElmType.tempo, meta=(self.vocab.compact(tok))))
+                lst_out.append(MusicElement(type=ElmType.tempo, meta=(comp(tok))))
             elif typ == VocabType.key:  # ignore
                 pass
             else:
@@ -208,9 +212,7 @@ class MusicConverter:
                 tok_d = next(it, None)
                 assert tok_d is not None and self.vocab.type(tok_d) == VocabType.duration, \
                     f'Pitch token {logi(tok)} should be followed by a duration token but got {logi(tok_d)}'
-                lst_out.append(
-                    MusicElement(type=ElmType.note, meta=(self.vocab.compact(tok), self.vocab.compact(tok_d)))
-                )
+                lst_out.append(MusicElement(type=ElmType.note, meta=(comp(tok), comp(tok_d))))
             tok = next(it, None)
 
         ts, tp, key, bar_lst = None, None, None, None

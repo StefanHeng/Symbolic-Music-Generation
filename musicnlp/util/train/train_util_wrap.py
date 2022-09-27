@@ -243,7 +243,9 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
             # Set current iter stats can be done only here,
             # since HF normal callbacks don't have access to per step performance anyway
             callback = next(cb for cb in self.trainer.callback_handler.callbacks if isinstance(cb, MyProgressCallback))
-            tqdm_kws = {k: v for k, v in d_log_write.items() if k not in ['step', 'epoch', 'learning_rate']}
+            tqdm_kws = {k: v for k, v in d_log_write.items() if k not in ['step', 'epoch']}
+            if 'learning_rate' in tqdm_kws:
+                tqdm_kws['lr'] = tqdm_kws.pop('learning_rate')
             if not is_on_colab():  # coloring not supported in the HTML UI in Chrome
                 tqdm_kws = {k: logi(v) for k, v in tqdm_kws.items()}
             if mode == 'train':
