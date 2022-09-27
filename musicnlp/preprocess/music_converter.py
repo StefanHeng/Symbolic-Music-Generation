@@ -29,10 +29,14 @@ class ElmParseOutput:
 class MusicConverter:
     error_prefix = 'MusicConvertor Song Input Format Check'
 
-    def __init__(self, mode: str = 'full', precision: int = 5):
+    def __init__(self, mode: str = 'full', precision: int = 5, vocab: MusicVocabulary = None):
         ca(extract_mode=mode)
         self.mode = mode
-        self.vocab = MusicVocabulary(precision=precision, color=False)
+        if vocab:
+            assert vocab.precision == precision
+            self.vocab = vocab
+        else:
+            self.vocab = MusicVocabulary(precision=precision, color=False)
 
     def _bar2grouped_bar(self, bar: Measure) -> List[ExtNote]:
         """

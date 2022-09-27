@@ -95,13 +95,23 @@ class Score2Chars:
     def split(self, score: str, join: bool = True) -> Union[List[str], List[List[str]]]:
         toks = score.split()
         if self.need_split:
-            ts, tp, toks = toks[0], toks[1], toks[2:]
+            ts, tp, key, toks = toks[0], toks[1], None, toks[2:]
             assert self.vocab.type(ts) == VocabType.time_sig
             assert self.vocab.type(tp) == VocabType.tempo
+
+            t1 = self.vocab.type(toks[0])
+            assert t1 in (VocabType.special, VocabType.key)
+            if t1 == VocabType.key:
+                key, toks = toks[0], toks[1:]
             assert toks[0] == self.vocab.start_of_bar
             assert toks[-1] == self.vocab.end_of_song
             if self.independent_global_token:
-                words = [[ts], [tp]] if join else [ts, tp]
+                if join:
+                    words = [[ts], [tp]]
+                else:
+                    words = [ts, tp]
+                if key:
+                    words.append([key] if join else key)
                 if self.punctuate:
                     words += self._split_bar_notes(toks, join=join)
                 else:

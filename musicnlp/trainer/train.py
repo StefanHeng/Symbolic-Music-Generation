@@ -274,7 +274,7 @@ def get_all_setup(
     logger.info(f'Initializing training with {log_dict_pg(d_log)}... ')
     my_train_args = my_train_args or dict()
     wordpiece_tokenize, aug_key, mix_up = (
-        my_train_args.get(k, False) for k in ['wordpiece_tokenize', 'augment_key', 'mix_up']
+        my_train_args.get(k, False) for k in ['wordpiece_tokenize', 'augment_key', 'channel_mixup']
     )
     logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
@@ -287,7 +287,7 @@ def get_all_setup(
         logger.info(f'Loading {logi("Augmented")} dataset')
         dset = AugmentedDataset.from_hf(
             dataset_names, tokenizer=tokenizer, get_dataset_kwargs=dset_args,
-            augment_key=aug_key, mix_up=mix_up, mode=my_train_args['mode']
+            augment_key=aug_key, channel_mixup=mix_up, mode=my_train_args['mode']
         )
     else:
         dset = get_dataset(
@@ -363,13 +363,13 @@ if __name__ == '__main__':
         # wordpiece_tokenize = False
         wordpiece_tokenize = True
         # mix_up = False
-        mix_up = True
+        channel_mixup = True
 
         my_train_args = dict(
             tqdm=True, logging_strategy='epoch',
             augment_key=augment_key,
             wordpiece_tokenize=wordpiece_tokenize,
-            mix_up=mix_up,
+            channel_mixup=channel_mixup,
             mode=md
         )
 

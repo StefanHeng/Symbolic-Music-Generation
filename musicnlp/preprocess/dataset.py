@@ -9,7 +9,7 @@ from datasets import Dataset, DatasetDict
 
 from stefutil import *
 import musicnlp.util.music as music_util
-from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicTokenizer
+from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocabulary, MusicTokenizer
 from musicnlp.preprocess.music_converter import MusicConverter
 
 
@@ -81,18 +81,102 @@ def get_dataset(
     return dset
 
 
+class ChannelMixer:
+    """
+    Reorder notes across channels while keeping the order within the channel
+
+    For each change of channel, prefix it
+    """
+
+    def __init__(self, precision: int = 5, vocab: MusicVocabulary = None):
+        self.mc = MusicConverter(mode='full', precision=precision, vocab=vocab)
+        self.vocab = self.mc.vocab
+
+    def __call__(self, text: str, return_as_list: bool = False) -> str:
+        # mic(text)
+        out = self.mc.str2notes(text, group=True)
+
+        # sanity_check = True
+        sanity_check = False
+        if sanity_check:
+            for elms in out.elms_by_bar:
+                mixed = self._mix_up_bar_notes(elms)
+                d = self.mc.split_notes(mixed)
+                # mic(elms, mixed, d)
+                recon = [
+                    MusicElement(type=ElmType.melody), *d['melody'], MusicElement(type=ElmType.bass), *d['bass']
+                ]
+                assert elms == recon  # sanity check reconstruction, no info loss
+        ret = self.vocab.music_elm2toks(out.time_sig) + self.vocab.music_elm2toks(out.tempo)
+        if out.key:
+            ret += self.vocab.music_elm2toks(out.key)
+        ret += sum((self._bar_music_elms2str(elms) for elms in out.elms_by_bar), start=[])
+        ret += [self.vocab.end_of_song]
+        if sanity_check:
+            out_ = self.mc.str2notes(' '.join(ret), group=True)
+            for elms_ori, elms_aug in zip(out.elms_by_bar, out_.elms_by_bar):
+                mic(elms_ori, elms_aug)
+            assert out == out_
+            exit(1)
+        return ret if return_as_list else ' '.join(ret)
+
+    def _bar_music_elms2str(self, elms: List[MusicElement]):
+        return [self.vocab.start_of_bar] + sum(
+            (self.vocab.music_elm2toks(e) for e in self._mix_up_bar_notes(elms)), start=[]
+        )
+
+    @staticmethod
+    def _bin_sample() -> bool:
+        return random.randint(0, 1) == 0
+
+    def _mix_up_bar_notes(self, elms: List[MusicElement]) -> List[MusicElement]:
+        d_notes = self.mc.split_notes(elms)
+        notes_m, notes_b = iter(d_notes['melody']), iter(d_notes['bass'])
+        elms = []
+        note_m, note_b = next(notes_m, None), next(notes_b, None)
+        c_cur, c_prev = None, None
+        add_mel = None
+        e_m, e_b = MusicElement(type=ElmType.melody), MusicElement(type=ElmType.bass)
+        while note_m and note_b:
+            add_mel = ChannelMixer._bin_sample()
+            c_cur = Channel.melody if add_mel else Channel.bass
+            diff_c = c_cur != c_prev
+            if diff_c:
+                elms.append(e_m if add_mel else e_b)
+            if c_cur == Channel.melody:
+                elms.append(note_m)
+                note_m = next(notes_m, None)
+            else:
+                elms.append(note_b)
+                note_b = next(notes_b, None)
+            c_prev = c_cur
+        assert add_mel is not None  # sanity check
+        if note_m:
+            if not add_mel:
+                elms.append(e_m)
+            elms.append(note_m)
+            elms.extend(notes_m)
+        else:
+            if add_mel:
+                elms.append(e_b)
+            assert note_b
+            elms.append(note_b)
+            elms.extend(notes_b)
+        return elms
+
+
 class AugmentedDataset:
     """
     A wrapper around a datasets.Dataset, with my custom augmentation about
         1) inserting a likely key
-        2) mix-up relative order between melody & bass
+        2) mix-up relative order between melody & bass channels
 
     For each song, sample one of the potential keys based on confidence
         See `musicnlp.preprocess.key_finder.py`
     """
     def __init__(
             self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None,
-            augment_key: bool = False, mix_up: bool = False, mode: str = None
+            augment_key: bool = False, channel_mixup: bool = False, mode: str = None
     ):
         ca(extract_mode=mode)
         if isinstance(dataset, str):
@@ -110,10 +194,12 @@ class AugmentedDataset:
             self.tokenizer = MusicTokenizer(precision=prec)
 
         self.augment_key = augment_key
-        self.mix_up = mix_up
-        if mix_up and mode != 'full':
+        self.channel_mixup = channel_mixup
+        if channel_mixup and mode != 'full':
             raise ValueError(f'{logi("mix_up")} only works with mode={logi("full")}')
-        self.mc = MusicConverter(mode=mode, precision=prec)
+        self.cm = None
+        if channel_mixup:
+            self.cm = ChannelMixer(precision=prec, vocab=self.tokenizer.vocab)
 
     @classmethod
     def from_hf(
@@ -137,102 +223,30 @@ class AugmentedDataset:
     def __len__(self):
         return len(self.dset)
 
-    @staticmethod
-    def _bin_sample() -> bool:
-        return random.randint(0, 1) == 0
-
-    def _mix_up_bar_notes(self, elms: List[MusicElement]):
-        """
-        Reorder notes across channels while keeping the order within the channel
-
-        For each change of channel, prefix it
-        """
-        d_notes = self.mc.split_notes(elms)
-        notes_m, notes_b = iter(d_notes['melody']), iter(d_notes['bass'])
-        elms = []
-        note_m, note_b = next(notes_m, None), next(notes_b, None)
-        c_cur, c_prev = None, None
-        add_mel = None
-        e_m, e_b = MusicElement(type=ElmType.melody), MusicElement(type=ElmType.bass)
-        while note_m and note_b:
-            add_mel = AugmentedDataset._bin_sample()
-            c_cur = Channel.melody if add_mel else Channel.bass
-            diff_c = c_cur != c_prev
-            if diff_c:
-                elms.append(e_m if add_mel else e_b)
-            if c_cur == Channel.melody:
-                elms.append(note_m)
-                note_m = next(notes_m, None)
-            else:
-                elms.append(note_b)
-                note_b = next(notes_b, None)
-            c_prev = c_cur
-                # if c_cur == Channel.melody:
-                #     elms.append(note_m)
-                #     note_m = next(notes_m, None)
-                # else:
-                #     elms.append(note_b)
-                #     note_b = next(notes_b, None)
-                # c_prev = c_cur
-        assert add_mel is not None  # sanity check
-        if note_m:
-            if not add_mel:
-                elms.append(e_m)
-            elms.append(note_m)
-            elms.extend(notes_m)
-        else:
-            if add_mel:
-                elms.append(e_b)
-            assert note_b
-            elms.append(note_b)
-            elms.extend(notes_b)
-        # mic(elms)
-        # if use_mel:
-        #     elms.append(note_m)
-        #     note_m = next(notes_m, None)
-        # else:
-        #     elms.append(note_b)
-        #     note_b = next(notes_b, None)
-        # if note_m:
-        #     while note_m:
-        #         elms.append(note_m)
-        #         note_m = next(notes_m, None)
-        # else:
-        #     assert note_b
-        #     while note_b:
-        #         elms.append(note_b)
-        #         note_b = next(notes_b, None)
-        # mic(elms)
-        # exit(1)
-        return elms
-
     def __getitem__(self, idx: int):
         if not isinstance(idx, int):
             raise ValueError('Batched indexing not supported')
 
         item = self.dset[idx]
-        text = item['score']
-        if self.mix_up:
-            # mic(text)
-            out = self.mc.str2notes(text, group=True)
-            # mic(out)
-            # mic(self._mix_up_bar_notes(out.elms_by_bar[0]))
-            for elms in out.elms_by_bar:
-                out = self._mix_up_bar_notes(elms)
-                d = self.mc.split_notes(out)
-                mic(elms, out, d)
-                recon = [MusicElement(type=ElmType.melody), *d['melody'], MusicElement(type=ElmType.bass), *d['bass']]
-                assert elms == recon  # sanity check reconstruction, no info loss
-            exit(1)
+        toks = item['score']
+        mic(toks)
+        if self.channel_mixup:
+            toks = self.cm(toks, return_as_list=True)
         if self.augment_key:
-            toks = text.split()
+            if isinstance(toks, list):  # already split into tokens, by `channel_mixup`
+                toks = toks
+            else:
+                toks = toks.split()
             assert self.tokenizer.vocab.type(toks[0]) == VocabType.time_sig  # sanity check data well-formed
             assert self.tokenizer.vocab.type(toks[1]) == VocabType.tempo
 
             key_tok = self.tokenizer.vocab(pt_sample(item['keys']))[0]
             toks.insert(2, key_tok)
-            text = ' '.join(toks)
-        return self.tokenizer(text, padding='max_length', truncation=True)
+        if isinstance(toks, list):
+            toks = ' '.join(toks)
+            mic(toks)
+            exit(1)
+        return self.tokenizer(toks, padding='max_length', truncation=True)
 
 
 if __name__ == '__main__':

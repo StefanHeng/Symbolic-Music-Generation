@@ -14,7 +14,7 @@ import music21 as m21
 from stefutil import *
 from musicnlp.util.music_lib import *
 import musicnlp.util.music as music_util
-from musicnlp.vocab.elm_type import Key, key_str2enum
+from musicnlp.vocab.elm_type import ElmType, MusicElement, Key, key_str2enum
 
 
 COMMON_TIME_SIGS: List[TsTup] = sorted(  # Sort first by denominator
@@ -95,6 +95,14 @@ class MusicVocabulary:
         uncommon_high_tempo: compact_high_tempo,
         uncommon_duration: compact_uncommon_duration
     }
+
+    special_elm_type2tok = {
+        ElmType.bar_start: start_of_bar,
+        ElmType.melody: start_of_melody,
+        ElmType.bass: start_of_bass,
+        ElmType.song_end: end_of_song
+    }
+    rest_pitch_code = -1
 
     SPEC_TOKS = dict(
         sep=sep,
@@ -317,7 +325,7 @@ class MusicVocabulary:
         m = tpl.match(tok)
         return int(m.group('numer')), int(m.group('denom'))
 
-    def compact(self, tok: Union[str, Int], for_stats: bool = False) -> Compact:
+    def compact(self, tok: Union[str, Int]) -> Compact:
         """
         Convert tokens to the numeric format
 
@@ -350,7 +358,7 @@ class MusicVocabulary:
                     return MusicVocabulary._get_group1(tok, tpl['int'])
             elif typ == VocabType.pitch:
                 if tok == self.cache['rest']:
-                    return -1
+                    return MusicVocabulary.rest_pitch_code
                 else:
                     pch, octave = MusicVocabulary._get_group2(tok, tpl)
                     return pch-1 + (octave+1)*12  # See `pch2step`, restore the pitch; +1 cos octave starts from -1
@@ -368,17 +376,17 @@ class MusicVocabulary:
         """
         assert kind != VocabType.special, ValueError(f'Compact representation for special types not supported')
         if kind == VocabType.duration:
-            assert isinstance(compact, (int, Tuple[int, int]))
+            assert isinstance(compact, (int, Fraction))
             if isinstance(compact, int):
                 return f'{self.cache["pref_dur"]}{compact}'
             else:
-                return f'{self.cache["pref_dur"]}{compact[0]}/{compact[1]}'
+                return f'{self.cache["pref_dur"]}{compact.numerator}/{compact.denominator}'
         elif kind == VocabType.pitch:
             assert isinstance(compact, int)
-            if compact == -1:
+            if compact == MusicVocabulary.rest_pitch_code:
                 return self.cache['rest']
             else:
-                pch, octave = compact % 12, compact // 12
+                pch, octave = compact % 12 + 1, compact // 12 - 1
                 return f'{self.cache["pref_pch"]}{pch}/{octave}'
         elif kind == VocabType.time_sig:
             assert isinstance(compact, tuple)
@@ -389,7 +397,7 @@ class MusicVocabulary:
 
     @staticmethod
     def pitch_midi2name(midi: int) -> str:
-        if midi == -1:
+        if midi == MusicVocabulary.rest_pitch_code:
             return 'rest'
         else:
             pch = m21.pitch.Pitch(midi=midi)
@@ -457,6 +465,38 @@ class MusicVocabulary:
         else:  # TODO: chords
             ic('other element type', elm)
             exit(1)
+
+    def music_elm2toks(self, e: MusicElement) -> List[str]:
+        # if e.type == ElmType.bar_start:
+        #     return [self.start_of_bar]
+        # elif e.type == ElmType.melody:
+        #     return [self.start_of_melody]
+        # elif e.type == ElmType.bass:
+        #     return [self.start_of_bass]
+        # elif e.type == ElmType.song_end:
+        #     return [self.end_of_song]
+        if e.type in MusicVocabulary.special_elm_type2tok:
+            return [MusicVocabulary.special_elm_type2tok[e.type]]
+        # elif e.type == ElmType.time_sig:
+        #     return self.__call__(e.meta, color=False)
+        # elif e.type == ElmType.tempo:
+        #     return self.__call__(e.meta, color=False)
+        # elif e.type == ElmType.key:
+        #     return self.__call__(e.meta, color=False)
+        elif e.type in (ElmType.time_sig, ElmType.tempo, ElmType.key):
+            return self.__call__(e.meta, color=False)
+        elif e.type == ElmType.note:
+            pch, dur = e.meta
+            return [self.uncompact(VocabType.pitch, pch), self.uncompact(VocabType.duration, dur)]
+        else:
+            assert e.type == ElmType.tuplets
+            pchs, dur = e.meta
+            return [
+                self.start_of_tuplet,
+                *[self.uncompact(VocabType.pitch, pch) for pch in pchs],
+                self.uncompact(VocabType.duration, dur),
+                self.end_of_tuplet
+            ]
 
     def _note2dur_str(
             self, e: Union[ExtNote, Dur]) -> str:
@@ -554,15 +594,19 @@ if __name__ == '__main__':
         for k, v in mv.toks.items():
             ic(k, len(v))
         ic(sum(len(v) for v in mv.toks.values()))
-    check_vocab_size()
+    # check_vocab_size()
 
     def check_compact_pitch():
         for i in range(128):
             pch = Pitch(midi=i)
             tok = mv.note2pitch_str(pch)
             ic(i, tok, mv.compact(tok))
-            assert i == mv.compact(tok) == pch.midi
-    # check_compact_pitch()
+            comp = mv.compact(tok)
+            assert i == comp == pch.midi
+            uncomp = mv.uncompact(VocabType.pitch, comp)
+            assert tok == uncomp
+            mic(tok, uncomp)
+    check_compact_pitch()
 
     def sanity_check_uncom():
         """
