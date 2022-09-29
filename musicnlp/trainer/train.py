@@ -332,8 +332,8 @@ if __name__ == '__main__':
 
     # md = 'melody'
     md = 'full'
-    # dnms = ['POP909', 'MAESTRO']
-    dnms = ['POP909', 'MAESTRO', 'LMD']
+    dnms = ['POP909', 'MAESTRO']
+    # dnms = ['POP909', 'MAESTRO', 'LMD']
     dnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
 
     def train_reformer(resume: str = None):
@@ -383,8 +383,8 @@ if __name__ == '__main__':
                 per_device_train_batch_size=128 if on_gl else 64,
             ))
 
-        # n = 64
-        n = None
+        n = 64
+        # n = None
 
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,

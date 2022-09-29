@@ -25,6 +25,13 @@ from musicnlp.preprocess.warning_logger import WarnLog
 from musicnlp.preprocess.key_finder import KeyFinder
 
 
+def _debug_pprint_lst_notes(notes: List[ExtNote]):
+    for n in notes:
+        strt, end = get_offset(n), get_end_qlen(n)
+        p = n.pitch.nameWithOctave if isinstance(n, Note) else None
+        mic(n, strt, end, p)
+
+
 @dataclass
 class BarInfo:
     bars: Union[Tuple[Measure], List[Measure]]
@@ -782,6 +789,10 @@ class MusicExtractor:
             groups_melody: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in all_notes:
                 groups_melody[get_offset(n)].append(n)
+            if number == 36:
+                mic(groups_melody)
+                _debug_pprint_lst_notes(groups_melody[3.0])
+                # exit(1)
             MusicExtractor.sort_groups(groups_melody)
             groups_melody = self._fix_edge_case(groups_melody, number, time_sig)
             groups_bass = None
@@ -832,6 +843,8 @@ class MusicExtractor:
             #     n.duration.quarterLength: Fraction(1, 480)
             lst_melody.append(_local_post_process(notes_melody))
         d = dict(melody=self._post_process(lst_melody, time_sigs))
+        mic('after post process')
+        _debug_pprint_lst_notes(d['melody'][36])
         if self.mode == 'full':
             # mic('now post on bass')
             d['bass'] = self._post_process(lst_bass, time_sigs)
@@ -878,7 +891,7 @@ class MusicExtractor:
         if return_key:
             song_for_key = deepcopy(song)  # in case I modified the Score object
 
-        title: str = song.metadata.title
+        title: str = song.metadata.title or song.metadata.bestTitle
         title = title.removesuffix('.mxl').removesuffix('.musicxml')
 
         lst_bar_info = list(self.it_bars(song))
@@ -940,7 +953,10 @@ class MusicExtractor:
             )
 
         d_notes = self.extract_notes(lst_bar_info, time_sigs)
-        d_notes = {k: [list(flatten_notes(notes)) for notes in lst_notes] for k, lst_notes in d_notes.items()}
+        # d_notes = {k: [list(flatten_notes(notes)) for notes in lst_notes] for k, lst_notes in d_notes.items()}
+        # mic('before write out')
+        # _debug_pprint_lst_notes(d_notes['melody'][36])
+        # exit(1)
         if exp == 'mxl':
             scr_out = make_score(
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo, d_notes=d_notes
@@ -1097,8 +1113,9 @@ if __name__ == '__main__':
     # fix_find_song_with_error()
 
     def check_edge_case_batched():
+        dnm = 'POP909'
         # dnm = 'MAESTRO'
-        dnm = 'LMD'
+        # dnm = 'LMD'
         if 'LMD' in dnm:
             dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
             dir_nm = f'{dir_nm}, MS'
@@ -1123,7 +1140,7 @@ if __name__ == '__main__':
                 _, _dir_nm = o2f(int(stem(f)), return_parts=True)
                 return os_join(_dir_nm, f)
             broken_files = [map_fnm(f) for f in broken_files]
-        else:
+        elif dnm == 'MAESTRO':
             broken_files = [
                 # "Claude Debussy - L'isle Joyeuse, L. 106.mxl",
                 "Claude Debussy - Les Collines D'anacapri From Book I.mxl",
@@ -1146,6 +1163,11 @@ if __name__ == '__main__':
                 'Franz Schubert - Impromptu Op. 90 No. 4 In A-flat Major, v3.mxl'
             ]
             dir_nm = 'converted/MAESTRO, MS'
+        else:  # POP909
+            broken_files = [
+                '许绍洋 - 幸福的瞬间.mxl'
+            ]
+            dir_nm = 'converted/POP909, MS'
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1, mode='full')
 
         batch = False

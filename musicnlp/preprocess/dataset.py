@@ -111,7 +111,7 @@ class ChannelMixer:
         self.vocab = self.mc.vocab
 
     def __call__(self, text: str, return_as_list: bool = False) -> str:
-        out = self.mc.str2notes(text, group=True, strict=False)
+        out = self.mc.str2notes(text, group=True, strict=True)
 
         # sanity_check = True
         sanity_check = False
@@ -242,7 +242,12 @@ class AugmentedDataset:
         item = self.dset[idx]
         toks = item['score']
         if self.channel_mixup:
-            toks = self.cm(toks, return_as_list=True)
+            try:
+                toks = self.cm(toks, return_as_list=True)
+            except Exception as e:
+                print(f'Error mixing up channels : {e}')
+                mic(item, toks)
+                exit(1)
         if self.augment_key:
             if isinstance(toks, list):  # already split into tokens, by `channel_mixup`
                 toks = toks
