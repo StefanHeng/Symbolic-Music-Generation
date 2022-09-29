@@ -93,7 +93,6 @@ class ChannelMixer:
         self.vocab = self.mc.vocab
 
     def __call__(self, text: str, return_as_list: bool = False) -> str:
-        # mic(text)
         out = self.mc.str2notes(text, group=True, strict=False)
 
         # sanity_check = True
@@ -224,7 +223,6 @@ class AugmentedDataset:
 
         item = self.dset[idx]
         toks = item['score']
-        # mic(toks)
         if self.channel_mixup:
             toks = self.cm(toks, return_as_list=True)
         if self.augment_key:
@@ -239,8 +237,6 @@ class AugmentedDataset:
             toks.insert(2, key_tok)
         if isinstance(toks, list):
             toks = ' '.join(toks)
-            # mic(toks)
-            # exit(1)
         return self.tokenizer(toks, padding='max_length', truncation=True)
 
 

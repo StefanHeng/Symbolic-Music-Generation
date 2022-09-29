@@ -339,7 +339,9 @@ if __name__ == '__main__':
     else:
         pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, 2022-08-02_20-11-17'
         mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, 2022-08-02_20-12-23'
+        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=full, prec=5, th=1}, 2022-09-24_13-26-34'
         dnms = [pop, mst]
+        # dnms = [pop, mst, lmd]
 
     def train_reformer(resume: str = None):
         # not set seed if reformer for LSH attention,
