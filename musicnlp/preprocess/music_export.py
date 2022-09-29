@@ -328,17 +328,19 @@ if __name__ == '__main__':
         # dnm = 'MAESTRO'
         dnm = 'LMD, MS'
         # dnm = 'LMD, LP'
-        # dir_nm_ = f'{now(for_path=True)}_{dnm}'
+
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
         # pl_md = 'thread-in-process'  # ~20% slower
+
+        # mode = 'melody'
         mode = 'full'
         args = dict(
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1),
             save_each=True,
             with_tqdm=True,
-            parallel=False,
-            # parallel=1,
+            # parallel=False,
+            parallel=64,
             parallel_mode=pl_md,
             # n_worker=16
         )
@@ -346,20 +348,26 @@ if __name__ == '__main__':
         if 'LMD' in dnm:
             # grp_nm = 'many'
             # grp_nm = 'many, lp'
-            # grp_nm = '090000-100000'
+            grp_nm = '000000-010000'
             # grp_nm = '160000-170000'
-            grp_nm = '170000-178561'
-            # dir_nm_ = f'{now(for_path=True)}_LMD, md={mode[0]}'
-            dir_nm_ = '2022-08-02_19-16-56_LMD, md=f'
+            # grp_nm = '170000-178561'
+
+            # resume = False
+            resume = True
+            if resume:
+                dir_nm_ = f'22-09-29_LMD_{{md={mode[0]}}}'
+            else:
+                date = now(fmt='short-date')
+                dir_nm_ = f'{date}_LMD_{{md={mode[0]}}}'
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_, grp_nm)
             # dnm = 'LMD-cleaned-subset'
 
             def get_lmd_paths(dir_nm: str) -> List[str]:
                 pattern = os_join(u.dset_path, 'converted', dnm, dir_nm, '*.mxl')
-                ic(pattern)
+                mic(pattern)
                 return sorted(glob.iglob(pattern, recursive=True))
             paths = sum([get_lmd_paths(d) for d in [
-                # '000000-010000',
+                '000000-010000',
                 # '010000-020000',
                 # '020000-030000',
                 # '030000-040000',
@@ -382,12 +390,22 @@ if __name__ == '__main__':
             args['filenames'] = paths
         else:
             args['filenames'] = dnm
-            # dir_nm = f'{now(for_path=True)}_{dnm}, md={mode[0]}'
-            dir_nm_ = '2022-08-02_17-47-08_MAESTRO, md=f'
+
+            # resume = False
+            resume = True
+            if resume:
+                if dnm == 'POP909':
+                    dir_nm_ = f'22-09-29_POP909_{{md={mode[0]}}}'
+                else:
+                    assert dnm == 'MAESTRO'
+                    dir_nm_ = f'22-09-29_MAESTRO_{{md={mode[0]}}}'
+            else:
+                date = now(fmt='short-date')
+                dir_nm_ = f'{date}_{dnm}_{{md={mode[0]}}}'
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    # export2json()
+    export2json()
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
         fl_pattern = '*.json'
@@ -437,7 +455,7 @@ if __name__ == '__main__':
         ic(dset)
         ic(len(dset['train']), len(dset['test']))
         ic(dset['train'][:2], dset['test'][:2])
-    json2dset_with_split()
+    # json2dset_with_split()
 
     def fix_insert_key():
         """

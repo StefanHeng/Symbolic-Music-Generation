@@ -183,9 +183,10 @@ def note2note_cleaned(
         offset = offset if offset is not None else note[0].offset
         q_len = quarter_len2fraction(q_len)
         dur_ea = q_len/len(note)
-        if for_output:
+        assert not for_output
+        if for_output:  # TODO: seems no longer needed after music21==8.1, and this actually doesn't work
             # 2 to keep on par with quarterLength, 1 more as it seems how music21 works...
-            my_ordinal = math.log2(q_len.denominator) + 2 + 1
+            my_ordinal = math.log2(q_len.denominator) + 2 + 2
             assert my_ordinal.is_integer()
             my_ordinal = int(my_ordinal)
 
@@ -197,8 +198,10 @@ def note2note_cleaned(
                 # as multiplying `q_len.numerator` is equivalent as smaller ordinal
                 durationNormal=ordinal2dur_type[my_ordinal]
             )
+            mic(q_len, dur_ea, dur_ea_tup)
             for n in notes:
                 n.duration.appendTuplet(dur_ea_tup)
+                mic(n.duration)
         else:
             notes: List[SNote] = [note2note_cleaned(n, q_len=dur_ea) for n in note]
         for i, nt_tup in enumerate(notes):
@@ -531,11 +534,11 @@ def notes_have_gap(notes: Iterable[ExtNote], enforce_no_overlap: bool = True, du
         return False
 
 
-def notes_overlapping(notes: Iterable[ExtNote]) -> bool:
+def notes_overlapping(notes: Iterable[ExtNote], flatten: bool = True) -> bool:
     """
     :return True if notes overlap, given the start time and duration
     """
-    notes = flatten_notes(notes)
+    notes = flatten_notes(notes) if flatten else iter(notes)
     note = next(notes, None)
     if note is None:
         return False
@@ -545,8 +548,9 @@ def notes_overlapping(notes: Iterable[ExtNote]) -> bool:
         while note is not None:
             # Current note should begin, after the previous one ends
             # Since numeric representation of one-third durations, aka tuplets
-            if (end-eps) <= note.offset:
-                end = get_end_qlen(note)
+            end_curr = get_end_qlen(note)
+            if (end-eps) <= end_curr:
+                end = end_curr
                 note = next(notes, None)
             else:
                 return True

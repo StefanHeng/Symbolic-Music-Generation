@@ -35,7 +35,7 @@ class MusicStats:
         """
         if not isinstance(toks, list):
             toks = list(toks)
-        notes = [elm for elm in self.converter.str2notes(toks) if elm.type in [ElmType.note, ElmType.tuplets]]
+        notes = [elm for elm in self.converter.str2notes(toks).elms if elm.type in [ElmType.note, ElmType.tuplets]]
 
         def elm2notes(elm: MusicElement):
             typ, compacts = elm.type, elm.meta
