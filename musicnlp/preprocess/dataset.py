@@ -13,6 +13,24 @@ from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocab
 from musicnlp.preprocess.music_converter import MusicConverter
 
 
+DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {
+    # `dataset name` => `mode` => `filename`
+    'LMD': {
+        'melody': 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20',
+        'full': 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=full, prec=5, th=1}, 2022-09-24_13-26-34'
+    },
+    'MAESTRO': {
+        'melody': 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, '
+                  '2022-05-20_14-52-28',
+        'full': 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, 2022-08-02_20-12-23',
+    },
+    'POP909': {
+        'melody': 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04',
+        'full': 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, 2022-08-02_20-11-17'
+    }
+}
+
+
 def load_songs(*dnms) -> List[str]:
     """
     Get individual song `score`s from a JSON `music_export` output

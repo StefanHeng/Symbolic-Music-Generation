@@ -12,6 +12,7 @@ import torch
 from transformers import TrainingArguments, SchedulerType, DataCollatorForLanguageModeling, Trainer
 from transformers.training_args import OptimizerNames
 import datasets
+import evaluate
 
 from stefutil import *
 from musicnlp.util import *
@@ -19,7 +20,7 @@ import musicnlp.util.train as train_util
 from musicnlp.vocab import (
     MusicTokenizer, WordPieceMusicTokenizer, key_ordinal2str, load_trained as load_word_piece_tokenizer
 )
-from musicnlp.preprocess import get_dataset, AugmentedDataset
+from musicnlp.preprocess import DATASET_NAME2MODE2FILENAME, get_dataset, AugmentedDataset
 from musicnlp.models import MyReformerConfig, MyReformerModelWithLMHead, MyTransfoXLConfig, MyTransfoXLLMHeadModel
 from musicnlp.trainer import metrics
 
@@ -214,7 +215,7 @@ def get_train_and_my_train_args(
 
 class ComputeMetrics:
     def __init__(self, tokenizer: MusicTokenizer, mode: str = 'vanilla'):
-        self.acc = datasets.load_metric('accuracy')
+        self.acc = evaluate.load('accuracy')
         self.ikr = metrics.IkrMetric(tokenizer=tokenizer, mode=mode)
         ca.check_mismatch('Training Mode', mode, ['vanilla', 'key-aug'])
         self.mode = mode
@@ -331,41 +332,35 @@ if __name__ == '__main__':
 
     # md = 'melody'
     md = 'full'
-    if md == 'melody':
-        pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04'
-        mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28'
-        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
-        dnms = [pop, mst, lmd]
-    else:
-        pop = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, 2022-08-02_20-11-17'
-        mst = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, 2022-08-02_20-12-23'
-        lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=full, prec=5, th=1}, 2022-09-24_13-26-34'
-        dnms = [pop, mst]
-        # dnms = [pop, mst, lmd]
+    # dnms = ['POP909', 'MAESTRO']
+    dnms = ['POP909', 'MAESTRO', 'LMD']
+    dnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
 
     def train_reformer(resume: str = None):
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
         md_nm = 'reformer'
-        md_sz = 'debug'
+        # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
-        # md_sz = 'base'
+        md_sz = 'base'
         mic(md_nm, md_sz)
 
         # TODO: smaller seq-len for now, until it shows longer dependency
         model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
 
-        n_ep = 16
-        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
-
         # augment_key = False
         augment_key = True
         # wordpiece_tokenize = False
         wordpiece_tokenize = True
-        # mix_up = False
+        # channel_mixup = False
         channel_mixup = True
+
+        n_ep = 8
+        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
+        if channel_mixup:
+            train_args['dataloader_num_workers'] = 4
 
         my_train_args = dict(
             tqdm=True, logging_strategy='epoch',
@@ -378,17 +373,18 @@ if __name__ == '__main__':
         if 'debug' in md_sz or md_sz == 'tiny':
             train_args.update(dict(
                 per_device_train_batch_size=4,
-                num_train_epochs=64,
+                num_train_epochs=32,
             ))
             my_train_args['save_epochs'] = 16
         else:
+            on_gl = 'arc-ts' in get_hostname()
             train_args.update(dict(
                 fp16=torch.cuda.is_available(),
-                per_device_train_batch_size=64,
+                per_device_train_batch_size=128 if on_gl else 64,
             ))
 
-        n = 64
-        # n = None
+        # n = 64
+        n = None
 
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,

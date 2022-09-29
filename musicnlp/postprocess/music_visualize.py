@@ -23,7 +23,7 @@ from musicnlp.vocab import (
     COMMON_TEMPOS, COMMON_TIME_SIGS, get_common_time_sig_duration_bound,
     MusicVocabulary, MusicTokenizer, load_trained as load_word_piece_tokenizer, key_str2enum
 )
-from musicnlp.preprocess import WarnLog
+from musicnlp.preprocess import WarnLog, DATASET_NAME2MODE2FILENAME
 from musicnlp.postprocess.music_stats import MusicStats
 
 
@@ -531,24 +531,19 @@ class MusicVisualize:
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
+    # md = 'melody'
+    md = 'full'
     # dnms = ['POP909']
     # dnms = ['POP909', 'MAESTRO']
     dnms = ['POP909', 'MAESTRO', 'LMD']
-    dnm2path = dict(
-        POP909='musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04',
-        MAESTRO='musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-28',
-        LMD='musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
-    )
-    dnm2path = {dnm: os_join(music_util.get_processed_path(), f'{p}.json') for dnm, p in dnm2path.items()}
-    # dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
-    #           'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
-    fnms = [dnm2path[dnm] for dnm in dnms]
+    fnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
+    fnms = [os_join(music_util.get_processed_path(), f'{fnm}.json') for fnm in fnms]
     if dnms == ['POP909']:
-        cnm = 'music visualize cache, pop, 06.16.22'
+        cnm = f'MusViz cache, {{md={md}}}, pop, 09.29.22'
     elif dnms == ['POP909', 'MAESTRO']:
-        cnm = 'music visualize cache, pop & mst, 06.16.22'
+        cnm = f'MusViz cache, {{md={md}}}, pop&mst, 09.29.22'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = 'music visualize cache, POP & MST & LMD 0.1, 06.16.22'
+        cnm = f'MusViz cache, {{md={md}}}, all 0.1, 09.29.22'
     else:
         cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all

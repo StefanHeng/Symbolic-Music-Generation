@@ -13,18 +13,19 @@ class MusicStats:
         self.prec = prec
         if converter_kw is None:
             converter_kw = dict()
-        self.converter = MusicConverter(prec=prec, **converter_kw)
+        self.converter = MusicConverter(precision=prec, **converter_kw)
         self.vocab: MusicVocabulary = self.converter.vocab
 
-    def vocab_type_counts(self, toks: Iterable[str]) -> Dict[str, Counter]:
+    def vocab_type_counts(self, toks: Iterable[str], strict: bool = True) -> Dict[str, Counter]:
         """
         :param toks: Iterable of token strings
+        :param strict: See `MusicVocabulary`
         :return: Counter on compact representation by the compact token types
         """
         toks = sorted(toks)
         type2toks = {k: list(v) for k, v in itertools.groupby(toks, key=lambda tok: self.vocab.type(tok))}
         type2toks = {
-            k: list(self.vocab.compact(t) for t in v) for k, v in type2toks.items() if k in self.vocab.compacts
+            k: list(self.vocab.compact(t, strict=strict) for t in v) for k, v in type2toks.items() if k in self.vocab.compacts
         }
         return {k.name: Counter(v) for k, v in type2toks.items()}
 

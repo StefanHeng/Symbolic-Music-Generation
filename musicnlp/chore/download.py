@@ -45,7 +45,8 @@ if __name__ == '__main__':
         out_path = os_join(music_util.get_processed_path(), 'hf', f'{fnm}.zip')
         # mic(out_path, os.path.dirname())
         download_n_unzip(url=HF_DSETS2URL[mode, dataset_name], download_output_path=out_path)
-    # down_single()
+    # down_single(mode='melody', dataset_name='MAESTRO')
+    # down_single(mode='melody', dataset_name='POP909')
 
     def download_datasets():
         for mode, dataset_name in HF_DSETS2URL:
@@ -56,4 +57,4 @@ if __name__ == '__main__':
         fnm = 'tokenizer, {md=full, dnm=all}'
         out_path = os_join(u.tokenizer_path, f'{fnm}.zip')
         download_n_unzip(url=TOKENIZER_URL, download_output_path=out_path)
-    # download_tokenizer()
+    download_tokenizer()
