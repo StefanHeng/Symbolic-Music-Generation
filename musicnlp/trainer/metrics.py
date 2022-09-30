@@ -40,8 +40,6 @@ class IkrMetric:
         """
         Arguments should be batched autoregressive transformer input & output tokens of the same shape in 2D
         """
-        # from icecream import ic
-        # ic(type(preds), type(labels), preds.shape, labels.shape)
         assert preds.shape == labels.shape, \
             f'Input and label shapes do not match, {logi(preds.shape)} vs {logi(labels.shape)}'
         ikrs = []
@@ -96,8 +94,8 @@ class IkrMetric:
             midi=self.vocab.compact(p)).pitchClass for p in pitch_lst])
         stats_pitch_cls_str = Counter([music21.pitch.Pitch(
             midi=self.vocab.compact(p)).name for p in pitch_lst])
-        ic(stats_pitch_cls_str)
-        ic(stats_pitch_cls_int)
+        mic(stats_pitch_cls_str)
+        mic(stats_pitch_cls_int)
 
     def get_in_key_ratio(
             self, preds: List[int], key: Key,
@@ -122,13 +120,13 @@ class IkrMetric:
         # Heuristic Update Rule #1: Too many problems + low performance, discard for now
         # pitch_bar_lst = list(filterfalse(
         #     lambda x: self.vocab.type(x) != VocabType.pitch and x != self.tokenizer.sob_token_id, tok_lst))
-        # # ic(pitch_bar_lst)
-        # # ic(Counter(pitch_bar_lst))
+        # # mic(pitch_bar_lst)
+        # # mic(Counter(pitch_bar_lst))
         # s_bar = [idx for idx, tok in enumerate(
         #     pitch_bar_lst) if tok == self.tokenizer.sob_token_id]
-        # # ic(s_bar)
+        # # mic(s_bar)
         # e_bar, num_bars = s_bar[1:] + [len(pitch_bar_lst)], len(s_bar)
-        # ic([pitch_bar_lst[s_bar[i]+1:e_bar[i]]
+        # mic([pitch_bar_lst[s_bar[i]+1:e_bar[i]]
         #     for i in range(num_bars)])
         # pitch_lst_per_bar = list(filterfalse(lambda x: len(x) <= 1, [pitch_bar_lst[s_bar[i]+1:e_bar[i]]
         #                                                              for i in range(num_bars)]))
@@ -155,7 +153,6 @@ if __name__ == '__main__':
     from os.path import join as os_join
 
     from tqdm import tqdm
-    from icecream import ic
 
     import musicnlp.util.music as music_util
     from musicnlp.preprocess import MusicExtractor, KeyFinder
@@ -178,8 +175,8 @@ if __name__ == '__main__':
 
         kf = KeyFinder(fnm)
         keys = kf.find_key(return_type="enum")
-        ic(keys)
-        # ic(kf.find_scale_degrees(keys))
+        mic(keys)
+        # mic(kf.find_scale_degrees(keys))
     # get_eg_song_key(song_nm)
 
     im = IkrMetric(MusicTokenizer(), n_init_bars=2)
@@ -193,12 +190,12 @@ if __name__ == '__main__':
         fnm = music_util.get_my_example_songs(song_nm, fmt='MXL')
         kf = KeyFinder(fnm)
         keys = kf.find_key(return_type="enum")
-        # ic(text[:200])
-        # ic(im.get_off_key_ratio(text, Key.AfMaj))
+        # mic(text[:200])
+        # mic(im.get_off_key_ratio(text, Key.AfMaj))
         exp_out = [im.get_in_key_ratio(text, key) for key in keys]
-        ic(exp_out)
-        ic(f"Average IKR for {song_nm}: {np.round(np.mean(exp_out), 5)}")
-        # ic(im.get_in_key_ratio(text, Key.DMin))
+        mic(exp_out)
+        mic(f"Average IKR for {song_nm}: {np.round(np.mean(exp_out), 5)}")
+        # mic(im.get_in_key_ratio(text, Key.DMin))
     # check_key_metric()
 
     def check_init_key_no_error():
@@ -219,7 +216,7 @@ if __name__ == '__main__':
 
         n_sample = None
         tokenizer = MusicTokenizer(precision=5, model_max_length=2048)  # TODO: hard-code for now
-        ic(tokenizer)
+        mic(tokenizer)
         # dset = get_dataset(
         #     dataset_names=dnms, map_func=lambda x: tokenizer(
         #         x['score'], padding='max_length', truncation=True),
@@ -231,12 +228,12 @@ if __name__ == '__main__':
             strt, end = 4900, len(ds)
             for i in tqdm(range(strt, end), desc=split, unit='sample'):
                 d = ds[i]
-                # ic(d)
+                # mic(d)
                 # text = tokenizer.decode(d['input_ids'])
-                # ic(text)
+                # mic(text)
                 # im.get_init_key_est(text)
                 ids = np.array(d['input_ids']).reshape(1, -1)  # dummy batch dim
-                # ic(ids.shape)
+                # mic(ids.shape)
                 # effectively we're only checking the ground-truth init key part
                 im(ids, ids)
                 # exit(1)

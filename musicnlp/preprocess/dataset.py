@@ -260,11 +260,10 @@ class AugmentedDataset:
 
 if __name__ == '__main__':
     import transformers
-    from icecream import ic
 
     from musicnlp.util import *
 
-    ic.lineWrapWidth = 512
+    mic.output_width = 512
 
     seed = sconfig('random-seed')
     transformers.set_seed(seed)  # to test key sampling
@@ -276,11 +275,11 @@ if __name__ == '__main__':
         # dset_ = get_dataset(dnm_909)
         # dset_ = get_dataset(dnm_lmd)
         dset_ = get_dataset([dnm_909, dnm_lmd], shuffle_seed=seed)
-        ic(dset_)
-        ic(dset_['train'][0])
+        mic(dset_)
+        mic(dset_['train'][0])
 
         info_ = json.loads(dset_['train'].info.description)
-        ic(info_)
+        mic(info_)
     # check_combined_dset()
 
     def check_key_sample_data_loading():
@@ -288,12 +287,12 @@ if __name__ == '__main__':
         dnm = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
               'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
         tokenizer = MusicTokenizer()
-        ic(tokenizer)
+        mic(tokenizer)
         dset = AugmentedDataset.from_hf(dnm, tokenizer=tokenizer)
         tr, vl = dset['train'], dset['test']
         for i in range(16):
             ids = tr[i]['input_ids']
-            ic(len(ids), tokenizer.decode(ids)[:100])
+            mic(len(ids), tokenizer.decode(ids)[:100])
     # check_key_sample_data_loading()
 
     def check_keys_stored_in_dset():
@@ -306,7 +305,7 @@ if __name__ == '__main__':
         path = os_join(music_util.get_processed_path(), 'hf', dnm)
         os.listdir(path)
         dset = datasets.load_from_disk(path)
-        ic(dset)
+        mic(dset)
         tr = dset['train']
-        ic(tr[:2])
+        mic(tr[:2])
     # check_keys_stored_in_dset()

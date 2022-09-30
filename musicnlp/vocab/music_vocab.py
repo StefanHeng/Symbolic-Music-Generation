@@ -469,7 +469,7 @@ class MusicVocabulary:
             assert elm in key_str2enum
             return [colorize(self.cache['pref_key'] + str(elm))]
         else:  # TODO: chords
-            ic('other element type', elm)
+            mic('other element type', elm)
             exit(1)
 
     def music_elm2toks(self, e: MusicElement) -> List[str]:
@@ -573,26 +573,26 @@ class MusicVocabulary:
 
 
 if __name__ == '__main__':
-    from icecream import ic
+    from icecream import mic
 
-    ic.lineWrapWidth = 512
+    mic.lineWrapWidth = 512
 
     mv = MusicVocabulary()
-    # ic(mv.get_durations(exp='dur'))
+    # mic(mv.get_durations(exp='dur'))
 
-    # ic(mv.to_dict(save=True))
+    # mic(mv.to_dict(save=True))
 
     def check_vocab_size():
         for k, v in mv.toks.items():
-            ic(k, len(v))
-        ic(sum(len(v) for v in mv.toks.values()))
+            mic(k, len(v))
+        mic(sum(len(v) for v in mv.toks.values()))
     # check_vocab_size()
 
     def check_compact_pitch():
         for i in range(128):
             pch = Pitch(midi=i)
             tok = mv.note2pitch_str(pch)
-            ic(i, tok, mv.compact(tok))
+            mic(i, tok, mv.compact(tok))
             comp = mv.compact(tok)
             assert i == comp == pch.midi
             uncomp = mv.uncompact(VocabType.pitch, comp)
@@ -616,7 +616,7 @@ if __name__ == '__main__':
         dnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
         path = os_join(music_util.get_processed_path(), 'hf', dnm)
         dsets = datasets.load_from_disk(path)
-        # ic(dsets, len(dsets['train']))
+        # mic(dsets, len(dsets['train']))
         c = Counter()
         n = 4096 * 4
         for split, dset in dsets.items():
@@ -630,5 +630,5 @@ if __name__ == '__main__':
                 for row in tqdm(dset, desc=split):
                     txt = row['score']
                     c.update(mv.compact(t) for t in txt.split() if mv.has_compact(t))
-        ic(c)
+        mic(c)
     # sanity_check_uncom()

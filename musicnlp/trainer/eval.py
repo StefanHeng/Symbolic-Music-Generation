@@ -194,8 +194,6 @@ def get_performance(model):
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
     import musicnlp.util.music as music_util
 
     # md_k = 'transf-xl', '7_10ep'
@@ -204,7 +202,7 @@ if __name__ == '__main__':
     mdl = load_trained(model_key=md_k, mode=md)
     sv_dir = f'{md_k[0]}, {md_k[1]}'
     # save_dir_ = 'reformer-base, 14/32ep'
-    # ic(get_model_num_trainable_parameter(mdl))
+    # mic(get_model_num_trainable_parameter(mdl))
     mg = MusicGenerator(model=mdl, mode=md)
 
     # key_aug = False
@@ -242,7 +240,7 @@ if __name__ == '__main__':
         for bar in list(score.parts)[0][m21.stream.Measure]:
             for e in bar:
                 if isinstance(e, (m21.note.Note, m21.note.Rest)):
-                    ic(e, e.tie)
+                    mic(e, e.tie)
     # check_why_tie_in_output()
 
     def export_generated():

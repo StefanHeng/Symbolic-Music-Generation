@@ -54,13 +54,11 @@ class MusicStats:
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
     import musicnlp.util.music as music_util
 
     ms = MusicStats()
     text = music_util.get_extracted_song_eg()
     toks_ = text.split()
 
-    # ic(ms.vocab_type_counts(toks))
-    ic(ms.weighted_pitch_counts(toks_))
+    # mic(ms.vocab_type_counts(toks))
+    mic(ms.weighted_pitch_counts(toks_))

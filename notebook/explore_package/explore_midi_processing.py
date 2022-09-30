@@ -5,16 +5,17 @@ import pretty_midi
 import librosa
 from librosa import display
 from mido import MidiFile
-from icecream import ic
 
 sns.set_style('darkgrid')
 
 
 if __name__ == '__main__':
+    from stefutil import mic
+
     path = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MIDI-eg/' \
            'Ed Sheeran - Shape of You (Carlo Prato).mid'
     mid = MidiFile(path, clip=True)
-    # ic(mid)
+    # mic(mid)
 
 
     def plot_piano_roll(pm, start_pitch, end_pitch, fs=100):

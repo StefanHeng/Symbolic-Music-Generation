@@ -191,7 +191,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
         d_dset = sconfig(f'datasets.{dataset_name}')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
-        ic(len(paths))
+        mic(len(paths))
         df = pd.read_csv(os_join(path_ori, 'maestro-v3.0.0.csv'))
         assert len(paths) == len(df)
         c_ver = defaultdict(int)
@@ -321,7 +321,7 @@ def get_lmd_conversion_meta():
             # the original `mid` file should still be there to mark error
             path_broken = _path_lp.replace(f'{dnm}, LP', f'{dnm}, broken').replace('.mxl', '.mid')
             if not os.path.exists(path_broken):  # TODO: debugging
-                ic(path_broken)
+                mic(path_broken)
             assert os.path.exists(path_broken)
             # note all drums is also considered empty
             d_out.update(dict(backend='NA', path='NA', status='error/empty'))
@@ -334,17 +334,15 @@ def get_lmd_conversion_meta():
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
-    ic.lineWrapWidth = 512
+    mic.output_width = 512
 
     def check_fl_nms():
         # dnm = 'POP909'
         dnm = 'MAESTRO'
         fnms = get_converted_song_paths(dnm, fmt='mid')
-        ic(len(fnms), fnms[:20])
+        mic(len(fnms), fnms[:20])
         fnms = get_converted_song_paths(dnm, fmt='mxl')
-        ic(len(fnms), fnms[:20])
+        mic(len(fnms), fnms[:20])
     # check_fl_nms()
 
     # clean_dataset_paths('LMD-cleaned')
@@ -358,29 +356,29 @@ if __name__ == '__main__':
     # broken_fl = 'Alice in Chains - Sludge Factory.mid'
     # # broken_fl = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/fixed/' \
     # #             'ABBA - I\'ve Been Waiting For You.band.mid'
-    # ic(broken_fl)
+    # mic(broken_fl)
     # scr = m21.converter.parse(os_join(path_broken, broken_fl))
-    # ic(scr)
+    # mic(scr)
 
     def fix_delete_broken_files():
         import glob
 
         path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken/*.mid'
         set_broken = set(clean_whitespace(stem(fnm)) for fnm in glob.iglob(path_broken))
-        ic(set_broken)
+        mic(set_broken)
         path_lmd_c = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned/*.mid'
         for fnm in glob.iglob(path_lmd_c):
             if stem(fnm) in set_broken:
                 os.remove(fnm)
                 set_broken.remove(stem(fnm))
                 print('Deleted', fnm)
-        ic(set_broken)
+        mic(set_broken)
         assert len(set_broken) == 0, 'Not all broken files deleted'
     # fix_delete_broken_files()
 
     def fix_match_mxl_names_with_new_mid():
         path_lmd_v = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/*.mxl'
-        ic(len(list(glob.iglob(path_lmd_v))))
+        mic(len(list(glob.iglob(path_lmd_v))))
         for fnm in glob.iglob(path_lmd_v):
             fnm_new = clean_whitespace(fnm)
             if fnm != fnm_new:
@@ -391,7 +389,7 @@ if __name__ == '__main__':
     def get_lmd_subset():
         # fnms = get_lmd_cleaned_subset_fnms()
         fnms = get_converted_song_paths('LMD-cleaned-subset')
-        ic(len(fnms), fnms[:20])
+        mic(len(fnms), fnms[:20])
     # get_lmd_subset()
 
     def mv_backend_not_processed():
@@ -421,7 +419,7 @@ if __name__ == '__main__':
         # dnm = 'LMD, broken, Win/060000-070000'
         # path_processed = os_join(u.dset_path, dnm)
         path_to_process = f'{path_processed}, todo'
-        ic(path_processed)
+        mic(path_processed)
         os.makedirs(path_processed, exist_ok=True)
         path_mids = sorted(glob.iglob(os_join(path_to_process, '*.mid')))
         logger.info(f'{logi(len(path_mids))} MIDI files should have been converted')
@@ -451,7 +449,7 @@ if __name__ == '__main__':
 
     def get_convert_df():
         df = get_lmd_conversion_meta()
-        ic(df)
+        mic(df)
     get_convert_df()
 
     # def chore_convert_xml2mxl():
@@ -462,6 +460,6 @@ if __name__ == '__main__':
     #     """
     #     pattern = os_join(u.dset_path, 'converted', 'LMD, LP', '**/*.xml')
     #     files = sorted(glob.iglob(pattern, recursive=True))
-    #     ic(len(files))
+    #     mic(len(files))
     #     for path in files:
     #         pass

@@ -280,9 +280,7 @@ class MusicExport:
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
-    ic.lineWrapWidth = 400
+    mic.output_width = 512
 
     me = MusicExport()
     # me = MusicExport(verbose=True)
@@ -366,27 +364,31 @@ if __name__ == '__main__':
                 pattern = os_join(u.dset_path, 'converted', dnm, dir_nm, '*.mxl')
                 mic(pattern)
                 return sorted(glob.iglob(pattern, recursive=True))
-            paths = sum([get_lmd_paths(d) for d in [
-                '000000-010000',
-                # '010000-020000',
-                # '020000-030000',
-                # '030000-040000',
-                # '040000-050000',
-                # '050000-060000',
-                # '060000-070000',
-                # '070000-080000',
-                # '080000-090000',
-                # '090000-100000',
-                # '100000-110000',
-                # '110000-120000',
-                # '120000-130000',
-                # '130000-140000',
-                # '140000-150000',
-                # '150000-160000',
-                # '160000-170000',
-                # '170000-178561'
-                grp_nm
-            ]], start=[])
+
+            if 'many' in grp_nm:
+                paths = sum([get_lmd_paths(d) for d in [
+                    # '000000-010000',
+                    '010000-020000',
+                    '020000-030000',
+                    '030000-040000',
+                    '040000-050000',
+                    '050000-060000',
+                    # '060000-070000',
+                    # '070000-080000',
+                    # '080000-090000',
+                    # '090000-100000',
+                    # '100000-110000',
+                    # '110000-120000',
+                    # '120000-130000',
+                    # '130000-140000',
+                    # '140000-150000',
+                    # '150000-160000',
+                    # '160000-170000',
+                    # '170000-178561'
+                    # grp_nm
+                ]], start=[])
+            else:
+                paths = get_lmd_paths(grp_nm)
             args['filenames'] = paths
         else:
             args['filenames'] = dnm
@@ -416,7 +418,7 @@ if __name__ == '__main__':
         # fnms = fnms[:1024]  # TODO: debugging
         out_fnm = f'{PKG_NM} music extraction, dnm={dataset_name}'
         songs = me.combine_saved_songs(filenames=fnms, output_filename=out_fnm)
-        ic(songs.keys(), len(songs['music']))
+        mic(songs.keys(), len(songs['music']))
 
     def combine():
         md = 'full'
@@ -452,9 +454,9 @@ if __name__ == '__main__':
             #       '2022-08-02_20-12-23'
             fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=full, prec=5, th=1}, 2022-09-24_13-26-34'
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
-        ic(dset)
-        ic(len(dset['train']), len(dset['test']))
-        ic(dset['train'][:2], dset['test'][:2])
+        mic(dset)
+        mic(len(dset['train']), len(dset['test']))
+        mic(dset['train'][:2], dset['test'][:2])
     # json2dset_with_split()
 
     def fix_insert_key():
@@ -490,9 +492,9 @@ if __name__ == '__main__':
                 if not os.path.exists(fnm_out):
                     with open(fl_nm, 'r') as f:
                         song = json.load(f)
-                    # ic(song.keys())
+                    # mic(song.keys())
                     assert 'keys' not in song['music']  # sanity check
-                    # ic(fl_nm, song.keys(), song['music'].keys())
+                    # mic(fl_nm, song.keys(), song['music'].keys())
                     path_mxl = song_title2path(song['music']['title'])
                     song['music']['keys'] = keys = KeyFinder(path_mxl).find_key(return_type='dict')
                     assert len(keys) > 0
@@ -520,7 +522,7 @@ if __name__ == '__main__':
         # dir_nm = 'POP909 save single 04-10_02.15, add key'
         path = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
         fnms = sorted(glob.iglob(os_join(path, '*.json')))
-        # ic(len(fnms))
+        # mic(len(fnms))
         # exit(1)
 
         count_old_key = 0
@@ -532,7 +534,7 @@ if __name__ == '__main__':
                 count_old_key += 1
                 with open(fnm, 'w') as f:  # Override the original file
                     json.dump(d, f, indent=4)
-        ic(count_old_key)
+        mic(count_old_key)
     # fix_key_api_change()
 
     def combine_single_json_songs_with_key():
@@ -543,21 +545,21 @@ if __name__ == '__main__':
         fnms = sorted(
             glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', dir_nm, '*.json')))
         songs = me.combine_saved_songs(filenames=fnms, output_filename=output_fnm)
-        ic(songs.keys(), len(songs['music']))
+        mic(songs.keys(), len(songs['music']))
     # combine_single_json_songs_with_key()
 
     def json2dset_with_key():
         fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
         dset = me.json2dataset(fnm)
-        ic(dset, dset.column_names, dset[:5])
+        mic(dset, dset.column_names, dset[:5])
     # json2dset_with_key()
 
     def check_dset_with_key_features():
         dnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
         dset = datasets.load_from_disk(os_join(music_util.get_processed_path(), 'processed', dnm))
         feat_keys = dset.features['keys']
-        ic(type(feat_keys))
-        ic(dset[:4]['keys'])
+        mic(type(feat_keys))
+        mic(dset[:4]['keys'])
     # check_dset_with_key_features()
 
     def chore_move_proper_folder():
@@ -567,18 +569,16 @@ if __name__ == '__main__':
         import re
         import shutil
 
-        dir_nm = '2022-08-02_19-16-56_LMD, md=f'
+        dir_nm = '22-09-29_LMD_{md=f}'
         path_process_base = os_join(u.dset_path, 'processed', 'intermediate', dir_nm)
-        path_to_process = os_join(path_process_base, 'many, lp')
-        ic(path_to_process)
+        path_to_process = os_join(path_process_base, 'many')
+        mic(path_to_process)
         paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
         pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$')
         o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
-        ic(o2f.total)
         it = tqdm(paths)
         for path in it:
             m = pattern.match(stem(path))
-            # ic(stem(path))
             assert m is not None
             o = int(m.group('ordinal'))
 
@@ -589,13 +589,9 @@ if __name__ == '__main__':
             os.makedirs(path_out, exist_ok=True)
 
             path_out = os_join(path_out, fnm)
-            # if os.path.exists(path_out):
-            #     print(f'{logi(path_out)} already exists')
             assert not os.path.exists(path_out)
-            # ic(path, path_out)
-            # exit(1)
             shutil.move(path, path_out)
-    # chore_move_proper_folder()
+    chore_move_proper_folder()
 
     def fix_wrong_moved_fnm():
         import shutil
@@ -606,7 +602,7 @@ if __name__ == '__main__':
         for path in tqdm(paths):
             fnm = stem(path)[-11:-5]
             path_new = os_join(path_to_process, f'Music Export - {fnm}.json')
-            # ic(fnm, path, path_new)
+            # mic(fnm, path, path_new)
             # exit(1)
             shutil.move(path, path_new)
     # fix_wrong_moved_fnm()
@@ -623,12 +619,12 @@ if __name__ == '__main__':
 
         # n_song = sconfig('datasets.LMD.meta.n_song')
         # o2f = music_util.Ordinal2Fnm(total=n_song, group_size=int(1e4))
-        # ic(o2f.total)
+        # mic(o2f.total)
 
         dir_nm = f'2022-05-20_09-39-16_LMD, MS'
         path_exported = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
         paths_exported = set(glob.iglob(os_join(path_exported, '**/*.json'), recursive=True))
-        ic(len(df), len(paths_exported))
+        mic(len(df), len(paths_exported))
 
         it = tqdm(df.iterrows(), unit='fl', total=len(df))
         for idx, song in it:
@@ -637,11 +633,11 @@ if __name__ == '__main__':
             it.set_postfix(fnm=fnm)
             if song.status == 'converted':
                 path = os_join(path_exported, _dir_nm, f'Music Export - {fnm}.json')
-                # ic(path)
+                # mic(path)
                 assert os.path.exists(path)  # a converted file is extracted
                 paths_exported.remove(path)
-            # ic(idx, song)
+            # mic(idx, song)
             # exit(1)
-        ic(paths_exported)
+        mic(paths_exported)
         assert len(paths_exported) == 0  # every exported file is accounted for
     # sanity_check_export()

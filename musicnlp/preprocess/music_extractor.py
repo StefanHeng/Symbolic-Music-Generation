@@ -214,11 +214,7 @@ class MusicExtractor:
 
         offset = 0
         notes_out = []
-        # if number == 67:
-        #     mic(idxs_note, len(idxs_note))
         for i, n in compress(idxs_note):
-            # if number == 67:
-            #     mic(i, n)
             if i is None:  # In case note missing, fill with Rest
                 note_dummy = Rest(duration=m21.duration.Duration(quarterLength=n * dur_slot))
                 note_dummy.offset = offset
@@ -229,12 +225,6 @@ class MusicExtractor:
                 # TODO: seems `for_output` no longer needed, see `note2note_cleaned`
                 nt = note2note_cleaned(notes[i], q_len=n*dur_slot, for_output=False)
                 if isinstance(nt, tuple):
-                    # if number == 67:
-                    #     mic(notes[i], nt)
-                    #     mic('ori')
-                    #     _debug_pprint_lst_notes(notes[i])
-                    #     mic('new')
-                    #     _debug_pprint_lst_notes(nt)
                     dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
                     note_tups_out = []
                     for i_, nt_tup in enumerate(nt):
@@ -247,13 +237,6 @@ class MusicExtractor:
                 offset += note2dur(nt)
 
         assert not notes_overlapping(notes_out)  # Sanity check
-        # if sum(note2dur(n) for n in notes_out) != dur_bar:
-        #     mic(number)
-        #     mic('original notes')
-        #     _debug_pprint_lst_notes(notes)
-        #     mic('out notes')
-        #     _debug_pprint_lst_notes(notes_out)
-        #     mic(sum(note2dur(n) for n in notes_out), dur_bar)
         assert sum(note2dur(n) for n in notes_out) == dur_bar
         return notes_out
 
@@ -275,13 +258,14 @@ class MusicExtractor:
         :param keep_chord: If true, `Chord`s are not expanded
         :param number: For passing bar number recursively to Voice
 
-        .. note:: Triplets (potentinotes_overlappingally any n-plets) are grouped; `Voice`s are expanded
+        .. note:: Triplets (potentially any n-plets) are grouped; `Voice`s are expanded
         """
         lst = []
         it = iter(bar)
         elm = next(it, None)
-        # ic('in expand bar', number)
+        # mic('in expand bar', number)
         while elm is not None:
+            elm: m21.stream.Stream
             # this is the bottleneck; just care about duration; Explicitly ignore voice
             full_nm = not isinstance(elm, Voice) and getattr(elm.duration, 'fullName', None)
             if full_nm and tuplet_postfix in full_nm:
@@ -490,9 +474,7 @@ class MusicExtractor:
                     m21.layout.LayoutBase, m21.clef.Clef, m21.key.KeySignature, m21.bar.Barline,
                     m21.expressions.TextExpression, m21.repeat.Fine
                 )):
-                    ic(elm)
-                    print('unexpected type')
-                    exit(1)
+                    raise TypeError(f"Unexpected element {logi(elm)} w/ type {logi(type(elm))}")
             elm = next(it, None)
         assert is_notes_pos_duration(lst)
         if bar.hasVoices():  # Join all voices to notes
@@ -667,7 +649,6 @@ class MusicExtractor:
                         # Move the truncated note to later group, restart
                         del groups[offset][-1]
                         nt_ = note2note_cleaned(nt)
-                        # ic(offset, groups[offset], nt_)
                         nt_.offset = last_end
                         nt_.duration = d = Duration(quarterLength=nt_end - last_end)
                         assert d.quarterLength > 0
@@ -1032,9 +1013,7 @@ if __name__ == '__main__':
     import re
     import json
 
-    from icecream import ic
-
-    ic.lineWrapWidth = 512
+    mic.output_width = 512
 
     import musicnlp.util.music as music_util
 
@@ -1049,18 +1028,18 @@ if __name__ == '__main__':
         # fnm = 'Shape of You'
         # fnm = '平凡之路'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
-        ic(fnm)
+        mic(fnm)
         # mode = 'melody'
         mode = 'full'
         me = MusicExtractor(warn_logger=logger, verbose=True, mode=mode)
 
         def check_mxl_out():
             me(fnm, exp='mxl')
-            # ic(logger.to_df())
+            # mic(logger.to_df())
 
         def check_str():
             toks = me(fnm, exp='str')
-            ic(len(toks), toks[:100])
+            mic(len(toks), toks[:100])
 
         def check_visualize():
             s = me(fnm, exp='visualize')
@@ -1068,7 +1047,7 @@ if __name__ == '__main__':
 
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
-            ic(d_out)
+            mic(d_out)
         # check_mxl_out()
         # check_str()
         check_visualize()
@@ -1078,14 +1057,14 @@ if __name__ == '__main__':
     def encode_a_few():
         dnm = 'POP909'
         fnms = music_util.get_converted_song_paths(dnm, fmt='mxl')[:]
-        # ic(len(fnms), fnms[:5])
+        # mic(len(fnms), fnms[:5])
 
         # idx = [idx for idx, fnm in enumerate(fnms) if '恋爱ing' in fnm][0]
-        # ic(idx)
+        # mic(idx)
         logger = WarnLog()
         me = MusicExtractor(warn_logger=logger, verbose=True, mode='full')
         for i_fl, fnm in enumerate(fnms):
-            ic(i_fl, fnm)
+            mic(i_fl, fnm)
             # me(fnm, exp='mxl')
             s = me(fnm, exp='visualize')
             print(s)
@@ -1097,7 +1076,7 @@ if __name__ == '__main__':
             fnms = music_util.get_converted_song_paths(dnm, fmt='mxl')[:10]
             me = MusicExtractor(warn_logger=True, verbose=False, greedy_tuplet_pitch_threshold=1)
             for i_fl, fnm in enumerate(fnms):
-                ic(i_fl)
+                mic(i_fl)
                 me(fnm, exp='str_join')
         profile_runtime(func)
     # profile()
@@ -1107,7 +1086,7 @@ if __name__ == '__main__':
               'music extraction, 04.09.22_21.13.log'
         with open(fnm, 'r') as f:
             lines = f.readlines()
-        ic(len(lines), lines[:5])
+        mic(len(lines), lines[:5])
         pattern_start = re.compile(r'^.*INFO - Extracting (?P<title>.*) with {.*$')
         pattern_end = re.compile(r'^.*INFO - (?P<title>.*) extraction completed in .*$')
         set_started, set_ended = set(), set()
@@ -1117,8 +1096,8 @@ if __name__ == '__main__':
                 set_started.add(m_start.group('title'))
             elif m_end:
                 set_ended.add(m_end.group('title'))
-        # ic(len(set_started), len(set_ended))
-        ic(set_started-set_ended)
+        # mic(len(set_started), len(set_ended))
+        mic(set_started-set_ended)
     # fix_find_song_with_error()
 
     def check_edge_case_batched():
@@ -1213,14 +1192,14 @@ if __name__ == '__main__':
         dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
                   'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_12-52-41'
         path = os_join(music_util.get_processed_path(), f'{dnm_lmd}.json')
-        ic(path)
+        mic(path)
         with open(path, 'r') as f:
             dset: Dict = json.load(f)
         songs = dset['music']
         for song in songs:
             txt = song['score']
             if 'd_0' in txt:
-                ic(song['title'])
+                mic(song['title'])
     # fix_find_song_with_0dur()
 
     def fix_merge_processing_from_lib():
@@ -1231,8 +1210,8 @@ if __name__ == '__main__':
                          '05.22.22/LMD, broken/020000-030000'
         paths_ori, paths_new = glob.iglob(dir_broken_ori + '/*.mid'), glob.iglob(dir_broken_new + '/*.mid')
         set_fls_ori, set_fls_new = set([stem(f) for f in paths_ori]), set([stem(f) for f in paths_new])
-        ic(set_fls_ori, set_fls_new)
-        ic(set_fls_new - set_fls_ori)
+        mic(set_fls_ori, set_fls_new)
+        mic(set_fls_new - set_fls_ori)
     # fix_merge_processing_from_lib()
 
     def get_broken_fnms_from_log():
@@ -1255,5 +1234,5 @@ if __name__ == '__main__':
                 return m.group('fnm')
         fnms = [extract_line(ln) for ln in lines]
         fnms = sorted(set([f'{fnm}.mxl' for fnm in fnms if fnm]))
-        ic(fnms)
+        mic(fnms)
     # get_broken_fnms_from_log()

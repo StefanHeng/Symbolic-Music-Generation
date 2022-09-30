@@ -42,26 +42,24 @@ def read_pickle(fnm):
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
-    # ic(config('Melody-Extraction.tokenizer'))
+    # mic(config('Melody-Extraction.tokenizer'))
 
     def check_compress():
         arr = [
             202, 202, 202, 202, 203, 203, 203, 203, 202, 202, 202, 202, 203,
             203, 203, 203, 202, 202, 202, 202, 203, 203, 203, 203
         ]
-        ic(compress(arr))
+        mic(compress(arr))
     # check_compress()
 
-    # ic(quarter_len2fraction(1.25), quarter_len2fraction(0.875))
+    # mic(quarter_len2fraction(1.25), quarter_len2fraction(0.875))
 
-    # ic(hex2rgb('#E5C0FB'))
+    # mic(hex2rgb('#E5C0FB'))
 
     def check_logging():
-        ic(colorama.Fore.YELLOW)
-        ic(now())
-        ic()
+        mic(colorama.Fore.YELLOW)
+        mic(now())
+        mic()
         print('normal str')
 
         logger = logging.getLogger('Test Logger')
@@ -86,7 +84,7 @@ if __name__ == '__main__':
 
     def check_group():
         lst = list(range(6))
-        ic(lst, list(group_n(lst, 3)))
+        mic(lst, list(group_n(lst, 3)))
     # check_group()
 
     st = '/Users/stefanh/Documents/UMich/Research/Music with ' \
@@ -94,4 +92,4 @@ if __name__ == '__main__':
          'Alpentrio-Medley   Hast a bisserl Zeit fur mi   Tepperter Bua   Hallo kleine ' \
          'Traumfrau   Vergiss die Liebe nicht   Ich freu\' mich schon auf dich   Ich ' \
          'hab was ganz lieb\'s traumt von dir   Geheimnis der Joha... - v0.mxl'
-    # ic(clean_whitespace(st))
+    # mic(clean_whitespace(st))

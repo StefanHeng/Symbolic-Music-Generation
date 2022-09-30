@@ -93,19 +93,18 @@ class MelodyModel:
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
-    # ic(type(common_texts), len(common_texts), common_texts[:30])
+    from stefutil import mic
+    # mic(type(common_texts), len(common_texts), common_texts[:30])
 
     ml = MelodyLoader(pad=False)
     mt = MelodyTokenizer()
 
     def check_as_iter():
         song_it = iter(mt.decode(ids, return_joined=False) for ids in ml)
-        # ic(song_it, type(next(song_it)))
+        # mic(song_it, type(next(song_it)))
 
         lst = list(song_it)
-        ic(len(lst), lst[0][:16])
+        mic(len(lst), lst[0][:16])
     # check_as_iter()
 
     pem = PitchEmbeddingModel(w2v_kwargs=dict(epochs=4))
@@ -114,12 +113,12 @@ if __name__ == '__main__':
         pem([mt.decode(ids, return_joined=False) for ids in ml])  # To string tokens to apply `Word2Vec`
         model = pem.model
         # for v in model.wv:
-        #     ic(v)
+        #     mic(v)
         vects = model.wv
-        ic(vects, type(vects), len(vects))
+        mic(vects, type(vects), len(vects))
         vocab = list(vects.key_to_index)  # Dict from word str to index in embedding mat
-        ic(len(vocab), vocab[:20])
+        mic(len(vocab), vocab[:20])
         for wd in vocab:
             vec = vects[wd]
-            ic(wd, vec[:2], vec.shape)
+            mic(wd, vec[:2], vec.shape)
     # train()

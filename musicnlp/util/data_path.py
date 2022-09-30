@@ -18,5 +18,5 @@ MODEL_DIR = 'models'
 
 
 if __name__ == '__main__':
-    from icecream import ic
-    ic(BASE_PATH, PROJ_DIR, DSET_DIR, MODEL_DIR, PKG_NM)
+    from stefutil import mic
+    mic(BASE_PATH, PROJ_DIR, DSET_DIR, MODEL_DIR, PKG_NM)

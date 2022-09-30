@@ -346,7 +346,6 @@ class _CheckTrainedMap:
 if __name__ == '__main__':
     from tqdm.auto import tqdm
 
-    from stefutil.prettier import mic
     from musicnlp.preprocess.dataset import load_songs
 
     sample_txt = 'TimeSig_1/4 Tempo_120 <bar> p_1/5 d_1 <bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1/2 p_6/5 d_1/2 ' \
@@ -489,7 +488,7 @@ if __name__ == '__main__':
 
     mv = MusicVocabulary()
     # vocab = list(mv.tok2id.keys())
-    # ic(vocab, len(vocab))
+    # mic(vocab, len(vocab))
 
     # md = 'melody'
     md = 'full'
@@ -503,9 +502,9 @@ if __name__ == '__main__':
         lmd = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=full, prec=5, th=1}, 2022-09-24_13-26-34'
 
     # songs = [songs[0][:256], songs[1][:256]]
-    # ic(type(songs))
-    # ic(len(songs))
-    # ic(type(songs[0]), len(songs[0]))
+    # mic(type(songs))
+    # mic(len(songs))
+    # mic(type(songs[0]), len(songs[0]))
 
     def check_tokenize_train():
         unk = '[UNK]'
@@ -523,7 +522,7 @@ if __name__ == '__main__':
 
     def try_char_map():
         # chs = get_uni_chars(40)
-        # ic(chs, len(chs))
+        # mic(chs, len(chs))
         # exit(1)
         s2c = Score2Chars(mv)
         sample_txt_ = mv.clean_uncommon(sample_txt, return_joined=False)

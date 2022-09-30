@@ -326,7 +326,7 @@ if __name__ == '__main__':
         fnm = 'Merry Go Round'
         path = music_util.get_my_example_songs(k=fnm, extracted=True)
         mic(path)
-        # ic(mc.mxl2str(path))
+        # mic(mc.mxl2str(path))
         mic(mc.mxl2str(path, n_bar=4))
     # check_decode()
 

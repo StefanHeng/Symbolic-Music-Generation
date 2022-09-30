@@ -40,15 +40,14 @@ class MelodyLoader:
 
 
 if __name__ == '__main__':
-    from icecream import ic
-
+    from stefutil import mic
     ml = MelodyLoader()
 
     def sanity_check():
-        ic(len(ml), ml[0], ml.nms[:20])
-        ic(ml[0].shape, MelodyLoader(pad=False)[0].shape)
+        mic(len(ml), ml[0], ml.nms[:20])
+        mic(ml[0].shape, MelodyLoader(pad=False)[0].shape)
     sanity_check()
 
     def why_starting_rests():
-        ic(ml[0])
+        mic(ml[0])
     # why_starting_rests()

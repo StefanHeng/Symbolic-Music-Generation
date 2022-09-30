@@ -99,7 +99,7 @@ if __name__ == '__main__':
 
     def implementation_check():
         dsets = get_dataset(fnm)
-        # ic(dset, dset[:2])
+        # mic(dset, dset[:2])
         tkzer = MusicTokenizer(model_max_length=12)
         # tkzer = MusicTokenizer()
         mic(tkzer, tkzer.model_max_length, len(tkzer))
@@ -107,8 +107,8 @@ if __name__ == '__main__':
         # txt = dset[:3]['text']
         # Turning off both `padding` & `truncation`, and the token ids too long warning appears
         input_ = tkzer(txt, padding='max_length', truncation=True)
-        # ic(input_)
-        # ic(len(input_['input_ids']))
+        # mic(input_)
+        # mic(len(input_['input_ids']))
         ids_ = input_['input_ids']
         mic(input_, ids_, tkzer.decode(ids_))
     # implementation_check()

@@ -117,7 +117,7 @@ class KeyFinder:
                 # linear correlation: https://realpython.com/numpy-scipy-pandas-correlation-python/#linear-correlation
                 # also remember to rotate the weight matrix couple times
                 corrcoef_mat[k, i] = np.corrcoef(np.roll(self.prof[k], i), durations)[1][0]
-        # ic(corrcoef_mat)
+        # mic(corrcoef_mat)
         best_val_maj = np.max(corrcoef_mat[0])
         best_val_min = np.max(corrcoef_mat[1])
         # fuzzy search
@@ -200,21 +200,21 @@ class KeyFinder:
 def main(path: str):
     a = KeyFinder(path)
     keys = a.find_key()
-    ic(keys)
-    ic(a.find_scale_degrees(keys))
+    mic(keys)
+    mic(a.find_scale_degrees(keys))
 
 
 if __name__ == '__main__':
     from tqdm import tqdm
-    from icecream import ic
+    from icecream import mic
 
     import musicnlp.util.music as music_util
 
     def check_get_key():
         path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
-        ic(path)
+        mic(path)
         kf = KeyFinder(path)
-        ic(kf.find_key(return_type='enum'))
+        mic(kf.find_key(return_type='enum'))
     check_get_key()
 
     def check_deprecated_scale_deg():
@@ -222,7 +222,7 @@ if __name__ == '__main__':
         kf = KeyFinder(path)
         keys_dep_maj, keys_dep_min = kf.find_key()
         keys_dep_maj, keys_dep_min = [key for key, score in keys_dep_maj], [key for key, score in keys_dep_min]
-        ic(kf.find_scale_degrees((keys_dep_maj, keys_dep_min)))
+        mic(kf.find_scale_degrees((keys_dep_maj, keys_dep_min)))
     # check_deprecated_scale_deg()
 
     def carson_dev():

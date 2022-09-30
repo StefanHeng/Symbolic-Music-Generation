@@ -185,11 +185,10 @@ if __name__ == '__main__':
     import json
     from data_path import PROJ_DIR, PKG_NM
 
-    from icecream import ic
-    ic.lineWrapWidth = 512
+    mic.output_width = 512
 
     fl_nm = 'config.json'
-    ic(config_dict)
+    mic(config_dict)
     # print(config)
     open(fl_nm, 'a').close()  # Create file in OS
     with open(os_join(BASE_PATH, PROJ_DIR, PKG_NM, 'util', fl_nm), 'w') as f:

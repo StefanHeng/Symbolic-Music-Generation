@@ -115,13 +115,13 @@ class MidiMelodyExtractor:
         self.pm = PrettyMIDI(self.fnm)
 
         msgs = self.mu.get_msgs_by_type(self.mf, 'time_signature')
-        # ic(msgs)
+        # mic(msgs)
         assert len(msgs) == 1
         msg = msgs[0]
         self.beat_per_bar = msg.numerator
         self.frac_per_beat = msg.denominator
         assert math.log2(self.frac_per_beat).is_integer()
-        # ic(self.beat_per_bar, self.frac_pow_per_beat)
+        # mic(self.beat_per_bar, self.frac_pow_per_beat)
 
         tempos = self.mu.get_tempo_changes(self.mf)
         assert len(tempos) == 1
@@ -130,7 +130,7 @@ class MidiMelodyExtractor:
 
         spb = self.bpm / 60  # Second per beat
         spt = spb / (2 ** self.precision / self.frac_per_beat)  # Second that each time slot consumes
-        # ic(spt)
+        # mic(spt)
         self.fqs_ts = 1/spt
         self.n_ts = 2**self.precision * self.beat_per_bar / self.frac_per_beat
 
@@ -146,11 +146,11 @@ class MidiMelodyExtractor:
 
         If multiple notes at a time step, pick the one with the highest pitch
         """
-        # ic(self.precision - self.frac_per_beat, (self.precision - self.frac_per_beat)**2)
-        # ic(spb, spt, 1/spt)
+        # mic(self.precision - self.frac_per_beat, (self.precision - self.frac_per_beat)**2)
+        # mic(spb, spt, 1/spt)
         # pr = self.pm.get_piano_roll(fs=)
-        # ic(self.pm.instruments[0].notes[:10])
-        # ic(pr, pr.shape)
+        # mic(self.pm.instruments[0].notes[:10])
+        # mic(pr, pr.shape)
         self.pmu.plot_piano_roll(self.pm, fqs=self.fqs_ts)
 
 
@@ -348,7 +348,7 @@ class MxlMelodyExtractor:
             obj = self if inplace else deepcopy(self)
             del_pnms = []
             for pnm, bar in obj.bars.items():
-                # ic(bar.number)
+                # mic(bar.number)
                 if bar.hasVoices():
                     # Seems to be a problem in prior processing: overlapping notes => Fix it
                     clefs = [e for e in bar if isinstance(e, m21.clef.Clef)]
@@ -435,7 +435,7 @@ class MxlMelodyExtractor:
             :return: The part name key, that has the maximum pitch, per `avg_pitch`
             """
             for pnm, b in self.bars.items():
-                # ic(pnm, b)
+                # mic(pnm, b)
                 assert not b[m21.note.Unpitched]
             pchs = self.avg_pitch(method=method, val_rest=val_rest)
             return max(self.bars, key=lambda p: pchs[p])
@@ -558,7 +558,7 @@ class MxlMelodyExtractor:
                     if tok == '[REST]':
                         self.note = m21.note.Rest(duration=dur)
                     else:
-                        ic(tok)
+                        mic(tok)
                         exit(1)
                 else:  # Integer
                     self.note = m21.note.Note(tok, duration=dur)
@@ -610,7 +610,7 @@ class MxlMelodyExtractor:
             def _call(bar, time_sig):
                 n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
                 enc = [MxlMelodyExtractor.Tokenizer.Slot() for _ in range(n_slots)]
-                # ic(bar.number)
+                # mic(bar.number)
                 r_dur = time_sig2ratio(time_sig)
                 for e in group_triplets(bar):
                     if isinstance(e, list):  # Triplet case
@@ -700,7 +700,7 @@ class MxlMelodyExtractor:
             """
             For single bar
             """
-            # ic(number)
+            # mic(number)
             kwargs = {} if number is None else dict(number=number)
             bar = m21.stream.Measure(**kwargs)
             n_slots_per_beat, n_slots = time_sig2n_slots(time_sig, self.prec)
@@ -778,9 +778,9 @@ class MxlMelodyExtractor:
             # For quarterLength in music21
             dur_bar = time_sig.numerator * (4 / time_sig.denominator)
             if bar.duration.quarterLength != dur_bar:
-                ic(number, dur_bar, bar.duration.quarterLength)
+                mic(number, dur_bar, bar.duration.quarterLength)
                 for e in bar:
-                    ic(e, e.offset, e.duration)
+                    mic(e, e.offset, e.duration)
             assert bar.duration.quarterLength == dur_bar
             return bar
 
@@ -991,20 +991,20 @@ def extract(dnms: List[str], exp='json') -> List[Dict[str, Any]]:
 
 
 if __name__ == '__main__':
-    from icecream import ic
+    from icecream import mic
 
     def check_midi():
         fnm = music_util.get_my_example_songs('Shape of You')
         # fnm = eg_songs('My Favorite Things')
         me = MidiMelodyExtractor(fnm)
-        ic(me.bpm)
+        mic(me.bpm)
         me.bar_with_max_pitch()
     # check_midi()
 
     def check_mxl():
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
-        ic(fnm)
+        mic(fnm)
         me = MxlMelodyExtractor(fnm)
         me.bar_with_max_pitch(exp='mxl')
     # check_mxl()
@@ -1012,7 +1012,7 @@ if __name__ == '__main__':
     def extract_encoding():
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         fnm = music_util.get_my_example_songs('Shape of You', fmt='MXL')
-        ic(fnm)
+        mic(fnm)
         me = MxlMelodyExtractor(fnm, n=None)
         me.bar_with_max_pitch(exp='symbol')
     # extract_encoding()
@@ -1021,14 +1021,14 @@ if __name__ == '__main__':
         # fnm = eg_songs('Merry Go Round of Life', fmt='MXL')
         # fnm = eg_songs('Shape of You', fmt='MXL')
         fnm = music_util.get_my_example_songs('平凡之路', fmt='MXL')
-        ic(fnm)
+        mic(fnm)
         me = MxlMelodyExtractor(fnm, n=None)
         ids = me.bar_with_max_pitch(exp='symbol')
-        ic(ids[:2**5])
-        ic(me.encoding2score(ids, save=True))
+        mic(ids[:2**5])
+        mic(me.encoding2score(ids, save=True))
     # sanity_check_encoding()
 
-    # ic(fl_nms('LMD_Cleaned', k='song_fmt_exp'))
+    # mic(fl_nms('LMD_Cleaned', k='song_fmt_exp'))
 
     def encode_a_few():
         # n = 2**6
@@ -1036,7 +1036,7 @@ if __name__ == '__main__':
         fnms = music_util.get_converted_song_paths(dnm, fmt='song_fmt_exp')
         # for idx, fnm in enumerate(fnms):
         for idx, fnm in enumerate(fnms[66+136+289:]):
-            ic(idx, stem(fnm))
+            mic(idx, stem(fnm))
             me = MxlMelodyExtractor(fnm)
             if has_quintuplet(me.scr):
                 warn(f'Song [{stem(fnm)}] ignored for containing quintuplets')
@@ -1060,19 +1060,19 @@ if __name__ == '__main__':
         fnm = 'Song-ids'
         with open(os_join(sconfig('path-export'), f'{fnm}.json'), 'r') as f:
             songs = json.load(f)
-            ic(len(songs), songs[0])
+            mic(len(songs), songs[0])
     # check_encoding_export()
 
     def check_melody_tokenizer():
         from musicnlp.models import Loader
 
         mt = MelodyTokenizer()
-        ic(len(mt.vocab), mt.vocab[:20])
+        mic(len(mt.vocab), mt.vocab[:20])
         ml = Loader()
         ids = list(ml)
-        # ic(ids)
-        ic(mt.decode(ids[0]))
-        # ic(mt.decode(ids))
+        # mic(ids)
+        mic(mt.decode(ids[0]))
+        # mic(mt.decode(ids))
     # check_melody_tokenizer()
 
-    # ic(__name__, __file__)
+    # mic(__name__, __file__)

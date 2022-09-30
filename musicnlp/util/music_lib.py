@@ -148,9 +148,6 @@ def note2pitch(note: ExtNote):
     elif isinstance(note, Note):
         return note.pitch.frequency
     else:
-        if not isinstance(note, Rest):
-            from icecream import ic
-            ic(note, note.duration.fullName)
         assert isinstance(note, Rest)
         return 0  # `Rest` given pitch frequency of 0
 
@@ -833,17 +830,16 @@ if KEEP_OBSOLETE:
 
 if __name__ == '__main__':
     from music21 import graph
-    from icecream import ic
 
-    ic.lineWrapWidth = 130
+    mic.output_width = 256
 
     import musicnlp.util.music as music_util
 
-    # ic(tempo2bpm(DEF_TPO))
+    # mic(tempo2bpm(DEF_TPO))
 
     def check_note2hz():
         for n in np.arange(0, 12*10, 12):
-            ic(n, pretty_midi.note_number_to_hz(n))
+            mic(n, pretty_midi.note_number_to_hz(n))
     # check_note2hz()
 
     def check_piano_roll():
@@ -851,13 +847,13 @@ if __name__ == '__main__':
         pm = pretty_midi.PrettyMIDI(music_util.get_my_example_songs('Merry Go Round of Life'))
 
         # pr = pm.get_piano_roll(100)
-        # ic(pr.shape, pr.dtype, pr[75:80, 920:960])
-        # # ic(np.where(pr > 100))
+        # mic(pr.shape, pr.dtype, pr[75:80, 920:960])
+        # # mic(np.where(pr > 100))
         #
         # instr0 = pm.instruments[0]
         # instr1 = pm.instruments[1]
-        # ic(instr0.get_piano_roll()[76, 920:960])
-        # ic(instr1.get_piano_roll()[76, 920:960])
+        # mic(instr0.get_piano_roll()[76, 920:960])
+        # mic(instr1.get_piano_roll()[76, 920:960])
 
         pmu = PrettyMidiUtil()
         pmu.plot_piano_roll(pm, fqs=100)
@@ -884,21 +880,21 @@ if __name__ == '__main__':
 
     def test_piano_roll():
         fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
-        ic(fnm)
+        mic(fnm)
 
         scr = m21.converter.parse(fnm)
-        ic(scr.id)
+        mic(scr.id)
         # Looks like this doesn't work **sometimes**?
         # r = scr.plot('pianoroll', figureSize=(16, 9), doneAction=None)
-        # ic(r)
+        # mic(r)
 
         part = scr.parts[0]
         # plt_ = graph.plot.HorizontalBarPitchSpaceOffset(part.measures(25, 90), doneAction=None, figsize=(16, 9))
         # plt_.run()
-        # ic(len(plt_.data), plt_.data)
+        # mic(len(plt_.data), plt_.data)
         # plt.tight_layout()
-        # ic(plt.xlim(), plt.ylim())
-        # ic(plt.xticks(), plt.yticks())
+        # mic(plt.xlim(), plt.ylim())
+        # mic(plt.xticks(), plt.yticks())
         # # plt.xlim([0, 501])
         # plt.show()
 
@@ -907,27 +903,27 @@ if __name__ == '__main__':
         # m2u.plot_piano_roll(ms, s=10, e=30)
         # m2u.plot_piano_roll(scr, s=10, e=15)
         m2u.plot_piano_roll(part, s=20, e=40)
-        # ic(type(ms), vars(ms), dir(ms))
-        # ic(ms.measures(26, 30))
-        # ic(mes, nums)
+        # mic(type(ms), vars(ms), dir(ms))
+        # mic(ms.measures(26, 30))
+        # mic(mes, nums)
         # for mes in ms.measures(0, None):
-        #     ic(mes)
+        #     mic(mes)
     # test_piano_roll()
 
     def check_show_title():
         fnm = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
-        ic(fnm)
+        mic(fnm)
         scr = m21.converter.parse(fnm)
-        ic(scr)
-        # ic(len(dir(scr)))
-        # ic(vars_(scr, include_private=False))
+        mic(scr)
+        # mic(len(dir(scr)))
+        # mic(vars_(scr, include_private=False))
         meta = scr.metadata
-        # ic(meta, vars(meta), vars_(meta))
-        ic(meta.title, meta.composer)
+        # mic(meta, vars(meta), vars_(meta))
+        mic(meta.title, meta.composer)
         part_ch2 = scr.parts[1]
-        ic(part_ch2, part_ch2.partName, part_ch2.metadata)
-        # ic(vars(part_ch2), vars_(part_ch2))
-        ic(part_ch2.activeSite.metadata.title)
+        mic(part_ch2, part_ch2.partName, part_ch2.metadata)
+        # mic(vars(part_ch2), vars_(part_ch2))
+        mic(part_ch2.activeSite.metadata.title)
     # check_show_title()
 
     def check_tuplet_duration_creation():
@@ -940,17 +936,17 @@ if __name__ == '__main__':
             dur = m21.duration.Tuplet(numberNotesActual=19, numberNotesNormal=3)
             note = m21.note.Note()
             note.duration.appendTuplet(dur)
-            ic(note.duration.quarterLength)
+            mic(note.duration.quarterLength)
             lst_tup.append(note)
         lst_note.append(tuple(lst_tup))
         lst_note.append(Note(pitch=m21.pitch.Pitch(midi=80), duration=m21.duration.Duration(quarterLength=2)))
         lst_note = [note2note_cleaned(n, for_output=True) for n in lst_note]
-        ic(lst_note)
+        mic(lst_note)
         lst_note = list(flatten_notes(lst_note))
 
         bar = m21.stream.Measure()
         bar.append(lst_note)
         for n in bar[Note]:
-            ic(n, n.duration.quarterLength, n.offset)
+            mic(n, n.duration.quarterLength, n.offset)
         # bar.show()
     check_tuplet_duration_creation()

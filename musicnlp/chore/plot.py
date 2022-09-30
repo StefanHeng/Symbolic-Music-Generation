@@ -156,13 +156,12 @@ def md_n_dir2tb_path(model_name: str = 'reformer', directory_name: str = None) -
 
 
 if __name__ == '__main__':
-    from icecream import ic
     # path_ = '/Users/stefanh/Documents/UMich/Research/Music with NLP/Symbolic-Music-Generation/models'
     # directory_name = '2022-04-01_09-40-48'
 
     def check_plot_single():
         df = parse_tensorboard(md_n_dir2tb_path(directory_name='2022-04-03_00-20-53'))
-        ic(df)
+        mic(df)
         plot_tb(df, y='ntp_acc', save=False)
     # check_plot_single()
 
@@ -170,9 +169,9 @@ if __name__ == '__main__':
         # dir_nms = ['2022-04-03_00-20-53', '2022-04-03_11-01-04']
         dir_nms = ['2022-04-15_13-42-56', '2022-04-15_18-45-49', '2022-04-16_16-08-03']
         paths = [md_n_dir2tb_path(directory_name=d) for d in dir_nms]
-        # ic(paths)
+        # mic(paths)
         d_df = parse_tensorboards(paths)
-        # ic(d_df)
+        # mic(d_df)
 
         y = 'loss'
         # y = 'ntp_acc'
@@ -207,7 +206,7 @@ if __name__ == '__main__':
 
     def plot_train_for_presentation():
         d_df = parse_tensorboard(md_n_dir2tb_path(directory_name='2022-04-11_00-26-05'))
-        ic(d_df)
+        mic(d_df)
 
         od_fg = hex2rgb('#B1B8C5', normalize=True)
         od_bg = hex2rgb('#282C34', normalize=True)

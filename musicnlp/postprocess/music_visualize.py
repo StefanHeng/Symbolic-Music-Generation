@@ -548,7 +548,7 @@ if __name__ == '__main__':
         cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
     mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm, subset=subset_)
-    # ic(mv.df)
+    # mic(mv.df)
 
     def check_warn():
         df = mv.warn_info(as_counts=True)
