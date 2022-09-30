@@ -338,7 +338,7 @@ if __name__ == '__main__':
             save_each=True,
             with_tqdm=True,
             # parallel=False,
-            parallel=64,
+            parallel=8,
             parallel_mode=pl_md,
             # n_worker=16
         )
