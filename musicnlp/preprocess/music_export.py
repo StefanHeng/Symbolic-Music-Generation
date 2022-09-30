@@ -346,7 +346,7 @@ if __name__ == '__main__':
         if 'LMD' in dnm:
             # grp_nm = 'many'
             # grp_nm = 'many, lp'
-            grp_nm = '000000-010000'
+            grp_nm = '060000-070000'
             # grp_nm = '160000-170000'
             # grp_nm = '170000-178561'
 
@@ -368,10 +368,10 @@ if __name__ == '__main__':
             if 'many' in grp_nm:
                 paths = sum([get_lmd_paths(d) for d in [
                     # '000000-010000',
-                    '010000-020000',
-                    '020000-030000',
-                    '030000-040000',
-                    '040000-050000',
+                    # '010000-020000',
+                    # '020000-030000',
+                    # '030000-040000',
+                    # '040000-050000',
                     '050000-060000',
                     # '060000-070000',
                     # '070000-080000',
@@ -591,7 +591,7 @@ if __name__ == '__main__':
             path_out = os_join(path_out, fnm)
             assert not os.path.exists(path_out)
             shutil.move(path, path_out)
-    chore_move_proper_folder()
+    # chore_move_proper_folder()
 
     def fix_wrong_moved_fnm():
         import shutil
