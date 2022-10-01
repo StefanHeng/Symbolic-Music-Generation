@@ -174,16 +174,17 @@ def note2note_cleaned(
     :return: A cleaned version of Note or tuplets with only duration, offset and pitch set
         Notes in tuplets are set with-equal duration given by (`q_len` if `q_len` given, else tuplet total length)
     """
-    q_len_given = True
+    # q_len_given = True
     if q_len is None:
         q_len = note2dur(note)
-        q_len_given = False
+        # q_len_given = False
     if isinstance(note, tuple):
         offset = offset or get_offset(note)
-        if not q_len_given and notes_overlapping(note):  # for `LMD::107205`
-            # try to fixup w.r.t how the caller expects the duration of the tuplet, which is by start and ending place
-            assert offset == get_offset(note)
-            q_len = get_end_qlen(note) - offset
+        # TODO: not needed, see `notes_overlapping` check in `MusicExtractor::expand_bar`
+        # if not q_len_given and notes_overlapping(note):  # for `LMD::107205`
+        #     # try to fixup w.r.t how the caller expects the duration of the tuplet, which is by start and ending place
+        #     assert offset == get_offset(note)
+        #     q_len = get_end_qlen(note) - offset
         q_len = quarter_len2fraction(q_len)
         dur_ea = q_len/len(note)
         assert not for_output
