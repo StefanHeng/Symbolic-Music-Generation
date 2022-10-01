@@ -110,8 +110,8 @@ def time_sig2n_slots(time_sig: m21.meter.TimeSignature, precision: int) -> Tuple
 def is_int(num: Union[float, Fraction], check_close: Union[bool, float] = True) -> bool:
     if isinstance(num, float):
         if check_close:  # Numeric issue summing Fractions with floats
-            eps = check_close if isinstance(check_close, float) else 1e-6
-            return math.isclose(num, round(num), abs_tol=eps)
+            eps_ = check_close if isinstance(check_close, float) else eps
+            return math.isclose(num, round(num), abs_tol=eps_)
         else:
             return num.is_integer()
     else:
@@ -174,10 +174,16 @@ def note2note_cleaned(
     :return: A cleaned version of Note or tuplets with only duration, offset and pitch set
         Notes in tuplets are set with-equal duration given by (`q_len` if `q_len` given, else tuplet total length)
     """
+    q_len_given = True
     if q_len is None:
         q_len = note2dur(note)
+        q_len_given = False
     if isinstance(note, tuple):
-        offset = offset if offset is not None else note[0].offset
+        offset = offset or get_offset(note)
+        if not q_len_given and notes_overlapping(note):  # for `LMD::107205`
+            # try to fixup w.r.t how the caller expects the duration of the tuplet, which is by start and ending place
+            assert offset == get_offset(note)
+            q_len = get_end_qlen(note) - offset
         q_len = quarter_len2fraction(q_len)
         dur_ea = q_len/len(note)
         assert not for_output
@@ -415,12 +421,16 @@ def get_end_qlen(note: ExtNote):
         return note.offset + note.duration.quarterLength
 
 
-
-def debug_pprint_lst_notes(notes: List[ExtNote]):
+def debug_pprint_lst_notes(notes: List[ExtNote], return_meta=False):
+    ret = []
     for n in notes:
         strt, end = get_offset(n), get_end_qlen(n)
         p = n.pitch.nameWithOctave if isinstance(n, Note) else None
-        mic(n, strt, end, p)
+        if return_meta:
+            ret.append(dict(note=n, start=strt, end=end, pitch=p))
+        else:
+            mic(n, strt, end, p)
+    return ret
 
 
 class PrecisionChecker:
@@ -545,9 +555,8 @@ def notes_overlapping(notes: Iterable[ExtNote], flatten: bool = True) -> bool:
         while note is not None:
             # Current note should begin, after the previous one ends
             # Since numeric representation of one-third durations, aka tuplets
-            end_curr = get_end_qlen(note)
-            if (end-eps) <= end_curr:
-                end = end_curr
+            if (end-eps) <= get_offset(note):
+                end = get_end_qlen(note)
                 note = next(notes, None)
             else:
                 return True
@@ -566,7 +575,6 @@ def non_tuplet_notes_overlapping(notes: Iterable[ExtNote]) -> bool:
     # Convert tuplet to single note by duration, pitch doesn't matter, prep for overlap check, see `_tup2note`
     notes_cleaned = [_tup2note(n) if isinstance(n, tuple) else n for n in notes]
     return notes_overlapping(notes_cleaned)
-
 
 
 def is_notes_pos_duration(notes: Iterable[ExtNote]) -> bool:
