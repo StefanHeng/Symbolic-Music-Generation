@@ -377,10 +377,9 @@ if __name__ == '__main__':
             ))
             my_train_args['save_epochs'] = 16
         else:
-            on_gl = 'arc-ts' in get_hostname()
             train_args.update(dict(
                 fp16=torch.cuda.is_available(),
-                per_device_train_batch_size=128 if on_gl else 64,
+                per_device_train_batch_size=128 if on_great_lakes() else 64,
             ))
 
         n = 64

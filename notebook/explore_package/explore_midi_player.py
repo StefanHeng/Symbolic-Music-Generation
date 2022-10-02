@@ -8,7 +8,7 @@ Rerun this script for a new midi
 import pygame
 from random import randint
 
-from musicnlp.util.data_path import *
+from musicnlp.util.pkg_paths import *
 
 
 if __name__ == '__main__':

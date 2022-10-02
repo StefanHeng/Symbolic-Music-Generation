@@ -18,7 +18,6 @@ import music21 as m21
 
 from stefutil import *
 from musicnlp.util import *
-from musicnlp.util.data_path import BASE_PATH, DSET_DIR
 from musicnlp.util.music_lib import *
 from musicnlp.vocab import COMMON_TEMPOS, COMMON_TIME_SIGS, is_common_tempo, is_common_time_sig, MusicVocabulary
 from musicnlp.preprocess.warning_logger import WarnLog
@@ -956,7 +955,7 @@ class MusicExtractor:
             dir_nm = sconfig(f'{DSET_DIR}.mxl-eg.dir_nm_extracted')
             fmt = 'mxl'  # sometimes file-writes via `mxl` couldn't be read by MuseScore
             mode_str = 'melody only' if self.mode == 'melody' else 'full'
-            path = os_join(BASE_PATH, DSET_DIR, dir_nm, f'{title}, {mode_str}.{fmt}')
+            path = os_join(u.dset_path, dir_nm, f'{title}, {mode_str}.{fmt}')
             # disable all `music21` modifications, I should have handled all the edge cases
             scr_out.write(fmt=fmt, fp=path, makeNotation=False)
         else:

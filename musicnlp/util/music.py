@@ -12,11 +12,11 @@ from tqdm.auto import tqdm
 
 from stefutil import *
 from musicnlp.util.util import *
-from musicnlp.util.data_path import BASE_PATH, DSET_DIR
+from musicnlp.util.pkg_paths import BASE_PATH, DSET_DIR
 
 
 def get_processed_path():
-    return os_join(u.dset_path, sconfig('datasets.my.dir_nm'))
+    return os_join(get_output_base(), u.dset_dir, sconfig('datasets.my.dir_nm'))
 
 
 def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False, postfix: str = None):
@@ -336,6 +336,10 @@ def get_lmd_conversion_meta():
 if __name__ == '__main__':
     mic.output_width = 512
 
+    def check_processed_path():
+        mic(get_processed_path())
+    check_processed_path()
+
     def check_fl_nms():
         # dnm = 'POP909'
         dnm = 'MAESTRO'
@@ -450,7 +454,7 @@ if __name__ == '__main__':
     def get_convert_df():
         df = get_lmd_conversion_meta()
         mic(df)
-    get_convert_df()
+    # get_convert_df()
 
     # def chore_convert_xml2mxl():
     #     """

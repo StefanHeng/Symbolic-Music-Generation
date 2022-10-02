@@ -322,23 +322,23 @@ if __name__ == '__main__':
     # check_export_json_error()
 
     def export2json():
-        # dnm = 'POP909'
+        dnm = 'POP909'
         # dnm = 'MAESTRO'
-        dnm = 'LMD, MS'
+        # dnm = 'LMD, MS'
         # dnm = 'LMD, LP'
 
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
         # pl_md = 'thread-in-process'  # ~20% slower
 
-        # mode = 'melody'
-        mode = 'full'
+        mode = 'melody'
+        # mode = 'full'
         args = dict(
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1),
             save_each=True,
             with_tqdm=True,
             # parallel=False,
-            parallel=8,
+            parallel=16,
             parallel_mode=pl_md,
             # n_worker=16
         )
@@ -393,8 +393,8 @@ if __name__ == '__main__':
         else:
             args['filenames'] = dnm
 
-            # resume = False
-            resume = True
+            resume = False
+            # resume = True
             if resume:
                 if dnm == 'POP909':
                     dir_nm_ = f'22-09-29_POP909_{{md={mode[0]}}}'

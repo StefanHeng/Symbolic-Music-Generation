@@ -8,10 +8,14 @@ from fractions import Fraction
 import colorama
 
 from stefutil import *
-from musicnlp.util.data_path import BASE_PATH, PROJ_DIR, PKG_NM, DSET_DIR, MODEL_DIR
+from musicnlp.util.pkg_paths import BASE_PATH, PROJ_DIR, PKG_NM, DSET_DIR, MODEL_DIR
 
 
-__all__ = ['sconfig', 'u', 'save_fig', 'serialize_frac', 'read_pickle']
+__all__ = [
+    'sconfig', 'u', 'save_fig',
+    'on_great_lakes', 'get_output_base',
+    'serialize_frac', 'read_pickle'
+]
 
 
 sconfig = StefConfig(config_file=os_join(BASE_PATH, PROJ_DIR, PKG_NM, 'util', 'config.json')).__call__
@@ -24,6 +28,21 @@ save_fig = u.save_fig
 
 for d in sconfig('check-arg'):
     ca.cache_mismatch(**d)
+
+
+def on_great_lakes():
+    return 'arc-ts' in get_hostname()
+
+
+def get_output_base(gl_account_name: str = 'mihalcea'):
+    # For remote machines, save heavy-duty data somewhere else to save `/home` disk space
+    if on_great_lakes():  # Great Lakes, see https://arc.umich.edu/greatlakes/user-guide/
+        # `0` picked arbitrarily among [`0`, `1`]
+        pa = os_join('/scratch', f'{gl_account_name}_root', f'{gl_account_name}0', 'stefanhg', stem(BASE_PATH))
+        os.makedirs(pa, exist_ok=True)
+        return pa
+    else:
+        return BASE_PATH
 
 
 def serialize_frac(num: Union[Fraction, float]) -> Union[str, float]:
