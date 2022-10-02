@@ -17,6 +17,7 @@ requirements, 04.08.22.txt
 **/*.pkl
 cache/
 tokenizers/
+auth/
 
 
 # Byte-compiled / optimized / DLL files
