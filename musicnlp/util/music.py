@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 
 from stefutil import *
 from musicnlp.util.util import *
-from musicnlp.util.pkg_paths import BASE_PATH, DSET_DIR
+from musicnlp.util.project_paths import BASE_PATH, DSET_DIR
 
 
 def get_processed_path():

@@ -7,7 +7,7 @@ from typing import Dict, List, Union
 import pandas as pd
 
 from stefutil import *
-from musicnlp.util.pkg_paths import BASE_PATH, DSET_DIR
+from musicnlp.util.project_paths import BASE_PATH, DSET_DIR
 
 
 config_dict: dict = {
@@ -183,7 +183,7 @@ config_dict['check-arg'].append(dict(
 
 if __name__ == '__main__':
     import json
-    from pkg_paths import PROJ_DIR, PKG_NM
+    from project_paths import PROJ_DIR, PKG_NM
 
     mic.output_width = 512
 

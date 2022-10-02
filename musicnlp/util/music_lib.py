@@ -23,7 +23,7 @@ import seaborn as sns
 
 from stefutil import *
 from musicnlp.util.util import *
-from musicnlp.util.pkg_paths import PKG_NM
+from musicnlp.util.project_paths import PKG_NM
 
 
 KEEP_OBSOLETE = False

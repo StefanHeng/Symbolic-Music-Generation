@@ -17,7 +17,7 @@ import music21 as m21
 from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.music as music_util
-from musicnlp.util.pkg_paths import BASE_PATH, DSET_DIR
+from musicnlp.util.project_paths import BASE_PATH, DSET_DIR
 from musicnlp.util.music_lib import *
 
 

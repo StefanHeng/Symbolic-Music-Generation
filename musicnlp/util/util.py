@@ -8,7 +8,7 @@ from fractions import Fraction
 import colorama
 
 from stefutil import *
-from musicnlp.util.pkg_paths import BASE_PATH, PROJ_DIR, PKG_NM, DSET_DIR, MODEL_DIR
+from musicnlp.util.project_paths import BASE_PATH, PROJ_DIR, PKG_NM, DSET_DIR, MODEL_DIR
 
 
 __all__ = [
