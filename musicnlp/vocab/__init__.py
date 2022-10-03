@@ -4,4 +4,3 @@ from .music_vocab import (
     VocabType, MusicVocabulary
 )
 from .music_tokenizer import MusicTokenizer
-from .word_piece_tokenizer import WordPieceMusicTokenizer, load_trained

@@ -17,12 +17,10 @@ import evaluate
 from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
-from musicnlp.vocab import (
-    MusicTokenizer, WordPieceMusicTokenizer, key_ordinal2str, load_trained as load_word_piece_tokenizer
-)
+from musicnlp.vocab import MusicTokenizer, key_ordinal2str
 from musicnlp.preprocess import DATASET_NAME2MODE2FILENAME, get_dataset, AugmentedDataset
 from musicnlp.models import MyReformerConfig, MyReformerModelWithLMHead, MyTransfoXLConfig, MyTransfoXLLMHeadModel
-from musicnlp.trainer import metrics
+from musicnlp.trainer import WordPieceMusicTokenizer, load_trained_tokenizer as load_wordpiece_tokenizer, metrics
 
 
 def get_model_n_tokenizer(
@@ -30,7 +28,7 @@ def get_model_n_tokenizer(
 ) -> Tuple[MusicTokenizer, torch.nn.Module, OrderedDict]:
     ca.check_mismatch('Model Name', model_name, ['transf-xl', 'reformer'])
     if wordpiece_tokenize:
-        tokenizer: WordPieceMusicTokenizer = load_word_piece_tokenizer()
+        tokenizer: WordPieceMusicTokenizer = load_wordpiece_tokenizer()
         assert tokenizer.precision == prec
     else:
         tokenizer: MusicTokenizer = MusicTokenizer(precision=prec)

@@ -16,17 +16,16 @@ from musicnlp.preprocess.music_converter import MusicConverter
 DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {
     # `dataset name` => `mode` => `filename`
     'LMD': {
-        'melody': 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20',
-        'full': 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=full, prec=5, th=1}, 2022-09-24_13-26-34'
+        'melody': '',
+        'full': '22-10-03_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
     },
     'MAESTRO': {
-        'melody': 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, '
-                  '2022-05-20_14-52-28',
-        'full': 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, 2022-08-02_20-12-23',
+        'melody': '22-10-03_Extracted-MAESTRO_{n=1276}_{md=m, prec=5, th=1}',
+        'full': '22-10-03_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}',
     },
     'POP909': {
-        'melody': 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-05-20_14-52-04',
-        'full': 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, 2022-08-02_20-11-17'
+        'melody': '22-10-03_Extracted-POP909_{n=909}_{md=m, prec=5, th=1}',
+        'full': '22-10-03_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
     }
 }
 

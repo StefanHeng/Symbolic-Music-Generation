@@ -21,9 +21,10 @@ from musicnlp.util import *
 from musicnlp.util.music_lib import Dur
 from musicnlp.vocab import (
     COMMON_TEMPOS, COMMON_TIME_SIGS, get_common_time_sig_duration_bound,
-    MusicVocabulary, MusicTokenizer, load_trained as load_word_piece_tokenizer, key_str2enum
+    MusicVocabulary, MusicTokenizer, key_str2enum
 )
 from musicnlp.preprocess import WarnLog, DATASET_NAME2MODE2FILENAME
+from musicnlp.trainer import load_trained_tokenizer as load_wordpiece_tokenizer
 from musicnlp.postprocess.music_stats import MusicStats
 
 
@@ -132,7 +133,7 @@ class MusicVisualize:
 
     def _set_meta(self):
         self.tokenizer = MusicTokenizer(precision=self.prec)
-        self.wp_tokenizer = load_word_piece_tokenizer()
+        self.wp_tokenizer = load_wordpiece_tokenizer()
         assert self.wp_tokenizer.precision == self.prec
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec)
@@ -534,16 +535,16 @@ if __name__ == '__main__':
     # md = 'melody'
     md = 'full'
     # dnms = ['POP909']
-    # dnms = ['POP909', 'MAESTRO']
-    dnms = ['POP909', 'MAESTRO', 'LMD']
+    dnms = ['POP909', 'MAESTRO']
+    # dnms = ['POP909', 'MAESTRO', 'LMD']
     fnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
     fnms = [os_join(music_util.get_processed_path(), f'{fnm}.json') for fnm in fnms]
     if dnms == ['POP909']:
-        cnm = f'MusViz cache, {{md={md}}}, pop, 09.29.22'
+        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}_dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
-        cnm = f'MusViz cache, {{md={md}}}, pop&mst, 09.29.22'
+        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}_dnm=pop&mst}}'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = f'MusViz cache, {{md={md}}}, all 0.1, 09.29.22'
+        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}}}_dnm=all-0.1}}'
     else:
         cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
@@ -570,8 +571,8 @@ if __name__ == '__main__':
 
     def plots():
         args = dict(stat='percent', upper_percentile=97.7)  # ~2std
-        # mv.token_length_dist(**args)
-        mv.token_length_dist(wordpiece_tokenize=True, **args)
+        mv.token_length_dist(**args)
+        # mv.token_length_dist(wordpiece_tokenize=True, **args)
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
