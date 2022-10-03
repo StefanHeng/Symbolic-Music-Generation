@@ -23,7 +23,7 @@ from musicnlp.vocab import (
     COMMON_TEMPOS, COMMON_TIME_SIGS, get_common_time_sig_duration_bound,
     MusicVocabulary, MusicTokenizer, key_str2enum
 )
-from musicnlp.preprocess import WarnLog, DATASET_NAME2MODE2FILENAME
+from musicnlp.preprocess import WarnLog
 from musicnlp.trainer import load_trained_tokenizer as load_wordpiece_tokenizer
 from musicnlp.postprocess.music_stats import MusicStats
 
@@ -531,6 +531,7 @@ class MusicVisualize:
 
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
+    from musicnlp.preprocess import DATASET_NAME2MODE2FILENAME
 
     # md = 'melody'
     md = 'full'
@@ -540,11 +541,11 @@ if __name__ == '__main__':
     fnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
     fnms = [os_join(music_util.get_processed_path(), f'{fnm}.json') for fnm in fnms]
     if dnms == ['POP909']:
-        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}_dnm=pop}}'
+        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
-        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}_dnm=pop&mst}}'
+        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}}}_dnm=all-0.1}}'
+        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
     else:
         cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
@@ -571,7 +572,7 @@ if __name__ == '__main__':
 
     def plots():
         args = dict(stat='percent', upper_percentile=97.7)  # ~2std
-        mv.token_length_dist(**args)
+        # mv.token_length_dist(**args)
         # mv.token_length_dist(wordpiece_tokenize=True, **args)
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
@@ -580,7 +581,7 @@ if __name__ == '__main__':
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
-        # mv.note_duration_dist(stat='percent')
+        mv.note_duration_dist(stat='percent')
         # mv.warning_type_dist()
     plots()
 

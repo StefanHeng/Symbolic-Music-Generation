@@ -136,7 +136,7 @@ class TrainArgs:
     @staticmethod
     def _get_default(model_name: str):
         return dict(
-            output_dir=os_join(u.model_path, f'{now(for_path=True)}_{model_name}'),
+            output_dir=os_join(get_base_path(), u.model_dir, f'{now(for_path=True)}_{model_name}'),
             do_train=True,
             do_eval=True,
             evaluation_strategy='epoch',
@@ -355,7 +355,7 @@ if __name__ == '__main__':
         # channel_mixup = False
         channel_mixup = True
 
-        n_ep = 8
+        n_ep = 256
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         if channel_mixup:
             train_args['dataloader_num_workers'] = 4
@@ -379,9 +379,13 @@ if __name__ == '__main__':
                 fp16=torch.cuda.is_available(),
                 per_device_train_batch_size=128 if on_great_lakes() else 64,
             ))
+            my_train_args.update(dict(
+                logging_strategy='no',
+                save_epochs=8
+            ))
 
-        n = 64
-        # n = None
+        # n = 64
+        n = None
 
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
