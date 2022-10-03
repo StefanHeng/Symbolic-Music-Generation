@@ -16,7 +16,7 @@ from musicnlp.util.project_paths import BASE_PATH, DSET_DIR
 
 
 def get_processed_path():
-    return os_join(get_output_base(), u.dset_dir, sconfig('datasets.my.dir_nm'))
+    return os_join(get_base_path(), u.dset_dir, sconfig('datasets.my.dir_nm'))
 
 
 def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = False, postfix: str = None):
@@ -237,7 +237,7 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
     return [d[min(d)] for d in d_song2fnms.values()]
 
 
-def get_converted_song_paths(dataset_name: str, fmt='mxl', backend: str = 'MS') -> List[str]:
+def get_converted_song_paths(dataset_name: str = None, fmt='mxl', backend: str = 'MS') -> List[str]:
     """
     :param dataset_name: dataset name
     :param fmt: song file format, one of ['mid', 'mxl']
@@ -254,16 +254,18 @@ def get_converted_song_paths(dataset_name: str, fmt='mxl', backend: str = 'MS') 
     ca(dataset_name=dataset_name, fmt=fmt)
     ca.check_mismatch('Conversion Backend', backend, ['MS', 'LP', 'all'])
 
+    dset_path = os_join(get_base_path(), u.dset_dir)
+
     if dataset_name == 'LMD-cleaned-subset':
         fnms = get_lmd_cleaned_subset_fnms()
         dir_nm = 'LMD-cleaned_valid'
 
         if fmt == 'mid':
             def map_fnm(fnm: str) -> str:
-                return os_join(u.dset_path, dir_nm, fnm)
+                return os_join(dset_path, dir_nm, fnm)
         else:  # 'mxl'
             def map_fnm(fnm: str) -> str:
-                return os_join(u.dset_path, dir_nm, f'{stem(fnm)}.{fmt}')
+                return os_join(dset_path, dir_nm, f'{stem(fnm)}.{fmt}')
         return [map_fnm(fnm) for fnm in fnms]
     else:
         d_dset = sconfig(f'datasets.{dataset_name}.converted')
@@ -274,7 +276,7 @@ def get_converted_song_paths(dataset_name: str, fmt='mxl', backend: str = 'MS') 
             return sorted(fls_ms + fls_lp, key=lambda f: stem(f))
         else:
             dir_nm = f'{dir_nm}, {backend}'
-            path = os_join(u.dset_path, dir_nm, d_dset[f'song_fmt_{fmt}'])
+            path = os_join(dset_path, dir_nm, d_dset[f'song_fmt_{fmt}'])
             return sorted(glob.iglob(path, recursive=True))
 
 

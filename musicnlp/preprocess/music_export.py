@@ -322,38 +322,39 @@ if __name__ == '__main__':
     # check_export_json_error()
 
     def export2json():
-        dnm = 'POP909'
+        # dnm = 'POP909'
         # dnm = 'MAESTRO'
         # dnm = 'LMD, MS'
-        # dnm = 'LMD, LP'
+        dnm = 'LMD, LP'
 
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
         # pl_md = 'thread-in-process'  # ~20% slower
 
-        mode = 'melody'
-        # mode = 'full'
+        # mode = 'melody'
+        mode = 'full'
         args = dict(
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1),
             save_each=True,
             with_tqdm=True,
             # parallel=False,
-            parallel=16,
+            parallel=4,
             parallel_mode=pl_md,
             # n_worker=16
         )
+        dset_path = os_join(get_base_path(), u.dset_dir)
 
         if 'LMD' in dnm:
-            grp_nm = 'many'
-            # grp_nm = 'many, lp'
-            # grp_nm = '070000-080000'
+            # grp_nm = 'many'
+            grp_nm = 'many, lp'
+            # grp_nm = '090000-100000'
             # grp_nm = '160000-170000'
             # grp_nm = '170000-178561'
 
             # resume = False
             resume = True
             if resume:
-                dir_nm_ = f'22-09-29_LMD_{{md={mode[0]}}}'
+                dir_nm_ = f'22-10-02_LMD_{{md={mode[0]}}}'
             else:
                 date = now(fmt='short-date')
                 dir_nm_ = f'{date}_LMD_{{md={mode[0]}}}'
@@ -361,30 +362,30 @@ if __name__ == '__main__':
             # dnm = 'LMD-cleaned-subset'
 
             def get_lmd_paths(dir_nm: str) -> List[str]:
-                pattern = os_join(u.dset_path, 'converted', dnm, dir_nm, '*.mxl')
+                pattern = os_join(dset_path, 'converted', dnm, dir_nm, '*.mxl')
                 mic(pattern)
                 return sorted(glob.iglob(pattern, recursive=True))
 
             if 'many' in grp_nm:
                 paths = sum([get_lmd_paths(d) for d in [
-                    # '000000-010000',
-                    # '010000-020000',
-                    # '020000-030000',
-                    # '030000-040000',
-                    # '040000-050000',
-                    # '050000-060000',
-                    # '060000-070000',
+                    '000000-010000',
+                    '010000-020000',
+                    '020000-030000',
+                    '030000-040000',
+                    '040000-050000',
+                    '050000-060000',
+                    '060000-070000',
                     '070000-080000',
                     '080000-090000',
                     '090000-100000',
                     '100000-110000',
                     '110000-120000',
                     '120000-130000',
-                    # '130000-140000',
-                    # '140000-150000',
-                    # '150000-160000',
-                    # '160000-170000',
-                    # '170000-178561'
+                    '130000-140000',
+                    '140000-150000',
+                    '150000-160000',
+                    '160000-170000',
+                    '170000-178561'
                     # grp_nm
                 ]], start=[])
             else:
@@ -407,7 +408,24 @@ if __name__ == '__main__':
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    export2json()
+    # export2json()
+
+    def _folder2count(path: str) -> int:
+        _, _, fls = next(os.walk(path))
+        return len(fls)
+
+    def _folder2file_counts(root_path: str) -> Dict[str, int]:
+        return {d: _folder2count(os_join(root_path, d)) for d in sorted(os.listdir(root_path))}
+
+    def check_extract_progress():
+        # check number of files that finished extraction
+        path = os_join(music_util.get_processed_path(), 'intermediate')
+        counts = dict()
+        for fd_nm in sorted(os.listdir(path)):
+            pa = os_join(path, fd_nm)
+            counts[fd_nm] = _folder2file_counts(pa) if 'LMD' in fd_nm else _folder2count(pa)
+        print(log_dict_pg(dict(counts=counts)))
+    check_extract_progress()
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
         fl_pattern = '*.json'

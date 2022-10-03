@@ -22,12 +22,15 @@ CONVERTED_FILES2URL = {
     # (`conversion backend`, `dataset name`) => Google Drive link url
     # a folder containing converted files from both MuseScore & Logic Pro
     # this one from UMich GDrive, some problem w/ gdown and large files
-    # ('All', 'LMD'): 'https://drive.google.com/uc?id=1CyfKiVX83YdS4p7_4npk2xbDVJ68L0tg',
-    ('MuseScore', 'LMD'): [
-        'https://drive.google.com/uc?id=1-ISc2u6Sxvs3LES4byx0KcNGGVYDZnxV',
-        'https://drive.google.com/uc?id=1LdXavGJnCeoKn2ZnkbbpYTbdwpNTjrLe',
-        'https://drive.google.com/uc?id=11ci6rw6NqdoNEDgKIcTN_XZxRgG-Ie3K'
-    ],
+    ('All', 'LMD'): 'https://drive.google.com/uc?id=1CyfKiVX83YdS4p7_4npk2xbDVJ68L0tg',
+    ('MuseScore', 'LMD'): {  # as splits
+        1: 'https://drive.google.com/uc?id=1-ISc2u6Sxvs3LES4byx0KcNGGVYDZnxV',
+        # 2: 'https://drive.google.com/uc?id=1LdXavGJnCeoKn2ZnkbbpYTbdwpNTjrLe',
+        # from my ins account, since Gdown limits quota
+        2: 'https://drive.google.com/uc?id=1-QuDFxv9chnSJPNVwOG--p2ZpGx403qu',
+        # 3: 'https://drive.google.com/uc?id=11ci6rw6NqdoNEDgKIcTN_XZxRgG-Ie3K'
+        3: 'https://drive.google.com/uc?id=1gX7nrT--MjLsdHuUQ58O8RHTgCFD9Gk7'  # from my ins account, for quota
+    },
     ('Logic Pro', 'LMD'): 'https://drive.google.com/uc?id=1ZAxpnu9md7FY-5Cq9I8deAXWbOY0MZBs',
     ('MuseScore', 'MAESTRO'): 'https://drive.google.com/uc?id=1fzmfS65BN84O_bF1v8dN2uFlrrpOzYaZ',
     ('MuseScore', 'POP909'): 'https://drive.google.com/uc?id=1XobTD6x88PIEKfrZ6IAzXjMaZmBZ0XqR'
@@ -58,7 +61,7 @@ def download_n_unzip(url: str = None, download_output_path: str = None, extract_
 
 
 if __name__ == '__main__':
-    conv_base = os_join(get_output_base(), u.dset_dir, 'converted-debug')
+    conv_base = os_join(get_base_path(), u.dset_dir, 'converted')
     hf_base = os_join(music_util.get_processed_path(), 'hf')
     mic(conv_base, hf_base)
     os.makedirs(conv_base, exist_ok=True)
@@ -83,10 +86,12 @@ if __name__ == '__main__':
     def down_converted_single(back_end: str = None, dataset_name: str = None):
         fnm = f'Converted_{{be={back_end}, dnm={dataset_name}}}'
         url = CONVERTED_FILES2URL[(back_end, dataset_name)]
-        if isinstance(url, list):
+        if isinstance(url, dict):
             assert back_end == 'MuseScore' and dataset_name == 'LMD'
             dnm = 'LMD, MS'
-            for i, url_ in enumerate(url, start=1):
+            for i, url_ in url.items():
+                if i <= 2:
+                    continue
                 out_path = os_join(conv_base, f'{fnm}_split {i}.zip')
                 ext_path = os_join(conv_base, dnm)
                 download_n_unzip(url=url_, download_output_path=out_path, extract_path=ext_path)
@@ -95,7 +100,8 @@ if __name__ == '__main__':
             download_n_unzip(url, out_path)
     # down_converted_single(back_end='MuseScore', dataset_name='POP909')
     # down_converted_single(back_end='MuseScore', dataset_name='MAESTRO')
-    down_converted_single(back_end='MuseScore', dataset_name='LMD')
+    # down_converted_single(back_end='All', dataset_name='LMD')
+    # down_converted_single(back_end='MuseScore', dataset_name='LMD')
     down_converted_single(back_end='Logic Pro', dataset_name='LMD')
 
     def move_converted_lmd():

@@ -13,7 +13,7 @@ from musicnlp.util.project_paths import BASE_PATH, PROJ_DIR, PKG_NM, DSET_DIR, M
 
 __all__ = [
     'sconfig', 'u', 'save_fig',
-    'on_great_lakes', 'get_output_base',
+    'on_great_lakes', 'get_base_path',
     'serialize_frac', 'read_pickle'
 ]
 
@@ -34,7 +34,7 @@ def on_great_lakes():
     return 'arc-ts' in get_hostname()
 
 
-def get_output_base(gl_account_name: str = 'mihalcea'):
+def get_base_path(gl_account_name: str = 'mihalcea'):
     # For remote machines, save heavy-duty data somewhere else to save `/home` disk space
     if on_great_lakes():  # Great Lakes, see https://arc.umich.edu/greatlakes/user-guide/
         # `0` picked arbitrarily among [`0`, `1`]
