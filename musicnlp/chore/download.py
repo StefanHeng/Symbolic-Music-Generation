@@ -31,7 +31,7 @@ CONVERTED_FILES2URL = {
         # 3: 'https://drive.google.com/uc?id=11ci6rw6NqdoNEDgKIcTN_XZxRgG-Ie3K'
         3: 'https://drive.google.com/uc?id=1gX7nrT--MjLsdHuUQ58O8RHTgCFD9Gk7'  # from my ins account, for quota
     },
-    ('Logic Pro', 'LMD'): 'https://drive.google.com/uc?id=1ZAxpnu9md7FY-5Cq9I8deAXWbOY0MZBs',
+    ('Logic Pro', 'LMD'): 'https://drive.google.com/uc?id=1arBNznnWo3EFw4e0NdHi4Hih37Qex7Hl',
     ('MuseScore', 'MAESTRO'): 'https://drive.google.com/uc?id=1fzmfS65BN84O_bF1v8dN2uFlrrpOzYaZ',
     ('MuseScore', 'POP909'): 'https://drive.google.com/uc?id=1XobTD6x88PIEKfrZ6IAzXjMaZmBZ0XqR'
 }

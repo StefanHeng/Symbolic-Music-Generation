@@ -642,6 +642,7 @@ def make_score(
                 mic(notes)
                 debug_pprint_lst_notes(notes)
                 print(e)
+                raise ValueError(e)
             if is_base and i == 0:
                 bar.insert(m21.clef.BassClef())
             lst_bars.append(bar)

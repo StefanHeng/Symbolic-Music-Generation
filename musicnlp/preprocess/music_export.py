@@ -228,7 +228,8 @@ class MusicExport:
         d_out = dict(encoding_type=typ, extractor_meta=meta, music=songs_out)
 
         meta = MusicExtractor.meta2fnm_meta(meta)
-        out_path = f'{output_filename}, n={len(filenames)}, meta={meta}, {now(for_path=True)}'
+        date = now(fmt='short-date')
+        out_path = f'{date}_{output_filename}_{{n={len(filenames)}}}_{meta}'
         out_path = os_join(path_out, f'{out_path}.json')
         logger.info(f'Writing combined songs to {logi(out_path)}... ')
         with open(out_path, 'w') as f:
@@ -324,8 +325,8 @@ if __name__ == '__main__':
     def export2json():
         # dnm = 'POP909'
         # dnm = 'MAESTRO'
-        # dnm = 'LMD, MS'
-        dnm = 'LMD, LP'
+        dnm = 'LMD, MS'
+        # dnm = 'LMD, LP'
 
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
@@ -346,8 +347,8 @@ if __name__ == '__main__':
 
         if 'LMD' in dnm:
             # grp_nm = 'many'
-            grp_nm = 'many, lp'
-            # grp_nm = '090000-100000'
+            # grp_nm = 'many, lp'
+            grp_nm = '000000-010000'
             # grp_nm = '160000-170000'
             # grp_nm = '170000-178561'
 
@@ -425,7 +426,7 @@ if __name__ == '__main__':
             pa = os_join(path, fd_nm)
             counts[fd_nm] = _folder2file_counts(pa) if 'LMD' in fd_nm else _folder2count(pa)
         print(log_dict_pg(dict(counts=counts)))
-    check_extract_progress()
+    # check_extract_progress()
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
         fl_pattern = '*.json'
@@ -434,22 +435,20 @@ if __name__ == '__main__':
         fnms = sorted(glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, fl_pattern)))
         mic(len(fnms))
         # fnms = fnms[:1024]  # TODO: debugging
-        out_fnm = f'{PKG_NM} music extraction, dnm={dataset_name}'
-        songs = me.combine_saved_songs(filenames=fnms, output_filename=out_fnm)
+        songs = me.combine_saved_songs(filenames=fnms, output_filename=f'Extracted-{dataset_name}')
         mic(songs.keys(), len(songs['music']))
 
     def combine():
+        # md = 'melody'
         md = 'full'
         if md == 'melody':
-            # combine_single_json_songs(singe_song_dir='2022-05-19_17-07-40_POP909', dataset_name='POP909')
-            # combine_single_json_songs(singe_song_dir='2022-05-19_17-20-29_MAESTRO', dataset_name='MAESTRO')
-            combine_single_json_songs(singe_song_dir='2022-05-20_09-39-16_LMD', dataset_name='LMD')
+            combine_single_json_songs(singe_song_dir='22-10-02_POP909_{md=m}', dataset_name='POP909')
+            combine_single_json_songs(singe_song_dir='22-10-02_MAESTRO_{md=m}', dataset_name='MAESTRO')
+            # combine_single_json_songs(singe_song_dir='', dataset_name='LMD')
         else:
-            # combine_single_json_songs(
-            #     singe_song_dir='2022-08-02_17-28-41_POP909, md=f', dataset_name='POP909')
-            # combine_single_json_songs(
-            #     singe_song_dir='2022-08-02_17-47-08_MAESTRO, md=f', dataset_name='MAESTRO')
-            combine_single_json_songs(singe_song_dir='2022-08-02_19-16-56_LMD, md=f', dataset_name='LMD')
+            combine_single_json_songs(singe_song_dir='22-10-02_POP909_{md=f}', dataset_name='POP909')
+            combine_single_json_songs(singe_song_dir='22-10-02_MAESTRO_{md=f}', dataset_name='MAESTRO')
+            combine_single_json_songs(singe_song_dir='22-10-02_LMD_{md=f}', dataset_name='LMD')
     # combine()
 
     def json2dset_with_split():
@@ -460,22 +459,21 @@ if __name__ == '__main__':
         # mode = 'melody'
         mode = 'full'
         if mode == 'melody':
-            # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, ' \
-            #       '2022-05-20_14-52-04'
-            # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=melody, prec=5, th=1}, ' \
-            #       '2022-05-20_14-52-28'
-            fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
+            # fnm = '22-10-03_Extracted-POP909_{n=909}_{md=m, prec=5, th=1}'
+            fnm = '22-10-03_Extracted-MAESTRO_{n=1276}_{md=m, prec=5, th=1}'
+            # fnm = ''
         else:
-            # fnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=full, prec=5, th=1}, ' \
-            #       '2022-08-02_20-11-17'
-            # fnm = 'musicnlp music extraction, dnm=MAESTRO, n=1276, meta={mode=full, prec=5, th=1}, ' \
-            #       '2022-08-02_20-12-23'
-            fnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=full, prec=5, th=1}, 2022-09-24_13-26-34'
+            # fnm = '22-10-03_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
+            # fnm = '22-10-03_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}'
+            fnm = '22-10-03_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
         mic(dset)
         mic(len(dset['train']), len(dset['test']))
-        mic(dset['train'][:2], dset['test'][:2])
-    # json2dset_with_split()
+        tr_samples, ts_samples = dset['train'][:2], dset['test'][:2]
+        tr_samples['score'] = [s[:100] for s in tr_samples['score']]
+        ts_samples['score'] = [s[:100] for s in ts_samples['score']]
+        mic(tr_samples, ts_samples)
+    json2dset_with_split()
 
     def fix_insert_key():
         """
@@ -587,9 +585,9 @@ if __name__ == '__main__':
         import re
         import shutil
 
-        dir_nm = '22-09-29_LMD_{md=f}'
-        path_process_base = os_join(u.dset_path, 'processed', 'intermediate', dir_nm)
-        path_to_process = os_join(path_process_base, 'many')
+        dir_nm = '22-10-02_LMD_{md=f}'
+        path_process_base = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
+        path_to_process = os_join(path_process_base, 'many, lp')
         mic(path_to_process)
         paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
         pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$')
@@ -607,6 +605,7 @@ if __name__ == '__main__':
             os.makedirs(path_out, exist_ok=True)
 
             path_out = os_join(path_out, fnm)
+            # mic(path, path_out)
             assert not os.path.exists(path_out)
             shutil.move(path, path_out)
     # chore_move_proper_folder()

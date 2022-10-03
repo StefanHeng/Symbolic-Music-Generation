@@ -86,9 +86,10 @@ class MusicExtractor:
         ])
 
     @staticmethod
-    def meta2fnm_meta(d: Dict = None) -> str:
-        m, p, t = d['mode'], d['precision'], d['greedy_tuplet_pitch_threshold']
-        return log_dict_p({'mode': m, 'prec': p, 'th': t})
+    def meta2fnm_meta(d: Dict = None, compact: bool = True) -> str:
+        keys = ('md', 'prec', 'th') if compact else ('mode', 'precision', 'threshold')
+        vals = (d['mode'][0] if compact else d['mode']), d['precision'], d['greedy_tuplet_pitch_threshold']
+        return log_dict_p(dict(zip(keys, vals)))
 
     def log_warn(self, log_d: Dict = None, **kwargs):
         d = log_d or kwargs
@@ -949,6 +950,8 @@ class MusicExtractor:
 
         d_notes = self.extract_notes(lst_bar_info, time_sigs)
         if exp == 'mxl':
+            # unroll tuplets
+            d_notes = {k: [list(flatten_notes(notes)) for notes in lst_notes] for k, lst_notes in d_notes.items()}
             scr_out = make_score(
                 title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo, d_notes=d_notes
             )
@@ -1049,11 +1052,11 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             mic(d_out)
-        # check_mxl_out()
+        check_mxl_out()
         # check_str()
-        check_visualize()
+        # check_visualize()
         # check_return_meta_n_key()
-    # toy_example()
+    toy_example()
 
     def encode_a_few():
         dnm = 'POP909'
@@ -1107,7 +1110,8 @@ if __name__ == '__main__':
         dnm = 'LMD'
         if 'LMD' in dnm:
             dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
-            dir_nm = f'{dir_nm}, MS'
+            # dir_nm = f'{dir_nm}, MS'
+            dir_nm = f'{dir_nm}, LP'
 
             # from _test_broken_files import broken_files
             broken_files = [
@@ -1126,7 +1130,8 @@ if __name__ == '__main__':
                 # '084360.mxl',
                 # '096500.mxl',
                 # '098334.mxl',
-                '107205.mxl',
+                # '107205.mxl',
+                '014187.mxl',
             ]
 
             o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
@@ -1190,7 +1195,7 @@ if __name__ == '__main__':
                 # exp = 'mxl'
                 print(me(path, exp=exp))
                 exit(1)
-    check_edge_case_batched()
+    # check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """
