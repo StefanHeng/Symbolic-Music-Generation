@@ -16,7 +16,7 @@ class MusicTokenizer(PreTrainedTokenizer):
     """
     model_input_names = ['input_ids']  # Per `TransfoXLTokenizer`
 
-    def __init__(self, precision: int = 5, **kwargs):
+    def __init__(self, precision: int = 5, is_wordpiece: bool = False, **kwargs):
         """
         :param precision: See musicnlp.preprocess.music_extractor
         """
@@ -26,7 +26,8 @@ class MusicTokenizer(PreTrainedTokenizer):
             self.model_max_length = 4096  # TODO: subject to change?
 
         self.precision = precision
-        self.vocab = MusicVocabulary(precision=precision, color=False)
+        self.is_wordpiece = is_wordpiece
+        self.vocab = MusicVocabulary(precision=precision, color=False, is_wordpiece=is_wordpiece)
         self.spec_toks_enc, self.spec_toks_dec = dict(), dict()
         # if add_pad:
         #     self._add_pad_token()

@@ -17,7 +17,7 @@ from tokenizers import pre_tokenizers, models, decoders
 
 from stefutil import *
 from musicnlp.util import *
-from musicnlp.vocab.music_vocab import MusicVocabulary, VocabType
+from musicnlp.vocab.music_vocab import MusicVocabulary, VocabType, WORDPIECE_CONTINUING_PREFIX
 from musicnlp.vocab.music_tokenizer import MusicTokenizer
 
 
@@ -38,7 +38,7 @@ class Score2Chars:
 
     def __init__(
             self, vocab: MusicVocabulary, chars: List[str] = None, continuing_prefix: str = '##',
-            independent_global_token: bool = False, punctuate: bool = False
+            independent_global_token: bool = False, punctuate: bool = False, omit_eos: bool = False
     ):
         """
         :param vocab: Handles music vocabulary processing, such as mapping from token to ordinal/id
@@ -67,6 +67,7 @@ class Score2Chars:
             self.vocab.start_of_bar, self.vocab.start_of_tuplet, self.vocab.end_of_tuplet, self.vocab.end_of_song,
             self.vocab.start_of_melody, self.vocab.start_of_bass
         }
+        self.omit_eos = omit_eos
 
     @staticmethod
     def get_uni_chars(n: int) -> List[str]:
@@ -104,7 +105,8 @@ class Score2Chars:
             if t1 == VocabType.key:
                 key, toks = toks[0], toks[1:]
             assert toks[0] == self.vocab.start_of_bar
-            assert toks[-1] == self.vocab.end_of_song
+            if not self.omit_eos:
+                assert toks[-1] == self.vocab.end_of_song
             if self.independent_global_token:
                 if join:
                     words = [[ts], [tp]]
@@ -173,7 +175,7 @@ class WordPieceMusicTrainer:
     """
     Wrapper for training music-score representation with WordPiece tokenizer
     """
-    continuing_prefix = '##'
+    continuing_prefix = WORDPIECE_CONTINUING_PREFIX
 
     def __init__(self, vocab: MusicVocabulary, **kwargs):
         """
@@ -232,7 +234,9 @@ class MyPreTrainedTokenizerFast(PreTrainedTokenizerFast):
 
 class WordPieceMusicTokenizer(MusicTokenizer):
 
-    def __init__(self, tokenizer: Tokenizer, precision: int = 5, s2c_args: Dict = None, **kwargs):
+    def __init__(
+            self, tokenizer: Tokenizer, precision: int = 5, s2c_args: Dict = None, omit_eos: bool = False, **kwargs
+    ):
         """
         :param tokenizer: A trained WordPiece tokenizer on characters
         """
@@ -241,7 +245,10 @@ class WordPieceMusicTokenizer(MusicTokenizer):
             tokenizer_object=tokenizer, pad_token=self.pad_token, eos_token=self.eos_token
         )  # now vocab size is correctly set
         self.continuing_prefix = tokenizer.decoder.prefix
-        self.s2c = Score2Chars(vocab=self.vocab, continuing_prefix=self.continuing_prefix, **s2c_args)
+        self.omit_eos = omit_eos
+        self.s2c = Score2Chars(
+            vocab=self.vocab, continuing_prefix=self.continuing_prefix, omit_eos=omit_eos, **s2c_args
+        )
 
         # self._add_special_token(self.vocab.pad)
         assert self._tokenizer.pad_token_id is None  # TODO: Unlike `MusicTokenizer`, not sure why not defined already
@@ -255,12 +262,12 @@ class WordPieceMusicTokenizer(MusicTokenizer):
             self._id2pchs[i] = super().ids2pitches(toks)
 
     @classmethod
-    def from_file(cls, fnm: str, output_path: str = u.tokenizer_path):
+    def from_file(cls, fnm: str, output_path: str = u.tokenizer_path, **kwargs):
         _tokenizer = Tokenizer.from_file(os_join(output_path, f'{fnm}.json'))
         with open(os_join(output_path, f'{fnm}_music_meta.json'), 'r') as f:
             meta = json.load(f)
         prec = meta['music_vocab'].pop('prec')
-        return cls(_tokenizer, precision=prec, s2c_args=meta['score2chars'])
+        return cls(_tokenizer, precision=prec, s2c_args=meta['score2chars'], **kwargs)
 
     @property
     def model_max_length(self) -> int:
@@ -323,9 +330,9 @@ class WordPieceMusicTokenizer(MusicTokenizer):
 
 
 def load_trained_tokenizer(  # has independent global token & bar split
-        fnm: str = '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
+        fnm: str = '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}', **kwargs
 ) -> WordPieceMusicTokenizer:
-    return WordPieceMusicTokenizer.from_file(fnm)
+    return WordPieceMusicTokenizer.from_file(fnm, is_wordpiece=True, **kwargs)
 
 
 class _CheckTrainedMap:

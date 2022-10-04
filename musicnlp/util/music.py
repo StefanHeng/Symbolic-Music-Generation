@@ -12,7 +12,6 @@ from tqdm.auto import tqdm
 
 from stefutil import *
 from musicnlp.util.util import *
-from musicnlp.util.project_paths import BASE_PATH, DSET_DIR
 
 
 def get_processed_path():
@@ -28,12 +27,12 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
     if extracted:
         assert fmt == 'mxl', 'Only support extracted for MXL files'
     dset_nm = f'{fmt}-eg'
-    d_dset = sconfig(f'{DSET_DIR}.{dset_nm}')
+    d_dset = sconfig(f'{u.dset_dir}.{dset_nm}')
     key_dir = 'dir_nm'
     if extracted:
         key_dir = f'{key_dir}_extracted'
     dir_nm = d_dset[key_dir]
-    path = os_join(BASE_PATH, DSET_DIR, dir_nm, d_dset[f'song_fmt_{fmt}'])
+    path = os_join(get_base_path(), u.dset_dir, dir_nm, d_dset[f'song_fmt_{fmt}'])
     paths = sorted(glob.iglob(path, recursive=True))
     if k is not None:
         assert isinstance(k, (int, str)), \
@@ -122,10 +121,10 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
     """
     ca.cache_mismatch('Dataset Name', dataset_name, ['POP909', 'LMD-cleaned', 'LMD'])
 
-    path_exp = os_join(BASE_PATH, DSET_DIR, 'converted', dataset_name)
+    path_exp = os_join(get_base_path(), u.dset_dir, 'converted', dataset_name)
     os.makedirs(path_exp, exist_ok=True)
     if dataset_name == 'POP909':
-        path = os_join(BASE_PATH, DSET_DIR, 'POP909-Dataset', dataset_name)
+        path = os_join(get_base_path(), u.dset_dir, 'POP909-Dataset', dataset_name)
         df = pd.read_excel(os_join(path, 'index.xlsx'))
         paths = sorted(glob.iglob(os_join(path, '*/*.mid'), recursive=True))
         for i, p in enumerate(tqdm(paths)):
@@ -134,7 +133,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
             copyfile(p, os_join(path_exp, fnm))
     elif dataset_name == 'LMD-cleaned':
         d_dset = sconfig(f'datasets.{dataset_name}')
-        path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
+        path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid'])))
 
         # empirically seen as a problem: some files are essentially the same title, ending in different numbers
@@ -176,7 +175,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
         print(f'{logi(path2fnm.count_too_long)} files were truncated to {logi(os_lim)} characters')
     elif dataset_name == 'LMD':
         d_dset = sconfig(f'datasets.{dataset_name}.original')
-        path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
+        path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
         o2f = Ordinal2Fnm(total=len(paths), group_size=int(1e4))
 
@@ -189,7 +188,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
             copyfile(p, os_join(path, fnm))
     elif dataset_name == 'MAESTRO':
         d_dset = sconfig(f'datasets.{dataset_name}')
-        path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
+        path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
         mic(len(paths))
         df = pd.read_csv(os_join(path_ori, 'maestro-v3.0.0.csv'))
@@ -219,7 +218,7 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
     Expects `clean_dataset_paths` called first
     """
     # this folder contains all MIDI files that can be converted to MXL, on my machine
-    path = os_join(BASE_PATH, DSET_DIR, 'LMD-cleaned_valid')
+    path = os_join(get_base_path(), u.dset_dir, 'LMD-cleaned_valid')
     # <artist> - <title>(.<version>)?.mid
     pattern = re.compile(r'^(?P<artist>.*) - (?P<title>.*)(\.(?P<version>[1-9]\d*))?\.mid$')
     d_song2fnms: Dict[Tuple[str, str], Dict[int, str]] = defaultdict(dict)
@@ -297,7 +296,7 @@ def get_lmd_conversion_meta():
 
     def get_original_fnms():  # see `clean_dataset_paths`
         d_dset = sconfig(f'datasets.{dnm}.original')
-        path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
+        path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
         return sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
     ori_dir_nm = sconfig(f'datasets.{dnm}.original.dir_nm')
 

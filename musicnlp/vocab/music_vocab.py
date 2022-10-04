@@ -17,6 +17,13 @@ import musicnlp.util.music as music_util
 from musicnlp.vocab.elm_type import ElmType, MusicElement, Key, key_str2enum
 
 
+__all__ = [
+    'COMMON_TEMPOS', 'is_common_tempo', 'COMMON_TIME_SIGS', 'is_common_time_sig', 'get_common_time_sig_duration_bound',
+    'WORDPIECE_CONTINUING_PREFIX',
+    'VocabType', 'MusicVocabulary'
+]
+
+
 COMMON_TIME_SIGS: List[TsTup] = sorted(  # Sort first by denominator
     [(4, 4), (2, 4), (2, 2), (3, 4), (6, 8), (5, 4), (12, 8)],
     key=lambda tup_: tuple(reversed(tup_))
@@ -62,6 +69,9 @@ Compact = Union[
     TsTup, int, Dur, Key,
     Tuple[None, None], None  # for uncommon tokens
 ]
+
+
+WORDPIECE_CONTINUING_PREFIX = '##'
 
 
 class MusicVocabulary:
@@ -177,7 +187,7 @@ class MusicVocabulary:
     }
 
     # TODO: remove, original training was without key support
-    def __init__(self, precision: int = 5, color: bool = False):
+    def __init__(self, precision: int = 5, color: bool = False, is_wordpiece: bool = False):
         """
         :param precision: See `musicnlp.preprocess.music_extractor`
         :param color: If True, string outputs are colorized
@@ -185,6 +195,7 @@ class MusicVocabulary:
         """
         self.precision = precision
         self.color = color
+        self.is_wordpiece = is_wordpiece
 
         specs = MusicVocabulary.SPEC_TOKS  # Syntactic sugar
         sep = specs['sep']
@@ -419,12 +430,19 @@ class MusicVocabulary:
         """
         return self._colorize_spec(MusicVocabulary.SPEC_TOKS[k])
 
+    def _colorize_token(self, tok: str) -> str:
+        return log_s(tok, c=MusicVocabulary._token_type2color[self.type(tok)])
+
     def colorize_token(self, tok: str) -> str:
         """
         Colorize token for terminal output
             Color determined by token type
         """
-        return log_s(tok, c=MusicVocabulary._token_type2color[self.type(tok)])
+        if self.is_wordpiece:
+            toks = tok.replace(WORDPIECE_CONTINUING_PREFIX, '')
+            return ' '.join(self._colorize_token(t) for t in toks.split())
+        else:
+            return self._colorize_token(tok)
 
     def __call__(
             self, elm: Union[ExtNote, Union[TimeSignature, TsTup], Union[MetronomeMark, int], str],

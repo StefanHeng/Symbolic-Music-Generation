@@ -2,8 +2,9 @@
 Generate from trained reformer, no seed per `hash_seed`
 """
 import os
-from os.path import join as os_join
+import json
 import datetime
+from os.path import join as os_join
 from typing import Tuple, Dict, Iterable, Any, Union
 from collections import OrderedDict
 
@@ -15,6 +16,7 @@ from musicnlp.vocab.music_vocab import VocabType
 from musicnlp.vocab import MusicTokenizer
 from musicnlp.preprocess import KeyFinder, MusicConverter
 from musicnlp.models import MyReformerModelWithLMHead, MyTransfoXLLMHeadModel
+from musicnlp.trainer.wordpiece_tokenizer import load_trained_tokenizer as load_wordpiece_tokenizer
 
 
 def load_trained(
@@ -30,10 +32,11 @@ def load_trained(
                 ('transf-xl', '7_10ep'): ['2022-06-19_10-59-06_transf-xl', 'checkpoint-61341']
             },
             full={
-                ('reformer', '32_32ep'): ['2022-08-07_05-12-51_reformer', 'trained']
+                ('reformer', '32_32ep'): ['2022-08-07_05-12-51_reformer', 'trained'],
+                ('reformer', '64_64ep'): ['2022-10-03_11-58-11_reformer', 'trained']
             }
         )
-    paths = [u.model_path]
+    paths = [get_base_path(), u.model_dir]
     if mode == 'melody':  # different # of tokens in vocab
         raise NotImplementedError('Current Tokenizer don\'t support prior melody-only representation ')
     if model_key:
@@ -65,7 +68,7 @@ class MusicGenerator:
 
     def __init__(
             self, model: Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel], mode: str = 'full',
-            max_length: int = None
+            max_length: int = None, wordpiece_tokenizer: bool = True
     ):
         self.model = model
         if max_length:
@@ -76,9 +79,12 @@ class MusicGenerator:
             else:  # transf xl
                 self.max_len = model.config.max_length_
         tk_args = dict(model_max_length=self.max_len)
-        self.tokenizer = MusicTokenizer(**tk_args)
+        if wordpiece_tokenizer:
+            self.tokenizer = load_wordpiece_tokenizer(omit_eos=True, **tk_args)
+        else:
+            self.tokenizer = MusicTokenizer(**tk_args)
         self.vocab = self.tokenizer.vocab
-        self.converter = MusicConverter(mode=mode, tokenizer_kw=tk_args)
+        self.converter = MusicConverter(mode=mode, precision=self.tokenizer.precision, vocab=self.vocab)
 
         self.logger = get_logger('Music Generator')
         d_log = dict(model_max_length=self.max_len)
@@ -90,7 +96,7 @@ class MusicGenerator:
         for k, k_out in MusicGenerator.key2key_path_out.items():
             if k in args:
                 out = f'{out}, {k_out}={args[k]}'
-        return out
+        return f'{{{out}}}'
 
     def __call__(
             self, mode: str, strategy: str, to_score: bool = False,
@@ -169,7 +175,7 @@ class MusicGenerator:
             assert len(idxs_eob) > 0, f'No start of bar token found when {logi("truncate_to_sob")} enabled'
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
-        # mic(decoded)
+        mic(decoded)
         title = f'{save}-generated' if save else None
         score = self.converter.str2score(decoded, omit_eos=True, title=title)  # incase model can't finish generation
         if save:
@@ -179,8 +185,11 @@ class MusicGenerator:
             if save_dir:
                 out_path = os_join(out_path, save_dir)
                 os.makedirs(out_path, exist_ok=True)
-            path = os_join(out_path, f'{now(for_path=True)}, {title}, {str_args}.mxl')
-            score.write(fmt='mxl', fp=path, makeNotation=False)
+            date = now(for_path=True)
+            fnm = f'{date}_{title}_{str_args}'
+            with open(os_join(out_path, f'{fnm}.json'), 'w') as f:
+                json.dump(d_log, f, indent=4)
+            score.write(fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'), makeNotation=False)
         else:
             score.show()
 
@@ -197,7 +206,7 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # md_k = 'transf-xl', '7_10ep'
-    md_k = 'reformer', '32_32ep'
+    md_k = 'reformer', '64_64ep'
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
     sv_dir = f'{md_k[0]}, {md_k[1]}'

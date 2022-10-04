@@ -330,8 +330,8 @@ if __name__ == '__main__':
 
     # md = 'melody'
     md = 'full'
-    dnms = ['POP909', 'MAESTRO']
-    # dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['POP909', 'MAESTRO']
+    dnms = ['POP909', 'MAESTRO', 'LMD']
     dnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
 
     def train_reformer(resume: str = None):
@@ -355,7 +355,8 @@ if __name__ == '__main__':
         # channel_mixup = False
         channel_mixup = True
 
-        n_ep = 256
+        n_ep = 8
+        # n_ep = 256
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         if channel_mixup:
             train_args['dataloader_num_workers'] = 4
@@ -381,7 +382,7 @@ if __name__ == '__main__':
             ))
             my_train_args.update(dict(
                 logging_strategy='no',
-                save_epochs=8
+                # save_epochs=8
             ))
 
         # n = 64
