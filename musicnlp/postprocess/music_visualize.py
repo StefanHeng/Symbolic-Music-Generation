@@ -138,7 +138,7 @@ class MusicVisualize:
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec)
 
-    def _extract_song_info(self, d: Dict, it = None) -> Dict:
+    def _extract_song_info(self, d: Dict, it=None) -> Dict:
         d = deepcopy(d)
         scr = d.pop('score')
         toks = self.tokenizer.tokenize(scr)
@@ -146,7 +146,7 @@ class MusicVisualize:
         wp_toks = self.wp_tokenizer.tokenize(scr, mode='char')  # just need len, efficient
         d['n_wp_token'] = len(wp_toks)
         if it:
-            it.set_postfix(dict(n_token=d['n_token'], n_wp_token=d['n_wp_token']))
+            it.set_postfix(dict(n_token=logi(d['n_token']), n_wp_token=logi(d['n_wp_token'])))
         counter_toks = Counter(toks)
         d['n_bar'] = counter_toks[self.vocab.start_of_bar]
         d['n_tup'] = counter_toks[self.vocab.start_of_tuplet]
@@ -165,9 +165,11 @@ class MusicVisualize:
     def _get_song_info(self):
         entries: List[Dict] = self.dset['music']
 
-        concurrent = True
+        # concurrent = True
+        concurrent = False
+        mic(concurrent, os.cpu_count())
         if concurrent:
-            tqdm_args = dict(desc='Extracting song info', unit='song', chunksize=16)
+            tqdm_args = dict(desc='Extracting song info', unit='song', chunksize=64)
             ds = conc_map(self._extract_song_info, entries, with_tqdm=tqdm_args, mode='process')
         else:
             it = tqdm(entries, desc='Extracting song info', unit='song')
@@ -536,8 +538,8 @@ if __name__ == '__main__':
     # md = 'melody'
     md = 'full'
     # dnms = ['POP909']
-    dnms = ['POP909', 'MAESTRO']
-    # dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['POP909', 'MAESTRO']
+    dnms = ['POP909', 'MAESTRO', 'LMD']
     fnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
     fnms = [os_join(music_util.get_processed_path(), f'{fnm}.json') for fnm in fnms]
     if dnms == ['POP909']:
@@ -573,7 +575,7 @@ if __name__ == '__main__':
     def plots():
         args = dict(stat='percent', upper_percentile=97.7)  # ~2std
         # mv.token_length_dist(**args)
-        # mv.token_length_dist(wordpiece_tokenize=True, **args)
+        mv.token_length_dist(wordpiece_tokenize=True, **args)
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
@@ -581,7 +583,7 @@ if __name__ == '__main__':
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
-        mv.note_duration_dist(stat='percent')
+        # mv.note_duration_dist(stat='percent')
         # mv.warning_type_dist()
     plots()
 

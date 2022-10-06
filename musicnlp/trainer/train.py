@@ -155,6 +155,9 @@ class TrainArgs:
             disable_tqdm=True,
             report_to='none',
             gradient_checkpointing=False,  # not supported in both Transformer XL and Reformer not supported
+            load_best_model_at_end=True,
+            metric_for_best_model='eval_loss',
+            greater_is_better=False,
         )
 
     def __call__(
