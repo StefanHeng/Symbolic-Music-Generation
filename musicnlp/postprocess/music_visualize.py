@@ -167,7 +167,6 @@ class MusicVisualize:
 
         # concurrent = True
         concurrent = False
-        mic(concurrent, os.cpu_count())
         if concurrent:
             tqdm_args = dict(desc='Extracting song info', unit='song', chunksize=64)
             ds = conc_map(self._extract_song_info, entries, with_tqdm=tqdm_args, mode='process')
@@ -575,7 +574,7 @@ if __name__ == '__main__':
     def plots():
         args = dict(stat='percent', upper_percentile=97.7)  # ~2std
         # mv.token_length_dist(**args)
-        mv.token_length_dist(wordpiece_tokenize=True, **args)
+        # mv.token_length_dist(wordpiece_tokenize=True, **args)
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
@@ -584,7 +583,7 @@ if __name__ == '__main__':
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
         # mv.note_duration_dist(stat='percent')
-        # mv.warning_type_dist()
+        mv.warning_type_dist()
     plots()
 
     fig_sz = (9, 5)
