@@ -211,6 +211,13 @@ def get_train_and_my_train_args(
     return TrainArgs(model_name, model_size)(train_args, my_train_args, train_dataset)
 
 
+def max_out_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    """
+    Sorting logits of size (batch_size, seq_len, vocab_size) across entire eval set in RAM is too much & unnecessary
+    """
+    return logits.argmax(dim=-1)
+
+
 class ComputeMetrics:
     def __init__(self, tokenizer: MusicTokenizer, mode: str = 'vanilla'):
         self.acc = evaluate.load('accuracy')
@@ -228,7 +235,7 @@ class ComputeMetrics:
             preds, labels, key_scores = eval_pred
         else:
             (preds, labels), key_scores = eval_pred, None
-        preds = preds.argmax(axis=-1)
+        # preds = preds.argmax(axis=-1)  # No longer needed, see `preprocess_logits_for_metrics`
         d_metric = dict(ikr=self.ikr(preds=preds, labels=labels, key_scores=key_scores))
 
         preds, labels = preds[:, :-1], labels[:, 1:]  # shift for CLM
@@ -301,13 +308,18 @@ def get_all_setup(
 
     cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if aug_key else 'vanilla')
     # if key not augmented, need to pass key info to each song for IKR logging
-    cls = train_util.MyTrainer if aug_key else train_util.MyEvalTrainer
+    if aug_key:
+        cls = train_util.MyTrainer
+    else:
+        raise NotImplementedError(f'Update eval override after {logi("preprocess_logits_for_metrics")}')
+        # cls = train_util.MyEvalTrainer
     trainer_args_ = dict(
         model_meta=meta,
         monitor_ntp_acc=True, my_args=my_args,
         train_metrics=dict(ikr=cm.ikr),
         model=model, args=args, data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
-        train_dataset=tr, eval_dataset=vl, compute_metrics=cm
+        train_dataset=tr, eval_dataset=vl, compute_metrics=cm,
+        preprocess_logits_for_metrics=max_out_logits
     )
     trainer_args_.update(trainer_args or dict())
     trainer_ = cls(**trainer_args_)
@@ -355,10 +367,14 @@ if __name__ == '__main__':
         # channel_mixup = False
         channel_mixup = True
 
+        # _debug_eval = True
+        _debug_eval = False
+        mic(augment_key, wordpiece_tokenize, channel_mixup, _debug_eval)
+
         n_ep = 8
         # n_ep = 256
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
-        if channel_mixup:
+        if not _debug_eval and channel_mixup:
             train_args['dataloader_num_workers'] = 4
 
         my_train_args = dict(
@@ -376,9 +392,11 @@ if __name__ == '__main__':
             ))
             my_train_args['save_epochs'] = 16
         else:
+            bsz = 128 if on_great_lakes() else 64
             train_args.update(dict(
                 fp16=torch.cuda.is_available(),
-                per_device_train_batch_size=128 if on_great_lakes() else 64,
+                per_device_train_batch_size=bsz,
+                per_device_eval_batch_size=bsz
             ))
             my_train_args.update(dict(
                 logging_strategy='no',
@@ -395,6 +413,11 @@ if __name__ == '__main__':
                 disable_train_metrics=True
             )
         )
+        if _debug_eval:
+            # trainer.train_dataset: datasets.Dataset
+            trainer.train_dataset: AugmentedDataset
+            trainer.train_dataset.dset = trainer.train_dataset.dset.select(range(0, 256))
+            mic(len(trainer.train_dataset))
 
         if resume:
             trainer.train(resume)
