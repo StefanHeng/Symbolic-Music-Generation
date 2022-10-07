@@ -20,20 +20,15 @@ from musicnlp.trainer.wordpiece_tokenizer import load_trained_tokenizer as load_
 
 
 def load_trained(
-        model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: Tuple[str, str] = None,
+        model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: Tuple[str, str, str] = None,
         mode: str = 'full'
 ) -> Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel]:
     if not hasattr(load_trained, 'key2path'):
         load_trained.key2path = dict(
-            melody={
-                ('reformer', '14_32ep'): ['reformer', '2022-04-16_16-08-03', 'checkpoint-4802'],
-                ('reformer', '20_64ep'): ['reformer', '2022-04-19_13-48-54', 'checkpoint-6860'],
-                ('reformer', '2_16ep'): ['2022-06-23_01-11-20_reformer', 'checkpoint-5478'],
-                ('transf-xl', '7_10ep'): ['2022-06-19_10-59-06_transf-xl', 'checkpoint-61341']
-            },
             full={
-                ('reformer', '32_32ep'): ['2022-08-07_05-12-51_reformer', 'trained'],
-                ('reformer', '64_64ep'): ['2022-10-03_11-58-11_reformer', 'trained']
+                # (model name, datasets, #epoch)
+                ('reformer', 'P&M', '256-256ep'): ['2022-10-03_11-58-11_reformer', 'trained'],
+                ('reformer', 'All', '8-8ep'): ['2022-10-06_04-32-51_reformer', 'trained']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -98,6 +93,9 @@ class MusicGenerator:
                 out = f'{out}, {k_out}={args[k]}'
         return f'{{{out}}}'
 
+    def colorize_song(self, song: str) -> str:
+        return ' '.join([self.tokenizer.vocab.colorize_token(tok) for tok in self.tokenizer.tokenize(song)])
+
     def __call__(
             self, mode: str, strategy: str, to_score: bool = False,
             generate_args: dict = None, prompt_args: dict = None,
@@ -160,7 +158,7 @@ class MusicGenerator:
             assert (k in ['do_sample', 'num_beams', 'num_beam_groups', 'early_stopping'] for k in generate_args)
             assert generate_args['num_beams'] > 1, f'{logi("num_beams")} must >1 for beam-search generation'
         args |= generate_args
-        prompt_colored = ' '.join([self.tokenizer.vocab.colorize_token(tok) for tok in self.tokenizer.tokenize(prompt)])
+        prompt_colored = self.colorize_song(prompt)
         d_log = dict(mode=mode, strategy=strategy, args=generate_args | prompt_args, prompt=prompt_colored)
         self.logger.info(f'Generating with {log_dict(d_log)}')
         t = datetime.datetime.now()
@@ -175,7 +173,6 @@ class MusicGenerator:
             assert len(idxs_eob) > 0, f'No start of bar token found when {logi("truncate_to_sob")} enabled'
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
-        mic(decoded)
         title = f'{save}-generated' if save else None
         score = self.converter.str2score(decoded, omit_eos=True, title=title)  # incase model can't finish generation
         if save:
@@ -188,8 +185,12 @@ class MusicGenerator:
             date = now(for_path=True)
             fnm = f'{date}_{title}_{str_args}'
             with open(os_join(out_path, f'{fnm}.json'), 'w') as f:
-                json.dump(d_log, f, indent=4)
-            score.write(fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'), makeNotation=False)
+                d_log['prompt'] = prompt  # remove color
+                json.dump(dict(meta=d_log, generation_args=args, generated=decoded), f, indent=4)
+            try:
+                score.write(fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'), makeNotation=False)
+            except Exception as e:
+                raise ValueError(f'Failed to render MXL from decoded output {self.colorize_song(decoded)}') from e
         else:
             score.show()
 
@@ -205,11 +206,11 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    # md_k = 'transf-xl', '7_10ep'
-    md_k = 'reformer', '64_64ep'
+    # md_k = 'reformer', 'P&M', '256-256ep'
+    md_k = md_nm, ds_nm, ep_nm = 'reformer', 'All', '8-8ep'
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
-    sv_dir = f'{md_k[0]}, {md_k[1]}'
+    sv_dir = f'{md_nm}_{ds_nm}_{ep_nm}'
     # save_dir_ = 'reformer-base, 14/32ep'
     # mic(get_model_num_trainable_parameter(mdl))
     mg = MusicGenerator(model=mdl, mode=md)
@@ -258,9 +259,9 @@ if __name__ == '__main__':
         # fnms = ['Faded', 'Piano Sonata', 'Merry Christmas']
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
         # gen_args = dict(top_k=32, top_p=0.95)
-        # gen_args = dict(top_k=32, top_p=0.9)
+        gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
         # gen_args = dict(top_k=64, top_p=0.9)
-        gen_args = dict(top_k=32, top_p=0.75)
+        # gen_args = dict(top_k=32, top_p=0.s75)  # Good w/ `P&M`
         n_bar = 4
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='full')

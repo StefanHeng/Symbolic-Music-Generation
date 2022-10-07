@@ -76,6 +76,8 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
 
     Can do this since small vocab size
     """
+    cls_name = 'TransformerXl'
+
     def __init__(self, config):
         super().__init__(config)
         self.transformer = TransfoXLModel(config)

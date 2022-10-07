@@ -301,7 +301,7 @@ class MusicConverter:
 
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
-    from musicnlp._sample_score import sample_melody, sample_full
+    from musicnlp._sample_score import sample_full, gen_broken
 
     md = 'full'
     mc = MusicConverter(mode=md)
@@ -339,4 +339,10 @@ if __name__ == '__main__':
         scr = mc.str2score(txt, omit_eos=False, title='Test')
         mic(scr)
         scr.show()
-    check_encode_decode()
+    # check_encode_decode()
+
+    def check_broken_render():
+        scr = mc.str2score(gen_broken, omit_eos=True, title='Check Broken')
+        mic(scr)
+        scr.show()
+    check_broken_render()

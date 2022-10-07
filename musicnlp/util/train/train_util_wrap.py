@@ -43,7 +43,7 @@ class MyTrainer(Trainer):
         super().__init__(**kwargs)
         self.monitor_ntp_acc = monitor_ntp_acc
         self.model_meta = model_meta
-        self.model_meta['parameter_count'] = get_model_num_trainable_parameter(self.model)
+        # self.model_meta['parameter_count'] = get_model_num_trainable_parameter(self.model)
         self.name = self.model.__class__.__qualname__
         self.train_metrics = train_metrics
         self.disable_train_metrics = disable_train_metrics
@@ -148,7 +148,7 @@ class ColoredPrinterCallback(TrainerCallback):
         os.makedirs(self.output_dir, exist_ok=True)
         self.save_time = self.output_dir.split(os.sep)[-1]  # expect last dir name as time stamp
         meta = meta2fnm_meta(self.trainer.model_meta)
-        self.log_fnm = f'md={log_dict_p(meta)}, n={n_data}, a={lr}, bsz={self.bsz}, n_ep={n_ep}'
+        self.log_fnm = f'Train_{log_dict_p(meta)}_{{n={n_data}, a={lr}, bsz={self.bsz}, n_ep={n_ep}}}'
 
         if name is None:
             name = 'MyTrainer'
@@ -165,7 +165,7 @@ class ColoredPrinterCallback(TrainerCallback):
             name=self.name, typ='file-write', file_path=os_join(self.output_dir, f'{self.log_fnm}.log')
         )
         if self.report2tb:
-            self.writer = SummaryWriter(os_join(self.output_dir, f'tb - {self.log_fnm}'))
+            self.writer = SummaryWriter(os_join(self.output_dir, f'TB_{self.log_fnm}'))
 
         conf = self.trainer.model.config.to_dict()
         train_args = self.trainer.args.to_dict()
@@ -315,7 +315,8 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     n_ep = state.epoch
                     assert n_ep.is_integer()
                     d_log = dict(step=state.global_step, epoch=int(n_ep), **{k: logs[f'eval_{k}'] for k in ks})
-                    self._log(d_log, mode='eval', to_console=True)
+                    should_log = self.trainer.my_args.get('logging_strategy', 'steps') != 'no'
+                    self._log(d_log, mode='eval', to_console=should_log)
                     # for next iter, cos `compute_loss` is called for eval too
                     # we don't need it for logging as eval metrics are gathered by Trainer out-of-the-box
                     self._train_step_metrics = []

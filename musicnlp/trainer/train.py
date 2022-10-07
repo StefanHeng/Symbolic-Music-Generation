@@ -41,7 +41,7 @@ def get_model_n_tokenizer(
     config = cls_config(model_size=model_size, tokenizer=tokenizer, **(model_config or dict()))
     # to set the correct model config for reformer, now take care of `max_length` for tokenizer
     tokenizer.model_max_length = max_length = config.max_length_
-    model_meta = OrderedDict({'model name': cls_model.__qualname__, 'max length': max_length})
+    model_meta = OrderedDict({'model name': cls_model.cls_name, 'max length': max_length})
     model_meta.update(config.model_meta)
     return tokenizer, cls_model(config=config), model_meta  # Initialize all weights from scratch
 
@@ -374,7 +374,8 @@ if __name__ == '__main__':
         _debug_eval = False
         mic(augment_key, wordpiece_tokenize, channel_mixup, _debug_eval)
 
-        n_ep = 8
+        # n_ep = 8
+        n_ep = 32
         # n_ep = 256
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         if not _debug_eval and channel_mixup:

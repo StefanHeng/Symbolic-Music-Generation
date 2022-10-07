@@ -90,6 +90,8 @@ class MyReformerModelWithLMHead(ReformerModelWithLMHead):
     """
     Like TransformerXL, override `forward` to pass in `key_scores` for eval metrics
     """
+    cls_name = 'Reformer'
+
     def forward(
             self,
             key_scores=None,
