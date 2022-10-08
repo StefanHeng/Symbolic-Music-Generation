@@ -151,7 +151,7 @@ class KeyFinder:
         """
         k: tuple of 2 lists, each contains major keys candidates and minor keys candidates ([XMajor],[YMinor])
         Output: a dictionary of s in scale degrees of given key in k represented in tuple where each tuple has
-        (note name/pitch, scale degrees) **note: they do not have any octave values!
+        (pitch class/pitch, scale degrees) **note: they do not have any octave values!
         """
         # make a dictionary with group T0 in scale degrees
         # Set e in T0 group, in this case it will be C
@@ -172,17 +172,17 @@ class KeyFinder:
         for n in piece.flatten().flatten().notesAndRests:
             if n.isChord:
                 for p in n.pitches:
-                    arr_.append((p.name, T_0[p.step]))
+                    arr_.append((p.midi, T_0[p.step]))
             elif n.isRest:
                 arr_.append(('R', 0))
             else:
-                arr_.append((n.name, T_0[n.step]))
+                arr_.append((n.midi, T_0[n.step]))
         # now shift to T1 and adjust the scale degree accordingly with major and minor
         ret_ = {}
         for k_ in all_k:
             step = k_[0]
             # mod7 plus 1 just to make it align with our scale degrees value convention (1-7)
-            ret_[k_] = [(name, (scale-T_0[step]) % 7 + 1) if name != 'R' else (name, scale) for name, scale in arr_]
+            ret_[k_] = [(mid, (scale-T_0[step]) % 7 + 1) if mid != 'R' else (mid, scale) for mid, scale in arr_]
         return ret_
 
     def check_notes(self, k):
@@ -195,6 +195,38 @@ class KeyFinder:
         TODO: It is very tricky to do such analysis, need to talk with group.
         """
         pass
+
+    def get_scale_degrees(self, k, n):
+        """
+        Return an array of diatonic notes regardless of  from 1-7 given an array of midi pitch names (0-128) and a key, indicated with a
+        name (C, D, etc).
+        :param k: A string that represents the key without indicating major or minor.
+                n: An array of midi notes (pitch names).
+        :return: An array of diatonic scale degrees in key.
+        """
+        # Note names according to their pitch.
+        ref = {
+            'C': 0,
+            'C#': 1,
+            'Db': 1,
+            'D': 2,
+            'D#': 3,
+            'Eb': 3,
+            'E': 4,
+            'F': 5,
+            'F#': 6,
+            'Gb': 6,
+            'G': 7,
+            'G#': 8,
+            'Ab': 8,
+            'A': 9,
+            'A#': 10,
+            'Bb': 10,
+            'B': 11,
+        }
+        # get pitch class for each note
+        pc = n % 12
+
 
 
 def main(path: str):
@@ -228,7 +260,7 @@ if __name__ == '__main__':
     def carson_dev():
         path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
         main(path)
-    # carson_dev()
+    carson_dev()
 
     def check_key_finder_terminates():
         """
