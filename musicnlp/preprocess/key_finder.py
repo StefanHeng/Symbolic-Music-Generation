@@ -282,8 +282,8 @@ if __name__ == '__main__':
                 assert len(keys) > 0
                 pbar.update(1)
             except Exception as e:
-                logger.error(f'Failed to find key for {logi(fl_nm)}, {logi(e)}')  # Abruptly stop the process
-                raise ValueError(f'Failed to find key for {logi(fl_nm)}')
+                logger.error(f'Failed to find key for {pl.i(fl_nm)}, {pl.i(e)}')  # Abruptly stop the process
+                raise ValueError(f'Failed to find key for {pl.i(fl_nm)}')
 
         def batched_map(fnms_, s, e):
             return [call_single(fnms_[i]) for i in range(s, e)]

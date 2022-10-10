@@ -190,7 +190,7 @@ class WordPieceMusicTrainer:
         # TODO: What is `max_input_chars_per_word`? set no lim
         logger = get_logger(self.__class__.__qualname__)
         d_log = {'vocab-size': vocab_size, '#song': len(songs)}
-        logger.info(f'Training launched with {log_dict(d_log)}')
+        logger.info(f'Training launched with {pl.i(d_log)}')
 
         tokenizer = Tokenizer(model=models.WordPiece(vocab=None, max_input_chars_per_word=int(1e10)))
         if self.s2c.need_split:
@@ -207,7 +207,7 @@ class WordPieceMusicTrainer:
             fnm = f'{date}_{fnm}_{{vsz={vocab_size}, n={len(songs)}}}'
             path_tok = os_join(u.tokenizer_path, f'{fnm}.json')
             tokenizer.save(path_tok)
-            logger.info(f'{logi("Tokenizer")} saved to {logi(path_tok)}')
+            logger.info(f'{pl.i("Tokenizer")} saved to {pl.i(path_tok)}')
             path_meta = os_join(u.tokenizer_path, f'{fnm}_meta.json')
             with open(path_meta, 'w') as f:
                 json.dump(dict(  # For reconstructing class properties, see `WordPieceMusicTokenizer`
@@ -218,7 +218,7 @@ class WordPieceMusicTrainer:
                         punctuate=self.s2c.punctuate
                     ),
                 ), f, indent=4)
-            logger.info(f'{logi("Tokenizer")} music metadata saved to {logi(path_meta)}')
+            logger.info(f'{pl.i("Tokenizer")} music metadata saved to {pl.i(path_meta)}')
         return tokenizer
 
     def music_vocab(self, tokenizer: Tokenizer) -> Dict[str, int]:

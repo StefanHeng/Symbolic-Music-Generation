@@ -355,7 +355,7 @@ class MusicVocabulary:
 
         representation remains faithful to the token for the uncommon ones
         """
-        assert self.has_compact(tok), ValueError(f'{logi(tok)} does not have a compact representation')
+        assert self.has_compact(tok), ValueError(f'{pl.i(tok)} does not have a compact representation')
         if isinstance(tok, int_types):
             return self.id2compact[int(tok)]
         elif tok in MusicVocabulary.uncom_tok2compact:
@@ -368,7 +368,7 @@ class MusicVocabulary:
                     numer, denom = MusicVocabulary._get_group2(tok, tpl['frac'])
                     assert strict
                     if strict and not math.log2(denom).is_integer():
-                        raise ValueError(f'Duration token not quantizable: {logi(tok)}')
+                        raise ValueError(f'Duration token not quantizable: {pl.i(tok)}')
                     # Quantized so definitely an exact float, but keep Fraction for exact additions
                     return Fraction(numer, denom)
                 else:

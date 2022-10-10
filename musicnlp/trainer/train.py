@@ -182,7 +182,7 @@ class TrainArgs:
         save_epochs = my_args.get('save_epochs', None)
         if save_epochs:  # this is not supported by Trainer
             assert 'save_strategy' in args and args['save_strategy'] == 'epoch', \
-                f'Supporting {logi("save per epoch")} error: Save strategy to Trainer should be set to {logi("epoch")}'
+                f'Supporting {pl.i("save per epoch")} error: Save strategy to Trainer should be set to {pl.i("epoch")}'
             if save_epochs > 1:
                 args['save_strategy'] = 'steps'
                 # TODO: DDP not supported
@@ -280,7 +280,7 @@ def get_all_setup(
         dataset_names=dataset_names, prec=prec, dataset_args=dataset_args,
         train_args=train_args, my_train_args=my_train_args
     )
-    logger.info(f'Initializing training with {log_dict_pg(d_log)}... ')
+    logger.info(f'Initializing training with {pl.fmt(d_log)}... ')
     my_train_args = my_train_args or dict()
     wordpiece_tokenize, aug_key, mix_up = (
         my_train_args.get(k, False) for k in ['wordpiece_tokenize', 'augment_key', 'channel_mixup']
@@ -296,7 +296,7 @@ def get_all_setup(
         dset_args_ = dict(
             get_dataset_kwargs=dset_args, augment_key=aug_key, channel_mixup=mix_up, mode=my_train_args['mode']
         )
-        logger.info(f'Loading {logi("Augmented")} dataset w/ {logi(dset_args_)}... ')
+        logger.info(f'Loading {pl.i("Augmented")} dataset w/ {pl.i(dset_args_)}... ')
         dset = AugmentedDataset.from_hf(dataset_names, tokenizer=tokenizer, **dset_args_)
     else:
         dset = get_dataset(
@@ -314,7 +314,7 @@ def get_all_setup(
     if aug_key:
         cls = train_util.MyTrainer
     else:
-        raise NotImplementedError(f'Update eval override after {logi("preprocess_logits_for_metrics")}')
+        raise NotImplementedError(f'Update eval override after {pl.i("preprocess_logits_for_metrics")}')
         # cls = train_util.MyEvalTrainer
     trainer_args_ = dict(
         model_meta=meta,
@@ -345,8 +345,9 @@ if __name__ == '__main__':
 
     # md = 'melody'
     md = 'full'
+    dnms = ['LMD']
     # dnms = ['POP909', 'MAESTRO']
-    dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['POP909', 'MAESTRO', 'LMD']
     dnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
 
     def train_reformer(resume: str = None):
@@ -375,7 +376,8 @@ if __name__ == '__main__':
         mic(augment_key, wordpiece_tokenize, channel_mixup, _debug_eval)
 
         # n_ep = 8
-        n_ep = 32
+        n_ep = 16
+        # n_ep = 32
         # n_ep = 256
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         if not _debug_eval and channel_mixup:
@@ -396,6 +398,8 @@ if __name__ == '__main__':
             ))
             my_train_args['save_epochs'] = 16
         else:
+            if len(dnms) == 3:  # Data includes LMD, much larger dataset
+                train_args['learning_rate'] = 1e-4
             bsz = 128 if on_great_lakes() else 64
             train_args.update(dict(
                 fp16=torch.cuda.is_available(),

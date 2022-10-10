@@ -57,13 +57,13 @@ class MusicVisualize:
         self.cache = cache
         self.logger = get_logger('Music Visualizer')
         d_log = dict(cache=cache, subset=subset, subset_bound=subset_bound)
-        self.logger.info(f'Initializing {logi(self.__class__.__qualname__)} with {logi(d_log)}... ')
+        self.logger.info(f'Initializing {pl.i(self.__class__.__qualname__)} with {pl.i(d_log)}... ')
         self.logger.info('Getting global stats... ')
         if cache:
             fnm = f'{self.cache}.pkl'
             path = os_join(u.plot_path, 'cache', fnm)
             if os.path.exists(path):
-                self.logger.info(f'Loading cached stats from {logi(path)}... ')
+                self.logger.info(f'Loading cached stats from {pl.i(path)}... ')
                 with open(path, 'rb') as f:
                     d = pickle.load(f)
                     self.dset, self._df = d['dset'], d['df']
@@ -74,14 +74,14 @@ class MusicVisualize:
                 self._df = self._get_song_info()
                 with open(path, 'wb') as f:
                     pickle.dump(dict(dset=self.dset, df=self._df), f)
-                self.logger.info(f'Cached stats saved to {logi(path)} ')
+                self.logger.info(f'Cached stats saved to {pl.i(path)} ')
         else:
             self.dset = self._get_dset(filename, dataset_name)
             self._set_meta()
 
         self.color_palette = color_palette
         if hue_by_dataset:
-            assert dataset_name is not None, f'{logi("dataset_name")} is required for color coding'
+            assert dataset_name is not None, f'{pl.i("dataset_name")} is required for color coding'
         self.hue_by_dataset = hue_by_dataset
         self.dnms = dataset_name
 
@@ -93,7 +93,7 @@ class MusicVisualize:
 
     def _get_dset(self, filename, dataset_name, subset=None, subset_bound=None):
         def _load_single(f_: str, dnm: str = None) -> Dict:
-            self.logger.info(f'Loading JSON dataset {logi(stem(f_))}... ')
+            self.logger.info(f'Loading JSON dataset {pl.i(stem(f_))}... ')
             with open(f_, 'r') as f:
                 ds = json.load(f)
             if dnm:
@@ -108,13 +108,13 @@ class MusicVisualize:
             if dataset_name:
                 assert isinstance(dataset_name, str), \
                     f'Dataset name given should be a string for single filename, ' \
-                    f'but got {logi(dataset_name)} with type {logi(type(dataset_name))}'
+                    f'but got {pl.i(dataset_name)} with type {pl.i(type(dataset_name))}'
             return _load_single(filename, dataset_name)
         else:
             if dataset_name:
                 assert isinstance(dataset_name, list), \
                     f'Dataset name given should be a list for multiple filenames, ' \
-                    f'but got {logi(dataset_name)} with type {logi(type(dataset_name))}'
+                    f'but got {pl.i(dataset_name)} with type {pl.i(type(dataset_name))}'
             else:
                 dataset_name = [None] * len(filename)
             dset = [_load_single(f, dnm) for f, dnm in zip(filename, dataset_name)]
@@ -146,7 +146,7 @@ class MusicVisualize:
         wp_toks = self.wp_tokenizer.tokenize(scr, mode='char')  # just need len, efficient
         d['n_wp_token'] = len(wp_toks)
         if it:
-            it.set_postfix(dict(n_token=logi(d['n_token']), n_wp_token=logi(d['n_wp_token'])))
+            it.set_postfix(dict(n_token=pl.i(d['n_token']), n_wp_token=pl.i(d['n_wp_token'])))
         counter_toks = Counter(toks)
         d['n_bar'] = counter_toks[self.vocab.start_of_bar]
         d['n_tup'] = counter_toks[self.vocab.start_of_tuplet]

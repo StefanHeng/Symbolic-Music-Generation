@@ -44,11 +44,11 @@ class PitchEmbeddingModel:
 
         def on_epoch_begin(self, model):
             self.strt = datetime.datetime.now()
-            log(f'Beginning Epoch #{logi(self.epoch)}... ')
+            log(f'Beginning Epoch #{pl.i(self.epoch)}... ')
 
         def on_epoch_end(self, model):
             self.end = datetime.datetime.now()
-            log(f'Epoch #{logi(self.epoch)} completed in {logi(fmt_time(self.end - self.strt))} ')
+            log(f'Epoch #{pl.i(self.epoch)} completed in {pl.i(fmt_time(self.end - self.strt))} ')
             self.epoch += 1
 
     def __init__(self, archi='sg', algo='hs', w2v_kwargs=None):

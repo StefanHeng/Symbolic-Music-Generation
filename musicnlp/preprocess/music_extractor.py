@@ -70,7 +70,7 @@ class MusicExtractor:
         self.pc = PrecisionChecker(precision=self.prec)
 
         self.logger = get_logger('Music Extraction')
-        assert isinstance(verbose, bool) or verbose == 'single', f'{logi("verbose")} must be bool or {logi("single")}'
+        assert isinstance(verbose, bool) or verbose == 'single', f'{pl.i("verbose")} must be bool or {pl.i("single")}'
         if warn_logger:
             self.warn_logger = warn_logger if isinstance(warn_logger, WarnLog) else WarnLog(verbose=verbose is True)
         else:
@@ -89,7 +89,7 @@ class MusicExtractor:
     def meta2fnm_meta(d: Dict = None, compact: bool = True) -> str:
         keys = ('md', 'prec', 'th') if compact else ('mode', 'precision', 'threshold')
         vals = (d['mode'][0] if compact else d['mode']), d['precision'], d['greedy_tuplet_pitch_threshold']
-        return log_dict_p(dict(zip(keys, vals)))
+        return pl.pa(dict(zip(keys, vals)))
 
     def log_warn(self, log_d: Dict = None, **kwargs):
         d = log_d or kwargs
@@ -370,7 +370,7 @@ class MusicExtractor:
                     m21.layout.LayoutBase, m21.clef.Clef, m21.key.KeySignature, m21.bar.Barline,
                     m21.expressions.TextExpression, m21.repeat.Fine
                 )):
-                    raise TypeError(f"Unexpected element {logi(elm)} w/ type {logi(type(elm))}")
+                    raise TypeError(f"Unexpected element {pl.i(elm)} w/ type {pl.i(type(elm))}")
             elm = next(it, None)
         assert is_notes_pos_duration(lst)
         if bar.hasVoices():  # Join all voices to notes
@@ -482,7 +482,7 @@ class MusicExtractor:
                         notes_bass.append(nb)
                         removed = True
                     elif self.verbose:
-                        self.logger.info(f'Skipping {logi("bass")} note at bar#{number}: {logi(nb)}')
+                        self.logger.info(f'Skipping {pl.i("bass")} note at bar#{number}: {pl.i(nb)}')
                 if removed:
                     # skip unfilled range
                     notes_bass = fill_with_rest(notes_bass, duration=time_sig2bar_dur(time_sig), fill_start=True)[0]
@@ -747,7 +747,7 @@ class MusicExtractor:
                     notes_have_gap=notes_have_gap(notes),
 
                 )
-                raise ValueError(f'Invalid bar notes at {logi(i_bar)}th bar w/ {logi(d_err)}')
+                raise ValueError(f'Invalid bar notes at {pl.i(i_bar)}th bar w/ {pl.i(d_err)}')
         return lst_notes
 
     def notes2quantized_notes(
@@ -891,9 +891,9 @@ class MusicExtractor:
         title = title.removesuffix('.mxl').removesuffix('.musicxml')
 
         lst_bar_info = list(self.it_bars(song))
-        assert len(lst_bar_info) > 0, f'{logi("No bars")} found in song'
+        assert len(lst_bar_info) > 0, f'{pl.i("No bars")} found in song'
         assert all(len(bar_info.bars) > 0 for bar_info in lst_bar_info), \
-            f'{logi("No pitched")} notes found at all times, most likely the song contains {logi("drum tracks")} ' \
+            f'{pl.i("No pitched")} notes found at all times, most likely the song contains {pl.i("drum tracks")} ' \
             f'only - Terminating as extraction output would be empty'
         n_bars_ori = len(lst_bar_info)  # Subject to change, see below
 
@@ -925,7 +925,7 @@ class MusicExtractor:
         ts_mode_str = f'{time_sig_mode[0]}/{time_sig_mode[1]}'
         if self.verbose:
             d_log = {'Time Signature': ts_mode_str, 'Tempo': mean_tempo, '#bars': len(lst_bars_), 'Duration': secs}
-            self.logger.info(f'Extracting {logi(title)} with {log_dict(d_log)}... ')
+            self.logger.info(f'Extracting {pl.i(title)} with {pl.i(d_log)}... ')
             if self.warn_logger is not None:
                 self.warn_logger.start_tracking(args_func=lambda: dict(id=title, timestamp=now()))
         lst_ts = sorted(set((ts.numerator, ts.denominator) for ts in time_sigs), key=lambda x: (x[1], x[0]))
@@ -997,8 +997,8 @@ class MusicExtractor:
                     scr_out = ' '.join(toks)
         if self.verbose and self.warn_logger is not None:
             t = fmt_delta(datetime.datetime.now() - t_strt)
-            self.logger.info(f'{logi(title)} extraction completed in {log_s(t, c="y")} '
-                             f'with warnings {log_dict(self.warn_logger.tracked())}')
+            self.logger.info(f'{pl.i(title)} extraction completed in {log_s(t, c="y")} '
+                             f'with warnings {pl.i(self.warn_logger.tracked())}')
         ret = scr_out
         if return_meta:
             ret = dict(score=scr_out, title=title, duration=secs, warnings=self.warn_logger.tracked(exp='serialize'))

@@ -58,8 +58,8 @@ class MusicConverter:
                         break
                 # Deal with consecutive and same-n tuplet groups in a row
                 assert len(lst_tup) % n_tup == 0, \
-                    f'Invalid Tuplet note count: {logi(tup_str)} with {logi(lst_tup)} should have ' \
-                    f'multiples of {logi(n_tup)} notes'
+                    f'Invalid Tuplet note count: {pl.i(tup_str)} with {pl.i(lst_tup)} should have ' \
+                    f'multiples of {pl.i(n_tup)} notes'
                 lst.extend([tuple(lst_tup_) for lst_tup_ in group_n(lst_tup, n_tup)])
                 elm = elm_
                 continue
@@ -68,7 +68,7 @@ class MusicConverter:
             elif isinstance(elm, Chord):  # TODO
                 raise NotImplementedError('Chord not supported yet')
             elif not isinstance(elm, (TimeSignature, MetronomeMark, m21.clef.BassClef)):  # which will be skipped
-                raise ValueError(f'Unexpected element type: {logi(elm)} with type {logi(type(elm))}')
+                raise ValueError(f'Unexpected element type: {pl.i(elm)} with type {pl.i(type(elm))}')
             elm = next(it, None)
         return lst
 
@@ -96,12 +96,12 @@ class MusicConverter:
             key = insert_key if isinstance(insert_key, str) else pt_sample(KeyFinder(song).find_key(return_type='dict'))
 
         if n_bar is not None:  # for conditional generation
-            MusicConverter._input_format_error(n_bar > 0, f'{logi("n_bar")} should be positive integer')
+            MusicConverter._input_format_error(n_bar > 0, f'{pl.i("n_bar")} should be positive integer')
             bars = bars[:min(n_bar, len(bars))]
         toks = []
         for i, bar in enumerate(bars):
             MusicConverter._input_format_error(
-                all(not isinstance(e, m21.stream.Voice) for e in bar), f'Expect no voice in bar#{logi(i)}')
+                all(not isinstance(e, m21.stream.Voice) for e in bar), f'Expect no voice in bar#{pl.i(i)}')
             # as `vocab` converts each music element to a list
             toks.append(sum([self.vocab(e) for e in self._bar2grouped_bar(bar)], start=[]))
         return PartExtractOutput(time_sig=time_sig, tempo=tempo, key=key, toks=toks)
@@ -125,7 +125,7 @@ class MusicConverter:
         song: Score
         parts = list(song.parts)
         correct_n_part = (self.mode == 'melody' and len(parts) == 1) or (self.mode == 'full' and len(parts) == 2)
-        MusicConverter._input_format_error(correct_n_part, f'Invalid #Part for f{logi(self.mode)} ')
+        MusicConverter._input_format_error(correct_n_part, f'Invalid #Part for f{pl.i(self.mode)} ')
         part_melody = next(p for p in parts if 'Melody' in p.partName)  # See `make_score`
         part_bass = None
         if self.mode == 'full':
@@ -211,7 +211,7 @@ class MusicConverter:
                 assert typ == VocabType.pitch
                 tok_d = next(it, None)
                 assert tok_d is not None and self.vocab.type(tok_d) == VocabType.duration, \
-                    f'Pitch token {logi(tok)} should be followed by a duration token but got {logi(tok_d)}'
+                    f'Pitch token {pl.i(tok)} should be followed by a duration token but got {pl.i(tok_d)}'
                 lst_out.append(MusicElement(type=ElmType.note, meta=(comp(tok), comp(tok_d))))
             tok = next(it, None)
 
@@ -240,7 +240,7 @@ class MusicConverter:
         Convert a music element tuple into a music21 note or tuplet of notes
         """
         assert note.type in [ElmType.note, ElmType.tuplets], \
-            f'Invalid note type: expect one of {logi([ElmType.note, ElmType.tuplets])}, got {logi(note.type)}'
+            f'Invalid note type: expect one of {pl.i([ElmType.note, ElmType.tuplets])}, got {pl.i(note.type)}'
 
         pitch, q_len = note.meta
         dur = m21.duration.Duration(quarterLength=q_len)

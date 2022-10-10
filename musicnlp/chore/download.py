@@ -51,11 +51,11 @@ TOKENIZER_URL = 'https://drive.google.com/uc?id=1rbQccozpAMjRWkjtKConka_DkCusxZs
 
 def download_n_unzip(url: str = None, download_output_path: str = None, extract_path: str = None):
     if not os.path.exists(download_output_path):
-        logger.info(f'Downloading file from {logi(url)} to {logi(download_output_path)}... ')
+        logger.info(f'Downloading file from {pl.i(url)} to {pl.i(download_output_path)}... ')
         gdown.download(url, download_output_path, quiet=False)
 
     ext_pa = extract_path or os.path.dirname(download_output_path)
-    logger.info(f'Unzipping downloaded file {logi(download_output_path)} to {logi(ext_pa)}... ')
+    logger.info(f'Unzipping downloaded file {pl.i(download_output_path)} to {pl.i(ext_pa)}... ')
     with ZipFile(download_output_path, 'r') as zf:
         zf.extractall(ext_pa)
 

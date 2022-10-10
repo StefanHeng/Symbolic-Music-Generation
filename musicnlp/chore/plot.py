@@ -33,7 +33,7 @@ def parse_tensorboard(path) -> Dict[str, pd.DataFrame]:
         )
 
     fnms = list(glob.iglob(os_join(path, '**/events.out.tfevents*'), recursive=True))
-    assert len(fnms) == 1, f'Expect one events.out.tfevents file, found {logi(len(fnms))}'
+    assert len(fnms) == 1, f'Expect one events.out.tfevents file, found {pl.i(len(fnms))}'
     fnm = fnms[0]
     events = [event_pb2.Event.FromString(rec.numpy()) for rec in tf.data.TFRecordDataset(fnm)]
     events = [parse_single(e) for e in events if len(e.summary.value)]
@@ -56,12 +56,12 @@ def parse_tensorboard(path) -> Dict[str, pd.DataFrame]:
         return d_out
     events = [group_single(e) for e in events]
     tags = set(tag for e in events for tag in e.keys())
-    assert tags == {'train', 'eval'}, f'Expect {logi("train")} and {logi("eval")} tags, found {logi(tags)}'
+    assert tags == {'train', 'eval'}, f'Expect {pl.i("train")} and {pl.i("eval")} tags, found {pl.i(tags)}'
     d_dfs = {tag: pd.DataFrame([d_out[tag] for d_out in events if tag in d_out]) for tag in tags}
     for tag, df_ in d_dfs.items():
         mi, ma = df_.step.min(), df_.step.max()
         assert np.array_equal(df_.step.to_numpy(), np.arange(mi, ma + 1)), \
-            f'Expect step for {logi(tag)} to be continuously increasing integer range'
+            f'Expect step for {pl.i(tag)} to be continuously increasing integer range'
     return d_dfs
 
 
@@ -74,7 +74,7 @@ def parse_tensorboards(paths: List[str]) -> Dict[str, pd.DataFrame]:
     lst_d_dfs = [parse_tensorboard(path) for path in paths]
     tags = lst_d_dfs[0].keys()
     assert all(d_dfs.keys() == tags for d_dfs in lst_d_dfs), \
-        f'Expect all tensorboard files to have the same tags, found {logi(tags)}'
+        f'Expect all tensorboard files to have the same tags, found {pl.i(tags)}'
     d_df_out = dict()
     for tag in tags:
         dfs = [d_dfs[tag] for d_dfs in lst_d_dfs]

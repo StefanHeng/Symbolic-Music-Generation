@@ -38,7 +38,7 @@ def load_songs(*dnms) -> List[str]:
         load_songs.logger = get_logger('Load Songs')
 
     def _load_single(dnm_):
-        load_songs.logger.info(f'Loading songs in dataset {logi(dnm_)}... ')
+        load_songs.logger.info(f'Loading songs in dataset {pl.i(dnm_)}... ')
         with open(os.path.join(music_util.get_processed_path(), f'{dnm_}.json'), 'r') as f:
             dset = json.load(f)
         return [s['score'] for s in dset['music']]
@@ -68,7 +68,7 @@ def get_dataset(
                 descs = [json.loads(d_dict[split].info.description) for d_dict in dset]
                 descs = {k_: [d[k_] for d in descs] for k_ in descs[0].keys()}  # Merge all keys
                 assert list_is_same_elms(descs['extractor_meta']), \
-                    f'{logi("extractor_meta")} must be the same for all datasets to combine'
+                    f'{pl.i("extractor_meta")} must be the same for all datasets to combine'
                 descs['extractor_meta'] = descs['extractor_meta'][0]
                 info = datasets.DatasetInfo(description=json.dumps(descs))
                 return dict(dsets=dsets, info=info)
@@ -78,7 +78,7 @@ def get_dataset(
     else:
         dset = load_single(dataset_names)
     if n_sample is not None:
-        logger.info(f'Sampling the first {logi(n_sample)} examples... ')
+        logger.info(f'Sampling the first {pl.i(n_sample)} examples... ')
         if isinstance(dset, Dataset):
             dset = dset.select(range(n_sample))
         else:  # dict
@@ -93,7 +93,7 @@ def get_dataset(
         dset = dset.map(map_func, batched=True, remove_columns=remove_columns, num_proc=n_cpu)
         datasets.enable_progress_bar()
     if shuffle_seed:
-        logger.info(f'Shuffling with seed {logi(shuffle_seed)}... ')
+        logger.info(f'Shuffling with seed {pl.i(shuffle_seed)}... ')
         dset = dset.shuffle(seed=shuffle_seed)
     return dset
 
@@ -207,7 +207,7 @@ class AugmentedDataset:
         self.augment_key = augment_key
         self.channel_mixup = channel_mixup
         if channel_mixup and mode != 'full':
-            raise ValueError(f'{logi("mix_up")} only works with mode={logi("full")}')
+            raise ValueError(f'{pl.i("mix_up")} only works with mode={pl.i("full")}')
         self.cm = None
         if channel_mixup:
             self.cm = ChannelMixer(precision=prec, vocab=self.tokenizer.vocab)

@@ -148,7 +148,7 @@ class ColoredPrinterCallback(TrainerCallback):
         os.makedirs(self.output_dir, exist_ok=True)
         self.save_time = self.output_dir.split(os.sep)[-1]  # expect last dir name as time stamp
         meta = meta2fnm_meta(self.trainer.model_meta)
-        self.log_fnm = f'Train_{log_dict_p(meta)}_{{n={n_data}, a={lr}, bsz={self.bsz}, n_ep={n_ep}}}'
+        self.log_fnm = f'Train_{pl.pa(meta)}_{{n={n_data}, a={lr}, bsz={self.bsz}, n_ep={n_ep}}}'
 
         if name is None:
             name = 'MyTrainer'
@@ -170,18 +170,18 @@ class ColoredPrinterCallback(TrainerCallback):
         conf = self.trainer.model.config.to_dict()
         train_args = self.trainer.args.to_dict()
         meta = self.trainer.model_meta
-        self.logger.info(f'Training started with model {log_dict(meta)}, {log_dict_pg(conf)} '
-                         f'on {log_dict(self.train_meta)} with training args {log_dict_pg(train_args)} '
-                         f'and my training args {log_dict(self.trainer.my_args)}... ')
-        self.logger_fl.info(f'Training started with with model {log_dict_nc(meta)}, {log_dict_id(conf)} '
-                            f'on {log_dict_nc(self.train_meta)} with training args {log_dict_id(train_args)} '
-                            f'and my training args {log_dict_nc(self.trainer.my_args)}... ')
+        self.logger.info(f'Training started with model {pl.i(meta)}, {pl.fmt(conf)} '
+                         f'on {pl.i(self.train_meta)} with training args {pl.fmt(train_args)} '
+                         f'and my training args {pl.i(self.trainer.my_args)}... ')
+        self.logger_fl.info(f'Training started with with model {pl.nc(meta)}, {pl.id(conf)} '
+                            f'on {pl.nc(self.train_meta)} with training args {pl.id(train_args)} '
+                            f'and my training args {pl.nc(self.trainer.my_args)}... ')
         self.t_strt = datetime.datetime.now()
 
     def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
         self.t_end = datetime.datetime.now()
         t = fmt_delta(self.t_end - self.t_strt)
-        self.logger.info(f'Training completed in {logi(t)} ')
+        self.logger.info(f'Training completed in {pl.i(t)} ')
         self.logger_fl.info(f'Training completed in {t} ')
         self.mode = 'eval'
 
@@ -202,21 +202,14 @@ class ColoredPrinterCallback(TrainerCallback):
 
                     # out_console, out_write = self.out_dict2str(logs, return_wo_color=True)  # TODO: didn't test
                     logs = self.prettier(logs)
-                    self.logger.info(log_dict(logs))
-                    self.logger_fl.info(log_dict_nc(logs))
+                    self.logger.info(pl.i(logs))
+                    self.logger_fl.info(pl.nc(logs))
                 else:
-                    self.logger.info(log_dict(logs))
-                    self.logger_fl.info(log_dict(logs, with_color=False))
+                    self.logger.info(pl.i(logs))
+                    self.logger_fl.info(pl.i(logs, with_color=False))
             else:
                 self.logger.info(logs)
                 self.logger_fl.info(logs)
-
-
-no_prefix = ['epoch', 'step']
-
-
-def add_prefix(key: str) -> bool:
-    return key not in no_prefix
 
 
 class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
@@ -247,21 +240,21 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
             if 'learning_rate' in tqdm_kws:
                 tqdm_kws['lr'] = tqdm_kws.pop('learning_rate')
             if not is_on_colab():  # coloring not supported in the HTML UI in Chrome
-                tqdm_kws = {k: logi(v) for k, v in tqdm_kws.items()}
+                tqdm_kws = {k: pl.i(v) for k, v in tqdm_kws.items()}
             if mode == 'train':
                 pbar = callback.training_bar
             else:  # 'eval'
                 pbar = callback.prediction_bar
             if pbar:
                 pbar.set_postfix(ordered_dict=tqdm_kws)
-        d_log_write = {f'{mode}/{k}' if add_prefix(k) else k: v for k, v in d_log_write.items()}
+        d_log_write = None
         if to_console:
-            self.logger.info(log_dict(d_log_write))
-        self.logger_fl.info(log_dict_nc(d_log_write))
+            self.logger.info(pl.i(d_log_write))
+        self.logger_fl.info(pl.nc(d_log_write))
 
         step = d_log.get('step') if mode == 'train' else d_log.get('epoch')
         for k, v in d_log.items():
-            if add_prefix(k):
+            if self.prettier.should_add_split_prefix(k):
                 self.writer.add_scalar(tag=f'{mode}/{k}', scalar_value=v, global_step=step)
 
     def on_log(self, args, state, control, logs=None, **kwargs):
@@ -321,8 +314,8 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                     # we don't need it for logging as eval metrics are gathered by Trainer out-of-the-box
                     self._train_step_metrics = []
                 else:
-                    self.logger.info(log_dict(logs))
-                    self.logger_fl.info(log_dict_nc(logs))
+                    self.logger.info(pl.i(logs))
+                    self.logger_fl.info(pl.nc(logs))
 
 
 class ClmAccCallback(ColoredPrinterCallback):
@@ -368,7 +361,7 @@ class ClmAccCallback(ColoredPrinterCallback):
                 self.logger.info(self.prettier(self.out_dict_tr))
                 self.out_dict_tr = None  # Rest for next global step
             elif any('runtime' in k for k in logs.keys()):
-                self.logger.info(log_dict(logs) if isinstance(logs, dict) else logs)
+                self.logger.info(pl.i(logs) if isinstance(logs, dict) else logs)
             else:
                 print('unhandled case', logs)
                 exit(1)

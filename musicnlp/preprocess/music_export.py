@@ -47,12 +47,12 @@ class SingleExport:
             fl_nm_single_out = os_join(self.output_path, f'Music Export - {fnm_}.json')
             if self.save_each and os.path.exists(fl_nm_single_out):  # File already processed, ignore
                 if self.log2console:
-                    self.logger.info(f'{logi(self.processed_count)}:{logi(fnm_)} already processed, skipping...')
+                    self.logger.info(f'{pl.i(self.processed_count)}:{pl.i(fnm_)} already processed, skipping...')
                 return
             else:
                 ret = self.extractor(fl_nm, exp=self.exp, return_meta=True, return_key=True)
                 if self.log2console:
-                    self.logger.info(f'{logi(self.processed_count)}:{logi(fnm_)} processing finished ')
+                    self.logger.info(f'{pl.i(self.processed_count)}:{pl.i(fnm_)} processing finished ')
                 if self.save_each:
                     d_out = dict(encoding_type=self.exp, extractor_meta=self.extractor.meta, music=ret)
                     with open(fl_nm_single_out, 'w') as f_:
@@ -60,9 +60,9 @@ class SingleExport:
                 else:
                     return ret
         except Exception as e:
-            self.logger.error(f'Failed to extract {logi(fl_nm)}, {logi(e)}')  # Abruptly stop the process
+            self.logger.error(f'Failed to extract {pl.i(fl_nm)}, {pl.i(e)}')  # Abruptly stop the process
             if self.halt_on_error:
-                raise ValueError(f'Failed to extract {logi(fl_nm)}')
+                raise ValueError(f'Failed to extract {pl.i(fl_nm)}')
             else:
                 return  # Keep the extraction going
 
@@ -127,7 +127,7 @@ class MusicExport:
             greedy_tuplet_pitch_threshold=3**9
         ) | (extractor_args or dict())
         extractor = MusicExtractor(**ext_args)
-        self.logger.info(f'Music Extractor created with args: {log_dict(ext_args)}')
+        self.logger.info(f'Music Extractor created with args: {pl.i(ext_args)}')
 
         dnm_ = None
         if isinstance(filenames, str):  # Dataset name provided
@@ -136,7 +136,7 @@ class MusicExport:
             # filenames = filenames[:16]  # TODO: Debugging
         d_log = dict(save_each=save_each, with_tqdm=with_tqdm, parallel=parallel, parallel_mode=parallel_mode)
         n_song = len(filenames)
-        self.logger.info(f'Extracting {logi(n_song)} songs with {log_dict(d_log)}... ')
+        self.logger.info(f'Extracting {pl.i(n_song)} songs with {pl.i(d_log)}... ')
 
         pbar = None
 
@@ -194,8 +194,8 @@ class MusicExport:
             with open(out_fnm, 'w') as f:
                 # TODO: Knowing the extracted dict, expand only the first few levels??
                 json.dump(dict(encoding_type=exp, extractor_meta=extractor.meta, music=lst_out), f, indent=4)
-            self.logger.info(f'Extracted {logi(len(lst_out))} songs written to {logi(out_fnm)}')
-        self.logger.info(f'Extraction finished in {logi(fmt_delta(datetime.datetime.now() - strt))}')
+            self.logger.info(f'Extracted {pl.i(len(lst_out))} songs written to {pl.i(out_fnm)}')
+        self.logger.info(f'Extraction finished in {pl.i(fmt_delta(datetime.datetime.now() - strt))}')
 
     @staticmethod
     def combine_saved_songs(
@@ -207,7 +207,7 @@ class MusicExport:
             as if running `__call__` with save_each off
         """
         logger = get_logger('Combine Single-Extracted Songs')
-        logger.info(f'Combining {logi(len(filenames))} songs... ')
+        logger.info(f'Combining {pl.i(len(filenames))} songs... ')
 
         def load_single(fl):
             with open(fl, 'r') as f_:
@@ -231,7 +231,7 @@ class MusicExport:
         date = now(fmt='short-date')
         out_path = f'{date}_{output_filename}_{{n={len(filenames)}}}_{meta}'
         out_path = os_join(path_out, f'{out_path}.json')
-        logger.info(f'Writing combined songs to {logi(out_path)}... ')
+        logger.info(f'Writing combined songs to {pl.i(out_path)}... ')
         with open(out_path, 'w') as f:
             json.dump(d_out, f)  # no indent to save disk space
         return d_out
@@ -248,7 +248,7 @@ class MusicExport:
         :param split_args: arguments for datasets.Dataset.
         """
         logger = get_logger('JSON=>HF dataset')
-        logger.info(f'Loading {logi(fnm)} JSON file... ')
+        logger.info(f'Loading {pl.i(fnm)} JSON file... ')
         with open(os_join(path_out, f'{fnm}.json')) as f:
             dset = json.load(f)
         songs, meta = dset['music'], dset['extractor_meta']
@@ -274,7 +274,7 @@ class MusicExport:
             dset = dset.train_test_split(**split_args)
 
         path = os_join(path_out, 'hf')
-        logger.info(f'Saving dataset to {logi(path)}... ')
+        logger.info(f'Saving dataset to {pl.i(path)}... ')
         os.makedirs(path, exist_ok=True)
         dset.save_to_disk(os_join(path, fnm))
         return dset
@@ -425,7 +425,7 @@ if __name__ == '__main__':
         for fd_nm in sorted(os.listdir(path)):
             pa = os_join(path, fd_nm)
             counts[fd_nm] = _folder2file_counts(pa) if 'LMD' in fd_nm else _folder2count(pa)
-        print(log_dict_pg(dict(counts=counts)))
+        print(pl.fmt(dict(counts=counts)))
     # check_extract_progress()
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
@@ -518,8 +518,8 @@ if __name__ == '__main__':
                         json.dump(song, f, indent=4)
                 pbar.update(1)
             except Exception as e:
-                logger.error(f'Failed to find key for {logi(fl_nm)}, {logi(e)}')  # Abruptly stop the process
-                raise ValueError(f'Failed to find key for {logi(fl_nm)}')
+                logger.error(f'Failed to find key for {pl.i(fl_nm)}, {pl.i(e)}')  # Abruptly stop the process
+                raise ValueError(f'Failed to find key for {pl.i(fl_nm)}')
         # for fnm in fnms[:20]:
         #     call_single(fnm)
 

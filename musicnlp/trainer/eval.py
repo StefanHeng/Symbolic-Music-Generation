@@ -46,7 +46,7 @@ def load_trained(
     cls = MyReformerModelWithLMHead if model_name == 'reformer' else MyTransfoXLLMHeadModel
     logger = get_logger('Load Trained')
     model = cls.from_pretrained(path)
-    logger.info(f'Loaded {logi(cls.__qualname__)} with config {log_dict_pg(model.config.to_dict())}')
+    logger.info(f'Loaded {pl.i(cls.__qualname__)} with config {pl.fmt(model.config.to_dict())}')
     return model
 
 
@@ -83,7 +83,7 @@ class MusicGenerator:
 
         self.logger = get_logger('Music Generator')
         d_log = dict(model_max_length=self.max_len)
-        self.logger.info(f'{logi(self.__class__.__qualname__)} initialized with max_len={logi(d_log)}')
+        self.logger.info(f'{pl.i(self.__class__.__qualname__)} initialized with max_len={pl.i(d_log)}')
 
     @staticmethod
     def args2fnm(args: dict):
@@ -122,7 +122,7 @@ class MusicGenerator:
         key = prompt_args['insert_key']
         if key is True:
             path = prompt_args.get('path', None)
-            assert path, f'A path to a song must be provided to {logi("prompt_args")} to extract key ' \
+            assert path, f'A path to a song must be provided to {pl.i("prompt_args")} to extract key ' \
                          f'when key is not already provided'
             key = pt_sample(KeyFinder(path).find_key(return_type='dict'))  # just sample a key for generation, TODO?
         if mode == 'unconditional':
@@ -133,7 +133,7 @@ class MusicGenerator:
             prompt = ' '.join([*prompt, self.vocab.start_of_bar])
         else:  # 'conditional'
             prompt, path = prompt_args.get('prompt', None), prompt_args.get('path', None)
-            assert prompt is not None or path is not None, f'Expect either {logi("prompt")} or {logi("path")}'
+            assert prompt is not None or path is not None, f'Expect either {pl.i("prompt")} or {pl.i("path")}'
             if prompt is None:
                 prompt = self.converter.mxl2str(path, n_bar=prompt_args['n_bar'], insert_key=key)
         inputs = self.tokenizer(prompt, return_tensors='pt')
@@ -141,36 +141,36 @@ class MusicGenerator:
         if strategy == 'greedy':
             assert (k in ['do_sample'] for k in generate_args)
             if 'do_sample' in generate_args:
-                assert not generate_args['do_sample'], f'{logi("do_sample")} must be False for greedy generation'
+                assert not generate_args['do_sample'], f'{pl.i("do_sample")} must be False for greedy generation'
             else:
                 generate_args['do_sample'] = False
         elif strategy == 'sample':
             assert all(k in ['do_sample', 'top_k', 'top_p', 'temperature'] for k in generate_args)
             if 'do_sample' in generate_args:
-                assert generate_args['do_sample'], f'{logi("do_sample")} must be True for sample generation'
+                assert generate_args['do_sample'], f'{pl.i("do_sample")} must be True for sample generation'
             else:
                 generate_args['do_sample'] = True
             assert 'top_k' in generate_args or 'top_p' in generate_args, \
-                f'Expect either {logi("top_k")} or {logi("top_p")} for sample generation'
+                f'Expect either {pl.i("top_k")} or {pl.i("top_p")} for sample generation'
         else:  # seems to repeat itself
             assert strategy == 'beam'
             generate_args = dict(num_beams=4, early_stopping=True) | generate_args
             assert (k in ['do_sample', 'num_beams', 'num_beam_groups', 'early_stopping'] for k in generate_args)
-            assert generate_args['num_beams'] > 1, f'{logi("num_beams")} must >1 for beam-search generation'
+            assert generate_args['num_beams'] > 1, f'{pl.i("num_beams")} must >1 for beam-search generation'
         args |= generate_args
         prompt_colored = self.colorize_song(prompt)
         d_log = dict(mode=mode, strategy=strategy, args=generate_args | prompt_args, prompt=prompt_colored)
-        self.logger.info(f'Generating with {log_dict(d_log)}')
+        self.logger.info(f'Generating with {pl.i(d_log)}')
         t = datetime.datetime.now()
         self.model.eval()
         output = self.model.generate(**inputs, **args)  # for now, generate one at a time
-        self.logger.info(f'Model generation finished in {logi(fmt_delta(datetime.datetime.now() - t))}')
+        self.logger.info(f'Model generation finished in {pl.i(fmt_delta(datetime.datetime.now() - t))}')
         assert len(output) == 1  # sanity check
         output = output[0]
 
         if truncate_to_sob:
             idxs_eob = torch.nonzero(output.eq(self.tokenizer.sob_token_id)).flatten().tolist()
-            assert len(idxs_eob) > 0, f'No start of bar token found when {logi("truncate_to_sob")} enabled'
+            assert len(idxs_eob) > 0, f'No start of bar token found when {pl.i("truncate_to_sob")} enabled'
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
         title = f'{save}-generated' if save else None

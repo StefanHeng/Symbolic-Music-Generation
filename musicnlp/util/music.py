@@ -36,7 +36,7 @@ def get_my_example_songs(k=None, pretty=False, fmt='mxl', extracted: bool = Fals
     paths = sorted(glob.iglob(path, recursive=True))
     if k is not None:
         assert isinstance(k, (int, str)), \
-            f'Expect k to be either a {logi("int")} or {logi("str")}, got {logi(k)} with type {logi(type(k))}'
+            f'Expect k to be either a {pl.i("int")} or {pl.i("str")}, got {pl.i(k)} with type {pl.i(type(k))}'
         if type(k) is int:
             return paths[k]
         else:  # Expect str
@@ -150,7 +150,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
 
             fnm_ = clean_whitespace(f'{artist} - {title_}')
             assert len(clean_whitespace(artist)) - 3 <= my_lim, \
-                f'Artist name {logi(artist)} is too long for OS file write'
+                f'Artist name {pl.i(artist)} is too long for OS file write'
             if len(fnm_) > my_lim:
                 # Modified the name, but still keep to the original way of versioning,
                 #   i.e. `<title>.<version>` if there's a separate version,
@@ -168,11 +168,11 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
         for p in tqdm(paths, desc=f'Converting {dataset_name}', unit='song'):
             fnm = path2fnm(p)
             if fnm in fnms_written:
-                raise ValueError(f'Duplicate file name because of truncation: path {logi(p)} modified to {logi(fnm)}')
+                raise ValueError(f'Duplicate file name because of truncation: path {pl.i(p)} modified to {pl.i(fnm)}')
             fnms_written.add(fnm)
             copyfile(p, os_join(path_exp, fnm))
         assert len(fnms_written) == len(paths)
-        print(f'{logi(path2fnm.count_too_long)} files were truncated to {logi(os_lim)} characters')
+        print(f'{pl.i(path2fnm.count_too_long)} files were truncated to {pl.i(os_lim)} characters')
     elif dataset_name == 'LMD':
         d_dset = sconfig(f'datasets.{dataset_name}.original')
         path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
@@ -388,7 +388,7 @@ if __name__ == '__main__':
             fnm_new = clean_whitespace(fnm)
             if fnm != fnm_new:
                 os.rename(fnm, fnm_new)
-                print(f'Renamed {logi(fnm)} => {logi(fnm_new)}')
+                print(f'Renamed {pl.i(fnm)} => {pl.i(fnm_new)}')
     # fix_match_mxl_names_with_new_mid()
 
     def get_lmd_subset():
@@ -427,7 +427,7 @@ if __name__ == '__main__':
         mic(path_processed)
         os.makedirs(path_processed, exist_ok=True)
         path_mids = sorted(glob.iglob(os_join(path_to_process, '*.mid')))
-        logger.info(f'{logi(len(path_mids))} MIDI files should have been converted')
+        logger.info(f'{pl.i(len(path_mids))} MIDI files should have been converted')
         count = 0
         output_format = 'xml'
         # output_format = 'mxl'
@@ -435,11 +435,11 @@ if __name__ == '__main__':
             path_xml = path.replace('.mid', f'.{output_format}')
             if os.path.exists(path_xml):
                 fnm = stem(path)
-                logger.info(f'{logi(fnm)} converted, moved to processed folder')
+                logger.info(f'{pl.i(fnm)} converted, moved to processed folder')
                 shutil.move(path, os_join(path_processed, f'{fnm}.mid'))  # move to processed folder
                 shutil.move(path_xml, os_join(path_processed, f'{fnm}.{output_format}'))
                 count += 1
-        logger.info(f'{logi(count)} MIDIs converted in the last session')
+        logger.info(f'{pl.i(count)} MIDIs converted in the last session')
         count = 0
         path_xmls = sorted(glob.iglob(os_join(path_to_process, f'*.{output_format}')))
         for path in path_xmls:
@@ -447,9 +447,9 @@ if __name__ == '__main__':
             if not os.path.exists(path_mid):
                 fnm = stem(path)
                 os.remove(path)
-                logger.info(f'Original MIDI for {logi(fnm)} not found, removed')
+                logger.info(f'Original MIDI for {pl.i(fnm)} not found, removed')
                 count += 1
-        logger.info(f'{logi(count)} converted xml with unknown origin in the last session removed')
+        logger.info(f'{pl.i(count)} converted xml with unknown origin in the last session removed')
     # mv_backend_not_processed()
 
     def get_convert_df():

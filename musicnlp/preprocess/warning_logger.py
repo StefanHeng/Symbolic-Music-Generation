@@ -226,7 +226,7 @@ class WarnLog:
             warn_ = self.args_func() | warn_
 
         if self.verbose:
-            warn_out = {k: logi(v)+self.yellow for k, v in warn_.items()}
+            warn_out = {k: pl.i(v)+self.yellow for k, v in warn_.items()}
             warn_out['warn_name'] = sty.ef.bold + self.yellow + warn_out['warn_name']
             self.logger.warning((WarnLog.warn_nm2str_tpl(nm) + MyFormatter.RESET).format(**warn_out))
         self.warnings.append(warn_)
@@ -286,7 +286,7 @@ class WarnLog:
 
         if exp == 'summary':
             return Counter(w['warn_name'] for w in self.warnings[self.idx_track:])
-            # return ', '.join((f'{logi(k)}: {logi(v)}' for k, v in counts.items()))
+            # return ', '.join((f'{pl.i(k)}: {pl.i(v)}' for k, v in counts.items()))
         elif exp == 'serialize':
             return [WarnLog.serialize_warning(wn) for wn in self.warnings[self.idx_track:]]
         else:

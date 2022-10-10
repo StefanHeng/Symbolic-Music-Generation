@@ -41,7 +41,7 @@ class IkrMetric:
         Arguments should be batched autoregressive transformer input & output tokens of the same shape in 2D
         """
         assert preds.shape == labels.shape, \
-            f'Input and label shapes do not match, {logi(preds.shape)} vs {logi(labels.shape)}'
+            f'Input and label shapes do not match, {pl.i(preds.shape)} vs {pl.i(labels.shape)}'
         ikrs = []
         if self.mode == 'vanilla':
             for pred, label, key_scores_ in zip(preds, labels, key_scores):
@@ -56,7 +56,7 @@ class IkrMetric:
                 key_tok_id = label[2]  # expect labels to be well-formed
                 if not self.vocab.type(key_tok_id) == VocabType.key:
                     tok = self.tokenizer.decode([key_tok_id])
-                    raise ValueError(f'Expect key token at 3rd position of label, got {logi(key_tok_id)}:{logi(tok)}')
+                    raise ValueError(f'Expect key token at 3rd position of label, got {pl.i(key_tok_id)}:{pl.i(tok)}')
                 ikrs.append(self.get_in_key_ratio(pred[label != PT_LOSS_PAD], self.vocab.compact(key_tok_id)))
         return np.array(ikrs).mean()
 
@@ -68,8 +68,8 @@ class IkrMetric:
         bar_idx = [idx for idx, tok in enumerate(
             tok_lst) if tok == self.vocab.start_of_bar]
         assert len(bar_idx) > self.n_init_bars + 1, \
-            f'Not enough bars for key estimation: expect at least {logi(self.n_init_bars + 1)} total bars in music, ' \
-            f'got {logi(len(bar_idx))}'
+            f'Not enough bars for key estimation: expect at least {pl.i(self.n_init_bars + 1)} total bars in music, ' \
+            f'got {pl.i(len(bar_idx))}'
 
         pitch_lst = list(
             filterfalse(lambda x: self.vocab.type(x) !=
