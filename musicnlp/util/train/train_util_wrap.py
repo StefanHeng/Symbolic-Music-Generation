@@ -21,7 +21,7 @@ __all__ = [
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
 
 
-def meta2fnm_meta(meta: Dict) -> Dict:
+def meta2fnm_meta(meta: Dict, subset: str = ('model name', 'max length', 'hidden_size', 'attention_shape')) -> Dict:
     if not hasattr(meta2fnm_meta, 'd_key'):
         meta2fnm_meta.d_key = {
             'model name': 'nm', 'max length': 'l', 'axial_pos_shape': 'ax_pos_sp',
@@ -29,6 +29,8 @@ def meta2fnm_meta(meta: Dict) -> Dict:
             'n_layer': 'n_l', 'attn_layers': 'attn', 'attention_shape': 'attn_sh',
             'parameter_count': 'n_param', 'seg_len': 'seg_len', 'max_len': 'max_len'
         }
+    if subset:
+        meta = {k: v for k, v in meta.items() if k in subset}
     return OrderedDict((meta2fnm_meta.d_key[k_], v) for k_, v in meta.items())
 
 
@@ -43,8 +45,7 @@ class MyTrainer(Trainer):
         super().__init__(**kwargs)
         self.monitor_ntp_acc = monitor_ntp_acc
         self.model_meta = model_meta
-        # self.model_meta['parameter_count'] = get_model_num_trainable_parameter(self.model)
-        self.name = self.model.__class__.__qualname__
+        self.name = model_meta.get('model name', self.model.__class__.__qualname__)
         self.train_metrics = train_metrics
         self.disable_train_metrics = disable_train_metrics
 
@@ -150,8 +151,7 @@ class ColoredPrinterCallback(TrainerCallback):
         meta = meta2fnm_meta(self.trainer.model_meta)
         self.log_fnm = f'Train_{pl.pa(meta)}_{{n={n_data}, a={lr}, bsz={self.bsz}, n_ep={n_ep}}}'
 
-        if name is None:
-            name = 'MyTrainer'
+        name = name or 'MyTrainer'
         self.name = f'{name} Train'
         self.logger, self.logger_fl, self.writer = None, None, None
         self.report2tb = report2tb
@@ -176,6 +176,7 @@ class ColoredPrinterCallback(TrainerCallback):
         self.logger_fl.info(f'Training started with with model {pl.nc(meta)}, {pl.id(conf)} '
                             f'on {pl.nc(self.train_meta)} with training args {pl.id(train_args)} '
                             f'and my training args {pl.nc(self.trainer.my_args)}... ')
+        self.logger.info(f'Logging will be saved to {pl.i(self.log_fnm)}... ')
         self.t_strt = datetime.datetime.now()
 
     def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
@@ -233,7 +234,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
 
         d_log_write = self.prettier(d_log)
         if self.trainer.my_args['tqdm']:
-            # Set current iter stats can be done only here,
+            # Set current iter stats can be done only here, triggered by my logging from `compute_loss`
             # since HF normal callbacks don't have access to per step performance anyway
             callback = next(cb for cb in self.trainer.callback_handler.callbacks if isinstance(cb, MyProgressCallback))
             tqdm_kws = {k: v for k, v in d_log_write.items() if k not in ['step', 'epoch']}
@@ -241,13 +242,9 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                 tqdm_kws['lr'] = tqdm_kws.pop('learning_rate')
             if not is_on_colab():  # coloring not supported in the HTML UI in Chrome
                 tqdm_kws = {k: pl.i(v) for k, v in tqdm_kws.items()}
-            if mode == 'train':
-                pbar = callback.training_bar
-            else:  # 'eval'
-                pbar = callback.prediction_bar
+            pbar = callback.training_bar if mode == 'train' else callback.prediction_bar
             if pbar:
                 pbar.set_postfix(ordered_dict=tqdm_kws)
-        d_log_write = None
         if to_console:
             self.logger.info(pl.i(d_log_write))
         self.logger_fl.info(pl.nc(d_log_write))

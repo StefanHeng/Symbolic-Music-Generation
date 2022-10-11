@@ -398,7 +398,7 @@ if __name__ == '__main__':
             ))
             my_train_args['save_epochs'] = 16
         else:
-            if len(dnms) == 3:  # Data includes LMD, much larger dataset
+            if any('LMD' in d for d in dnms):  # Data includes LMD, a much larger dataset
                 train_args['learning_rate'] = 1e-4
             bsz = 128 if on_great_lakes() else 64
             train_args.update(dict(

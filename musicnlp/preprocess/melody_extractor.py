@@ -964,7 +964,7 @@ def extract(dnms: List[str], exp='json') -> List[Dict[str, Any]]:
         for fnm in fnms:
             fnm_ = stem(fnm)
             num = f'{{:>0{n}}}'.format(count)
-            log(f'Encoding song #{log_s(num, c="i")} [{log_s(fnm_, c="i")}]... ')
+            log(f'Encoding song #{pl.s(num, c="i")} [{pl.s(fnm_, c="i")}]... ')
             me = MxlMelodyExtractor(fnm, verbose=False)
             if has_quintuplet(me.scr):
                 warn(f'Song [{fnm_}] ignored for containing quintuplets')

@@ -422,7 +422,7 @@ class MusicVocabulary:
 
     def _colorize_spec(self, s: str, color: bool = None) -> str:
         c = self.color if color is None else color
-        return log_s(s, c='m') if c else s
+        return pl.s(s, c='m') if c else s
 
     def __getitem__(self, k: str) -> str:
         """
@@ -431,7 +431,7 @@ class MusicVocabulary:
         return self._colorize_spec(MusicVocabulary.SPEC_TOKS[k])
 
     def _colorize_token(self, tok: str) -> str:
-        return log_s(tok, c=MusicVocabulary._token_type2color[self.type(tok)])
+        return pl.s(tok, c=MusicVocabulary._token_type2color[self.type(tok)])
 
     def colorize_token(self, tok: str) -> str:
         """
@@ -474,7 +474,7 @@ class MusicVocabulary:
             return [colorize(self.cache['pref_tempo']+str(elm))]
         elif isinstance(elm, Rest):
             r = self.cache['rest']
-            return [log_s(r, c='b') if color else r, self._note2dur_str(elm)]
+            return [pl.s(r, c='b') if color else r, self._note2dur_str(elm)]
         elif isinstance(elm, Note):
             return [self.note2pitch_str(elm), self._note2dur_str(elm)]
         elif isinstance(elm, tuple):
@@ -519,7 +519,7 @@ class MusicVocabulary:
             s = f'{self.cache["pref_dur"]}{dur.numerator}'
         else:
             s = f'{self.cache["pref_dur"]}{dur.numerator}/{dur.denominator}'
-        return log_s(s, c='g') if self.color else s
+        return pl.s(s, c='g') if self.color else s
 
     def note2pitch_str(self, note: Union[Note, Rest, Pitch]) -> str:
         """
@@ -536,7 +536,7 @@ class MusicVocabulary:
             pitch = note.pitch if isinstance(note, Note) else note
             # `pitch.name` follows certain scale by music21 default, may cause confusion
             s = f'{self.cache["pref_pch"]}{pch2step(pitch)}/{pitch.octave}'
-        return log_s(s, c='b') if self.color else s
+        return pl.s(s, c='b') if self.color else s
 
     def clean_uncommon_token(self, tok: str) -> str:
         if tok in self.tok2id:

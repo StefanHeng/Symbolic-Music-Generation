@@ -987,7 +987,7 @@ class MusicExtractor:
                 n_pad = len(str(len(groups_)))
 
                 def idx2str(i):
-                    return log_s(f'{i:>{n_pad}}:', c='y')
+                    return pl.s(f'{i:>{n_pad}}:', c='y')
                 scr_out = '\n'.join(f'{idx2str(i)} {" ".join(toks)}' for i, toks in enumerate(groups_))
             else:
                 toks = sum(groups_, start=[])
@@ -997,7 +997,7 @@ class MusicExtractor:
                     scr_out = ' '.join(toks)
         if self.verbose and self.warn_logger is not None:
             t = fmt_delta(datetime.datetime.now() - t_strt)
-            self.logger.info(f'{pl.i(title)} extraction completed in {log_s(t, c="y")} '
+            self.logger.info(f'{pl.i(title)} extraction completed in {pl.s(t, c="y")} '
                              f'with warnings {pl.i(self.warn_logger.tracked())}')
         ret = scr_out
         if return_meta:
@@ -1187,7 +1187,7 @@ if __name__ == '__main__':
                 try:
                     print(me(path, exp='visualize'))
                 except Exception as e:
-                    print(log_s(stem(path), c='y'), e)
+                    print(pl.s(stem(path), c='y'), e)
                     exit(1)
             else:
                 mic(path)

@@ -28,7 +28,8 @@ def load_trained(
             full={
                 # (model name, datasets, #epoch)
                 ('reformer', 'P&M', '256-256ep'): ['2022-10-03_11-58-11_reformer', 'trained'],
-                ('reformer', 'All', '8-8ep'): ['2022-10-06_04-32-51_reformer', 'trained']
+                ('reformer', 'All', '8-8ep'): ['2022-10-06_04-32-51_reformer', 'trained'],
+                ('reformer', 'All', '5-16ep'): ['2022-10-09_01-36-18_reformer', 'checkpoint-6850']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -207,7 +208,7 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # md_k = 'reformer', 'P&M', '256-256ep'
-    md_k = md_nm, ds_nm, ep_nm = 'reformer', 'All', '8-8ep'
+    md_k = md_nm, ds_nm, ep_nm = 'reformer', 'All', '5-16ep'
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
     sv_dir = f'{md_nm}_{ds_nm}_{ep_nm}'
@@ -261,7 +262,7 @@ if __name__ == '__main__':
         # gen_args = dict(top_k=32, top_p=0.95)
         gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
         # gen_args = dict(top_k=64, top_p=0.9)
-        # gen_args = dict(top_k=32, top_p=0.s75)  # Good w/ `P&M`
+        # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`
         n_bar = 4
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='full')
