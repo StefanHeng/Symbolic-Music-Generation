@@ -29,7 +29,9 @@ def load_trained(
                 # (model name, datasets, #epoch)
                 ('reformer', 'P&M', '256-256ep'): ['2022-10-03_11-58-11_reformer', 'trained'],
                 ('reformer', 'All', '8-8ep'): ['2022-10-06_04-32-51_reformer', 'trained'],
-                ('reformer', 'All', '5-16ep'): ['2022-10-09_01-36-18_reformer', 'checkpoint-6850']
+                ('reformer', 'All', '5-16ep'): ['2022-10-09_01-36-18_reformer', 'checkpoint-6850'],
+                # w/ a loss slightly larger than the last one
+                ('reformer', 'All', '16-16ep'): ['2022-10-09_01-36-18_reformer', 'trained']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -84,7 +86,7 @@ class MusicGenerator:
 
         self.logger = get_logger('Music Generator')
         d_log = dict(model_max_length=self.max_len)
-        self.logger.info(f'{pl.i(self.__class__.__qualname__)} initialized with max_len={pl.i(d_log)}')
+        self.logger.info(f'{pl.i(self.__class__.__qualname__)} initialized w/ {pl.i(d_log)}')
 
     @staticmethod
     def args2fnm(args: dict):
@@ -208,7 +210,7 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # md_k = 'reformer', 'P&M', '256-256ep'
-    md_k = md_nm, ds_nm, ep_nm = 'reformer', 'All', '5-16ep'
+    md_k = md_nm, ds_nm, ep_nm = 'reformer', 'All', '16-16ep'
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
     sv_dir = f'{md_nm}_{ds_nm}_{ep_nm}'
@@ -260,9 +262,9 @@ if __name__ == '__main__':
         # fnms = ['Faded', 'Piano Sonata', 'Merry Christmas']
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
         # gen_args = dict(top_k=32, top_p=0.95)
-        gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
+        # gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
         # gen_args = dict(top_k=64, top_p=0.9)
-        # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`
+        gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
         n_bar = 4
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='full')

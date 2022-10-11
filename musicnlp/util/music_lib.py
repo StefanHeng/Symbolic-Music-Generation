@@ -2,6 +2,7 @@
 Music preprocessing utilities
 """
 import math
+import re
 from copy import deepcopy
 from typing import List, Tuple, Dict, Iterator, Iterable, Union
 from fractions import Fraction
@@ -50,7 +51,7 @@ __all__ = [
     'get_offset', 'get_end_qlen', 'debug_pprint_lst_notes',
     'PrecisionChecker',
     'notes_have_gap', 'notes_overlapping', 'non_tuplet_notes_overlapping',
-    'is_notes_pos_duration', 'is_valid_bar_notes',
+    'is_notes_pos_duration', 'get_notes_duration', 'is_valid_bar_notes',
     'get_score_skeleton', 'insert_ts_n_tp_to_part', 'make_score'
 ]
 
@@ -59,6 +60,9 @@ if KEEP_OBSOLETE:
         'default_tempo',  'tempo2bpm',
         'MidoUtil', 'PrettyMidiUtil', 'Music21Util'
     ]
+
+
+logger = get_logger('Music Util')
 
 
 # Note entity/group as far as music extraction is concerned
@@ -228,12 +232,18 @@ def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[fl
         return [], []
 
 
-def time_sig2bar_dur(time_sig: Union[TimeSignature, TsTup]) -> float:
+_pattern_time_sig_str = re.compile(r'(?P<numer>\d*)/(?P<denom>\d*)')
+
+
+def time_sig2bar_dur(time_sig: Union[TimeSignature, TsTup, str]) -> float:
     """
     :return: Duration of a bar in given time signature, in quarter length
     """
     if isinstance(time_sig, TimeSignature):
         numer, denom = time_sig.numerator, time_sig.denominator
+    elif isinstance(time_sig, str):
+        m = _pattern_time_sig_str.match(time_sig)
+        numer, denom = int(m.group('numer')), int(m.group('denom'))
     else:
         assert isinstance(time_sig, tuple)
         numer, denom = time_sig
@@ -525,7 +535,8 @@ def notes_have_gap(notes: Iterable[ExtNote], enforce_no_overlap: bool = True, du
             new_begin = get_offset(note)
             diff = new_begin - last_end
             if enforce_no_overlap and diff+eps < 0:
-                raise ValueError(f'Notes overlap: {note}')
+                raise ValueError(f'Notes overlap: Last note ends at {pl.i(last_end)}, '
+                                 f'current note {pl.i(note)} starts at {pl.i(new_begin)}')
             if diff - eps > 0:
                 return True
             last_end = get_end_qlen(note)
@@ -575,7 +586,19 @@ def is_notes_pos_duration(notes: Iterable[ExtNote]) -> bool:
     return all(note.duration.quarterLength > 0 for note in flatten_notes(notes))
 
 
-def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature, check_match_time_sig: bool = True) -> bool:
+def get_notes_duration(notes: Iterable[ExtNote]) -> Dur:
+    """
+    Assumes notes are in sequential order and no overlap
+    """
+    ret = sum(n.duration.quarterLength for n in flatten_notes(notes))
+    if is_int(ret):
+        ret = round(ret)
+    return ret
+
+
+def is_valid_bar_notes(
+        notes: Iterable[ExtNote], time_sig: Union[TimeSignature, TsTup, str], check_match_time_sig: bool = True
+) -> bool:
     # Ensure notes cover the entire bar; For addition between `float`s and `Fraction`s
     pos_dur = is_notes_pos_duration(notes)
     no_ovl = not notes_overlapping(notes)
@@ -583,7 +606,7 @@ def is_valid_bar_notes(notes: Iterable[ExtNote], time_sig: TimeSignature, check_
     valid = pos_dur and no_ovl and (not have_gap)
     if check_match_time_sig:
         dur_bar = time_sig2bar_dur(time_sig)
-        match_bar_dur = math.isclose(sum(n.duration.quarterLength for n in flatten_notes(notes)), dur_bar, abs_tol=eps)
+        match_bar_dur = math.isclose(get_notes_duration(notes), dur_bar, abs_tol=eps)
         valid = valid and match_bar_dur
     return valid
 
@@ -624,17 +647,91 @@ def insert_ts_n_tp_to_part(part: Part, time_sig: str, tempo: int) -> Part:
 
 def make_score(
         title: str = f'{PKG_NM} Song', composer: str = PKG_NM, mode: str = 'melody',
-        time_sig: str = '4/4', tempo: int = 120, d_notes: Dict[str, List[List[SNote]]] = None
+        time_sig: str = '4/4', tempo: int = 120, d_notes: Dict[str, List[List[SNote]]] = None,
+        check_duration_match: bool = True
 ) -> Score:
+    """
+    :param title: Title of the score
+    :param composer: Composer of the score
+    :param mode: 'melody' or 'full'
+    :param time_sig: Time signature of the score
+    :param tempo: Tempo of the score
+    :param d_notes: Dict of notes to insert into the score
+        Each note would have offset 0
+    :param check_duration_match: Check if notes cover the entire bar
+        If don't check, and not a duration match, the starting offset for each bar can be wrong
+    """
     score = get_score_skeleton(title=title, composer=composer, mode=mode)
     parts = list(score.parts)
     assert len(parts) <= 2  # sanity check, see `get_score_skeleton`
     part_melody = parts[0]
     assert 'Melody' in part_melody.partName
 
-    def get_bars(lst_notes: List[List[SNote]], is_base: bool = False) -> List[Measure]:
+    def get_bars(lst_notes: List[List[SNote]], is_bass: bool = False) -> List[Measure]:
         lst_bars = []
         for i, notes in enumerate(lst_notes):
+            assert all(n.offset == 0 for n in notes)  # sanity check
+            if check_duration_match:
+                dur_notes, dur_bar = get_notes_duration(notes), time_sig2bar_dur(time_sig)
+                diff = dur_notes-dur_bar
+                if abs(diff) > eps:
+                    if len(notes) == 0:
+                        logger.warning(f'No notes found at bar {pl.i(i+1)}')
+
+                    d_log = dict(notes_total_duration=dur_notes, bar_duration=dur_bar)
+                    typ = 'Bass' if is_bass else 'Melody'
+                    msg = f'{pl.i(typ)} notes duration don\'t match time signature duration at bar {pl.i(i + 1)} w/ {pl.i(d_log)}'
+
+                    if dur_notes < dur_bar:
+                        dur = dur_bar - dur_notes
+                        notes = notes + [Rest(quarterLength=dur)]
+                        msg = f'{msg}, rest added of duration {pl.i(dur)}'
+                    else:
+                        mic(dur_notes, dur_bar)
+                        mic(notes)
+                        debug_pprint_lst_notes(notes)
+                        idx_last = None  # Find the first note that's beyond the edge of time sig
+                        dur = 0
+                        for i_, n in enumerate(notes):
+                            dur += n.duration.quarterLength
+                            if (dur-dur_bar)-eps > 0:
+                                idx_last = i_
+                                break
+                        assert idx_last is not None
+
+                        dur_prior = get_notes_duration(notes[:idx_last])
+                        # new_diff = dur_prior - dur_bar
+                        # assert new_diff > 0  # sanity check
+
+                        n_ = len(notes)
+                        if abs(dur_prior - dur_bar) < eps:
+                            # just drop the notes and duration will be roughly the same
+                            notes = notes[:idx_last]
+                            msg = f'{msg}, {pl.i(n_ - idx_last)} notes dropped '
+                        else:  # TODO: verify
+                            # Crop duration of the new last note
+                            # n_last_dur = get_end_qlen(notes[idx_last])  # since offset is all 0
+                            qlen = dur_bar - dur_prior
+                            assert qlen > 0  # sanity check
+                            notes[idx_last] = note2note_cleaned(notes[idx_last], q_len=qlen)
+                            notes = notes[:idx_last+1]
+
+                            n_drop = n_-idx_last-1
+                            ori_qlen = get_end_qlen(notes[idx_last])
+                            msg = f'{msg}, {pl.i(n_drop)} notes dropped, last note duration cropped: ' \
+                                  f'{pl.i(ori_qlen)} => {pl.i(qlen)}'
+                        assert abs(get_notes_duration(notes)-time_sig2bar_dur(time_sig)) < eps  # sanity check
+
+                        # n_last_dur = get_end_qlen(notes[idx_last])  # since offset is all 0
+                        #
+                        # if n_last_dur > diff:  # Crop duration of last note
+                        #     notes[-1] = note2note_cleaned(notes[-1], q_len=n_last_dur-diff)
+                        # else:  # TODO: more complicated case where later notes needs to be dropped
+                        #     mic(notes)
+                        #     debug_pprint_lst_notes(notes)
+                        #     raise NotImplementedError
+                        # TODO: if notes are larger, just ignore and have music21 handle it...
+                    logger.warning(msg)
             bar = Measure(number=i)  # Original bar number may not start from 0
             try:
                 bar.append(notes)
@@ -643,7 +740,7 @@ def make_score(
                 debug_pprint_lst_notes(notes)
                 print(e)
                 raise ValueError(e)
-            if is_base and i == 0:
+            if is_bass and i == 0:
                 bar.insert(m21.clef.BassClef())
             lst_bars.append(bar)
         return lst_bars
@@ -655,7 +752,15 @@ def make_score(
     if mode == 'full':
         part_bass = parts[1]  # see `get_score_skeleton`
         assert 'Bass' in part_bass.partName
-        part_bass.append(get_bars(d_notes['bass'], is_base=True))
+        part_bass.append(get_bars(d_notes['bass'], is_bass=True))
+
+        # sanity check
+        offsets_m = [bar.offset for bar in part_melody[Measure]]
+        offsets_b = [bar.offset for bar in part_bass[Measure]]
+        for _i, (o_m, o_b) in enumerate(zip(offsets_m, offsets_b)):
+            if o_m != o_b:
+                raise ValueError(f'Offset mismatch: {pl.i(_i)}, {pl.i(o_m)}, {pl.i(o_b)}')
+        assert offsets_m == offsets_b  # sanity check
     return score
 
 

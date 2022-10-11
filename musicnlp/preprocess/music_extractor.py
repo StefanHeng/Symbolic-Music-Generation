@@ -614,9 +614,7 @@ class MusicExtractor:
         return groups
 
     def warn_notes_duration(self, notes: List[ExtNote], time_sig: TimeSignature, number: int):
-        dur_bar = time_sig.numerator / time_sig.denominator * 4
-        note_dur = sum(n.duration.quarterLength for n in flatten_notes(notes))
-        if not math.isclose(note_dur, dur_bar, abs_tol=self.eps):
+        if not math.isclose(get_notes_duration(notes), time_sig2bar_dur(time_sig), abs_tol=self.eps):
             offsets, durs = notes2offset_duration(notes)
             self.log_warn(  # can be due to removing lower-pitched tuplets
                 warn_name=WarnLog.InvBarDur, bar_num=number, offsets=offsets, durations=durs, time_sig=time_sig
@@ -741,11 +739,10 @@ class MusicExtractor:
                     notes=debug_pprint_lst_notes(notes, return_meta=True),
                     time_sig=time_sig,
                     bar_duration=time_sig2bar_dur(time_sig),
-                    notes_total_duration=sum(n.duration.quarterLength for n in flatten_notes(notes)),
+                    notes_total_duration=get_notes_duration(notes),
                     notes_with_positive_durations=is_notes_pos_duration(notes),
                     notes_no_overlap=not notes_overlapping(notes),
-                    notes_have_gap=notes_have_gap(notes),
-
+                    notes_have_gap=notes_have_gap(notes)
                 )
                 raise ValueError(f'Invalid bar notes at {pl.i(i_bar)}th bar w/ {pl.i(d_err)}')
         return lst_notes
@@ -953,7 +950,8 @@ class MusicExtractor:
             # unroll tuplets
             d_notes = {k: [list(flatten_notes(notes)) for notes in lst_notes] for k, lst_notes in d_notes.items()}
             scr_out = make_score(
-                title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo, d_notes=d_notes
+                title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo, d_notes=d_notes,
+                check_duration_match=False  # already did it
             )
             dir_nm = sconfig(f'{DSET_DIR}.mxl-eg.dir_nm_extracted')
             fmt = 'mxl'  # sometimes file-writes via `mxl` couldn't be read by MuseScore

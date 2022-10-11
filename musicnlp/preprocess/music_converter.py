@@ -344,5 +344,26 @@ if __name__ == '__main__':
     def check_broken_render():
         scr = mc.str2score(gen_broken, omit_eos=True, title='Check Broken')
         mic(scr)
+
+        def check_notes():
+            for part in scr.parts:
+                bars = list(part[Measure])
+                bar = bars[10]
+                mic(bar)
+                for e in bar:
+                    if isinstance(e, Note):
+                        strt, end = get_offset(e), get_end_qlen(e)
+                        p = e.pitch.nameWithOctave
+                        mic(e, strt, end, p)
+                    else:
+                        mic(e)
+        # check_notes()
+
+        def check_same_offset():
+            d = dict()
+            for part in scr.parts:
+                d[part.partName] = [bar.offset for bar in part[Measure]]
+            mic(d)
+        check_same_offset()
         scr.show()
     check_broken_render()
