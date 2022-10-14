@@ -345,9 +345,9 @@ if __name__ == '__main__':
 
     # md = 'melody'
     md = 'full'
-    dnms = ['LMD']
+    # dnms = ['LMD']
     # dnms = ['POP909', 'MAESTRO']
-    # dnms = ['POP909', 'MAESTRO', 'LMD']
+    dnms = ['POP909', 'MAESTRO', 'LMD']
     dnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
 
     def train_reformer(resume: str = None):
@@ -394,12 +394,12 @@ if __name__ == '__main__':
         if 'debug' in md_sz or md_sz == 'tiny':
             train_args.update(dict(
                 per_device_train_batch_size=4,
-                num_train_epochs=32,
+                num_train_epochs=32
             ))
             my_train_args['save_epochs'] = 16
         else:
             if any('LMD' in d for d in dnms):  # Data includes LMD, a much larger dataset
-                train_args['learning_rate'] = 1e-4
+                train_args['learning_rate'] = 1e-5
             bsz = 128 if on_great_lakes() else 64
             train_args.update(dict(
                 fp16=torch.cuda.is_available(),

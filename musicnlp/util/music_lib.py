@@ -687,9 +687,6 @@ def make_score(
                         notes = notes + [Rest(quarterLength=dur)]
                         msg = f'{msg}, rest added of duration {pl.i(dur)}'
                     else:
-                        mic(dur_notes, dur_bar)
-                        mic(notes)
-                        debug_pprint_lst_notes(notes)
                         idx_last = None  # Find the first note that's beyond the edge of time sig
                         dur = 0
                         for i_, n in enumerate(notes):
@@ -700,8 +697,6 @@ def make_score(
                         assert idx_last is not None
 
                         dur_prior = get_notes_duration(notes[:idx_last])
-                        # new_diff = dur_prior - dur_bar
-                        # assert new_diff > 0  # sanity check
 
                         n_ = len(notes)
                         if abs(dur_prior - dur_bar) < eps:
@@ -710,27 +705,16 @@ def make_score(
                             msg = f'{msg}, {pl.i(n_ - idx_last)} notes dropped '
                         else:  # TODO: verify
                             # Crop duration of the new last note
-                            # n_last_dur = get_end_qlen(notes[idx_last])  # since offset is all 0
                             qlen = dur_bar - dur_prior
                             assert qlen > 0  # sanity check
                             notes[idx_last] = note2note_cleaned(notes[idx_last], q_len=qlen)
                             notes = notes[:idx_last+1]
 
-                            n_drop = n_-idx_last-1
+                            n_drop = n_ - idx_last - 1
                             ori_qlen = get_end_qlen(notes[idx_last])
                             msg = f'{msg}, {pl.i(n_drop)} notes dropped, last note duration cropped: ' \
                                   f'{pl.i(ori_qlen)} => {pl.i(qlen)}'
                         assert abs(get_notes_duration(notes)-time_sig2bar_dur(time_sig)) < eps  # sanity check
-
-                        # n_last_dur = get_end_qlen(notes[idx_last])  # since offset is all 0
-                        #
-                        # if n_last_dur > diff:  # Crop duration of last note
-                        #     notes[-1] = note2note_cleaned(notes[-1], q_len=n_last_dur-diff)
-                        # else:  # TODO: more complicated case where later notes needs to be dropped
-                        #     mic(notes)
-                        #     debug_pprint_lst_notes(notes)
-                        #     raise NotImplementedError
-                        # TODO: if notes are larger, just ignore and have music21 handle it...
                     logger.warning(msg)
             bar = Measure(number=i)  # Original bar number may not start from 0
             try:

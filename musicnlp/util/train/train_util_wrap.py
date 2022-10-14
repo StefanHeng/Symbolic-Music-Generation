@@ -6,16 +6,17 @@ from typing import List, Dict, Callable
 import datetime
 from collections import OrderedDict
 
-import pandas as pd
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from transformers import Trainer, TrainingArguments, TrainerCallback
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+from transformers.modeling_utils import unwrap_model
 from stefutil import *
 
 
 __all__ = [
     'PT_LOSS_PAD', 'MyTrainer',
-    'ColoredPrinterCallback', 'ColoredPrinterCallbackForClm', 'ClmAccCallback'
+    'ColoredPrinterCallback', 'ColoredPrinterCallbackForClm'
 ]
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
@@ -50,6 +51,7 @@ class MyTrainer(Trainer):
         self.disable_train_metrics = disable_train_metrics
 
         self.my_args = my_args
+        self.with_tqdm = my_args.get('tqdm', False)
         self.post_init()
 
     def post_init(self):
@@ -65,8 +67,8 @@ class MyTrainer(Trainer):
         callback_cls = ColoredPrinterCallbackForClm if self.monitor_ntp_acc else ColoredPrinterCallback
         if not self.monitor_ntp_acc:
             raise NotImplementedError('on-CLM task logging not updated')
-        if self.my_args['tqdm']:
-            self.add_callback(MyProgressCallback(train_only=self.my_args['tqdm'] == 'train-only'))
+        if self.with_tqdm:
+            self.add_callback(MyProgressCallback(train_only=self.with_tqdm == 'train-only'))
         self.add_callback(callback_cls(name=self.name, parent_trainer=self))
 
     def compute_loss(self, model, inputs, return_outputs=False):
@@ -86,7 +88,7 @@ class MyTrainer(Trainer):
         # ========================== Begin of added ==========================
         inputs: Dict[str, torch.Tensor]
         # don't need to calculate NTP acc here for eval, see `compute_ntp_acc`
-        if self.is_in_train and self.monitor_ntp_acc and 'labels' in inputs and (not self.disable_train_metrics):
+        if model.training and self.monitor_ntp_acc and 'labels' in inputs and (not self.disable_train_metrics):
             preds = outputs.logits.detach().argmax(axis=-1)
             labels_ = inputs['labels'].detach()
             d_log = dict(src='compute_loss')
@@ -112,10 +114,17 @@ class MyTrainer(Trainer):
             self._past = outputs[self.args.past_index]
 
         if labels is not None:
-            loss = self.label_smoother(outputs, labels)
+            if unwrap_model(model)._get_name() in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
         else:
-            # We don't use .loss here since the model may return tuples instead of
-            # ModelOutput.
+            if isinstance(outputs, dict) and "loss" not in outputs:
+                raise ValueError(
+                    "The model did not return a loss from the inputs, only the following keys: "
+                    f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+                )
+            # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         return (loss, outputs) if return_outputs else loss
@@ -226,142 +235,63 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
         self.gas = self.trainer.args.gradient_accumulation_steps
         self.pattern_eval_key = re.compile(r'^eval_(?P<key>.*)$')
 
+        self.ls = None
+
+    def on_train_begin(self, args: TrainingArguments, state, control, **kwargs):
+        super().on_train_begin(args, state, control, **kwargs)
+        self.ls = LogStep(
+            trainer=self.trainer, prettier=self.prettier,
+            logger=self.logger, file_logger=self.logger_fl, tb_writer=self.writer
+        )
+
     def _get_eval_key(self, key: str) -> str:
         return self.pattern_eval_key.match(key).group('key')
 
-    def _log(self, d_log, mode='train', to_console=True):
-        ca(log_mode=mode)
-
-        d_log_write = self.prettier(d_log)
-        if self.trainer.my_args['tqdm']:
-            # Set current iter stats can be done only here, triggered by my logging from `compute_loss`
-            # since HF normal callbacks don't have access to per step performance anyway
-            callback = next(cb for cb in self.trainer.callback_handler.callbacks if isinstance(cb, MyProgressCallback))
-            tqdm_kws = {k: v for k, v in d_log_write.items() if k not in ['step', 'epoch']}
-            if 'learning_rate' in tqdm_kws:
-                tqdm_kws['lr'] = tqdm_kws.pop('learning_rate')
-            if not is_on_colab():  # coloring not supported in the HTML UI in Chrome
-                tqdm_kws = {k: pl.i(v) for k, v in tqdm_kws.items()}
-            pbar = callback.training_bar if mode == 'train' else callback.prediction_bar
-            if pbar:
-                pbar.set_postfix(ordered_dict=tqdm_kws)
-        if to_console:
-            self.logger.info(pl.i(d_log_write))
-        self.logger_fl.info(pl.nc(d_log_write))
-
-        step = d_log.get('step') if mode == 'train' else d_log.get('epoch')
-        for k, v in d_log.items():
-            if self.prettier.should_add_split_prefix(k):
-                self.writer.add_scalar(tag=f'{mode}/{k}', scalar_value=v, global_step=step)
-
     def on_log(self, args, state, control, logs=None, **kwargs):
         if state.is_local_process_zero:
+            step, training = state.global_step, self.mode == 'train'
             if 'src' in logs and logs['src'] == 'compute_loss':
                 del logs['src']
                 del logs['epoch']
                 mic(logs)
                 self._train_step_metrics.append(logs)  # the only metric needed for gathering
+            elif training and all('runtime' not in k for k in logs):  # Training step
+                loss, lr = logs['loss'], logs['learning_rate']
+
+                d_log = OrderedDict(dict(step=step, epoch=state.epoch, learning_rate=lr, loss=loss))
+                if not self.trainer.disable_train_metrics:
+                    assert len(self._train_step_metrics) == self.gas
+                    metrics = {
+                        k: sum(d[k] for d in self._train_step_metrics) / self.gas
+                        for k in self._train_step_metrics[0].keys()
+                    }
+                    mic(metrics)
+                    self._train_step_metrics = []  # for next iter
+                    d_log['ntp_acc'] = metrics.pop('ntp_acc')  # always log NTP acc first
+                    d_log.update(metrics.items())
+
+                # `should_log` in Trainer just prevents the `on_log` call, I only filter console logging
+                should_log = False
+                my_log_strat = self.trainer.my_args.get('logging_strategy', 'steps')
+                if my_log_strat == 'steps':
+                    should_log = True
+                elif my_log_strat == 'epoch' and step % self.trainer.my_args['steps_per_epoch'] == 0:
+                    should_log = True
+                self.ls(d_log, training=training, to_console=should_log)
+            elif 'eval_loss' in logs:  # `Trainer.is_in_train` is not False so can't use
+                # Get all potential metrics computed
+                ks = [self._get_eval_key(k) for k in logs.keys()]
+                custom_keys = ['loss', 'ntp_acc', 'runtime', 'samples_per_second', 'steps_per_second']
+                default_keys = [k for k in ks if k not in custom_keys]
+                ks = ['loss', 'ntp_acc'] + default_keys
+
+                d_log = dict(step=state.global_step, epoch=int(state.epoch), **{k: logs[f'eval_{k}'] for k in ks})
+                should_log = self.trainer.my_args.get('logging_strategy', 'steps') != 'no'
+                self.ls(d_log, training=training, to_console=should_log)
+
+                # for next iter, cos `compute_loss` is called for eval too
+                # we don't need it for logging as eval metrics are gathered by Trainer out-of-the-box
+                self._train_step_metrics = []
             else:
-                # Heuristics on the training step updates, see `Trainer._maybe_log_save_evaluate`
-                if self.mode == 'train' and all('runtime' not in k for k in logs):
-                    # sanity check
-                    step = state.global_step
-                    assert logs['epoch'] == round(state.epoch, 2)
-                    n_ep = state.epoch  # The one originally is rounded, see `Trainer.log`
-                    loss, lr = logs['loss'], logs['learning_rate']
-
-                    d_log = OrderedDict(dict(step=step, epoch=n_ep, learning_rate=lr, loss=loss))
-                    if not self.trainer.disable_train_metrics:
-                        assert len(self._train_step_metrics) == self.gas
-                        metrics = {
-                            k: sum(d[k] for d in self._train_step_metrics) / self.gas
-                            for k in self._train_step_metrics[0].keys()
-                        }
-                        mic(metrics)
-                        self._train_step_metrics = []  # for next iter
-                        d_log['ntp_acc'] = metrics.pop('ntp_acc')  # always log NTP acc first
-                        d_log.update(metrics.items())
-
-                    # `should_log` in Trainer just prevents the `on_log` call, I only filter console logging
-                    should_log = False
-                    my_log_strat = self.trainer.my_args.get('logging_strategy', 'steps')
-                    if my_log_strat == 'steps':
-                        should_log = True
-                    elif my_log_strat == 'epoch' and step % self.trainer.my_args['steps_per_epoch'] == 0:
-                        should_log = True
-                    self._log(d_log, mode='train', to_console=should_log)
-                elif 'eval_loss' in logs:  # `Trainer.is_in_train` is not False so can't use
-                    assert 'epoch' in logs
-                    del logs['epoch']
-                    # For potential metrics computed
-                    ks = [self._get_eval_key(k) for k in logs.keys()]
-                    ks = [
-                        k for k in ks
-                        if k not in ['loss', 'ntp_acc', 'runtime', 'samples_per_second', 'steps_per_second']
-                    ]
-                    ks = ['loss', 'ntp_acc'] + ks
-                    # Log eval on an epoch-level, always logged irrelevant to `logging_strategy`
-                    # Evaluation finished during training; TODO: didn't verify other positive cases
-                    n_ep = state.epoch
-                    assert n_ep.is_integer()
-                    d_log = dict(step=state.global_step, epoch=int(n_ep), **{k: logs[f'eval_{k}'] for k in ks})
-                    should_log = self.trainer.my_args.get('logging_strategy', 'steps') != 'no'
-                    self._log(d_log, mode='eval', to_console=should_log)
-                    # for next iter, cos `compute_loss` is called for eval too
-                    # we don't need it for logging as eval metrics are gathered by Trainer out-of-the-box
-                    self._train_step_metrics = []
-                else:
-                    self.logger.info(pl.i(logs))
-                    self.logger_fl.info(pl.nc(logs))
-
-
-class ClmAccCallback(ColoredPrinterCallback):
-    """
-    Logs training batch accuracy during CLM training
-
-    Needs the **prediction logits** returned
-    """
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.out_dict_tr = None
-        self.k_acc = 'ntp_acc'
-
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        def acc_stats2dict(out_dict: Dict, prefix: str) -> Dict:
-            """
-            Convert `acc_meta`, `classification_acc_meta` dict to stats for logging
-            """
-            stats_acc: pd.Series = pd.DataFrame(out_dict[self.k_acc]).sum(axis=0)
-            return {f'{prefix}_acc': stats_acc.n_acc / stats_acc.n_total}
-
-        if self.mode == 'train':
-            step = state.global_step
-            assert not self.trainer.args.do_eval  # TODO: Not supported
-            if 'src' in logs and logs['src'] == 'compute_loss':
-                # For gradient_accumulation, many batches of `compute_loss` may be called
-                # before going into train logging
-                if self.out_dict_tr is None:
-                    n_ep = logs['epoch']
-                    self.out_dict_tr = {'step': step, 'epoch': n_ep, self.k_acc: [logs[self.k_acc]]}
-                else:  # Later batch in the same gradient accumulation
-                    step_, n_ep = self.out_dict_tr['step'], self.out_dict_tr['epoch']
-                    n_ep_ = logs['epoch']
-                    assert step_ == step and n_ep_ == n_ep
-                    self.out_dict_tr[self.k_acc].append(logs[self.k_acc])
-            elif 'loss' in logs:  # The Trainer default training loss logging
-                # Take the averaging by parent `Trainer` for granted
-                self.out_dict_tr.update(acc_stats2dict(self.out_dict_tr, prefix='train'))
-                del self.out_dict_tr[self.k_acc]
-                self.out_dict_tr['learning_rate'] = logs['learning_rate']
-                self.out_dict_tr['train_loss'] = logs['loss']
-                self.logger.info(self.prettier(self.out_dict_tr))
-                self.out_dict_tr = None  # Rest for next global step
-            elif any('runtime' in k for k in logs.keys()):
-                self.logger.info(pl.i(logs) if isinstance(logs, dict) else logs)
-            else:
-                print('unhandled case', logs)
-                exit(1)
-        else:
-            if 'src' not in logs:  # Skip custom compute_loss logging
-                super().on_log(args, state, control, logs, **kwargs)
+                self.logger.info(pl.i(logs))
+                self.logger_fl.info(pl.nc(logs))
