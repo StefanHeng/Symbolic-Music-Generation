@@ -385,15 +385,15 @@ if __name__ == '__main__':
         wordpiece_tokenize = True
         # channel_mixup = False
         channel_mixup = True
-        # prop_mix = 2048
-        prop_mix = 16
+        prop_mix = 2048
+        # prop_mix = 16
 
         # _debug_eval = True
         _debug_eval = False
         mic(augment_key, wordpiece_tokenize, channel_mixup, _debug_eval, prop_mix)
 
-        n = 64
-        # n = None
+        # n = 64
+        n = None
         # n_ep = 8
         # n_ep = 16
         # n_ep = 32
@@ -419,7 +419,7 @@ if __name__ == '__main__':
             my_train_args['save_epochs'] = 16
         else:
             if any('LMD' in d for d in dnms):  # Data includes LMD, a much larger dataset
-                train_args['learning_rate'] = 1e-5
+                train_args['learning_rate'] = 3e-5
             bsz = 128 if on_great_lakes() else 64
             train_args.update(dict(
                 fp16=torch.cuda.is_available(),

@@ -318,5 +318,4 @@ class ProportionalMixCallback(TrainerCallback):
         self.trainer = trainer
 
     def on_epoch_begin(self, args: TrainingArguments, state, control, **kwargs):
-        mic('prop call back made sample')
         self.trainer.train_dataset.sample()

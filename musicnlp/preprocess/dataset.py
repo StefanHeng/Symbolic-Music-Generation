@@ -88,7 +88,7 @@ def get_dataset(
     if splits is not None:
         if isinstance(splits, str):
             splits = [splits]
-        dset = {s: dset[s] for s in splits}
+        dset = DatasetDict({s: dset[s] for s in splits})
     if n_sample is not None:
         logger.info(f'Sampling the first {pl.i(n_sample)} examples... ')
         if isinstance(dset, Dataset):
@@ -325,7 +325,6 @@ class ProportionMixingDataset:
             sz = len(dset)
             if sz > self.k:
                 self._sampled_idxs[i] = torch.randperm(sz)[:self.k]
-                mic(i, self._sampled_idxs[i])
 
     def __len__(self):
         return self.sz
@@ -346,8 +345,6 @@ class ProportionMixingDataset:
         idx_dset, idx = self._idx2dset_idx(idx)
         dset = self.dsets[idx_dset]
         if self._sampled_idxs[idx_dset] is not None:  # A sub-sample index
-            if idx_dset == 1:  # TODO: debugging
-                print(f'sub sampled {pl.i(idx)} => {pl.i(self._sampled_idxs[idx_dset][idx])}')
             idx = self._sampled_idxs[idx_dset][idx].item()
         return dset[idx]
 
