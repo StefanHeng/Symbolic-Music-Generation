@@ -2,15 +2,22 @@ import os
 import json
 import random
 from os.path import join as os_join
-from typing import List, Dict, Callable, Union
+from typing import List, Tuple, Dict, Callable, Union, Optional
 
 import datasets
-from datasets import Dataset, DatasetDict
+import torch
+from datasets import Dataset, DatasetDict, DatasetInfo
 
 from stefutil import *
 import musicnlp.util.music as music_util
 from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocabulary, MusicTokenizer
 from musicnlp.preprocess.music_converter import MusicConverter
+
+
+__all__ = [
+    'load_songs',
+    'DATASET_NAME2MODE2FILENAME', 'get_dataset', 'AugmentedDataset', 'ProportionMixingDataset'
+]
 
 
 DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {
@@ -48,7 +55,8 @@ def load_songs(*dnms) -> List[str]:
 def get_dataset(
         dataset_names: Union[str, List[str]],
         map_func: Callable = None, remove_columns: Union[str, List[str]] = None,
-        n_sample: int = None, shuffle_seed: int = None, fast=True, pbar: bool = False
+        n_sample: int = None, shuffle_seed: int = None, fast=True, pbar: bool = False,
+        splits: Union[str, List[str]] = None
 ) -> Union[Dataset, DatasetDict]:
     """
     Get dataset preprocessed for training
@@ -70,13 +78,17 @@ def get_dataset(
                 assert list_is_same_elms(descs['extractor_meta']), \
                     f'{pl.i("extractor_meta")} must be the same for all datasets to combine'
                 descs['extractor_meta'] = descs['extractor_meta'][0]
-                info = datasets.DatasetInfo(description=json.dumps(descs))
+                info = DatasetInfo(description=json.dumps(descs))
                 return dict(dsets=dsets, info=info)
             dset = DatasetDict(
                 {split: datasets.concatenate_datasets(**k2concat_args(split)) for split in dset[0].keys()}
             )
     else:
         dset = load_single(dataset_names)
+    if splits is not None:
+        if isinstance(splits, str):
+            splits = [splits]
+        dset = {s: dset[s] for s in splits}
     if n_sample is not None:
         logger.info(f'Sampling the first {pl.i(n_sample)} examples... ')
         if isinstance(dset, Dataset):
@@ -216,7 +228,7 @@ class AugmentedDataset:
     def from_hf(
             cls, dataset_names: Union[str, List[str]], tokenizer: MusicTokenizer = None,
             get_dataset_kwargs: Dict = None, **kwargs
-    ) -> Union['AugmentedDataset', Dict[str, 'AugmentedDataset']]:
+    ) -> Union['AugmentedDataset', Dict[str, 'AugmentedDataset'], DatasetDict]:
         """
         From path(s) to huggingface dataset(s), based on `get_dataset`
         """
@@ -228,7 +240,7 @@ class AugmentedDataset:
             return {dnm: cls(ds, tokenizer, **kwargs) for dnm, ds in dset.items()}
 
     @property
-    def info(self) -> datasets.DatasetInfo:
+    def info(self) -> DatasetInfo:
         return self.dset.info
 
     def __len__(self):
@@ -255,6 +267,89 @@ class AugmentedDataset:
         if isinstance(toks, list):
             toks = ' '.join(toks)
         return self.tokenizer(toks, padding='max_length', truncation=True)
+
+
+class ProportionMixingDataset:
+    """
+    Examples-proportional mixing from T5
+    TODO: failed to find a pytorch working implementation
+
+    Equivalent to, for the larger datasets, a new subset is taken at each epoch,
+        then sample in the joined subset once
+    """
+
+    def __init__(self, dataset_list: List[Dataset] = None, k: int = None):
+        """
+        :param dataset_list: Ordered list of datasets
+        :param k: Artificial limit
+        """
+        self.dsets = dataset_list
+        assert k is not None
+        self.k = k
+
+        self.dset_szs = [min(len(d), k) for d in self.dsets]
+        self.sz = sum(self.dset_szs)
+
+        self._sampled_idxs: List[Optional[torch.Tensor]] = [None] * len(self.dsets)
+        self.sample()
+
+        self._info = None
+
+    @property
+    def info(self) -> DatasetInfo:
+        if self._info is None:
+            descs = []
+            for d in self.dsets:
+                _desc: str = d.info.description
+                descs.append(json.loads(_desc))
+                d.info.description = None
+
+            # sanity check, the only difference would be `json_filename` in description
+            ds1 = self.dsets[0]
+            assert all(ds1.info.description == d.info.description and ds1.info.features == d.info.features for d in
+                       self.dsets[1:])
+
+            assert all(set(d.keys()) == {'extractor_meta', 'json_filename'} for d in descs)
+            assert all(d['extractor_meta'] == descs[0]['extractor_meta'] for d in descs[1:])
+            desc = dict(extractor_meta=descs[0]['extractor_meta'], json_filename=[d['json_filename'] for d in descs])
+            self._info = DatasetInfo(description=json.dumps(desc), features=ds1.info.features)
+        return self._info
+
+    def sample(self):
+        """
+        Sub-sample datasets larger than k
+
+        Intended to call in each epoch
+        """
+        for i, dset in enumerate(self.dsets):
+            sz = len(dset)
+            if sz > self.k:
+                self._sampled_idxs[i] = torch.randperm(sz)[:self.k]
+                mic(i, self._sampled_idxs[i])
+
+    def __len__(self):
+        return self.sz
+
+    def _idx2dset_idx(self, idx: int) -> Tuple[int, int]:
+        """
+        Convert a global index to a dataset index
+        """
+        for i, sz in enumerate(self.dset_szs):
+            if idx < sz:
+                return i, idx
+            idx -= sz
+        raise ValueError('Should not happen')
+
+    def __getitem__(self, idx):
+        if not isinstance(idx, int):
+            raise ValueError('Batched indexing not supported')
+        idx_dset, idx = self._idx2dset_idx(idx)
+        dset = self.dsets[idx_dset]
+        if self._sampled_idxs[idx_dset] is not None:  # A sub-sample index
+            if idx_dset == 1:  # TODO: debugging
+                print(f'sub sampled {pl.i(idx)} => {pl.i(self._sampled_idxs[idx_dset][idx])}')
+            idx = self._sampled_idxs[idx_dset][idx].item()
+        return dset[idx]
 
 
 if __name__ == '__main__':

@@ -18,7 +18,7 @@ from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
 from musicnlp.vocab import MusicTokenizer, key_ordinal2str
-from musicnlp.preprocess import DATASET_NAME2MODE2FILENAME, get_dataset, AugmentedDataset
+from musicnlp.preprocess import DATASET_NAME2MODE2FILENAME, get_dataset, AugmentedDataset, ProportionMixingDataset
 from musicnlp.models import MyReformerConfig, MyReformerModelWithLMHead, MyTransfoXLConfig, MyTransfoXLLMHeadModel
 from musicnlp.trainer import WordPieceMusicTokenizer, load_trained_tokenizer as load_wordpiece_tokenizer, metrics
 
@@ -175,7 +175,9 @@ class TrainArgs:
         if train_args is not None:
             args.update(train_args)
 
-        my_args: Dict[str, Union[int, str]] = dict(logging_strategy='steps', tqdm=False, augment_key=False)  # default
+        my_args: Dict[str, Union[int, str]] = dict(
+            logging_strategy='steps', tqdm=False, augment_key=False, proportional_mixing=False
+        )
         my_args.update(my_train_args or dict())
         bsz = args['per_device_train_batch_size'] * args.get('gradient_accumulation_steps', 1)
         my_args['steps_per_epoch'] = steps_per_epoch = math.ceil(len(train_dataset) / bsz)
@@ -282,8 +284,9 @@ def get_all_setup(
     )
     logger.info(f'Initializing training with {pl.fmt(d_log)}... ')
     my_train_args = my_train_args or dict()
-    wordpiece_tokenize, aug_key, mix_up = (
-        my_train_args.get(k, False) for k in ['wordpiece_tokenize', 'augment_key', 'channel_mixup']
+    wordpiece_tokenize, aug_key, mix_up, prop_mix = (
+        my_train_args.get(k, False)
+        for k in ['wordpiece_tokenize', 'augment_key', 'channel_mixup', 'proportional_mixing']
     )
     logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
@@ -292,17 +295,29 @@ def get_all_setup(
 
     logger.info('Loading datasets... ')
     dset_args = dataset_args or dict()
-    if aug_key or mix_up:
-        dset_args_ = dict(
-            get_dataset_kwargs=dset_args, augment_key=aug_key, channel_mixup=mix_up, mode=my_train_args['mode']
-        )
-        logger.info(f'Loading {pl.i("Augmented")} dataset w/ {pl.i(dset_args_)}... ')
-        dset = AugmentedDataset.from_hf(dataset_names, tokenizer=tokenizer, **dset_args_)
+
+    def load_once(dset_nms: Union[str, List[str]], **kwargs) -> datasets.DatasetDict:
+        if aug_key or mix_up:
+            dset_args_ = dict(
+                get_dataset_kwargs=dset_args | kwargs, augment_key=aug_key, channel_mixup=mix_up,
+                mode=my_train_args['mode']
+            )
+            logger.info(f'Loading {pl.i("Augmented")} dataset w/ {pl.i(dict(dataset_names=dset_nms) | dset_args_)}... ')
+            return AugmentedDataset.from_hf(dset_nms, tokenizer=tokenizer, **dset_args_)
+        else:
+            return get_dataset(
+                dataset_names=dset_nms, map_func=VanillaMap(tokenizer),
+                remove_columns=['title', 'score', 'keys'], **dset_args  # i.e. keep the input ids only
+            )
+    if prop_mix:
+        prop_mix = prop_mix if isinstance(prop_mix, int) else 2048
+        dsets_tr = [load_once(dnm, splits='train')['train'] for dnm in dataset_names]
+        dset = datasets.DatasetDict(dict(
+            train=ProportionMixingDataset(dataset_list=dsets_tr, k=prop_mix),
+            test=load_once(dataset_names, splits='test')['test']
+        ))
     else:
-        dset = get_dataset(
-            dataset_names=dataset_names, map_func=VanillaMap(tokenizer),
-            remove_columns=['title', 'score', 'keys'], **dset_args  # i.e. keep the input ids only
-        )
+        dset = load_once(dataset_names)
     tr, vl = dset['train'], dset['test']
     args, my_args, = get_train_and_my_train_args(model_name, model_size, train_args, my_train_args, tr)
     assert all(  # Ensure compatibility of dataset & tokenizer, see `music_export`
@@ -370,14 +385,19 @@ if __name__ == '__main__':
         wordpiece_tokenize = True
         # channel_mixup = False
         channel_mixup = True
+        # prop_mix = 2048
+        prop_mix = 16
 
         # _debug_eval = True
         _debug_eval = False
-        mic(augment_key, wordpiece_tokenize, channel_mixup, _debug_eval)
+        mic(augment_key, wordpiece_tokenize, channel_mixup, _debug_eval, prop_mix)
 
+        n = 64
+        # n = None
         # n_ep = 8
-        n_ep = 16
+        # n_ep = 16
         # n_ep = 32
+        n_ep = 64
         # n_ep = 256
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         if not _debug_eval and channel_mixup:
@@ -385,7 +405,7 @@ if __name__ == '__main__':
 
         my_train_args = dict(
             tqdm=True, logging_strategy='epoch',
-            augment_key=augment_key,
+            augment_key=augment_key, proportional_mixing=prop_mix,
             wordpiece_tokenize=wordpiece_tokenize,
             channel_mixup=channel_mixup,
             mode=md
@@ -411,12 +431,9 @@ if __name__ == '__main__':
                 # save_epochs=8
             ))
 
-        # n = 64
-        n = None
-
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
-            dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
+            dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed, pbar=True),
             train_args=train_args, my_train_args=my_train_args, trainer_args=dict(
                 disable_train_metrics=True
             )

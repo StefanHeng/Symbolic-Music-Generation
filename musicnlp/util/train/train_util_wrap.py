@@ -16,7 +16,7 @@ from stefutil import *
 
 __all__ = [
     'PT_LOSS_PAD', 'MyTrainer',
-    'ColoredPrinterCallback', 'ColoredPrinterCallbackForClm'
+    'ColoredPrinterCallback', 'ColoredPrinterCallbackForClm', 'ProportionalMixCallback'
 ]
 
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
@@ -52,7 +52,16 @@ class MyTrainer(Trainer):
 
         self.my_args = my_args
         self.with_tqdm = my_args.get('tqdm', False)
+        self.proportional_mixing = my_args.get('proportional_mixing', False)
         self.post_init()
+
+        self.logger = get_logger(f'{self.name.capitalize()} Train')
+        d_log = dict(
+            monitor_ntp_acc=self.monitor_ntp_acc,
+            train_metrics=self.train_metrics, disable_train_metrics=self.disable_train_metrics,
+            with_tqdm=self.with_tqdm, proportional_mixing=self.proportional_mixing
+        )
+        self.logger.info(f'Trainer initialized with {pl.i(d_log)}')
 
     def post_init(self):
         callbacks = self.callback_handler.callbacks
@@ -69,7 +78,9 @@ class MyTrainer(Trainer):
             raise NotImplementedError('on-CLM task logging not updated')
         if self.with_tqdm:
             self.add_callback(MyProgressCallback(train_only=self.with_tqdm == 'train-only'))
-        self.add_callback(callback_cls(name=self.name, parent_trainer=self))
+        if self.proportional_mixing:
+            self.add_callback(ProportionalMixCallback(trainer=self))
+        self.add_callback(callback_cls(name=self.name, trainer=self))
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -136,13 +147,13 @@ class ColoredPrinterCallback(TrainerCallback):
 
     Evaluation during training **not supported**
     """
-    def __init__(self, name: str = None, parent_trainer: MyTrainer = None, report2tb: bool = True):
+    def __init__(self, name: str = None, trainer: MyTrainer = None, report2tb: bool = True):
         self.mode = 'eval'
         self.t_strt, self.t_end = None, None
 
-        self.trainer = parent_trainer
+        self.trainer = trainer
         args, dset_tr_, md_, tokzer = (
-            getattr(parent_trainer, k) for k in ['args', 'train_dataset', 'model', 'tokenizer']
+            getattr(trainer, k) for k in ['args', 'train_dataset', 'model', 'tokenizer']
         )
         lr, n_ep = args.learning_rate, args.num_train_epochs
         self.bsz = args.per_device_train_batch_size * args.gradient_accumulation_steps
@@ -280,7 +291,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
                 self.ls(d_log, training=training, to_console=should_log)
             elif 'eval_loss' in logs:  # `Trainer.is_in_train` is not False so can't use
                 # Get all potential metrics computed
-                ks = [self._get_eval_key(k) for k in logs.keys()]
+                ks = [self._get_eval_key(k) for k in logs.keys() if k != 'epoch']
                 custom_keys = ['loss', 'ntp_acc', 'runtime', 'samples_per_second', 'steps_per_second']
                 default_keys = [k for k in ks if k not in custom_keys]
                 ks = ['loss', 'ntp_acc'] + default_keys
@@ -295,3 +306,17 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
             else:
                 self.logger.info(pl.i(logs))
                 self.logger_fl.info(pl.nc(logs))
+
+
+class ProportionalMixCallback(TrainerCallback):
+    """
+    Trigger re-computing subset for dataset Examples-proportional mixing, see `dataset::ProportionMixingDataset`
+
+    A hack that modifies the train dataset, pointed by Trainer's dataloader
+    """
+    def __init__(self, trainer: Trainer):
+        self.trainer = trainer
+
+    def on_epoch_begin(self, args: TrainingArguments, state, control, **kwargs):
+        mic('prop call back made sample')
+        self.trainer.train_dataset.sample()
