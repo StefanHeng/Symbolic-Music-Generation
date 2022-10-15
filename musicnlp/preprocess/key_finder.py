@@ -166,6 +166,7 @@ class KeyFinder:
             'B': 6,
         }
         piece = self.piece
+        mic(k)
         all_k = k[0] + k[1]
         # to store all scale degrees in T0
         arr_ = []
@@ -173,14 +174,14 @@ class KeyFinder:
             if n.isChord:
                 for p in n.pitches:
                     arr_.append((p.midi, T_0[p.step]))
-            elif n.isRest:
-                arr_.append(('R', 0))
-            else:
-                arr_.append((n.midi, T_0[n.step]))
+            elif not n.isRest:
+                arr_.append((n.pitch.midi, T_0[n.pitch.step]))
         # now shift to T1 and adjust the scale degree accordingly with major and minor
         ret_ = {}
         for k_ in all_k:
-            step = k_[0]
+            # Use reg-ex
+            step = k_[0][0]
+            mic(step)
             # mod7 plus 1 just to make it align with our scale degrees value convention (1-7)
             ret_[k_] = [(mid, (scale-T_0[step]) % 7 + 1) if mid != 'R' else (mid, scale) for mid, scale in arr_]
         return ret_
@@ -232,14 +233,11 @@ class KeyFinder:
 def main(path: str):
     a = KeyFinder(path)
     keys = a.find_key()
-    mic(keys)
     mic(a.find_scale_degrees(keys))
 
 
 if __name__ == '__main__':
     from tqdm import tqdm
-    from icecream import mic
-
     import musicnlp.util.music as music_util
 
     def check_get_key():
@@ -247,7 +245,7 @@ if __name__ == '__main__':
         mic(path)
         kf = KeyFinder(path)
         mic(kf.find_key(return_type='enum'))
-    check_get_key()
+    # check_get_key()
 
     def check_deprecated_scale_deg():
         path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
