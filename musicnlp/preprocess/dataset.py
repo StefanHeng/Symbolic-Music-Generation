@@ -116,21 +116,25 @@ class ChannelMixer:
 
     For each change of channel, prefix it
     """
+    e_m, e_b = MusicElement(type=ElmType.melody), MusicElement(type=ElmType.bass)
 
-    def __init__(self, precision: int = 5, vocab: MusicVocabulary = None):
+    def __init__(self, precision: int = 5, vocab: MusicVocabulary = None, mode: str = 'full'):
         self.mc = MusicConverter(mode='full', precision=precision, vocab=vocab)
         self.vocab = self.mc.vocab
+
+        ca(channel_mixup=mode)
+        self.mode = mode
 
     def __call__(self, text: str, return_as_list: bool = False) -> str:
         out = self.mc.str2notes(text, group=True)
 
-        # sanity_check = True
-        sanity_check = False
+        sanity_check = True
+        # sanity_check = False
         if sanity_check:
             for elms in out.elms_by_bar:
                 mixed = self._mix_up_bar_notes(elms)
                 d = self.mc.split_notes(mixed)
-                # mic(elms, mixed, d)
+                mic(elms, mixed, d)
                 recon = [
                     MusicElement(type=ElmType.melody), *d['melody'], MusicElement(type=ElmType.bass), *d['bass']
                 ]
@@ -154,38 +158,45 @@ class ChannelMixer:
 
     def _mix_up_bar_notes(self, elms: List[MusicElement]) -> List[MusicElement]:
         d_notes = self.mc.split_notes(elms)
-        notes_m, notes_b = iter(d_notes['melody']), iter(d_notes['bass'])
-        elms = []
-        note_m, note_b = next(notes_m, None), next(notes_b, None)
-        c_cur, c_prev = None, None
-        add_mel = None
-        e_m, e_b = MusicElement(type=ElmType.melody), MusicElement(type=ElmType.bass)
-        while note_m and note_b:
-            add_mel = ChannelMixer._bin_sample()
-            c_cur = Channel.melody if add_mel else Channel.bass
-            diff_c = c_cur != c_prev
-            if diff_c:
-                elms.append(e_m if add_mel else e_b)
-            if c_cur == Channel.melody:
+        notes_m, notes_b = d_notes['melody'], d_notes['bass']
+
+        if self.mode == 'full':
+            notes_m, notes_b = iter(notes_m), iter(notes_b)
+            elms = []
+            note_m, note_b = next(notes_m, None), next(notes_b, None)
+            c_cur, c_prev = None, None
+            add_mel = None
+            while note_m and note_b:
+                add_mel = ChannelMixer._bin_sample()
+                c_cur = Channel.melody if add_mel else Channel.bass
+                diff_c = c_cur != c_prev
+                if diff_c:
+                    elms.append(ChannelMixer.e_m if add_mel else ChannelMixer.e_b)
+                if c_cur == Channel.melody:
+                    elms.append(note_m)
+                    note_m = next(notes_m, None)
+                else:
+                    elms.append(note_b)
+                    note_b = next(notes_b, None)
+                c_prev = c_cur
+            assert add_mel is not None  # sanity check
+            if note_m:
+                if not add_mel:
+                    elms.append(ChannelMixer.e_m)
                 elms.append(note_m)
-                note_m = next(notes_m, None)
+                elms.extend(notes_m)
             else:
+                if add_mel:
+                    elms.append(ChannelMixer.e_b)
+                assert note_b
                 elms.append(note_b)
-                note_b = next(notes_b, None)
-            c_prev = c_cur
-        assert add_mel is not None  # sanity check
-        if note_m:
-            if not add_mel:
-                elms.append(e_m)
-            elms.append(note_m)
-            elms.extend(notes_m)
-        else:
-            if add_mel:
-                elms.append(e_b)
-            assert note_b
-            elms.append(note_b)
-            elms.extend(notes_b)
-        return elms
+                elms.extend(notes_b)
+            return elms
+        else:  # `swap`
+            if ChannelMixer._bin_sample():
+                return elms
+            else:  # swap at 50% chance
+                return [ChannelMixer.e_b, *notes_b, ChannelMixer.e_m, *notes_m]
 
 
 class AugmentedDataset:
@@ -193,13 +204,16 @@ class AugmentedDataset:
     A wrapper around a datasets.Dataset, with my custom augmentation about
         1) inserting a likely key
         2) mix-up relative order between melody & bass channels
+            Can be one of [`full`, `swap`], where, at uniform random,
+                if `full`: individual notes in melody & bass are completely interleaved
+                if `swap`: the order of melody & bass are swapped
 
     For each song, sample one of the potential keys based on confidence
         See `musicnlp.preprocess.key_finder.py`
     """
     def __init__(
             self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None,
-            augment_key: bool = False, channel_mixup: bool = False, mode: str = None
+            augment_key: bool = False, channel_mixup: Union[bool, str] = False, mode: str = None
     ):
         ca(extract_mode=mode)
         if isinstance(dataset, str):
@@ -222,7 +236,8 @@ class AugmentedDataset:
             raise ValueError(f'{pl.i("mix_up")} only works with mode={pl.i("full")}')
         self.cm = None
         if channel_mixup:
-            self.cm = ChannelMixer(precision=prec, vocab=self.tokenizer.vocab)
+            mode = 'full' if isinstance(channel_mixup, bool) else channel_mixup
+            self.cm = ChannelMixer(precision=prec, vocab=self.tokenizer.vocab, mode=mode)
 
     @classmethod
     def from_hf(

@@ -385,12 +385,12 @@ if __name__ == '__main__':
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
         md_nm = 'reformer'
-        # md_sz = 'debug'
+        md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
-        md_sz = 'large'
+        # md_sz = 'large'
         mic(md_nm, md_sz)
 
         # TODO: smaller seq-len for now, until it shows longer dependency
@@ -402,7 +402,7 @@ if __name__ == '__main__':
         # wordpiece_tokenize = False
         wordpiece_tokenize = True
         # channel_mixup = False
-        channel_mixup = True
+        channel_mixup = 'swap'
         prop_mix = 1536
         # prop_mix = 16
 
@@ -410,13 +410,13 @@ if __name__ == '__main__':
         _debug_eval = False
         mic(augment_key, wordpiece_tokenize, channel_mixup, _debug_eval, prop_mix)
 
-        # n = 64
-        n = None
+        n = 64
+        # n = None
         # n_ep = 8
         # n_ep = 16
         # n_ep = 32
-        # n_ep = 64
-        n_ep = 128
+        n_ep = 64
+        # n_ep = 128
         # n_ep = 512
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         if not _debug_eval and channel_mixup:
@@ -435,7 +435,7 @@ if __name__ == '__main__':
                 per_device_train_batch_size=4,
                 num_train_epochs=32
             ))
-            my_train_args['save_epochs'] = 16
+            # my_train_args['save_epochs'] = 16
         else:
             # if any('LMD' in d for d in dnms):  # Data includes LMD, a much larger dataset; but doesn't seem to help
             #     train_args['learning_rate'] = 3e-5

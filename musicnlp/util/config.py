@@ -95,7 +95,13 @@ config_dict: dict = {
         ),
         dict(display_name='Music File Format', attr_name='fmt', accepted_values=['mid', 'mxl']),
         dict(display_name='Music File Conversion Backend', attr_name='backend', accepted_values=['MS', 'LP']),
+
         dict(display_name='Music Key Type', attr_name='key_type', accepted_values=['list', 'enum', 'dict']),
+
+        dict(
+            display_name='Music Channel Mixup Augmentation', attr_name='channel_mixup', accepted_values=['full', 'swap']
+        ),
+
         dict(display_name='Train Logging Strategy', attr_name='log_strategy', accepted_values=['epoch', 'steps', 'no']),
         dict(display_name='Train Logging Mode', attr_name='log_mode', accepted_values=['train', 'eval']),
         dict(

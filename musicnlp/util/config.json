@@ -79719,6 +79719,14 @@
             ]
         },
         {
+            "display_name": "Music Channel Mixup Augmentation",
+            "attr_name": "channel_mixup",
+            "accepted_values": [
+                "full",
+                "swap"
+            ]
+        },
+        {
             "display_name": "Train Logging Strategy",
             "attr_name": "log_strategy",
             "accepted_values": [
