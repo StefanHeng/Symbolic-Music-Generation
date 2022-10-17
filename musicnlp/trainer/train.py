@@ -86,6 +86,14 @@ class TrainArgs:
                 lr_scheduler_type=SchedulerType.COSINE,
                 num_train_epochs=64,
                 warmup_ratio=0.1
+            ),
+            'large': dict(
+                batch_size=32,
+                learning_rate=3e-4,
+                weight_decay=1e-2,
+                lr_scheduler_type=SchedulerType.COSINE,
+                num_train_epochs=64,
+                warmup_ratio=0.1
             )
         },
         'reformer': {
@@ -120,6 +128,14 @@ class TrainArgs:
                 warmup_ratio=0.1
             ),
             'base': dict(
+                batch_size=32,
+                learning_rate=3e-4,
+                weight_decay=1e-2,
+                lr_scheduler_type=SchedulerType.COSINE,
+                num_train_epochs=64,
+                warmup_ratio=0.1
+            ),
+            'large': dict(
                 batch_size=32,
                 learning_rate=3e-4,
                 weight_decay=1e-2,
@@ -373,11 +389,13 @@ if __name__ == '__main__':
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
-        md_sz = 'base'
+        # md_sz = 'base'
+        md_sz = 'large'
         mic(md_nm, md_sz)
 
         # TODO: smaller seq-len for now, until it shows longer dependency
-        model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
+        model_config = None
+        # model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
 
         # augment_key = False
         augment_key = True
@@ -385,7 +403,7 @@ if __name__ == '__main__':
         wordpiece_tokenize = True
         # channel_mixup = False
         channel_mixup = True
-        prop_mix = 2048
+        prop_mix = 1536
         # prop_mix = 16
 
         # _debug_eval = True
@@ -397,8 +415,9 @@ if __name__ == '__main__':
         # n_ep = 8
         # n_ep = 16
         # n_ep = 32
-        n_ep = 64
-        # n_ep = 256
+        # n_ep = 64
+        n_ep = 128
+        # n_ep = 512
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         if not _debug_eval and channel_mixup:
             train_args['dataloader_num_workers'] = 4
@@ -418,9 +437,13 @@ if __name__ == '__main__':
             ))
             my_train_args['save_epochs'] = 16
         else:
-            if any('LMD' in d for d in dnms):  # Data includes LMD, a much larger dataset
-                train_args['learning_rate'] = 3e-5
-            bsz = 128 if on_great_lakes() else 64
+            # if any('LMD' in d for d in dnms):  # Data includes LMD, a much larger dataset; but doesn't seem to help
+            #     train_args['learning_rate'] = 3e-5
+            if md_sz == 'base':
+                bsz = 128 if on_great_lakes() else 64
+            else:
+                assert md_sz == 'large'
+                bsz = 48
             train_args.update(dict(
                 fp16=torch.cuda.is_available(),
                 per_device_train_batch_size=bsz,
