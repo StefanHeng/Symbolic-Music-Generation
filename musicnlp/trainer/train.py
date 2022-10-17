@@ -410,13 +410,13 @@ if __name__ == '__main__':
         _debug_eval = False
         mic(augment_key, wordpiece_tokenize, channel_mixup, _debug_eval, prop_mix)
 
-        n = 64
-        # n = None
+        # n = 64
+        n = None
         # n_ep = 8
         # n_ep = 16
         # n_ep = 32
-        n_ep = 64
-        # n_ep = 128
+        # n_ep = 64
+        n_ep = 128
         # n_ep = 512
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         if not _debug_eval and channel_mixup:

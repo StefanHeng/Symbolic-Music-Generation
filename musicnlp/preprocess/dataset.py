@@ -2,7 +2,7 @@ import os
 import json
 import random
 from os.path import join as os_join
-from typing import List, Tuple, Dict, Callable, Union, Optional
+from typing import List, Tuple, Dict, Callable, Any, Union, Optional
 
 import datasets
 import torch
@@ -128,8 +128,8 @@ class ChannelMixer:
     def __call__(self, text: str, return_as_list: bool = False) -> str:
         out = self.mc.str2notes(text, group=True)
 
-        sanity_check = True
-        # sanity_check = False
+        # sanity_check = True
+        sanity_check = False
         if sanity_check:
             for elms in out.elms_by_bar:
                 mixed = self._mix_up_bar_notes(elms)
@@ -239,6 +239,15 @@ class AugmentedDataset:
             mode = 'full' if isinstance(channel_mixup, bool) else channel_mixup
             self.cm = ChannelMixer(precision=prec, vocab=self.tokenizer.vocab, mode=mode)
 
+    @property
+    def meta(self) -> Dict[str, Any]:
+        d = dict()
+        if self.augment_key:
+            d['aug_key'] = 'T'
+        if self.channel_mixup:
+            d['mix_up'] = self.cm.mode[0]
+        return d
+
     @classmethod
     def from_hf(
             cls, dataset_names: Union[str, List[str]], tokenizer: MusicTokenizer = None,
@@ -309,6 +318,14 @@ class ProportionMixingDataset:
         self.sample()
 
         self._info = None
+
+    @property
+    def meta(self) -> Dict[str, Any]:
+        metas = [(d.meta if hasattr(d, 'meta') else None) for d in self.dsets]
+        assert all(metas[0] == m for m in metas)  # sanity check datasets of the same type
+        d = metas[0] or dict()
+        d['mix_limit'] = self.k
+        return d
 
     @property
     def info(self) -> DatasetInfo:

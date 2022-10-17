@@ -168,8 +168,10 @@ class ColoredPrinterCallback(TrainerCallback):
         self.output_dir = self.trainer.args.output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         self.save_time = self.output_dir.split(os.sep)[-1]  # expect last dir name as time stamp
-        meta = meta2fnm_meta(self.trainer.model_meta)
-        self.log_fnm = f'Train_{pl.pa(meta)}_{{n={n_data}, a={lr}, bsz={self.bsz}, n_ep={n_ep}}}'
+        meta = pl.pa(meta2fnm_meta(self.trainer.model_meta))
+        if hasattr(self.trainer.train_dataset, 'meta'):
+            meta = f'{meta}_{pl.pa(self.trainer.train_dataset.meta)}'
+        self.log_fnm = f'Train_{meta}_{{n={n_data}, a={lr}, bsz={self.bsz}, n_ep={n_ep}}}'
 
         name = name or 'MyTrainer'
         self.name = f'{name} Train'
@@ -196,7 +198,7 @@ class ColoredPrinterCallback(TrainerCallback):
         self.logger_fl.info(f'Training started with with model {pl.nc(meta)}, {pl.id(conf)} '
                             f'on {pl.nc(self.train_meta)} with training args {pl.id(train_args)} '
                             f'and my training args {pl.nc(self.trainer.my_args)}... ')
-        self.logger.info(f'Logging will be saved to {pl.i(self.log_fnm)}... ')
+        self.logger.info(f'Logging will be saved as {pl.i(self.log_fnm)}... ')
         self.t_strt = datetime.datetime.now()
 
     def on_train_end(self, args: TrainingArguments, state, control, **kwargs):
