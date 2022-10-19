@@ -361,6 +361,8 @@ def get_all_setup(
         preprocess_logits_for_metrics=max_out_logits
     )
     trainer_args_.update(trainer_args or dict())
+    if 'transf-xl' in model_name and not trainer_args.get('disable_train_metrics', False):
+        raise NotImplementedError()  # Logging additional train metrics makes GPU util low
     trainer_ = cls(**trainer_args_)
     return model, tokenizer, trainer_
 
@@ -425,7 +427,6 @@ if __name__ == '__main__':
         n_ep = 128
         # n_ep = 512
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep, dataloader_num_workers=4)
-
         my_train_args = dict(
             tqdm=True, logging_strategy='no',
             augment_key=augment_key, proportional_mixing=prop_mix,
@@ -433,6 +434,7 @@ if __name__ == '__main__':
             channel_mixup=channel_mixup,
             mode=md
         )
+        trainer_args = dict(disable_train_metrics=True)
 
         if 'debug' in md_sz or md_sz == 'tiny':
             train_args.update(dict(
@@ -456,9 +458,7 @@ if __name__ == '__main__':
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
             dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed, pbar=True),
-            train_args=train_args, my_train_args=my_train_args, trainer_args=dict(
-                disable_train_metrics=True
-            )
+            train_args=train_args, my_train_args=my_train_args, trainer_args=trainer_args
         )
         if _debug_eval:
             # trainer.train_dataset: datasets.Dataset
@@ -475,10 +475,10 @@ if __name__ == '__main__':
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
-        md_sz = 'debug'
+        # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        # md_sz = 'base'
+        md_sz = 'base'
         mic(md_nm, md_sz)
 
         # n = 8
@@ -509,6 +509,7 @@ if __name__ == '__main__':
             channel_mixup=channel_mixup,
             mode=md
         )
+        trainer_args = dict(disable_train_metrics=True)
 
         if 'debug' in md_sz:
             train_args.update(dict(
@@ -517,15 +518,13 @@ if __name__ == '__main__':
             ))
         else:
             train_args.update(dict(
-                per_device_train_batch_size=16,
-                per_device_eval_batch_size=16,
+                per_device_train_batch_size=20,
+                per_device_eval_batch_size=20,
             ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
             dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
-            train_args=train_args, my_train_args=my_train_args, trainer_args=dict(
-                disable_train_metrics=True
-            )
+            train_args=train_args, my_train_args=my_train_args, trainer_args=trainer_args
         )
 
         sanity_check_eval = False

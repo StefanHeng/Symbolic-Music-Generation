@@ -3,11 +3,10 @@ from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass
 
 import torch
-from transformers import TransfoXLConfig, TransfoXLModel, TransfoXLLMHeadModel
+from transformers import TransfoXLConfig, TransfoXLLMHeadModel
 from transformers.modeling_utils import ModelOutput
 
 from musicnlp.vocab import MusicTokenizer
-from musicnlp.models._adaptive_softmax import MyProjectedAdaptiveLogSoftmax
 
 
 __all__ = ['MyTransfoXLConfig', 'MyTransfoXLLMHeadModel']
@@ -112,35 +111,6 @@ class TransfoXLLMHeadModelOutput(ModelOutput):
 class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
     cls_name = 'TransformerXl'
 
-    # def __init__(self, config):
-    #     super().__init__(config)
-    #     self.transformer = TransfoXLModel(config)
-    #     self.sample_softmax = config.sample_softmax
-    #     self.trainer_compatible = getattr(config, "trainer_compatible", False)
-    #
-    #     if not self.trainer_compatible:
-    #         warnings.warn(
-    #             "The output of TransfoXL will be updated in v5 to support a single loss as first argument. In order"
-    #             "to use that updated output, please specify `trainer_compatible=True` as your configuration"
-    #             " attribute.",
-    #             DeprecationWarning,
-    #         )
-    #
-    #     assert self.sample_softmax <= 0, (
-    #         "Sampling from the softmax is not implemented yet. Please look at issue: #3310:"
-    #         " https://github.com/huggingface/transformers/issues/3310"
-    #     )
-    #
-    #     # ========================== Begin of modified ==========================
-    #     # To filter out padding tokens
-    #     self.crit = MyProjectedAdaptiveLogSoftmax(
-    #         config.vocab_size, config.d_embed, config.d_model, config.cutoffs, div_val=config.div_val
-    #     )
-    #     # ========================== End of modified ==========================
-    #
-    #     # Initialize weights and apply final processing
-    #     self.post_init()
-
     def forward(
             self,
             # ========================== Begin of added ==========================
@@ -156,16 +126,6 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
             output_hidden_states: Optional[bool] = None,
             return_dict: Optional[bool] = None,
     ):
-        # return super().forward(
-        #     input_ids=input_ids,
-        #     mems=mems,
-        #     head_mask=head_mask,
-        #     inputs_embeds=inputs_embeds,
-        #     labels=labels,
-        #     output_attentions=output_attentions,
-        #     output_hidden_states=output_hidden_states,
-        #     return_dict=return_dict,
-        # )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if input_ids is not None:
             bsz, tgt_len = input_ids.size(0), input_ids.size(1)
@@ -203,8 +163,6 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
         if in_eval:
             _tgt_len -= 1
         prediction_scores = softmax_output.view(bsz, _tgt_len, -1) if (labels is None or in_eval) else ()
-        from stefutil import mic
-        mic(prediction_scores)
         # ========================== Begin of modified ==========================
 
         if labels is not None:
