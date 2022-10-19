@@ -94,7 +94,9 @@ class MyReformerModelWithLMHead(ReformerModelWithLMHead):
 
     def forward(
             self,
+            # ========================== Begin of added ==========================
             key_scores=None,
+            # ========================== End of added ==========================
             input_ids: Optional[torch.Tensor] = None,
             position_ids: Optional[torch.Tensor] = None,
             attention_mask: Optional[torch.Tensor] = None,

@@ -1,7 +1,20 @@
+# coding=utf-8
+# Copyright 2018 Google AI, Google Brain and Carnegie Mellon University Authors and the HuggingFace Inc. team.
+# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """
-Override the HF implementation as it doesn't seem to support padding
-
-Have to copy over the source code since `modeling_transfo_xl_utilities.py` is not available for import
+ Utilities for PyTorch Transformer XL model. Directly adapted from https://github.com/kimiyoung/transformer-xl.
 """
 
 
@@ -89,7 +102,7 @@ class MyProjectedAdaptiveLogSoftmax(nn.Module):
             hidden = hidden.view(-1, hidden.size(-1))
             labels = labels.view(-1)
             if hidden.size(0) != labels.size(0):
-                raise RuntimeError("Input and labels should have the same size " "in the batch dimension.")
+                raise RuntimeError("Input and labels should have the same size in the batch dimension.")
         else:
             hidden = hidden.view(-1, hidden.size(-1))
 
@@ -235,4 +248,3 @@ class MyProjectedAdaptiveLogSoftmax(nn.Module):
                     out[:, start_idx, stop_idx] = logprob_i
 
             return out
-

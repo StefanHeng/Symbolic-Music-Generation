@@ -240,11 +240,13 @@ def max_out_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
 
 
 class ComputeMetrics:
-    def __init__(self, tokenizer: MusicTokenizer, mode: str = 'vanilla'):
+    def __init__(self, tokenizer: MusicTokenizer, mode: str = 'vanilla', clm_pred_shifted: bool = False):
         self.acc = evaluate.load('accuracy')
-        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, mode=mode)
+        self.ikr = metrics.IkrMetric(tokenizer=tokenizer, mode=mode, clm_pred_shifted=clm_pred_shifted)
         ca.check_mismatch('Training Mode', mode, ['vanilla', 'key-aug'])
         self.mode = mode
+
+        self.clm_pred_shifted = clm_pred_shifted
 
     def __call__(self, eval_pred):
         """
@@ -259,7 +261,9 @@ class ComputeMetrics:
         # preds = preds.argmax(axis=-1)  # No longer needed, see `preprocess_logits_for_metrics`
         d_metric = dict(ikr=self.ikr(preds=preds, labels=labels, key_scores=key_scores))
 
-        preds, labels = preds[:, :-1], labels[:, 1:]  # shift for CLM
+        if not self.clm_pred_shifted:
+            preds = preds[:, :-1]
+        labels = labels[:, 1:]
         labels, preds = labels.flatten(), preds.flatten()
         msk_non_pad = (labels != train_util.PT_LOSS_PAD)
         labels, preds = labels[msk_non_pad], preds[msk_non_pad]
@@ -340,7 +344,8 @@ def get_all_setup(
         get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer.precision for ds in dset.values()
     )
 
-    cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if aug_key else 'vanilla')
+    pred_shift = model_name == 'transf-xl'
+    cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if aug_key else 'vanilla', clm_pred_shifted=pred_shift)
     # if key not augmented, need to pass key info to each song for IKR logging
     if aug_key:
         cls = train_util.MyTrainer
@@ -385,12 +390,12 @@ if __name__ == '__main__':
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
         md_nm = 'reformer'
-        md_sz = 'debug'
+        # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
-        # md_sz = 'large'
+        md_sz = 'large'
         mic(md_nm, md_sz)
 
         # TODO: smaller seq-len for now, until it shows longer dependency
@@ -405,10 +410,11 @@ if __name__ == '__main__':
         channel_mixup = 'swap'
         prop_mix = 1536
         # prop_mix = 16
+        mic(augment_key, wordpiece_tokenize, channel_mixup, prop_mix)
 
         # _debug_eval = True
         _debug_eval = False
-        mic(augment_key, wordpiece_tokenize, channel_mixup, _debug_eval, prop_mix)
+        mic(_debug_eval)
 
         # n = 64
         n = None
@@ -418,12 +424,10 @@ if __name__ == '__main__':
         # n_ep = 64
         n_ep = 128
         # n_ep = 512
-        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
-        if not _debug_eval and channel_mixup:
-            train_args['dataloader_num_workers'] = 4
+        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep, dataloader_num_workers=4)
 
         my_train_args = dict(
-            tqdm=True, logging_strategy='epoch',
+            tqdm=True, logging_strategy='no',
             augment_key=augment_key, proportional_mixing=prop_mix,
             wordpiece_tokenize=wordpiece_tokenize,
             channel_mixup=channel_mixup,
@@ -445,13 +449,8 @@ if __name__ == '__main__':
                 assert md_sz == 'large'
                 bsz = 48
             train_args.update(dict(
-                fp16=torch.cuda.is_available(),
                 per_device_train_batch_size=bsz,
                 per_device_eval_batch_size=bsz
-            ))
-            my_train_args.update(dict(
-                logging_strategy='no',
-                # save_epochs=8
             ))
 
         mdl, tokenizer, trainer = get_all_setup(
@@ -472,63 +471,54 @@ if __name__ == '__main__':
         else:
             trainer.train()
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    train_reformer()
+    # train_reformer()
 
-    # checkpoint_path = os_join(PATH_BASE, DIR_PROJ, DIR_MDL, 'reformer', '2022-04-03_00-20-53', 'checkpoint-1856')
-    # train(resume_from_checkpoint=checkpoint_path)
-
-    def train_xl(resume: str = None):  # TODO: support for disable NTP logging
-        transformers.set_seed(seed)
-
+    def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
-
         md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'base'
+        mic(md_nm, md_sz)
 
         # n = 8
         # n = 16
-        n = 128
+        # n = 128
         # n = 1024
-        # n = None
+        n = None
 
-        gas = 1
-        # gas = 4
-        n_ep = 4
+        # n_ep = 4
+        # n_ep = 64
+        n_ep = 128
 
-        # mem_len = 256
-        mem_len = None
-        # max_length = 512
-        # max_length = 1024
-        max_length = None  # 2048 for non-debugging configs
-        model_config = dict(max_length=max_length)
+        model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
 
-        augment_key = False
-        # wordpiece_tokenize = False
+        augment_key = True
         wordpiece_tokenize = True
+        channel_mixup = 'full'
+        # prop_mix = 1536
+        prop_mix = 1024 + 256
 
-        train_args = dict(gradient_accumulation_steps=gas)
+        mic(augment_key, wordpiece_tokenize, channel_mixup, prop_mix)
+
+        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep, dataloader_num_workers=4)
         my_train_args = dict(
-            augment_key=augment_key,
+            tqdm=True, logging_strategy='no',
+            augment_key=augment_key, proportional_mixing=prop_mix,
             wordpiece_tokenize=wordpiece_tokenize,
-            save_epochs=1
+            channel_mixup=channel_mixup,
+            mode=md
         )
 
-        # with_tqdm = False
-        with_tqdm = True
-        if with_tqdm:
-            my_train_args.update(dict(tqdm=True, logging_strategy='epoch'))
-
         if 'debug' in md_sz:
-            train_args['num_train_epochs'] = n_ep
-        else:
-            if mem_len:
-                model_config['mem_len'] = mem_len
             train_args.update(dict(
-                per_device_train_batch_size=20,
-                per_device_eval_batch_size=20,
-                num_train_epochs=n_ep
+                per_device_train_batch_size=64,
+                per_device_eval_batch_size=64,
+            ))
+        else:
+            train_args.update(dict(
+                per_device_train_batch_size=16,
+                per_device_eval_batch_size=16,
             ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
@@ -537,20 +527,19 @@ if __name__ == '__main__':
                 disable_train_metrics=True
             )
         )
-        sanity_check_eval = True
+
+        sanity_check_eval = False
+        # sanity_check_eval = True
+        mic(sanity_check_eval)
         if sanity_check_eval:
             trainer.train_dataset: datasets.Dataset
             trainer.train_dataset = trainer.train_dataset.select(range(8))
             mic(len(trainer.train_dataset))
+
+        transformers.set_seed(seed)
         # ignore so that `None` don't get detached
         ignore_keys_for_eval = ['losses', 'mems', 'hidden_states', 'attentions']
         train_call_args = dict(ignore_keys_for_eval=ignore_keys_for_eval)
-        if resume:
-            train_call_args['resume_from_checkpoint'] = resume
-        trainer.train(**train_call_args)
+        trainer.train(**(train_call_args | kwargs))
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    # train_xl()
-    # with a large vocab size for WordPiece tokenizer, e.g. 16K, nested concat is the bottleneck in eval
-    # profile_runtime(train_xl)
-    # resume = os_join(u.model_path, 'checkpoint-17526')
-    # train_xl(resume)
+    train_xl()

@@ -127,7 +127,7 @@ class MusicGenerator:
             path = prompt_args.get('path', None)
             assert path, f'A path to a song must be provided to {pl.i("prompt_args")} to extract key ' \
                          f'when key is not already provided'
-            key = pt_sample(KeyFinder(path).find_key(return_type='dict'))  # just sample a key for generation, TODO?
+            key = pt_sample(KeyFinder(path)(return_type='dict'))  # just sample a key for generation, TODO?
         if mode == 'unconditional':
             # TODO: sample the time signature and tempos?
             prompt = [self.vocab.uncompact(VocabType.time_sig, (4, 4)), self.vocab.uncompact(VocabType.tempo, 120)]

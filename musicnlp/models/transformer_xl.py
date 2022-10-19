@@ -1,8 +1,10 @@
+import warnings
 from typing import List, Tuple, Dict, Any, Optional
+from dataclasses import dataclass
 
 import torch
 from transformers import TransfoXLConfig, TransfoXLModel, TransfoXLLMHeadModel
-from transformers.file_utils import ModelOutput
+from transformers.modeling_utils import ModelOutput
 
 from musicnlp.vocab import MusicTokenizer
 from musicnlp.models._adaptive_softmax import MyProjectedAdaptiveLogSoftmax
@@ -25,13 +27,20 @@ class MyTransfoXLConfig(TransfoXLConfig):
     for k, d_config in presets.items():
         hd_sz, n_head = d_config['d_model'], d_config['n_head']
         assert hd_sz % n_head == 0
+
+        if 'debug' in k:
+            m_len, c_len = 64, 64
+        else:
+            m_len = max(128, size2max_length[k] // 8)
+            c_len = max(1024, size2max_length[k] // 2)
         presets[k].update(dict(
             d_embed=hd_sz,  # saves a projection layer when hidden size is embedding size
             d_inner=hd_sz * 4,
             d_head=hd_sz // n_head,  # ensure dim_head x #head == hidden size
-            mem_len=64 if 'debug' in k else 2048,  # TODO: if i understand correctly this is segment length?
+            mem_len=m_len,  # TODO: if i understand correctly this is segment length?
+            clamp_len=c_len,
             # intended that adaptive softmax is effectively not needed, given the small Music vocab size
-            div_val=1, cutoffs=[]
+            div_val=1, cutoffs=[20000]
         ))
         # Don't understand `proj_share_all_but_first` and it's not used in modeling
         # `adaptive` is not really configurable
@@ -53,9 +62,34 @@ class MyTransfoXLConfig(TransfoXLConfig):
         )
 
 
+# Taken completely from HF to override TransformerXL return
+@dataclass
 class TransfoXLLMHeadModelOutput(ModelOutput):
     """
-    Exactly the same as that in HF, but the one in HF is not available for import
+    Base class for model's outputs that may also contain a past key/values (to speed up sequential decoding).
+
+    Args:
+        losses (`torch.FloatTensor` of shape *(batch_size, sequence_length-1)*, *optional*, returned when `labels` is provided):
+            Language modeling losses (not reduced).
+        prediction_scores (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token after SoftMax).
+        mems (`List[torch.FloatTensor]` of length `config.n_layers`):
+            Contains pre-computed hidden-states (key and values in the attention blocks). Can be used (see `mems`
+            input) to speed up sequential decoding. The token ids which have their past given to this model should not
+            be passed as input ids as they have already been computed.
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer) of
+            shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+        loss (`torch.FloatTensor` of shape `()`, *optional*, returned when `labels` is provided)
+            Reduced language modeling loss.
     """
 
     losses: Optional[torch.FloatTensor] = None
@@ -67,61 +101,71 @@ class TransfoXLLMHeadModelOutput(ModelOutput):
 
     @property
     def logits(self):
+        # prediction scores are the output of the adaptive softmax, see
+        # the file `modeling_transfo_xl_utilities`. Since the adaptive
+        # softmax returns the log softmax value, `self.prediction_scores`
+        # are strictly speaking not exactly `logits`, but behave the same
+        # way logits do.
         return self.prediction_scores
 
 
 class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
-    """
-    Modify so that logits is returned for better training monitoring
-
-    Can do this since small vocab size
-    """
     cls_name = 'TransformerXl'
 
-    def __init__(self, config):
-        super().__init__(config)
-        self.transformer = TransfoXLModel(config)
-        self.sample_softmax = config.sample_softmax
-        self.trainer_compatible = getattr(config, "trainer_compatible", False)
-
-        # if not self.trainer_compatible:
-        #     warnings.warn(
-        #         "The output of TransfoXL will be updated in v5 to support a single loss as first argument. In order"
-        #         "to use that updated output, please specify `trainer_compatible=True` as your configuration attribute.",
-        #         DeprecationWarning,
-        #     )
-
-        assert (
-            self.sample_softmax <= 0
-        ), "Sampling from the softmax is not implemented yet. Please look at issue: #3310: https://github.com/huggingface/transformers/issues/3310"
-
-        # ========================== Begin of modified ==========================
-        self.crit = MyProjectedAdaptiveLogSoftmax(
-            config.vocab_size, config.d_embed, config.d_model, config.cutoffs, div_val=config.div_val
-        )
-        # ========================== End of modified ==========================
-
-        # Initialize weights and apply final processing
-        self.post_init()
+    # def __init__(self, config):
+    #     super().__init__(config)
+    #     self.transformer = TransfoXLModel(config)
+    #     self.sample_softmax = config.sample_softmax
+    #     self.trainer_compatible = getattr(config, "trainer_compatible", False)
+    #
+    #     if not self.trainer_compatible:
+    #         warnings.warn(
+    #             "The output of TransfoXL will be updated in v5 to support a single loss as first argument. In order"
+    #             "to use that updated output, please specify `trainer_compatible=True` as your configuration"
+    #             " attribute.",
+    #             DeprecationWarning,
+    #         )
+    #
+    #     assert self.sample_softmax <= 0, (
+    #         "Sampling from the softmax is not implemented yet. Please look at issue: #3310:"
+    #         " https://github.com/huggingface/transformers/issues/3310"
+    #     )
+    #
+    #     # ========================== Begin of modified ==========================
+    #     # To filter out padding tokens
+    #     self.crit = MyProjectedAdaptiveLogSoftmax(
+    #         config.vocab_size, config.d_embed, config.d_model, config.cutoffs, div_val=config.div_val
+    #     )
+    #     # ========================== End of modified ==========================
+    #
+    #     # Initialize weights and apply final processing
+    #     self.post_init()
 
     def forward(
-        self,
-        key_scores=None,  # not used, passed down for IKR computation
-        input_ids=None,
-        mems=None,
-        head_mask=None,
-        inputs_embeds=None,
-        labels=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
+            self,
+            # ========================== Begin of added ==========================
+            # pass in `key_scores` for eval metrics
+            key_scores=None,
+            # ========================== End of added ==========================
+            input_ids: Optional[torch.LongTensor] = None,
+            mems: Optional[List[torch.FloatTensor]] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ):
-        r"""
-        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
-            `labels = input_ids` Indices are selected in `[-100, 0, ..., config.vocab_size]` All labels set to `-100`
-            are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
-        """
+        # return super().forward(
+        #     input_ids=input_ids,
+        #     mems=mems,
+        #     head_mask=head_mask,
+        #     inputs_embeds=inputs_embeds,
+        #     labels=labels,
+        #     output_attentions=output_attentions,
+        #     output_hidden_states=output_hidden_states,
+        #     return_dict=return_dict,
+        # )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if input_ids is not None:
             bsz, tgt_len = input_ids.size(0), input_ids.size(1)
@@ -153,23 +197,18 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
 
         softmax_output = self.crit(pred_hid, labels)
         # ========================== Begin of modified ==========================
-        # prediction_scores = softmax_output.view(bsz, tgt_len, -1) if labels is None else ()
-        if labels is None:
-            prediction_scores = softmax_output.view(bsz, tgt_len, -1)
-        else:
-            # Run softmax again to get vocabulary logits
-            # Not most efficient but less error-prone
-            with torch.no_grad():
-                sm_out = self.crit(pred_hid)
-            prediction_scores = sm_out.view(bsz, tgt_len, -1)
-        # ========================== End of modified ==========================
+        # To get logits and hence NTP ACC during eval
+        in_eval = not self.training
+        _tgt_len = tgt_len
+        if in_eval:
+            _tgt_len -= 1
+        prediction_scores = softmax_output.view(bsz, _tgt_len, -1) if (labels is None or in_eval) else ()
+        from stefutil import mic
+        mic(prediction_scores)
+        # ========================== Begin of modified ==========================
 
         if labels is not None:
-            # ========================== Begin of modified ==========================
-            # losses = softmax_output.view(bsz, tgt_len - 1)
-            losses = softmax_output  # Don't need that reshaping anyway
-            # below, padding should've been ignored already, see `MyProjectedAdaptiveLogSoftmax`
-            # ========================== End of modified ==========================
+            losses = softmax_output.view(bsz, tgt_len - 1)
             # Avoids from incorporating padding (-100) tokens into loss value
             loss = losses[losses != 0].mean()
         else:

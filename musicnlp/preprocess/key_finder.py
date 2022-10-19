@@ -50,7 +50,9 @@ class KeyFinder:
     """
 
     def __init__(self, song: Union[str, Score]):
-        """file_name: the name of file given path it is in"""
+        """
+        :param song: a Music21 Score object or path to a music file
+        """
         self.piece: Score = m21.converter.parse(song) if isinstance(song, str) else song
 
         # remove all the percussion in this piece
@@ -93,7 +95,7 @@ class KeyFinder:
         }
 
     # @eye
-    def find_key(self, return_type: str = 'list') -> Union[Keys, KeysDict]:
+    def __call__(self, return_type: str = 'list') -> Union[Keys, KeysDict]:
         """
         return: 2 arrays that contains the best k candidates for major and minor respectively
         of the piece as a string.
@@ -147,45 +149,6 @@ class KeyFinder:
     #     print(a.getSolution(self.piece))
     #     return m21.analysis.discrete.TemperleyKostkaPayne(self.piece)
 
-    def find_scale_degrees(self, k):
-        """
-        k: tuple of 2 lists, each contains major keys candidates and minor keys candidates ([XMajor],[YMinor])
-        Output: a dictionary of s in scale degrees of given key in k represented in tuple where each tuple has
-        (pitch class/pitch, scale degrees) **note: they do not have any octave values!
-        """
-        # make a dictionary with group T0 in scale degrees
-        # Set e in T0 group, in this case it will be C
-        # **note: the notion of transposition group has been abused here and forced to adapt to enharmonic scale
-        T_0 = {
-            'C': 0,
-            'D': 1,
-            'E': 2,
-            'F': 3,
-            'G': 4,
-            'A': 5,
-            'B': 6,
-        }
-        piece = self.piece
-        mic(k)
-        all_k = k[0] + k[1]
-        # to store all scale degrees in T0
-        arr_ = []
-        for n in piece.flatten().flatten().notesAndRests:
-            if n.isChord:
-                for p in n.pitches:
-                    arr_.append((p.midi, T_0[p.step]))
-            elif not n.isRest:
-                arr_.append((n.pitch.midi, T_0[n.pitch.step]))
-        # now shift to T1 and adjust the scale degree accordingly with major and minor
-        ret_ = {}
-        for k_ in all_k:
-            # Use reg-ex
-            step = k_[0][0]
-            mic(step)
-            # mod7 plus 1 just to make it align with our scale degrees value convention (1-7)
-            ret_[k_] = [(mid, (scale-T_0[step]) % 7 + 1) if mid != 'R' else (mid, scale) for mid, scale in arr_]
-        return ret_
-
     def check_notes(self, k):
         """
         There are 3 kinds of common dissonance in classical period:
@@ -229,11 +192,56 @@ class KeyFinder:
         pc = n % 12
 
 
+class ScaleDegreeFinder:
+    def __init__(self, song: Union[str, Score] = None):
+        self.piece: Score = m21.converter.parse(song) if isinstance(song, str) else song
+
+    def __call__(self, k):
+        """
+        :param k: tuple of 2 lists, each contains major keys candidates and minor keys candidates ([XMajor],[YMinor])
+        :return: a dictionary of s in scale degrees of given key in k represented in tuple where each tuple has
+        (pitch class/pitch, scale degrees) **note: they do not have any octave values!
+        """
+        # make a dictionary with group T0 in scale degrees
+        # Set e in T0 group, in this case it will be C
+        # **note: the notion of transposition group has been abused here and forced to adapt to enharmonic scale
+        T_0 = {
+            'C': 0,
+            'D': 1,
+            'E': 2,
+            'F': 3,
+            'G': 4,
+            'A': 5,
+            'B': 6,
+        }
+        piece = self.piece
+        mic(k)
+        all_k = k[0] + k[1]
+        # to store all scale degrees in T0
+        arr_ = []
+        for n in piece.flatten().flatten().notesAndRests:
+            if n.isChord:
+                for p in n.pitches:
+                    arr_.append((p.midi, T_0[p.step]))
+            elif not n.isRest:
+                arr_.append((n.pitch.midi, T_0[n.pitch.step]))
+        # now shift to T1 and adjust the scale degree accordingly with major and minor
+        ret_ = {}
+        for k_ in all_k:
+            # Use reg-ex
+            step = k_[0][0]
+            mic(step)
+            # mod7 plus 1 just to make it align with our scale degrees value convention (1-7)
+            ret_[k_] = [(mid, (scale - T_0[step]) % 7 + 1) if mid != 'R' else (mid, scale) for mid, scale in arr_]
+        return ret_
+
 
 def main(path: str):
-    a = KeyFinder(path)
-    keys = a.find_key()
-    mic(a.find_scale_degrees(keys))
+    kf = KeyFinder(path)
+    keys = kf()
+
+    sdf = ScaleDegreeFinder(song=kf.piece)
+    mic(kf.find_scale_degrees(keys))
 
 
 if __name__ == '__main__':
@@ -244,21 +252,21 @@ if __name__ == '__main__':
         path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         mic(path)
         kf = KeyFinder(path)
-        mic(kf.find_key(return_type='enum'))
+        mic(kf(return_type='enum'))
     # check_get_key()
 
     def check_deprecated_scale_deg():
         path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         kf = KeyFinder(path)
-        keys_dep_maj, keys_dep_min = kf.find_key()
+        keys_dep_maj, keys_dep_min = kf()
         keys_dep_maj, keys_dep_min = [key for key, score in keys_dep_maj], [key for key, score in keys_dep_min]
         mic(kf.find_scale_degrees((keys_dep_maj, keys_dep_min)))
-    # check_deprecated_scale_deg()
+    check_deprecated_scale_deg()
 
     def carson_dev():
         path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
         main(path)
-    carson_dev()
+    # carson_dev()
 
     def check_key_finder_terminates():
         """
@@ -276,7 +284,7 @@ if __name__ == '__main__':
 
         def call_single(fl_nm: str):
             try:
-                keys = KeyFinder(fl_nm).find_key(return_type='enum')
+                keys = KeyFinder(fl_nm)(return_type='enum')
                 assert len(keys) > 0
                 pbar.update(1)
             except Exception as e:

@@ -20,7 +20,9 @@ class IkrMetric:
     Vectorized metric of matched keys per pitch, based on `_get_off_key_ratio`
     """
 
-    def __init__(self, tokenizer: MusicTokenizer, n_init_bars: int = 4, mode: str = 'vanilla'):
+    def __init__(
+            self, tokenizer: MusicTokenizer, n_init_bars: int = 4, mode: str = 'vanilla', clm_pred_shifted: bool = False
+    ):
         """
         :param tokenizer: tokenizer
         :param n_init_bars: Number of bars for heuristic key estimation
@@ -36,10 +38,14 @@ class IkrMetric:
         ca.check_mismatch('Training Mode for IKR', mode, ['vanilla', 'key-aug'])
         self.mode = mode
 
+        self.clm_pred_shifted = clm_pred_shifted
+
     def __call__(self, preds: MetricTensor, labels: MetricTensor, key_scores: Optional[MetricTensor] = None) -> float:
         """
         Arguments should be batched autoregressive transformer input & output tokens of the same shape in 2D
         """
+        if self.clm_pred_shifted:
+            labels = labels[:, 1:]
         assert preds.shape == labels.shape, \
             f'Input and label shapes do not match, {pl.i(preds.shape)} vs {pl.i(labels.shape)}'
         ikrs = []
@@ -53,7 +59,7 @@ class IkrMetric:
                 ikrs.append(np.average(_ikrs, weights=scores))
         elif self.mode == 'key-aug':
             for pred, label in zip(preds, labels):
-                key_tok_id = label[2]  # expect labels to be well-formed
+                key_tok_id = label[1 if self.clm_pred_shifted else 2]  # expect labels to be well-formed
                 if not self.vocab.type(key_tok_id) == VocabType.key:
                     tok = self.tokenizer.decode([key_tok_id])
                     raise ValueError(f'Expect key token at 3rd position of label, got {pl.i(key_tok_id)}:{pl.i(tok)}')
@@ -61,19 +67,16 @@ class IkrMetric:
         return np.array(ikrs).mean()
 
     def get_init_key_est(self, gt_token_seq: Union[str, List[str]]):
-        tok_lst = gt_token_seq.split() if isinstance(
-            gt_token_seq, str) else gt_token_seq
+        tok_lst = gt_token_seq.split() if isinstance(gt_token_seq, str) else gt_token_seq
 
         # Heuristics to determine starting bar
-        bar_idx = [idx for idx, tok in enumerate(
-            tok_lst) if tok == self.vocab.start_of_bar]
+        bar_idx = [idx for idx, tok in enumerate(tok_lst) if tok == self.vocab.start_of_bar]
         assert len(bar_idx) > self.n_init_bars + 1, \
             f'Not enough bars for key estimation: expect at least {pl.i(self.n_init_bars + 1)} total bars in music, ' \
             f'got {pl.i(len(bar_idx))}'
 
         pitch_lst = list(
-            filterfalse(lambda x: self.vocab.type(x) !=
-                        VocabType.pitch, tok_lst[:bar_idx[self.n_init_bars]])
+            filterfalse(lambda x: self.vocab.type(x) != VocabType.pitch, tok_lst[:bar_idx[self.n_init_bars]])
         )
         key_cls = [music21.pitch.Pitch(
             midi=self.vocab.compact(p)).pitchClass for p in pitch_lst]
@@ -111,8 +114,7 @@ class IkrMetric:
         pitch_midi = np.array(lst_pch)
         key_offset = key_offset_dict[key_name]
         pred_offset = ((pitch_midi % 12) - key_offset) % 12
-        in_key_lst = list(filterfalse(
-            lambda x: x in OFFKEY_OFFSET[key_type], pred_offset))
+        in_key_lst = list(filterfalse(lambda x: x in OFFKEY_OFFSET[key_type], pred_offset))
         in_key_ratio = len(in_key_lst) / num_toks
         # Heuristics (Naive implementation)
         # The first pitch of the bar decides the key of the bar
@@ -174,7 +176,7 @@ if __name__ == '__main__':
         fnm = music_util.get_my_example_songs(song_name, fmt='MXL')
 
         kf = KeyFinder(fnm)
-        keys = kf.find_key(return_type="enum")
+        keys = kf.__call__(return_type="enum")
         mic(keys)
         # mic(kf.find_scale_degrees(keys))
     # get_eg_song_key(song_nm)
@@ -189,7 +191,7 @@ if __name__ == '__main__':
         # Get keys from Key_Finder
         fnm = music_util.get_my_example_songs(song_nm, fmt='MXL')
         kf = KeyFinder(fnm)
-        keys = kf.find_key(return_type="enum")
+        keys = kf.__call__(return_type="enum")
         # mic(text[:200])
         # mic(im.get_off_key_ratio(text, Key.AfMaj))
         exp_out = [im.get_in_key_ratio(text, key) for key in keys]

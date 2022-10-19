@@ -93,7 +93,7 @@ class MusicConverter:
 
         key = None
         if insert_key:
-            key = insert_key if isinstance(insert_key, str) else pt_sample(KeyFinder(song).find_key(return_type='dict'))
+            key = insert_key if isinstance(insert_key, str) else pt_sample(KeyFinder(song)(return_type='dict'))
 
         if n_bar is not None:  # for conditional generation
             MusicConverter._input_format_error(n_bar > 0, f'{pl.i("n_bar")} should be positive integer')

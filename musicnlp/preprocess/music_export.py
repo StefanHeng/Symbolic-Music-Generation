@@ -512,7 +512,7 @@ if __name__ == '__main__':
                     assert 'keys' not in song['music']  # sanity check
                     # mic(fl_nm, song.keys(), song['music'].keys())
                     path_mxl = song_title2path(song['music']['title'])
-                    song['music']['keys'] = keys = KeyFinder(path_mxl).find_key(return_type='dict')
+                    song['music']['keys'] = keys = KeyFinder(path_mxl)(return_type='dict')
                     assert len(keys) > 0
                     with open(fnm_out, 'w') as f:
                         json.dump(song, f, indent=4)

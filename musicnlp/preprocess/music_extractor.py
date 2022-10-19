@@ -1003,7 +1003,7 @@ class MusicExtractor:
             if song_path:
                 ret['song_path'] = song_path
         if return_key:
-            keys = KeyFinder(song_for_key).find_key(return_type='dict')
+            keys = KeyFinder(song_for_key)(return_type='dict')
             if isinstance(ret, dict):
                 ret['keys'] = keys
             else:
