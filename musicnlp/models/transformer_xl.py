@@ -39,7 +39,7 @@ class MyTransfoXLConfig(TransfoXLConfig):
             mem_len=m_len,  # TODO: if i understand correctly this is segment length?
             clamp_len=c_len,
             # intended that adaptive softmax is effectively not needed, given the small Music vocab size
-            div_val=1, cutoffs=[20000]
+            div_val=1, cutoffs=[]
         ))
         # Don't understand `proj_share_all_but_first` and it's not used in modeling
         # `adaptive` is not really configurable
@@ -157,12 +157,14 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
 
         softmax_output = self.crit(pred_hid, labels)
         # ========================== Begin of modified ==========================
+        # prediction_scores = softmax_output.view(bsz, tgt_len, -1) if labels is None else ()
         # To get logits and hence NTP ACC during eval
+        _softmax_output = softmax_output
         in_eval = not self.training
-        _tgt_len = tgt_len
         if in_eval:
-            _tgt_len -= 1
-        prediction_scores = softmax_output.view(bsz, _tgt_len, -1) if (labels is None or in_eval) else ()
+            if labels is not None:  # re-run attention to get vocab-length logits and hence token prediction for metrics
+                _softmax_output = self.crit(pred_hid, None)
+        prediction_scores = _softmax_output.view(bsz, tgt_len, -1) if (labels is None or in_eval) else ()
         # ========================== Begin of modified ==========================
 
         if labels is not None:

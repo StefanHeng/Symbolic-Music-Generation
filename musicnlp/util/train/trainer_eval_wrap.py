@@ -142,7 +142,7 @@ class MyEvalTrainer(MyTrainer):
                     logits = smp_nested_concat(logits_mb)
             else:
                 if has_labels:
-                    with self.autocast_smart_context_manager():
+                    with self.compute_loss_context_manager():
                         loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
                     loss = loss.mean().detach()
 
@@ -152,7 +152,7 @@ class MyEvalTrainer(MyTrainer):
                         logits = outputs[1:]
                 else:
                     loss = None
-                    with self.autocast_smart_context_manager():
+                    with self.compute_loss_context_manager():
                         outputs = model(**inputs)
                     if isinstance(outputs, dict):
                         logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
@@ -203,7 +203,6 @@ class MyEvalTrainer(MyTrainer):
 
         # if eval is called w/o train init deepspeed here
         if args.deepspeed and not self.deepspeed:
-
             # XXX: eval doesn't have `resume_from_checkpoint` arg but we should be able to do eval
             # from the checkpoint eventually
             deepspeed_engine, _, _ = deepspeed_init(
@@ -213,7 +212,7 @@ class MyEvalTrainer(MyTrainer):
             self.model_wrapped = deepspeed_engine
             self.deepspeed = deepspeed_engine
 
-        model = self._wrap_model(self.model, training=False)
+        model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
         # if full fp16 or bf16 eval is wanted and this ``evaluation`` or ``predict`` isn't called
         # while ``train`` is running, cast it to the right dtype first and then put on device
@@ -257,6 +256,7 @@ class MyEvalTrainer(MyTrainer):
         # ========================== Begin of added =========================
         key_scores_host = None
         # ========================== End of added =========================
+
         # losses/preds/labels on CPU (final containers)
         all_losses = None
         all_preds = None
@@ -391,13 +391,15 @@ class MyEvalTrainer(MyTrainer):
             num_samples = len(eval_dataset)
         # The instance check is weird and does not actually check for the type, but whether the dataset has the right
         # methods. Therefore we need to make sure it also has the attribute.
-        elif isinstance(eval_dataset, IterableDatasetShard) and hasattr(eval_dataset, "num_examples"):
+        elif isinstance(eval_dataset, IterableDatasetShard) and getattr(eval_dataset, "num_examples", 0) > 0:
             num_samples = eval_dataset.num_examples
         else:
             if has_length(dataloader):
                 num_samples = self.num_examples(dataloader)
             else:  # both len(dataloader.dataset) and len(dataloader) fail
                 num_samples = observed_num_examples
+        if num_samples == 0 and observed_num_examples > 0:
+            num_samples = observed_num_examples
 
         # Number of losses has been rounded to a multiple of batch_size and in a distributed training, the number of
         # samplers has been rounded to a multiple of batch_size, so we truncate.

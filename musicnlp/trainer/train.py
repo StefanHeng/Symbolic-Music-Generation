@@ -344,14 +344,12 @@ def get_all_setup(
         get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer.precision for ds in dset.values()
     )
 
-    pred_shift = model_name == 'transf-xl'
-    cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if aug_key else 'vanilla', clm_pred_shifted=pred_shift)
-    # if key not augmented, need to pass key info to each song for IKR logging
+    cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if aug_key else 'vanilla')
     if aug_key:
         cls = train_util.MyTrainer
-    else:
-        raise NotImplementedError(f'Update eval override after {pl.i("preprocess_logits_for_metrics")}')
-        # cls = train_util.MyEvalTrainer
+    else:  # if key not augmented, need to pass key info to each song for IKR logging
+        # raise NotImplementedError(f'Update eval override after {pl.i("preprocess_logits_for_metrics")}')
+        cls = train_util.MyEvalTrainer
     trainer_args_ = dict(
         model_meta=meta,
         monitor_ntp_acc=True, my_args=my_args,
@@ -475,33 +473,39 @@ if __name__ == '__main__':
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
-        # md_sz = 'debug'
+        md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        md_sz = 'base'
+        # md_sz = 'base'
         mic(md_nm, md_sz)
 
-        # n = 8
+        n = 8
         # n = 16
         # n = 128
         # n = 1024
-        n = None
+        # n = None
 
         # n_ep = 4
         # n_ep = 64
         n_ep = 128
 
-        model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
+        if 'debug' in md_sz:
+            model_config = dict(max_length=64)  # TODO: try a smaller model for memory consumption
+        else:
+            model_config = None
 
-        augment_key = True
-        wordpiece_tokenize = True
-        channel_mixup = 'full'
-        # prop_mix = 1536
-        prop_mix = 1024 + 256
+        if 'debug' in md_sz:
+            augment_key, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False
+        else:
+            augment_key = True
+            wordpiece_tokenize = True
+            channel_mixup = 'full'
+            # prop_mix = 1536
+            prop_mix = 1024 + 256
 
         mic(augment_key, wordpiece_tokenize, channel_mixup, prop_mix)
 
-        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep, dataloader_num_workers=4)
+        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
             tqdm=True, logging_strategy='no',
             augment_key=augment_key, proportional_mixing=prop_mix,
@@ -518,6 +522,7 @@ if __name__ == '__main__':
             ))
         else:
             train_args.update(dict(
+                dataloader_num_workers=4,
                 per_device_train_batch_size=20,
                 per_device_eval_batch_size=20,
             ))
@@ -527,6 +532,8 @@ if __name__ == '__main__':
             train_args=train_args, my_train_args=my_train_args, trainer_args=trainer_args
         )
 
+        if 'debug' in md_sz:
+            trainer.train_dataset = trainer.eval_dataset
         sanity_check_eval = False
         # sanity_check_eval = True
         mic(sanity_check_eval)
