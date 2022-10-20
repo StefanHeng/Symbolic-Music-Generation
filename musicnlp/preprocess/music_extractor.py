@@ -83,9 +83,10 @@ class MusicExtractor:
 
         self.vocab = MusicVocabulary(precision=precision, with_scale_degree=with_scale_degree)
 
-        self.meta = OrderedDict([
-            ('mode', mode), ('precision', precision), ('greedy_tuplet_pitch_threshold', greedy_tuplet_pitch_threshold)
-        ])
+        self.meta = dict(
+            mode=mode, precision=precision, with_scale_degree=with_scale_degree,
+            greedy_tuplet_pitch_threshold=greedy_tuplet_pitch_threshold
+        )
 
     @staticmethod
     def meta2fnm_meta(d: Dict = None, compact: bool = True) -> str:
@@ -957,8 +958,10 @@ class MusicExtractor:
             )
             dir_nm = sconfig(f'{DSET_DIR}.mxl-eg.dir_nm_extracted')
             fmt = 'mxl'  # sometimes file-writes via `mxl` couldn't be read by MuseScore
-            mode_str = 'melody only' if self.mode == 'melody' else 'full'
-            path = os_join(u.dset_path, dir_nm, f'{title}, {mode_str}.{fmt}')
+
+            date = now(fmt='short-date')
+            mode_str = f'md={self.mode[0]}'
+            path = os_join(u.dset_path, dir_nm, f'{date}_{title}_{{{mode_str}}}.{fmt}')
             # disable all `music21` modifications, I should have handled all the edge cases
             scr_out.write(fmt=fmt, fp=path, makeNotation=False)
         else:
@@ -1026,11 +1029,12 @@ if __name__ == '__main__':
         # fnm = 'Faded'
         # fnm = 'Piano Sonata'
         # fnm = 'Merry Christmas'
-        fnm = 'Merry Go Round of Life'
+        # fnm = 'Merry Go Round of Life'
         # fnm = 'Canon piano'
         # fnm = '易燃易爆炸'
         # fnm = 'Shape of You'
         # fnm = '平凡之路'
+        fnm = 'LMD eg'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         mic(fnm)
         # mode = 'melody'
@@ -1052,9 +1056,9 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             mic(d_out)
-        # check_mxl_out()
+        check_mxl_out()
         # check_str()
-        check_visualize()
+        # check_visualize()
         # check_return_meta_n_key()
     toy_example()
 

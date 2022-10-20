@@ -212,11 +212,6 @@ def note2note_cleaned(
     dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
     assert isinstance(note, (Note, Rest, Chord))
     if isinstance(note, Note):  # Removes e.g. `tie`s
-        # if Pitch(midi=note.pitch.midi).step != note.pitch.step:  # TODO: sanity check, looking for this to happen
-        #     pch, pch_new = note.pitch, Pitch(midi=note.pitch.midi)
-        #     mic(pch, pch_new)
-        #     mic(pch.step, pch_new.step)
-        #     raise NotImplementedError('')
         pch = note.pitch
         nt = Note(pitch=Pitch(midi=pch.midi, step=pch.step), **dur_args)
     elif isinstance(note, Rest):

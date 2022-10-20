@@ -244,7 +244,6 @@ class MusicVocabulary:
             pitches += [self.note2pitch_str(Pitch(midi=i, step=s)) for i in range(128) for s in steps]
         else:
             pitches += [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
-        mic(len(pitches))
         keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
 
         # TODO: with music-theory, mod-7 scale degree, vocab size would increase

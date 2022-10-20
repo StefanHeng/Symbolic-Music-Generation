@@ -325,8 +325,8 @@ if __name__ == '__main__':
     def export2json():
         # dnm = 'POP909'
         # dnm = 'MAESTRO'
-        dnm = 'LMD, MS'
-        # dnm = 'LMD, LP'
+        # dnm = 'LMD, MS'
+        dnm = 'LMD, LP'
 
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
@@ -335,27 +335,27 @@ if __name__ == '__main__':
         # mode = 'melody'
         mode = 'full'
         args = dict(
-            extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1),
+            extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=8, with_scale_degree=True),
             save_each=True,
             with_tqdm=True,
             # parallel=False,
-            parallel=4,
+            parallel=64,
             parallel_mode=pl_md,
-            # n_worker=16
+            # n_worker=1
         )
         dset_path = os_join(get_base_path(), u.dset_dir)
 
         if 'LMD' in dnm:
             # grp_nm = 'many'
-            # grp_nm = 'many, lp'
-            grp_nm = '000000-010000'
+            grp_nm = 'many, lp'
+            # grp_nm = '090000-100000'
             # grp_nm = '160000-170000'
             # grp_nm = '170000-178561'
 
             # resume = False
             resume = True
             if resume:
-                dir_nm_ = f'22-10-02_LMD_{{md={mode[0]}}}'
+                dir_nm_ = f'22-10-20_LMD_{{md={mode[0]}}}'
             else:
                 date = now(fmt='short-date')
                 dir_nm_ = f'{date}_LMD_{{md={mode[0]}}}'
@@ -399,10 +399,10 @@ if __name__ == '__main__':
             # resume = True
             if resume:
                 if dnm == 'POP909':
-                    dir_nm_ = f'22-09-29_POP909_{{md={mode[0]}}}'
+                    dir_nm_ = f'22-10-20_POP909_{{md={mode[0]}}}'
                 else:
                     assert dnm == 'MAESTRO'
-                    dir_nm_ = f'22-09-29_MAESTRO_{{md={mode[0]}}}'
+                    dir_nm_ = f'22-10-20_MAESTRO_{{md={mode[0]}}}'
             else:
                 date = now(fmt='short-date')
                 dir_nm_ = f'{date}_{dnm}_{{md={mode[0]}}}'
@@ -412,11 +412,18 @@ if __name__ == '__main__':
     # export2json()
 
     def _folder2count(path: str) -> int:
+        # mic(path)
         _, _, fls = next(os.walk(path))
         return len(fls)
 
+    # mic(os.path.isdir('/scratch/mihalcea_root/mihalcea0/stefanhg/Music-with-NLP/datasets/processed/intermediate/22-10-02_LMD_{md=f}/lmd00.tar.gz'))
+    # exit(1)
+
     def _folder2file_counts(root_path: str) -> Dict[str, int]:
-        return {d: _folder2count(os_join(root_path, d)) for d in sorted(os.listdir(root_path))}
+        return {
+            d: _folder2count(os_join(root_path, d)) for d in sorted(os.listdir(root_path))
+            if os.path.isdir(os_join(root_path, d))
+        }
 
     def check_extract_progress():
         # check number of files that finished extraction
@@ -426,7 +433,7 @@ if __name__ == '__main__':
             pa = os_join(path, fd_nm)
             counts[fd_nm] = _folder2file_counts(pa) if 'LMD' in fd_nm else _folder2count(pa)
         print(pl.fmt(dict(counts=counts)))
-    # check_extract_progress()
+    check_extract_progress()
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
         fl_pattern = '*.json'
@@ -473,7 +480,7 @@ if __name__ == '__main__':
         tr_samples['score'] = [s[:100] for s in tr_samples['score']]
         ts_samples['score'] = [s[:100] for s in ts_samples['score']]
         mic(tr_samples, ts_samples)
-    json2dset_with_split()
+    # json2dset_with_split()
 
     def fix_insert_key():
         """
