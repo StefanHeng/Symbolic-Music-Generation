@@ -27,11 +27,17 @@ def load_trained(
         load_trained.key2path = dict(
             full={
                 # (model name, datasets, #epoch)
+                # pretty good generation
                 ('reformer', 'P&M', '256-256ep'): ['2022-10-03_11-58-11_reformer', 'trained'],  # 3e-4
+
+                # not good generation
                 ('reformer', 'All', '8-8ep'): ['2022-10-06_04-32-51_reformer', 'trained'],  # 3e-4
                 ('reformer', 'All', '5-16ep'): ['2022-10-09_01-36-18_reformer', 'checkpoint-6850'],  # 1e-4
-                # w/ a loss slightly larger than the last one
-                ('reformer', 'All', '16-16ep'): ['2022-10-09_01-36-18_reformer', 'trained']  # 1e-4
+                # w/ a loss slightly larger than the last one, generated not good
+                ('reformer', 'All', '16-16ep'): ['2022-10-09_01-36-18_reformer', 'trained'],  # 1e-4
+
+                # 1st try of proportional mixing, model w/ the best loss loaded in the end
+                ('reformer', 'All', 'x-128ep'): ['2022-10-15_22-44-10_reformer', 'trained']
             }
         )
     paths = [get_base_path(), u.model_dir]

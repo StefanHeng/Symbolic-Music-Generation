@@ -148,7 +148,6 @@ class ColoredPrinterCallback(TrainerCallback):
     Evaluation during training **not supported**
     """
     def __init__(self, name: str = None, trainer: MyTrainer = None, report2tb: bool = True):
-        self.mode = 'eval'
         self.t_strt, self.t_end = None, None
 
         self.trainer = trainer
@@ -180,11 +179,9 @@ class ColoredPrinterCallback(TrainerCallback):
         self.prettier = MlPrettier(ref=self.train_meta, metric_keys=['acc', 'recall', 'auc', 'ikr'])
 
     def on_train_begin(self, args: TrainingArguments, state, control, **kwargs):
-        self.mode = 'train'
-
         self.logger = get_logger(self.name)
         self.logger_fl = get_logger(
-            name=self.name, typ='file-write', file_path=os_join(self.output_dir, f'{self.log_fnm}.log')
+            name=self.name, kind='file-write', file_path=os_join(self.output_dir, f'{self.log_fnm}.log')
         )
         if self.report2tb:
             self.writer = SummaryWriter(os_join(self.output_dir, f'TB_{self.log_fnm}'))
@@ -206,33 +203,27 @@ class ColoredPrinterCallback(TrainerCallback):
         t = fmt_delta(self.t_end - self.t_strt)
         self.logger.info(f'Training completed in {pl.i(t)} ')
         self.logger_fl.info(f'Training completed in {t} ')
-        self.mode = 'eval'
 
     def on_log(self, args, state, control, logs=None, **kwargs):
         if state.is_local_process_zero:
-            if isinstance(logs, dict):
-                # Heuristics on the training step updates, see `Trainer._maybe_log_save_evaluate`
-                if self.mode == 'train' and all('runtime' not in k for k in logs):
-                    logs['step'] = step = state.global_step
-                    assert logs['epoch'] == round(state.epoch, 2)
-                    logs['epoch'] = state.epoch  # The one originally is rounded, see `Trainer.log`
-                    # Trainer internal uses `loss`, instead of `train_loss`
-                    logs['train_loss'] = loss = logs.pop('loss', None)
-                    assert loss is not None
-                    lr = logs['learning_rate']
-                    self.writer.add_scalar('Train/loss', loss, step)
-                    self.writer.add_scalar('Train/learning_rate', lr, step)
+            if self.trainer.model.training and all('runtime' not in k for k in logs):
+                logs['step'] = step = state.global_step
+                assert logs['epoch'] == round(state.epoch, 2)
+                logs['epoch'] = state.epoch  # The one originally is rounded, see `Trainer.log`
+                # Trainer internal uses `loss`, instead of `train_loss`
+                logs['train_loss'] = loss = logs.pop('loss', None)
+                assert loss is not None
+                lr = logs['learning_rate']
+                self.writer.add_scalar('Train/loss', loss, step)
+                self.writer.add_scalar('Train/learning_rate', lr, step)
 
-                    # out_console, out_write = self.out_dict2str(logs, return_wo_color=True)  # TODO: didn't test
-                    logs = self.prettier(logs)
-                    self.logger.info(pl.i(logs))
-                    self.logger_fl.info(pl.nc(logs))
-                else:
-                    self.logger.info(pl.i(logs))
-                    self.logger_fl.info(pl.i(logs, with_color=False))
+                # out_console, out_write = self.out_dict2str(logs, return_wo_color=True)  # TODO: didn't test
+                logs = self.prettier(logs)
+                self.logger.info(pl.i(logs))
+                self.logger_fl.info(pl.nc(logs))
             else:
-                self.logger.info(logs)
-                self.logger_fl.info(logs)
+                self.logger.info(pl.i(logs))
+                self.logger_fl.info(pl.nc(logs))
 
 
 class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
@@ -262,7 +253,7 @@ class ColoredPrinterCallbackForClm(ColoredPrinterCallback):
 
     def on_log(self, args, state, control, logs=None, **kwargs):
         if state.is_local_process_zero:
-            step, training = state.global_step, self.mode == 'train'
+            step, training = state.global_step, self.trainer.model.training
             if 'src' in logs and logs['src'] == 'compute_loss':
                 del logs['src']
                 del logs['epoch']

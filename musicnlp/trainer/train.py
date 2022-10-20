@@ -386,7 +386,7 @@ if __name__ == '__main__':
     dnms = ['POP909', 'MAESTRO', 'LMD']
     dnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
 
-    def train_reformer(resume: str = None):
+    def train_reformer(**kwargs):
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
         md_nm = 'reformer'
@@ -402,19 +402,12 @@ if __name__ == '__main__':
         model_config = None
         # model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
 
-        # augment_key = False
         augment_key = True
-        # wordpiece_tokenize = False
         wordpiece_tokenize = True
-        # channel_mixup = False
-        channel_mixup = 'swap'
-        prop_mix = 1536
-        # prop_mix = 16
+        # channel_mixup = 'full'
+        channel_mixup = False
+        prop_mix = 1280
         mic(augment_key, wordpiece_tokenize, channel_mixup, prop_mix)
-
-        # _debug_eval = True
-        _debug_eval = False
-        mic(_debug_eval)
 
         # n = 64
         n = None
@@ -424,7 +417,7 @@ if __name__ == '__main__':
         # n_ep = 64
         n_ep = 128
         # n_ep = 512
-        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep, dataloader_num_workers=4)
+        train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
             tqdm=True, logging_strategy='no',
             augment_key=augment_key, proportional_mixing=prop_mix,
@@ -434,13 +427,7 @@ if __name__ == '__main__':
         )
         trainer_args = dict(disable_train_metrics=True)
 
-        if 'debug' in md_sz or md_sz == 'tiny':
-            train_args.update(dict(
-                per_device_train_batch_size=4,
-                num_train_epochs=32
-            ))
-            # my_train_args['save_epochs'] = 16
-        else:
+        if 'debug' not in md_sz:
             # if any('LMD' in d for d in dnms):  # Data includes LMD, a much larger dataset; but doesn't seem to help
             #     train_args['learning_rate'] = 3e-5
             if md_sz == 'base':
@@ -449,6 +436,7 @@ if __name__ == '__main__':
                 assert md_sz == 'large'
                 bsz = 48
             train_args.update(dict(
+                dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
                 per_device_eval_batch_size=bsz
             ))
@@ -458,16 +446,7 @@ if __name__ == '__main__':
             dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed, pbar=True),
             train_args=train_args, my_train_args=my_train_args, trainer_args=trainer_args
         )
-        if _debug_eval:
-            # trainer.train_dataset: datasets.Dataset
-            trainer.train_dataset: AugmentedDataset
-            trainer.train_dataset.dset = trainer.train_dataset.dset.select(range(0, 256))
-            mic(len(trainer.train_dataset))
-
-        if resume:
-            trainer.train(resume)
-        else:
-            trainer.train()
+        trainer.train(**kwargs)
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
     # train_reformer()
 
@@ -484,25 +463,19 @@ if __name__ == '__main__':
         # n = 128
         # n = 1024
         # n = None
-
         # n_ep = 4
         # n_ep = 64
         n_ep = 128
-
         if 'debug' in md_sz:
-            model_config = dict(max_length=64)  # TODO: try a smaller model for memory consumption
-        else:
-            model_config = None
-
-        if 'debug' in md_sz:
+            model_config = dict(max_length=64)
             augment_key, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False
         else:
+            model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
             augment_key = True
             wordpiece_tokenize = True
             channel_mixup = 'full'
             # prop_mix = 1536
             prop_mix = 1024 + 256
-
         mic(augment_key, wordpiece_tokenize, channel_mixup, prop_mix)
 
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
@@ -534,13 +507,6 @@ if __name__ == '__main__':
 
         if 'debug' in md_sz:
             trainer.train_dataset = trainer.eval_dataset
-        sanity_check_eval = False
-        # sanity_check_eval = True
-        mic(sanity_check_eval)
-        if sanity_check_eval:
-            trainer.train_dataset: datasets.Dataset
-            trainer.train_dataset = trainer.train_dataset.select(range(8))
-            mic(len(trainer.train_dataset))
 
         transformers.set_seed(seed)
         # ignore so that `None` don't get detached
