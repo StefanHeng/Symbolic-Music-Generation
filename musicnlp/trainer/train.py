@@ -448,7 +448,7 @@ if __name__ == '__main__':
         )
         trainer.train(**kwargs)
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    # train_reformer()
+    train_reformer()
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
@@ -514,4 +514,4 @@ if __name__ == '__main__':
         train_call_args = dict(ignore_keys_for_eval=ignore_keys_for_eval)
         trainer.train(**(train_call_args | kwargs))
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    train_xl()
+    # train_xl()

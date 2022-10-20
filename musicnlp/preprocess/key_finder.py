@@ -11,11 +11,11 @@ import music21 as m21
 
 from stefutil import *
 from musicnlp.util.music_lib import *
-from musicnlp.vocab import Key
+from musicnlp.vocab import Key, enum2key_str
 
 
 # Tuple of key and (un-normalized) confidence score
-Keys = Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]
+Keys = Tuple[List[str], List[str]]
 KeysDict = Dict[Union[Key, str], float]
 
 
@@ -134,7 +134,7 @@ class KeyFinder:
                            [divmod(i, 12) for i in best_min_keys]]
         #
         if return_type == 'list':
-            return maj_keys_result, min_keys_result
+            return [k for k, c in maj_keys_result], [k for k, c in min_keys_result]
         else:
             return KeyFinder._key_tup2dict(maj_keys_result, return_type=return_type) | \
                    KeyFinder._key_tup2dict(min_keys_result, return_type=return_type)
@@ -193,47 +193,66 @@ class KeyFinder:
 
 
 class ScaleDegreeFinder:
+    t0_degrees = dict(
+        C=0,
+        D=1,
+        E=2,
+        F=3,
+        G=4,
+        A=5,
+        B=6
+    )
+
     def __init__(self, song: Union[str, Score] = None):
         self.piece: Score = m21.converter.parse(song) if isinstance(song, str) else song
 
-    def __call__(self, k):
+    def __call__(self, keys: Keys = None):
         """
-        :param k: tuple of 2 lists, each contains major keys candidates and minor keys candidates ([XMajor],[YMinor])
+        :param keys: tuple of 2 lists, each contains major keys candidates and minor keys candidates ([XMajor],[YMinor])
         :return: a dictionary of s in scale degrees of given key in k represented in tuple where each tuple has
-        (pitch class/pitch, scale degrees) **note: they do not have any octave values!
+            (pitch class/pitch, scale degrees)
+                ..note:: they do not have any octave values!
+
+        ..note:: the notion of transposition group has been abused here and forced to adapt to enharmonic scale
+
+        ..note:: Rest notes ignored
         """
         # make a dictionary with group T0 in scale degrees
         # Set e in T0 group, in this case it will be C
-        # **note: the notion of transposition group has been abused here and forced to adapt to enharmonic scale
-        T_0 = {
-            'C': 0,
-            'D': 1,
-            'E': 2,
-            'F': 3,
-            'G': 4,
-            'A': 5,
-            'B': 6,
-        }
-        piece = self.piece
-        mic(k)
-        all_k = k[0] + k[1]
-        # to store all scale degrees in T0
-        arr_ = []
-        for n in piece.flatten().flatten().notesAndRests:
+        keys = keys[0] + keys[1]
+        mic(keys)
+
+        lst_pch_n_degs = []  # to store all scale degrees in T0
+        for n in self.piece.flatten().flatten().notesAndRests:
             if n.isChord:
                 for p in n.pitches:
-                    arr_.append((p.midi, T_0[p.step]))
+                    lst_pch_n_degs.append((p.midi, ScaleDegreeFinder.t0_degrees[p.step]))
             elif not n.isRest:
-                arr_.append((n.pitch.midi, T_0[n.pitch.step]))
+                n: Note
+                lst_pch_n_degs.append((n.pitch.midi, ScaleDegreeFinder.t0_degrees[n.pitch.step]))
         # now shift to T1 and adjust the scale degree accordingly with major and minor
-        ret_ = {}
-        for k_ in all_k:
-            # Use reg-ex
-            step = k_[0][0]
-            mic(step)
+        ret = {}
+        for key in keys:
+            step = key[0]
             # mod7 plus 1 just to make it align with our scale degrees value convention (1-7)
-            ret_[k_] = [(mid, (scale - T_0[step]) % 7 + 1) if mid != 'R' else (mid, scale) for mid, scale in arr_]
-        return ret_
+            ret[key] = [(pch, (deg - ScaleDegreeFinder.t0_degrees[step]) % 7 + 1) for pch, deg in lst_pch_n_degs]
+        return ret
+
+    def map_single(self, note: SNote, key: Union[Key, str]) -> int:
+        """
+        Map a note object to its scale degree in [1-7]
+
+        .. note:: Intended that the note object is part of the Music21 piece passed in
+        """
+        if isinstance(note, Rest):  # Rest notes don't have a scale degree
+            return 0
+        elif isinstance(note, Note):
+            deg = ScaleDegreeFinder.t0_degrees[note.pitch.step]
+            if isinstance(key, Key):
+                key = enum2key_str[key]
+            return (deg - ScaleDegreeFinder.t0_degrees[key[0]]) % 7 + 1
+        elif isinstance(note, Chord):
+            raise NotImplementedError(f'Scale degree for Chord notes?')
 
 
 def main(path: str):
@@ -241,7 +260,7 @@ def main(path: str):
     keys = kf()
 
     sdf = ScaleDegreeFinder(song=kf.piece)
-    mic(kf.find_scale_degrees(keys))
+    mic(sdf(keys))
 
 
 if __name__ == '__main__':
@@ -259,9 +278,11 @@ if __name__ == '__main__':
         path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
         kf = KeyFinder(path)
         keys_dep_maj, keys_dep_min = kf()
-        keys_dep_maj, keys_dep_min = [key for key, score in keys_dep_maj], [key for key, score in keys_dep_min]
-        mic(kf.find_scale_degrees((keys_dep_maj, keys_dep_min)))
-    check_deprecated_scale_deg()
+        mic(keys_dep_maj, keys_dep_min)
+
+        sdf = ScaleDegreeFinder(song=kf.piece)
+        mic(sdf((keys_dep_maj, keys_dep_min)))
+    # check_deprecated_scale_deg()
 
     def carson_dev():
         path = '/Users/carsonzhang/Documents/Projects/Rada/midi/Merry-Go-Round-of-Life.musicxml'
@@ -296,3 +317,27 @@ if __name__ == '__main__':
         batched_conc_map(batched_map, fnms, batch_size=32)
     # check_key_finder_terminates()
     # profile_runtime(check_key_finder_terminates)
+
+    def check_scale_degree_map():
+        import pandas as pd
+
+        from musicnlp.vocab import MusicVocabulary, key_enum2tuple
+
+        vocab = MusicVocabulary()
+        notes = [Rest()]
+        for i in range(128):
+            notes.append(Note(pitch=Pitch(midi=i)))
+
+        path = music_util.get_my_example_songs('Merry Go Round of Life')
+        sdf = ScaleDegreeFinder(song=path)  # for the sake of sanity check, just pick arbitrary song
+
+        rows = []
+        for n in notes:
+            row = dict(str=str(n), pitch=vocab.note2pitch_str(n))
+            for key, (flag, key_str) in key_enum2tuple.items():
+                row[key_str] = sdf.map_single(n, key)
+            rows.append(row)
+        df = pd.DataFrame(rows)
+        pd.set_option('display.max_rows', None)
+        mic(df)
+    check_scale_degree_map()

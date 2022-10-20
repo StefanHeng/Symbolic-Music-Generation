@@ -216,7 +216,7 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # md_k = 'reformer', 'P&M', '256-256ep'
-    md_k = md_nm, ds_nm, ep_nm = 'reformer', 'All', '16-16ep'
+    md_k = md_nm, ds_nm, ep_nm = 'reformer', 'All', 'x-128ep'
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
     sv_dir = f'{md_nm}_{ds_nm}_{ep_nm}'

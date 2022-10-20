@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 __all__ = [
     'ElmType', 'Channel', 'MusicElement',
-    'Key', 'key_str2enum', 'key_enum2tuple', 'key_str2ordinal', 'key_ordinal2str', 'key_ordinal2key_enum',
+    'Key', 'key_str2enum', 'enum2key_str',
+    'key_enum2tuple', 'key_str2ordinal', 'key_ordinal2str', 'key_ordinal2key_enum',
     'key_offset_dict', 'OFFKEY_OFFSET'
 ]
 
@@ -68,6 +69,7 @@ key_str2enum: Dict[str, Key] = {
     'BMinor': Key.BMin,
     'EMinor': Key.EMin,
 }
+enum2key_str = {v: k for k, v in key_str2enum.items()}
 
 # Dictionary for translating a Key type to a tuple of ints (type, key)
 # where type := major (1) or minor (0) and key := the name of the keyC

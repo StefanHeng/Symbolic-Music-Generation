@@ -364,6 +364,6 @@ if __name__ == '__main__':
             for part in scr.parts:
                 d[part.partName] = [bar.offset for bar in part[Measure]]
             mic(d)
-        check_same_offset()
+        # check_same_offset()
         scr.show()
     check_broken_render()

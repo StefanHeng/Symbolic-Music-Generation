@@ -67,7 +67,7 @@ logger = get_logger('Music Util')
 
 # Note entity/group as far as music extraction is concerned
 ExtNote = Union[Note, Rest, Chord, Tuple[Union[Note, Rest]]]
-SNote = Union[Note, Rest]  # Single note
+SNote = Union[Note, Rest, Chord]  # Single note
 Dur = Union[float, Fraction]
 TsTup = Tuple[int, int]
 eps = 1e-8  # for music21 duration equality comparison
@@ -712,7 +712,8 @@ def make_score(
 
                             n_drop = n_ - idx_last - 1
                             ori_qlen = get_end_qlen(notes[idx_last])
-                            msg = f'{msg}, {pl.i(n_drop)} notes dropped, last note duration cropped: ' \
+                            nt_str = 'notes' if n_drop > 1 else 'note'
+                            msg = f'{msg}, {pl.i(n_drop)} {nt_str} dropped, last note duration cropped: ' \
                                   f'{pl.i(ori_qlen)} => {pl.i(qlen)}'
                         assert abs(get_notes_duration(notes)-time_sig2bar_dur(time_sig)) < eps  # sanity check
                     logger.warning(msg)
