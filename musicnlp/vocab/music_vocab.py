@@ -3,7 +3,7 @@ import json
 import math
 from os.path import join as os_join
 from enum import Enum
-from typing import List, Tuple, Set, Dict, Iterator, Optional, Union
+from typing import List, Tuple, Set, Dict, Iterator, Optional, Union, Literal
 from fractions import Fraction
 from collections import OrderedDict
 
@@ -187,7 +187,9 @@ class MusicVocabulary:
     }
 
     # TODO: remove, original training was without key support
-    def __init__(self, precision: int = 5, color: bool = False, is_wordpiece: bool = False):
+    def __init__(
+            self, precision: int = 5, color: bool = False, is_wordpiece: bool = False, with_scale_degree: bool = False
+    ):
         """
         :param precision: See `musicnlp.preprocess.music_extractor`
         :param color: If True, string outputs are colorized
@@ -196,6 +198,7 @@ class MusicVocabulary:
         self.precision = precision
         self.color = color
         self.is_wordpiece = is_wordpiece
+        self.with_scale_degree = with_scale_degree
 
         specs = MusicVocabulary.SPEC_TOKS  # Syntactic sugar
         sep = specs['sep']
@@ -210,12 +213,16 @@ class MusicVocabulary:
         )
         self.rest = self.cache['rest'] = self.cache['pref_pch'] + specs['rest']
 
+        if with_scale_degree:
+            pch_pat = re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_[A-G]$')
+        else:
+            pch_pat = re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$')
         self.type2compact_re = {
             VocabType.duration: dict(
                 int=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE1}$'),
                 frac=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE2}$'),
             ),
-            VocabType.pitch: re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$'),
+            VocabType.pitch: pch_pat,
             VocabType.time_sig: re.compile(rf'^{self.cache["pref_time_sig"]}{MusicVocabulary.RE2}$'),
             VocabType.tempo: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE1}$'),
             VocabType.key: re.compile(rf'^{self.cache["pref_key"]}(?P<key>.*)$'),
@@ -231,7 +238,13 @@ class MusicVocabulary:
         tss = [elm2str(rev(ts))[0] for ts in sorted(rev(ts) for ts in COMMON_TIME_SIGS)]
         # See music_visualize.py for distribution
         tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS]
-        pitches = [self.cache['rest']] + [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
+        pitches = [self.cache['rest']]
+        if with_scale_degree:
+            steps: List[Literal] = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
+            pitches += [self.note2pitch_str(Pitch(midi=i, step=s)) for i in range(128) for s in steps]
+        else:
+            pitches += [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
+        mic(len(pitches))
         keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
 
         # TODO: with music-theory, mod-7 scale degree, vocab size would increase
@@ -536,6 +549,8 @@ class MusicVocabulary:
             pitch = note.pitch if isinstance(note, Note) else note
             # `pitch.name` follows certain scale by music21 default, may cause confusion
             s = f'{self.cache["pref_pch"]}{pch2step(pitch)}/{pitch.octave}'
+            if self.with_scale_degree:
+                s = f'{s}_{pitch.step}'
         return pl.s(s, c='b') if self.color else s
 
     def clean_uncommon_token(self, tok: str) -> str:

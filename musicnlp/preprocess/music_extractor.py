@@ -3,6 +3,7 @@ Since Sun. Jan. 30th, an updated module for music/melody extraction, with a dura
 
 See `melody_extractor` for the old version.
 """
+
 import math
 import datetime
 import itertools
@@ -39,7 +40,7 @@ class MusicExtractor:
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation
     """
     def __init__(
-            self, precision: int = 5, mode: str = 'melody',
+            self, precision: int = 5, mode: str = 'melody', with_scale_degree: bool = False,
             warn_logger: Union[WarnLog, bool] = None,
             greedy_tuplet_pitch_threshold: int = 3**9,
             verbose: Union[bool, str] = True,
@@ -50,6 +51,7 @@ class MusicExtractor:
         :param mode: Extraction mode, one of [`melody`, `full`]
             `melody`: Only melody is extracted
             `full`: Melody and Bass as 2 separate channels extracted
+        :param with_scale_degree: If true, the scale degree of each note is included in the pitch token
         :param warn_logger: A logger for storing warnings
             If True, a logger is instantiated
         :param greedy_tuplet_pitch_threshold: If #possible note cartesian product in the tuplet > threshold,
@@ -79,7 +81,7 @@ class MusicExtractor:
         self.verbose = verbose
         self.eps = epsilon
 
-        self.vocab = MusicVocabulary(precision)
+        self.vocab = MusicVocabulary(precision=precision, with_scale_degree=with_scale_degree)
 
         self.meta = OrderedDict([
             ('mode', mode), ('precision', precision), ('greedy_tuplet_pitch_threshold', greedy_tuplet_pitch_threshold)
@@ -857,7 +859,7 @@ class MusicExtractor:
         return lst
 
     def __call__(
-            self, song: Union[str, Score], exp='mxl', return_meta: bool = False, return_key: bool = False,
+            self, song: Union[str, Score], exp='mxl', return_meta: bool = False, return_key: bool = False
     ) -> Union[ScoreExt, Dict[str, Union[ScoreExt, Any]]]:
         """
         :param song: A music21 Score object, or file path to an MXL file
@@ -1033,7 +1035,7 @@ if __name__ == '__main__':
         mic(fnm)
         # mode = 'melody'
         mode = 'full'
-        me = MusicExtractor(warn_logger=logger, verbose=True, mode=mode)
+        me = MusicExtractor(warn_logger=logger, verbose=True, mode=mode, with_scale_degree=True)
 
         def check_mxl_out():
             me(fnm, exp='mxl')
@@ -1050,9 +1052,9 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             mic(d_out)
-        check_mxl_out()
+        # check_mxl_out()
         # check_str()
-        # check_visualize()
+        check_visualize()
         # check_return_meta_n_key()
     toy_example()
 

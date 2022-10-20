@@ -212,11 +212,18 @@ def note2note_cleaned(
     dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
     assert isinstance(note, (Note, Rest, Chord))
     if isinstance(note, Note):  # Removes e.g. `tie`s
-        nt = Note(pitch=Pitch(midi=note.pitch.midi), **dur_args)
+        # if Pitch(midi=note.pitch.midi).step != note.pitch.step:  # TODO: sanity check, looking for this to happen
+        #     pch, pch_new = note.pitch, Pitch(midi=note.pitch.midi)
+        #     mic(pch, pch_new)
+        #     mic(pch.step, pch_new.step)
+        #     raise NotImplementedError('')
+        pch = note.pitch
+        nt = Note(pitch=Pitch(midi=pch.midi, step=pch.step), **dur_args)
     elif isinstance(note, Rest):
         nt = Rest(offset=note.offset, **dur_args)
     else:
-        nt = Chord(notes=note.notes, offset=note.offset, **dur_args)
+        notes = [note2note_cleaned(n) for n in note.notes]
+        nt = Chord(notes=notes, offset=note.offset, **dur_args)
     # Setting offset in constructor doesn't seem to work per `music21
     nt.offset = offset if offset is not None else note.offset
     return nt
@@ -670,8 +677,8 @@ def make_score(
     def get_bars(lst_notes: List[List[SNote]], is_bass: bool = False) -> List[Measure]:
         lst_bars = []
         for i, notes in enumerate(lst_notes):
-            assert all(n.offset == 0 for n in notes)  # sanity check
             if check_duration_match:
+                assert all(n.offset == 0 for n in notes)  # sanity check
                 dur_notes, dur_bar = get_notes_duration(notes), time_sig2bar_dur(time_sig)
                 diff = dur_notes-dur_bar
                 if abs(diff) > eps:

@@ -238,11 +238,13 @@ class ScaleDegreeFinder:
             ret[key] = [(pch, (deg - ScaleDegreeFinder.t0_degrees[step]) % 7 + 1) for pch, deg in lst_pch_n_degs]
         return ret
 
-    def map_single(self, note: SNote, key: Union[Key, str]) -> int:
+    @staticmethod
+    def map_single(note: SNote, key: Union[Key, str]) -> int:
         """
         Map a note object to its scale degree in [1-7]
 
-        .. note:: Intended that the note object is part of the Music21 piece passed in
+        .. note:: Intended that the note object is part of the Music21 piece passed in,
+            otherwise, it's the user's responsibility to make sure the `step` of the note is correct
         """
         if isinstance(note, Rest):  # Rest notes don't have a scale degree
             return 0
@@ -328,8 +330,7 @@ if __name__ == '__main__':
         for i in range(128):
             notes.append(Note(pitch=Pitch(midi=i)))
 
-        path = music_util.get_my_example_songs('Merry Go Round of Life')
-        sdf = ScaleDegreeFinder(song=path)  # for the sake of sanity check, just pick arbitrary song
+        sdf = ScaleDegreeFinder()  # for the sake of sanity check, just pick arbitrary song
 
         rows = []
         for n in notes:
