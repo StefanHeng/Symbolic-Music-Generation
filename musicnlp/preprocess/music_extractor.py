@@ -40,7 +40,7 @@ class MusicExtractor:
     Extract melody and potentially chords from MXL music scores => An 1D polyphonic representation
     """
     def __init__(
-            self, precision: int = 5, mode: str = 'melody', with_scale_degree: bool = False,
+            self, precision: int = 5, mode: str = 'melody', with_pitch_step: bool = False,
             warn_logger: Union[WarnLog, bool] = None,
             greedy_tuplet_pitch_threshold: int = 3**9,
             verbose: Union[bool, str] = True,
@@ -51,7 +51,7 @@ class MusicExtractor:
         :param mode: Extraction mode, one of [`melody`, `full`]
             `melody`: Only melody is extracted
             `full`: Melody and Bass as 2 separate channels extracted
-        :param with_scale_degree: If true, the scale degree of each note is included in the pitch token
+        :param with_pitch_step: If true, the scale degree of each note is included in the pitch token
         :param warn_logger: A logger for storing warnings
             If True, a logger is instantiated
         :param greedy_tuplet_pitch_threshold: If #possible note cartesian product in the tuplet > threshold,
@@ -81,10 +81,10 @@ class MusicExtractor:
         self.verbose = verbose
         self.eps = epsilon
 
-        self.vocab = MusicVocabulary(precision=precision, with_scale_degree=with_scale_degree)
+        self.vocab = MusicVocabulary(precision=precision, pitch_kind='step' if with_pitch_step else 'midi')
 
         self.meta = dict(
-            mode=mode, precision=precision, with_scale_degree=with_scale_degree,
+            mode=mode, precision=precision, with_pitch_step=with_pitch_step,
             greedy_tuplet_pitch_threshold=greedy_tuplet_pitch_threshold
         )
 
@@ -1029,17 +1029,17 @@ if __name__ == '__main__':
         # fnm = 'Faded'
         # fnm = 'Piano Sonata'
         # fnm = 'Merry Christmas'
-        # fnm = 'Merry Go Round of Life'
+        fnm = 'Merry Go Round of Life'
         # fnm = 'Canon piano'
         # fnm = '易燃易爆炸'
         # fnm = 'Shape of You'
         # fnm = '平凡之路'
-        fnm = 'LMD eg'
+        # fnm = 'LMD eg'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         mic(fnm)
         # mode = 'melody'
         mode = 'full'
-        me = MusicExtractor(warn_logger=logger, verbose=True, mode=mode, with_scale_degree=True)
+        me = MusicExtractor(warn_logger=logger, verbose=True, mode=mode, with_pitch_step=True)
 
         def check_mxl_out():
             me(fnm, exp='mxl')
@@ -1056,9 +1056,9 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             mic(d_out)
-        check_mxl_out()
+        # check_mxl_out()
         # check_str()
-        # check_visualize()
+        check_visualize()
         # check_return_meta_n_key()
     toy_example()
 

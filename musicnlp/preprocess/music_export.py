@@ -335,7 +335,7 @@ if __name__ == '__main__':
         # mode = 'melody'
         mode = 'full'
         args = dict(
-            extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=8, with_scale_degree=True),
+            extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=8, with_pitch_step=True),
             save_each=True,
             with_tqdm=True,
             # parallel=False,
@@ -412,12 +412,8 @@ if __name__ == '__main__':
     # export2json()
 
     def _folder2count(path: str) -> int:
-        # mic(path)
         _, _, fls = next(os.walk(path))
         return len(fls)
-
-    # mic(os.path.isdir('/scratch/mihalcea_root/mihalcea0/stefanhg/Music-with-NLP/datasets/processed/intermediate/22-10-02_LMD_{md=f}/lmd00.tar.gz'))
-    # exit(1)
 
     def _folder2file_counts(root_path: str) -> Dict[str, int]:
         return {

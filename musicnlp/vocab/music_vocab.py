@@ -129,49 +129,6 @@ class MusicVocabulary:
         start_of_melody=start_of_melody,
         start_of_bass=start_of_bass
     )
-    # # Uncommon Time Signatures in music theory, but empirically seen in MIDI data
-    # # See music_visualize.py for distribution
-    # UNCOM_TSS: List[TsTup] = [
-    #     # (1, 4),  # seen, a lot, from POP909
-    #     #
-    #     # # from LMD-cleaned_subset, only a small fraction are edge cases
-    #     # (3, 2), (4, 2),
-    #     # (6, 4), (7, 4), (8, 4), (12, 4), (132, 4),
-    #     # (1, 8), (3, 8), (4, 8), (5, 8), (7, 8), (8, 8), (9, 8), (11, 8),
-    #     # (8, 16), (16, 16),
-    #     # (2, 64)
-    #
-    #     # ~80 uncommon ones considering POP909, MAESTRO & LMD, convert to a single uncommon token
-    #     (1, 1), (2, 1), (4, 1),
-    #     (1, 2), (3, 2), (4, 2), (5, 2), (6, 2), (8, 2), (10, 2), (12, 2), (74, 2),
-    #     (1, 4), (6, 4), (7, 4), (8, 4), (9, 4), (10, 4), (11, 4), (12, 4), (15, 4), (16, 4),
-    #     (18, 4), (32, 4), (66, 4), (68, 4), (131, 4), (132, 4), (133, 4), (149, 4),
-    #     (1, 8), (2, 8), (3, 8), (4, 8), (5, 8), (7, 8), (8, 8), (9, 8), (10, 8), (11, 8), (13, 8), (15, 8), (16, 8),
-    #     (17, 8), (18, 8), (19, 8), (20, 8), (22, 8), (24, 8), (124, 8), (134, 8), (140, 8), (252, 8),
-    #     (1, 16), (2, 16), (3, 16), (4, 16), (5, 16), (6, 16), (7, 16), (8, 16), (9, 16), (10, 16),
-    #     (11, 16), (12, 16), (13, 16), (15, 16), (16, 16), (18, 16), (24, 16),
-    #     (12, 32), (14, 32), (32, 32), (137, 32),
-    #     (2, 64), (4, 64),
-    #     (64, 128)
-    # ]
-    # UNCOM_TPS: List[int] = [
-    #     # 30, 37,  # Observed from LMD-cleaned_subset
-    #     # 241, 244, 245, 246, 250, 254, 255, 256, 265, 275, 276, 278, 280, 287, 293,
-    #     # 305, 334, 397
-    #
-    #     # ~120 edge case tempos taking up embedding storage => group them into a `HIGH` and a `LOW` token
-    #     6, 10, 11, 12, 16, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
-    #     241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260,
-    #     261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 278, 279, 280,
-    #     282, 283, 285, 286, 287, 288, 289, 290, 291, 293, 294, 295, 297, 299, 300,
-    #     302, 305, 306, 310, 318, 320, 324, 325, 327, 329, 330, 334, 338, 339, 340, 349, 350,
-    #     353, 360, 366, 368, 370, 385, 395, 397, 400,
-    #     403, 406, 432, 440, 450, 451, 480, 500, 616, 700, 900
-    # ]
-    # Observed from LMD-cleaned_subset
-    # UNCOM_DURS: List[Union[int, float]] = [
-    #     # 25/4, 13/2, 15/2, 8, 77/8, 12, 29/2, 16, 24  # Observed from LMD-cleaned_subset
-    # ]
 
     RE_INT = r'[-]?\d*'  # negative sign for `octave`
     RE1 = rf'(?P<num>{RE_INT})'
@@ -186,19 +143,41 @@ class MusicVocabulary:
         VocabType.special: 'm'
     }
 
+    _atonal_pitch_index2step_name: Dict[int, List[str]] = {  # Possible pitch step names given the index
+        1: ['C'],
+        2: ['C#', 'D-'],
+        3: ['D'],
+        4: ['D#', 'E-'],
+        5: ['E'],
+        6: ['F'],
+        7: ['F#', 'G-'],
+        8: ['G'],
+        9: ['G#', 'A-'],
+        10: ['A'],
+        11: ['A#', 'B-'],
+        12: ['B']
+    }
+
     # TODO: remove, original training was without key support
     def __init__(
-            self, precision: int = 5, color: bool = False, is_wordpiece: bool = False, with_scale_degree: bool = False
+            self, precision: int = 5, color: bool = False, is_wordpiece: bool = False, pitch_kind: str = 'midi'
     ):
         """
         :param precision: See `musicnlp.preprocess.music_extractor`
         :param color: If True, string outputs are colorized
             Update individual coloring of subsequent tokens via `__getitem__`
+        :param pitch_kind: Guides the set of uniq pitches considered, one of ['midi`, `step`, `degree`]
+            If `midi`, 128 pitches of uniq midi value
+            If `step`, 17 uniq pitch names in an octave of 12 midi values,
+                intended for music extraction with pitch step name
+            If `degree`, 128 pitches and its 7 possible ordinals w.r.t. a key,
+                intended for training with scale degree annotation
         """
         self.precision = precision
         self.color = color
         self.is_wordpiece = is_wordpiece
-        self.with_scale_degree = with_scale_degree
+        ca.check_mismatch('Unique Pitch Kind', pitch_kind, ['midi', 'step', 'degree'])
+        self.pitch_kind = pitch_kind
 
         specs = MusicVocabulary.SPEC_TOKS  # Syntactic sugar
         sep = specs['sep']
@@ -213,16 +192,12 @@ class MusicVocabulary:
         )
         self.rest = self.cache['rest'] = self.cache['pref_pch'] + specs['rest']
 
-        if with_scale_degree:
-            pch_pat = re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_[A-G]$')
-        else:
-            pch_pat = re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$')
         self.type2compact_re = {
             VocabType.duration: dict(
                 int=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE1}$'),
                 frac=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE2}$'),
             ),
-            VocabType.pitch: pch_pat,
+            VocabType.pitch: self.pitch_pattern,
             VocabType.time_sig: re.compile(rf'^{self.cache["pref_time_sig"]}{MusicVocabulary.RE2}$'),
             VocabType.tempo: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE1}$'),
             VocabType.key: re.compile(rf'^{self.cache["pref_key"]}(?P<key>.*)$'),
@@ -238,12 +213,6 @@ class MusicVocabulary:
         tss = [elm2str(rev(ts))[0] for ts in sorted(rev(ts) for ts in COMMON_TIME_SIGS)]
         # See music_visualize.py for distribution
         tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS]
-        pitches = [self.cache['rest']]
-        if with_scale_degree:
-            steps: List[Literal] = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
-            pitches += [self.note2pitch_str(Pitch(midi=i, step=s)) for i in range(128) for s in steps]
-        else:
-            pitches += [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
         keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
 
         # TODO: with music-theory, mod-7 scale degree, vocab size would increase
@@ -257,7 +226,7 @@ class MusicVocabulary:
             time_sig=[MusicVocabulary.uncommon_time_sig, *tss],
             tempo=[MusicVocabulary.uncommon_low_tempo, *tempos, MusicVocabulary.uncommon_high_tempo],
             key=keys,
-            pitch=pitches,
+            pitch=self._get_all_unique_pitches(),
             duration=[MusicVocabulary.uncommon_duration, *self.get_durations(exp='str')]
         ))
         self.tok2id: Dict[str, int] = {  # back-to0back index as ids
@@ -273,6 +242,31 @@ class MusicVocabulary:
         }
 
         self.logger = get_logger('Music Vocab')
+
+    @property
+    def pitch_pattern(self) -> re.Pattern:
+        if self.pitch_kind == 'midi':
+            return re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$')
+        elif self.pitch_kind == 'step':
+            return re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[A-G])$')
+        else:  # `degree`
+            return re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[1-7])$')
+
+    def _get_all_unique_pitches(self) -> List[str]:
+        ret = [self.cache['rest']]
+        if self.pitch_kind == 'midi':
+            return ret + [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
+        elif self.pitch_kind == 'step':
+            args = []
+            for i in range(128):
+                d = dict(midi=i)
+                idx = MusicVocabulary._pitch2local_index(i)
+                for step in MusicVocabulary._atonal_pitch_index2step_name[idx]:
+                    args.append(d | dict(step=step[0]))
+            return ret + [self.note2pitch_str(Pitch(**d)) for d in args]
+        else:
+            degs = list(range(1, 7+1))
+            return ret + [self.note2pitch_str(Pitch(midi=i), degree=d) for i in range(128) for d in degs]
 
     def to_dict(self, save=False):
         d_out = dict(
@@ -533,23 +527,31 @@ class MusicVocabulary:
             s = f'{self.cache["pref_dur"]}{dur.numerator}/{dur.denominator}'
         return pl.s(s, c='g') if self.color else s
 
-    def note2pitch_str(self, note: Union[Note, Rest, Pitch]) -> str:
+    @staticmethod
+    def _pitch2local_index(p: Union[Pitch, int]) -> int:
+        """
+        Naive mapping to the physical, mod-12 pitch frequency in midi, to local atonal pitch index in [1-12]
+        """
+        midi = p.midi if isinstance(p, Pitch) else p
+        return (midi % 12) + 1
+
+    def note2pitch_str(self, note: Union[Note, Rest, Pitch], degree: int = None) -> str:
         """
         :param note: A note, tuplet, or a music21.pitch.Pitch
+        :param degree: If given, the scale degree orginal of the note w.r.t a key
         """
-        def pch2step(p: Pitch) -> int:
-            """
-            Naive mapping to the physical, mod-12 pitch frequency, in [1-12]
-            """
-            return (p.midi % 12) + 1
         if isinstance(note, Rest):
             s = self.cache["rest"]
         else:
             pitch = note.pitch if isinstance(note, Note) else note
             # `pitch.name` follows certain scale by music21 default, may cause confusion
-            s = f'{self.cache["pref_pch"]}{pch2step(pitch)}/{pitch.octave}'
-            if self.with_scale_degree:
+            s = f'{self.cache["pref_pch"]}{MusicVocabulary._pitch2local_index(pitch)}/{pitch.octave}'
+            if self.pitch_kind == 'step':
                 s = f'{s}_{pitch.step}'
+            elif self.pitch_kind == 'degree':
+                if not (isinstance(degree, int) and 1 <= degree <= 7):
+                    raise ValueError(f'Invalid degree w/ {pl.i(degree)}, should be in [1, 7]')
+                s = f'{s}_{degree}'
         return pl.s(s, c='b') if self.color else s
 
     def clean_uncommon_token(self, tok: str) -> str:
@@ -605,9 +607,7 @@ class MusicVocabulary:
 
 
 if __name__ == '__main__':
-    from icecream import mic
-
-    mic.lineWrapWidth = 512
+    mic.output_width = 256
 
     mv = MusicVocabulary()
     # mic(mv.get_durations(exp='dur'))
@@ -630,7 +630,14 @@ if __name__ == '__main__':
             uncomp = mv.uncompact(VocabType.pitch, comp)
             assert tok == uncomp
             mic(tok, uncomp)
-    check_compact_pitch()
+    # check_compact_pitch()
+
+    def check_pitch_set(kind: str = 'step'):
+        mv_ = MusicVocabulary(pitch_kind=kind)
+        pchs = mv_.toks['pitch']
+        mic(pchs, len(pchs))
+    # check_pitch_set(kind='step')
+    check_pitch_set(kind='degree')
 
     def sanity_check_uncom():
         """
