@@ -8,7 +8,7 @@ Intended to trade sequence length with vocabulary size
 
 import json
 from os.path import join as os_join
-from typing import List, Dict, Union, Iterable
+from typing import List, Dict, Union, Iterable, Any
 
 from transformers import PreTrainedTokenizerFast
 from tokenizers import Tokenizer
@@ -19,14 +19,35 @@ from stefutil import *
 from musicnlp.util import *
 from musicnlp.vocab.music_vocab import MusicVocabulary, VocabType, WORDPIECE_CONTINUING_PREFIX
 from musicnlp.vocab.music_tokenizer import MusicTokenizer
+from musicnlp.preprocess import KeyInsert, PitchShift
 
 
 def get_uni_chars_cache() -> List[str]:
     """
     :return: A list of mostly-printing friendly unicode characters
     """
-    omit = {0x85, 0xa0}  # cos WhitespaceSplit pre-tokenizer filters out this char
-    return [chr(i) for i in range(0x0021, 0x02FF) if i not in omit]
+    if not hasattr(get_uni_chars_cache, 'ranges'):
+        # set of characters got from https://en.wikipedia.org/wiki/Latin_script_in_Unicode,
+        # credit from https://stackoverflow.com/a/61693402/10732321
+        get_uni_chars_cache.ranges = [
+            (0x0021, 0x02FF),  # Basic Latin
+            (0x0080, 0x00FF),  # Latin-1 Supplement
+            (0x0100, 0x017F),  # Latin Extended A
+            (0x0180, 0x024F),  # Latin Extended B
+            (0x0250, 0x02AF),  # IPA Extensions
+            (0x1D00, 0x1D7F),  # Phonetic Extensions
+            (0x1D80, 0x1DBF),  # Phonetic Extensions Supplement
+            (0x1E00, 0x1EFF),  # Latin Extended Additional
+            (0x2100, 0x214F)  # Letter-like Symbols
+        ]
+    if not hasattr(get_uni_chars_cache, 'omit'):
+        get_uni_chars_cache.omit = {  # Characters that can't be printed
+            0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90,
+            0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xad
+        }
+    it = chain_its((range(*r) for r in get_uni_chars_cache.ranges))
+    chars = {chr(i) for i in it if i not in get_uni_chars_cache.omit}
+    return sorted(chars)
 
 
 class Score2Chars:
@@ -80,12 +101,14 @@ class Score2Chars:
         """
         if self.need_split:  # prevent merge via separating by space, see `__call__` pre_tokenizer
             toks = self.split(score, join=False)  # efficient as `encode` can take split tokens
-            sanity_check = False
+
+            # sanity_check = False
+            sanity_check = True
             if sanity_check:
                 ret = ' '.join([self.encode(t) for t in toks])
                 _toks = ret.split()
                 _toks = [self.decode(_t) for _t in _toks]
-                assert ' '.join(_toks) == mv.clean_uncommon(score)
+                assert ' '.join(_toks) == self.vocab.clean_uncommon(score)
                 for t in _toks:
                     mic(t)
                 exit(1)
@@ -147,6 +170,9 @@ class Score2Chars:
         toks = s.split() if isinstance(s, str) else s
         if clean:
             toks = [self.vocab.clean_uncommon_token(t) for t in toks]
+        mic(toks)
+        mic([self.vocab.tok2id[tok] for tok in toks])
+        mic(len(self.dec_chars), len(self.vocab))
         return ''.join([self.dec_chars[self.vocab.tok2id[tok]] for tok in toks])
 
     def decode(self, s: str) -> str:
@@ -177,14 +203,23 @@ class WordPieceMusicTrainer:
     """
     continuing_prefix = WORDPIECE_CONTINUING_PREFIX
 
-    def __init__(self, vocab: MusicVocabulary, **kwargs):
+    def __init__(self, vocab: MusicVocabulary, augment_key: bool = True, **kwargs):
         """
         :param vocab: Music Vocabulary, for internal mapping between music tokens & characters
+        :param augment_key: If true, each score have each possible key inserted & pitch shifted accordingly
+            Otherwise, train with raw music extraction scores
         """
+        # vocab matters cos it influences base vocab
+        if augment_key:
+            assert vocab.pitch_kind == 'degree'
+        else:  # TODO: maybe support `step` vocab?
+            assert vocab.pitch_kind == 'midi'
         self.vocab = vocab
+        self.augment_key = augment_key
+
         self.s2c = Score2Chars(vocab=vocab, continuing_prefix=WordPieceMusicTrainer.continuing_prefix, **kwargs)
 
-    def __call__(self, vocab_size: int = 2**13, songs: List[str] = None, save: Union[bool, str] = None):
+    def __call__(self, vocab_size: int = 2**13, songs: List[Dict[str, Any]] = None, save: Union[bool, str] = None):
         # TODO: don't need to pass `vocab` to `WordPiece`?
         # every token should be known
         # TODO: What is `max_input_chars_per_word`? set no lim
@@ -196,11 +231,26 @@ class WordPieceMusicTrainer:
         if self.s2c.need_split:
             tokenizer.pre_tokenizer = pre_tokenizers.WhitespaceSplit()
         tokenizer.decoder = decoders.WordPiece(prefix=WordPieceMusicTrainer.continuing_prefix)
+        init_alph = self.s2c.dec_chars
+        assert len(init_alph) <= vocab_size
         trainer = WordPieceTrainer(
-            vocab_size=vocab_size, initial_alphabet=self.s2c.dec_chars, show_progress=True,
+            vocab_size=vocab_size, initial_alphabet=init_alph, show_progress=True,
             continuing_subword_prefix=WordPieceMusicTrainer.continuing_prefix
         )
-        tokenizer.train_from_iterator((self.s2c(s) for s in songs), trainer=trainer)
+        if self.augment_key:
+            ki = KeyInsert(vocab=self.vocab)  # pitch kind irrelevant
+            ps = PitchShift(vocab_degree=self.vocab)  # pitch kind irrelevant
+
+            def gen():
+                for s in songs:
+                    txt = s['score']
+                    for key in s['keys']:
+                        _txt = ki(text=txt, key=key)
+                        yield ps(text=_txt)
+            gen = gen()
+        else:
+            gen = (self.s2c(s['score']) for s in songs)
+        tokenizer.train_from_iterator(gen, trainer=trainer)
         if save:
             fnm = save if isinstance(save, str) else 'WordPiece-Tokenizer'
             date = now(fmt='short-date')
@@ -330,9 +380,18 @@ class WordPieceMusicTokenizer(MusicTokenizer):
 
 
 def load_trained_tokenizer(  # has independent global token & bar split
-        fnm: str = '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}', **kwargs
+        fnm: str = None, pitch_kind: str = None, **kwargs
 ) -> WordPieceMusicTokenizer:
-    return WordPieceMusicTokenizer.from_file(fnm, is_wordpiece=True, **kwargs)
+    if pitch_kind is None:
+        pitch_kind = 'midi'
+    if pitch_kind == 'midi':
+        fnm = fnm or '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
+    elif pitch_kind == 'step':
+        raise NotImplementedError('Recompute tokenizer w/ new music extraction tokens but no key aug')
+    else:
+        assert pitch_kind == 'degree'
+        raise NotImplementedError('TODO')
+    return WordPieceMusicTokenizer.from_file(fnm, is_wordpiece=True, pitch_kind=pitch_kind, **kwargs)
 
 
 class _CheckTrainedMap:
@@ -352,160 +411,20 @@ class _CheckTrainedMap:
 if __name__ == '__main__':
     from tqdm.auto import tqdm
 
+    from musicnlp._sample_score import sample_full_midi, sample_full_step
     from musicnlp.preprocess import load_songs, DATASET_NAME2MODE2FILENAME
-
-    sample_txt = 'TimeSig_1/4 Tempo_120 <bar> p_1/5 d_1 <bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1/2 p_6/5 d_1/2 ' \
-                 '<bar> p_8/5 d_1/2 p_10/5 d_1/2 <bar> p_8/5 d_1/2 p_8/4 d_1/2 <bar> p_10/4 d_1/2 p_12/4 d_1/2 <bar> ' \
-                 'p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1/2 p_6/5 d_1/2 <bar> p_5/5 d_1/2 p_5/4 d_1/2 <bar> p_10/4 ' \
-                 'd_1/2 p_12/4 d_1/2 <bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1/2 p_6/5 d_1/2 <bar> p_5/5 d_1/2 ' \
-                 'p_12/3 d_1/2 <bar> p_3/4 d_1/2 p_8/4 d_1/2 <bar> p_12/4 d_1/2 p_1/5 d_1/2 <bar> p_12/4 d_1/2 p_11/4 '\
-                 'd_1/2 <bar> p_10/4 d_1/2 p_10/3 d_1/2 <bar> p_3/4 d_1/2 p_6/4 d_1/2 <bar> p_10/4 d_1/2 p_12/4 d_1/2 '\
-                 '<bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_1/5 d_1/2 p_8/5 d_1/2 <bar> p_1/5 d_1/2 p_8/4 d_1/2 <bar> ' \
-                 'p_8/5 d_1 <bar> p_8/5 d_1/2 p_5/5 d_1/2 <bar> p_6/5 d_1/2 p_5/5 d_1/2 <bar> p_1/5 d_1/2 p_8/4 d_1/2 '\
-                 '<bar> p_6/4 d_1/2 p_5/4 d_1/2 <bar> p_1/4 d_1/2 p_3/4 d_1/2 <bar> p_6/4 d_1 <bar> p_8/5 d_1 <bar> ' \
-                 'p_8/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1 <bar> ' \
-                 'p_5/4 d_1/2 p_8/3 d_1/2 <bar> p_5/4 d_1 <bar> p_5/4 d_1 <bar> p_5/4 d_1/2 p_10/4 d_1/2 <bar> p_8/4 ' \
-                 'd_1 <bar> p_3/4 d_1 <bar> p_8/4 d_1 <bar> p_3/4 d_1 <bar> p_1/4 d_1 <bar> p_1/4 d_1 <bar> p_5/4 ' \
-                 'd_1/2 p_5/3 d_1/2 <bar> p_1/4 d_1/4 p_r d_1/4 p_6/4 d_1/2 <bar> p_5/4 d_1 <bar> p_12/3 d_1 <bar> ' \
-                 'p_5/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_4/4 d_1/2 p_12/3 d_1/2 <bar> p_3/4 d_1 <bar> p_10/3 d_1/2 '\
-                 'p_3/4 d_1/4 p_r d_1/4 <bar> p_10/3 d_1/2 p_12/3 d_1/2 <bar> p_3/4 d_1/2 p_3/4 d_1/2 <bar> p_5/4 d_1 '\
-                 '<bar> p_8/3 d_1/2 p_5/4 d_1/2 <bar> p_5/4 d_1 <bar> p_2/4 d_1/2 p_5/4 d_1/2 <bar> p_6/4 d_1 <bar> ' \
-                 'p_3/4 d_1/2 p_10/3 d_1/2 <bar> p_10/4 d_1 <bar> p_5/4 d_1/2 p_10/3 d_1/2 <bar> p_3/4 d_1/2 p_8/4 ' \
-                 'd_1/2 <bar> p_12/4 d_1/2 p_5/5 d_1/2 <bar> p_6/5 d_1/2 p_5/5 d_1/2 <bar> p_3/5 d_1 <bar> p_1/5 d_1 ' \
-                 '<bar> p_1/5 d_1/2 p_5/5 d_1/2 <bar> p_5/5 d_1 <bar> p_1/5 d_1/2 p_1/5 d_1/2 <bar> p_12/4 d_1 <bar> ' \
-                 'p_12/4 d_1 <bar> p_8/4 d_1 <bar> p_9/4 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_5/4 d_1/2 p_10/4 '\
-                 'd_1/2 <bar> p_12/4 d_1/2 p_1/5 d_1/2 <bar> p_12/4 d_1 <bar> p_12/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 ' \
-                 '<bar> p_5/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_4/5 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_8/5 '\
-                 'd_1 <bar> p_6/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1/2 p_5/4 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 '\
-                 'p_5/4 d_1/2 <bar> p_6/5 d_1 <bar> p_5/5 d_1/2 p_10/3 d_1/2 <bar> p_12/4 d_1 <bar> p_3/5 d_1 <bar> ' \
-                 'p_1/5 d_1 <bar> p_3/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 d_1/2 p_1/5 d_1/2 <bar> p_1/5 d_1/2 p_8/4 ' \
-                 'd_1/2 <bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1 <bar> p_3/5 d_1 <bar> p_1/5 d_1/2 p_8/4 d_1/2 ' \
-                 '<bar> p_1/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_8/4 d_1/2 p_11/4 d_1/2 <bar> p_5/5 d_1 ' \
-                 '<bar> p_5/5 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_1/5 d_1/2 p_3/4 d_1/2 <bar> p_1/5 d_1 <bar> p_6/5 ' \
-                 'd_1/2 p_6/5 d_1/4 p_r d_1/4 <bar> p_12/4 d_1 <bar> p_12/4 d_1/2 p_6/4 d_1/2 <bar> p_5/5 d_1 <bar> ' \
-                 'p_5/5 d_1/2 p_6/5 d_1/2 <bar> p_8/5 d_1 <bar> p_5/5 d_1/2 p_3/4 d_1/2 <bar> p_1/5 d_1 <bar> p_1/5 ' \
-                 'd_1 <bar> p_12/4 d_1 <bar> p_8/4 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1/2 p_6/4 d_1/2 <bar> p_8/5 d_1 ' \
-                 '<bar> p_5/5 d_1/2 p_1/4 d_1/2 <bar> p_6/5 d_1 <bar> p_6/5 d_1/2 p_10/3 d_1/2 <bar> p_7/5 d_1 <bar> ' \
-                 'p_7/5 d_1 <bar> p_8/5 d_1 <bar> p_3/5 d_1 <bar> p_12/4 d_1 <bar> p_12/4 d_1/4 p_3/3 d_1/4 p_3/5 ' \
-                 'd_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_1/5 d_1/2 p_5/5 d_1/2 <bar> p_3/5 d_1 '\
-                 '<bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_6/5 d_1 <bar> p_6/5 d_1 <bar> p_8/5 d_1/2 ' \
-                 'p_6/5 d_1/2 <bar> p_5/5 d_1/2 p_3/5 d_1/4 p_r d_1/4 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 ' \
-                 'd_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_12/4 d_1 <bar> ' \
-                 'p_10/4 d_1/2 p_8/4 d_1/2 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_8/4 d_1 <bar> p_8/4 d_1 <bar> ' \
-                 'p_6/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1/2 p_8/5 ' \
-                 'd_1/2 <bar> p_8/5 d_1/2 p_8/5 d_1/2 <bar> p_8/5 d_1/2 p_8/5 d_1/2 <bar> p_8/3 d_1 <bar> p_12/3 ' \
-                 'd_1/2 p_5/4 d_1/2 <bar> p_5/4 d_1 <bar> p_5/4 d_1/2 p_1/4 d_1/2 <bar> p_1/5 d_1 <bar> p_11/4 d_1 ' \
-                 '<bar> p_9/4 d_1 <bar> p_1/5 d_1/2 p_1/5 d_1/2 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_12/4 d_1 ' \
-                 '<bar> p_12/4 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1/2 p_5/5 d_1/2 <bar> p_5/5 d_1 <bar> p_1/5 d_1/2 ' \
-                 'p_1/5 d_1/2 <bar> p_12/4 d_1 <bar> p_12/4 d_1 <bar> p_8/4 d_1 <bar> p_9/4 d_1 <bar> p_1/5 d_1 <bar> '\
-                 'p_1/5 d_1 <bar> p_5/4 d_1/2 p_10/4 d_1/2 <bar> p_1/4 d_1/4 p_r d_1/4 p_1/5 d_1/2 <bar> p_12/4 d_1 ' \
-                 '<bar> p_12/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_8/4 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_4/5 d_1 ' \
-                 '<bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_8/5 d_1 <bar> p_6/5 d_1 <bar> p_8/5 d_1 <bar> p_8/5 d_1/2 ' \
-                 'p_5/4 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 p_5/4 d_1/2 <bar> p_6/5 d_1 <bar> p_5/5 d_1/2 p_10/3 ' \
-                 'd_1/2 <bar> p_12/4 d_1 <bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> p_3/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 ' \
-                 'd_1/2 p_1/5 d_1/2 <bar> p_1/5 d_1/2 p_8/4 d_1/2 <bar> p_1/5 d_1/2 p_3/5 d_1/2 <bar> p_5/5 d_1 <bar> '\
-                 'p_3/5 d_1 <bar> p_1/5 d_1/2 p_8/4 d_1/2 <bar> p_1/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_8/4 '\
-                 'd_1/2 p_11/4 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_1/5 d_1/2 p_3/4 ' \
-                 'd_1/2 <bar> p_1/5 d_1 <bar> p_6/5 d_1/2 p_6/5 d_1/4 p_r d_1/4 <bar> p_12/4 d_1 <bar> p_12/4 d_1/2 ' \
-                 'p_6/4 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 p_6/5 d_1/2 <bar> p_8/5 d_1 <bar> p_5/5 d_1/2 p_3/4 ' \
-                 'd_1/2 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_12/4 d_1 <bar> p_8/4 d_1 <bar> p_1/5 d_1 <bar> p_1/5 ' \
-                 'd_1/2 p_6/4 d_1/2 <bar> p_8/5 d_1 <bar> p_5/5 d_1/2 p_1/4 d_1/2 <bar> p_6/5 d_1 <bar> p_6/5 d_1/2 ' \
-                 'p_10/3 d_1/2 <bar> p_7/5 d_1 <bar> p_7/5 d_1 <bar> p_8/5 d_1 <bar> p_3/5 d_1 <bar> p_12/4 d_1 <bar> '\
-                 'p_12/4 d_1/4 p_3/3 d_1/4 p_3/5 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_1/5 ' \
-                 'd_1/2 p_5/5 d_1/2 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> p_1/5 d_1 <bar> p_6/5 d_1 ' \
-                 '<bar> p_6/5 d_1 <bar> p_8/5 d_1/2 p_6/5 d_1/2 <bar> p_5/5 d_1/2 p_3/5 d_1/4 p_r d_1/4 <bar> p_5/5 ' \
-                 'd_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1/2 p_8/3 d_1/4 p_r d_1/4 <bar> p_3/5 d_1 <bar> p_1/5 d_1 <bar> ' \
-                 'p_1/5 d_1 <bar> p_12/4 d_1 <bar> p_10/4 d_1/2 p_8/4 d_1/2 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> ' \
-                 'p_8/4 d_1 <bar> p_8/4 d_1 <bar> p_6/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> ' \
-                 'p_1/5 d_1 <bar> p_1/5 d_1/2 p_3/4 d_1/4 p_r d_1/4 <bar> p_1/4 d_1 <bar> p_1/4 d_1/2 p_r d_1/2 <bar> '\
-                 'p_3/4 d_1 <bar> p_7/4 d_1/2 p_10/3 d_1/4 p_r d_1/4 <bar> p_3/4 d_1/2 p_5/4 d_1/2 <bar> p_7/4 d_1/2 ' \
-                 'p_8/4 d_1/4 p_r d_1/4 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_7/4 d_1/2 p_5/4 ' \
-                 'd_1/2 <bar> p_3/4 d_1 <bar> p_3/4 d_1 <bar> p_3/4 d_1/4 p_r d_1/4 p_5/4 d_1/2 <bar> p_7/4 d_1/4 p_r '\
-                 'd_1/4 p_8/4 d_1/2 <bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_10/4 d_1/2 p_10/3 d_1/4 p_r d_1/4 <bar> '\
-                 'p_7/4 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_2/5 d_1 <bar> p_10/4 d_1 <bar> p_3/5 d_1 <bar> ' \
-                 'p_3/5 d_1/2 p_8/4 d_1/2 <bar> p_10/5 d_1 <bar> p_7/5 d_1/2 p_3/4 d_1/2 <bar> p_8/5 d_1 <bar> p_8/5 ' \
-                 'd_1/2 p_12/3 d_1/2 <bar> p_9/5 d_1 <bar> p_9/5 d_1 <bar> p_10/5 d_1 <bar> p_5/5 d_1 <bar> p_2/5 d_1 '\
-                 '<bar> p_2/5 d_1/4 p_5/3 d_1/4 p_5/5 d_1/2 <bar> p_7/5 d_1 <bar> p_7/5 d_1 <bar> p_7/5 d_1 <bar> ' \
-                 'p_3/5 d_1/2 p_7/5 d_1/2 <bar> p_5/5 d_1 <bar> p_5/5 d_1 <bar> p_3/5 d_1 <bar> p_3/5 d_1 <bar> p_8/5 '\
-                 'd_1 <bar> p_8/5 d_1 <bar> p_10/5 d_1/2 p_8/5 d_1/2 <bar> p_7/5 d_1/2 p_5/5 d_1/4 p_r d_1/4 <bar> ' \
-                 'p_7/5 d_1 <bar> p_7/5 d_1 <bar> p_7/5 d_1/2 p_10/3 d_1/4 p_r d_1/4 <bar> p_5/5 d_1 <bar> p_3/5 d_1 ' \
-                 '<bar> p_3/5 d_1 <bar> p_2/5 d_1 <bar> p_12/4 d_1/2 p_10/4 d_1/2 <bar> p_12/4 d_1 <bar> p_12/4 d_1 ' \
-                 '<bar> p_10/4 d_1 <bar> p_10/4 d_1 <bar> p_8/5 d_1 <bar> p_7/5 d_1 <bar> p_5/5 d_1 <bar> p_5/5 d_1 ' \
-                 '<bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_10/5 ' \
-                 'd_1 <bar> p_10/5 d_1 <bar> p_10/5 d_1 <bar> p_8/4 d_1 <bar> p_3/4 d_1/2 p_8/4 d_1/2 <bar> p_8/4 ' \
-                 'd_1/2 p_12/4 d_1/2 <bar> p_12/4 d_1/2 p_5/4 d_1/2 <bar> p_5/4 d_1 <bar> <tup> p_2/4 p_5/4 p_8/4 d_1 '\
-                 '</tup> <bar> p_5/4 d_1 <bar> p_5/4 d_1/2 p_3/4 d_1/2 <bar> p_3/4 d_1/2 p_r d_1/2 <bar> p_3/4 d_1 ' \
-                 '<bar> p_3/4 d_1 <bar> p_5/4 d_1/4 p_7/4 d_1/4 p_7/4 d_1/8 p_10/4 d_3/8 <bar> p_3/5 d_1/4 p_10/2 ' \
-                 'd_1/4 p_5/5 d_1/4 p_10/2 d_1/4 <bar> p_7/5 d_1/4 p_10/2 d_3/4 <bar> p_10/5 d_1/4 p_3/6 d_3/4 <bar> ' \
-                 'p_3/2 d_1/2 p_r d_1/2 </s> '
-    sample_txt2 = 'TimeSig_2/2 Tempo_230 <bar> p_6/3 d_2 p_1/4 d_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 d_1 <bar> p_8/3 ' \
-                  'd_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 d_3/2 p_11/3 d_1/2 p_11/3 d_1 p_8/3 d_1 <bar> p_6/3 d_2 p_1/4 ' \
-                  'd_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 d_1 <bar> p_8/3 d_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 d_3/2 ' \
-                  'p_11/3 d_1/2 p_11/3 d_1 p_8/3 d_1 <bar> p_6/4 d_2 p_1/5 d_2 <bar> p_6/5 d_2 p_1/5 d_1 p_9/4 d_1 ' \
-                  '<bar> p_8/4 d_2 p_3/4 d_2 <bar> p_8/4 d_3/2 p_11/4 d_1/2 p_11/4 d_1 p_8/4 d_1 <bar> p_6/4 d_2 ' \
-                  'p_1/5 d_2 <bar> p_6/5 d_2 p_1/5 d_1 p_9/4 d_1 <bar> p_8/4 d_2 p_r d_2 <bar> p_8/2 d_2 p_r d_2 ' \
-                  '<bar> p_6/2 d_2 p_6/4 d_2 <bar> p_1/5 d_3/2 p_12/4 d_1/2 p_12/4 d_1 p_1/5 d_1 <bar> p_1/5 d_1 ' \
-                  'p_6/5 d_2 p_1/5 d_1 <bar> p_1/5 d_1 p_12/4 d_3 <bar> p_9/4 d_2 p_6/4 d_1 p_6/4 d_1 <bar> p_6/4 d_2 '\
-                  'p_1/3 d_1 p_4/4 d_1 <bar> p_6/4 d_1 p_6/4 d_1/2 p_9/4 d_1/2 p_11/4 d_1/2 p_12/4 d_1 p_1/5 d_1/2 ' \
-                  '<bar> p_1/5 d_1/2 p_6/5 d_1 p_12/4 d_1/2 p_12/4 d_1/2 p_11/4 d_1/2 p_9/4 d_1 <bar> p_6/2 d_2 p_6/4 '\
-                  'd_2 <bar> p_1/5 d_3/2 p_12/4 d_1/2 p_12/4 d_1 p_1/5 d_1 <bar> p_1/5 d_1 p_6/5 d_2 p_1/5 d_1 <bar> ' \
-                  'p_1/5 d_1 p_8/5 d_3 <bar> p_8/5 d_2 p_6/5 d_1 p_6/5 d_1 <bar> p_6/5 d_2 p_1/3 d_1 p_4/5 d_1 <bar> ' \
-                  'p_6/5 d_1 p_6/5 d_1/2 p_1/5 d_1/2 p_11/4 d_1/2 p_9/4 d_1 p_9/4 d_1/2 <bar> p_6/5 d_1/2 p_1/5 d_1/2 '\
-                  'p_11/4 d_1/2 p_9/4 d_1/2 p_9/4 d_1 p_8/2 d_1 <bar> p_9/2 d_7/4 p_1/4 d_1/8 p_2/4 d_1/8 p_4/4 d_2 ' \
-                  '<bar> p_4/4 d_2 p_4/4 d_2 <bar> p_6/4 d_2 p_11/2 d_1 p_11/3 d_1 <bar> p_11/3 d_2 p_11/3 d_2 <bar> ' \
-                  'p_1/4 d_1 p_4/4 d_1 p_6/4 d_1 p_9/4 d_1 <bar> p_11/4 d_3/2 p_1/5 d_1/2 p_1/5 d_1 p_12/4 d_1 <bar> ' \
-                  'p_11/4 d_1 p_9/4 d_1 p_1/5 d_1/2 p_12/4 d_1/2 p_1/5 d_1/2 p_4/5 d_1/2 <bar> p_r d_1 p_1/5 d_1/2 ' \
-                  'p_12/4 d_1/2 p_1/5 d_1/2 p_4/5 d_3/2 <bar> p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 <bar> p_1/5 d_1/2 p_12/4 ' \
-                  'd_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> p_6/5 d_3 p_9/5 d_1 <bar> p_9/5 d_1 p_6/5 d_3 <bar> ' \
-                  'p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 <bar> p_1/5 d_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> ' \
-                  'p_6/5 d_4 <bar> p_1/5 d_1/2 p_12/4 d_1 p_11/4 d_1/2 p_11/4 d_1/2 p_9/4 d_3/2 <bar> p_6/2 d_2 p_1/3 '\
-                  'd_1 p_6/4 d_1 <bar> p_1/5 d_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> p_6/5 d_3 p_9/5 ' \
-                  'd_1 <bar> p_9/5 d_1 p_6/5 d_3 <bar> p_6/5 d_2 p_6/5 d_2 <bar> p_6/5 d_2 p_6/5 d_2 <bar> p_6/5 d_1 ' \
-                  'p_6/5 d_3 <bar> p_5/5 d_1/2 p_5/5 d_1 p_6/5 d_1/2 p_6/5 d_3/4 p_r d_1/4 p_r d_1 <bar> p_6/3 d_2 ' \
-                  'p_1/4 d_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 d_1 <bar> p_8/3 d_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 ' \
-                  'd_3/2 p_11/3 d_1/2 p_11/3 d_1 p_8/3 d_1 <bar> p_6/3 d_2 p_1/4 d_2 <bar> p_6/4 d_2 p_1/4 d_1 p_9/3 ' \
-                  'd_1 <bar> p_8/3 d_2 p_3/3 d_1 p_3/3 d_1 <bar> p_8/3 d_3/2 p_11/3 d_1/2 p_11/3 d_1 p_8/3 d_1 <bar> ' \
-                  'p_6/4 d_2 p_1/5 d_2 <bar> p_6/5 d_2 p_1/5 d_1 p_9/4 d_1 <bar> p_8/4 d_2 p_3/4 d_2 <bar> p_8/4 ' \
-                  'd_3/2 p_11/4 d_1/2 p_11/4 d_1 p_8/4 d_1 <bar> p_6/4 d_2 p_1/5 d_2 <bar> p_6/5 d_2 p_1/5 d_1 p_9/4 ' \
-                  'd_1 <bar> p_8/4 d_2 p_r d_2 <bar> p_8/2 d_2 p_r d_2 <bar> p_6/2 d_2 p_6/4 d_2 <bar> p_1/5 d_3/2 ' \
-                  'p_12/4 d_1/2 p_12/4 d_1 p_1/5 d_1 <bar> p_1/5 d_1 p_6/5 d_2 p_1/5 d_1 <bar> p_1/5 d_1 p_12/4 d_3 ' \
-                  '<bar> p_9/4 d_2 p_6/4 d_1 p_6/4 d_1 <bar> p_6/4 d_2 p_1/3 d_1 p_4/4 d_1 <bar> p_6/4 d_1 p_6/4 ' \
-                  'd_1/2 p_9/4 d_1/2 p_11/4 d_1/2 p_12/4 d_1 p_1/5 d_1/2 <bar> p_1/5 d_1/2 p_6/5 d_1 p_12/4 d_1/2 ' \
-                  'p_12/4 d_1/2 p_11/4 d_1/2 p_9/4 d_1 <bar> p_6/2 d_2 p_6/4 d_2 <bar> p_1/5 d_3/2 p_12/4 d_1/2 ' \
-                  'p_12/4 d_1 p_1/5 d_1 <bar> p_1/5 d_1 p_6/5 d_2 p_1/5 d_1 <bar> p_1/5 d_1 p_8/5 d_3 <bar> p_8/5 d_2 '\
-                  'p_6/5 d_1 p_6/5 d_1 <bar> p_6/5 d_2 p_1/3 d_1 p_4/5 d_1 <bar> p_6/5 d_1 p_6/5 d_1/2 p_1/5 d_1/2 ' \
-                  'p_11/4 d_1/2 p_9/4 d_1 p_9/4 d_1/2 <bar> p_6/5 d_1/2 p_1/5 d_1/2 p_11/4 d_1/2 p_9/4 d_1/2 p_9/4 ' \
-                  'd_1 p_8/2 d_1 <bar> p_9/2 d_7/4 p_1/4 d_1/8 p_2/4 d_1/8 p_4/4 d_2 <bar> p_4/4 d_2 p_4/4 d_2 <bar> ' \
-                  'p_6/4 d_2 p_11/2 d_1 p_11/3 d_1 <bar> p_11/3 d_2 p_11/3 d_2 <bar> p_1/4 d_1 p_4/4 d_1 p_6/4 d_1 ' \
-                  'p_9/4 d_1 <bar> p_11/4 d_3/2 p_1/5 d_1/2 p_1/5 d_1 p_12/4 d_1 <bar> p_11/4 d_1 p_9/4 d_1 p_1/5 ' \
-                  'd_1/2 p_12/4 d_1/2 p_1/5 d_1/2 p_4/5 d_1/2 <bar> p_r d_1 p_1/5 d_1/2 p_12/4 d_1/2 p_1/5 d_1/2 ' \
-                  'p_4/5 d_3/2 <bar> p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 <bar> p_1/5 d_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 '\
-                  'p_6/5 d_1 <bar> p_6/5 d_3 p_9/5 d_1 <bar> p_9/5 d_1 p_6/5 d_3 <bar> p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 ' \
-                  '<bar> p_1/5 d_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> p_6/5 d_4 <bar> p_1/5 d_1/2 ' \
-                  'p_12/4 d_1 p_11/4 d_1/2 p_11/4 d_1/2 p_9/4 d_3/2 <bar> p_6/2 d_2 p_1/3 d_1 p_6/4 d_1 <bar> p_1/5 ' \
-                  'd_1/2 p_12/4 d_1 p_1/5 d_1/2 p_1/5 d_1 p_6/5 d_1 <bar> p_6/5 d_3 p_9/5 d_1 <bar> p_9/5 d_1 p_6/5 ' \
-                  'd_3 <bar> p_6/5 d_2 p_6/5 d_2 <bar> p_6/5 d_2 p_6/5 d_2 <bar> p_6/5 d_1 p_6/5 d_3 <bar> p_5/5 ' \
-                  'd_1/2 p_5/5 d_1 p_6/5 d_1/2 p_6/5 d_3/4 p_r d_1/4 p_r d_1 </s> '
 
     def sanity_check_split():
         pre_tokenizer = pre_tokenizers.WhitespaceSplit()  # split on whitespace only
-        mic(pre_tokenizer.pre_tokenize_str(sample_txt))
+        mic(pre_tokenizer.pre_tokenize_str(sample_full))
     # sanity_check_split()
-
-    mv = MusicVocabulary()
-    # vocab = list(mv.tok2id.keys())
-    # mic(vocab, len(vocab))
 
     # md = 'melody'
     md = 'full'
     pop, mst, lmd = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in ['POP909', 'MAESTRO', 'LMD']]
 
-    # songs = [songs[0][:256], songs[1][:256]]
-    # mic(type(songs))
-    # mic(len(songs))
-    # mic(type(songs[0]), len(songs[0]))
-
     def check_tokenize_train():
+        mv = MusicVocabulary()
         unk = '[UNK]'
         tokenizer = Tokenizer(model=models.WordPiece(vocab=None, unk_token=unk, max_input_chars_per_word=int(1e10)))
         # input scores already cleaned, no normalizer needed
@@ -519,26 +438,55 @@ if __name__ == '__main__':
         mic(tokenizer.get_vocab())
     # check_tokenize_train()
 
-    def try_char_map():
+    def check_s2c_cache_chars():
+        """
+        see at a glance all the characters & remove ones that can't be displayed
+
+        ideally, those should take same width as English characters
+        """
+        cache = Score2Chars.uni_chars_cache
+        mic(len(cache))
+        print(''.join(cache))
+        not_printable = []
+        for i, c in enumerate(cache):
+            # mic(i, c)
+            if not c.isprintable():
+                mic(i, c)
+                not_printable.append(c)
+        mic(not_printable)
+    # check_s2c_cache_chars()
+
+    def try_char_map(kind: str = 'midi'):
+        mv = MusicVocabulary(pitch_kind=kind)
+        if kind == 'midi':
+            sample = sample_full_midi
+        else:
+            assert kind == 'step'
+            sample = sample_full_step
         # chs = get_uni_chars(40)
         # mic(chs, len(chs))
         # exit(1)
         s2c = Score2Chars(mv)
-        sample_txt_ = mv.clean_uncommon(sample_txt, return_joined=False)
+        sample_txt_ = mv.clean_uncommon(sample, return_joined=False)
         encoded = s2c(sample_txt_)
         mic(encoded)
         decoded = s2c.decode(encoded)
         mic(decoded)
         assert ' '.join(sample_txt_) == decoded
-    # try_char_map()
+    # try_char_map(kind='midi')
+    try_char_map(kind='step')
 
     def train():
         from collections import Counter
 
         from tqdm.auto import tqdm
 
-        # dnms = [pop]
-        dnms = [pop, mst, lmd]
+        dnms = [pop]
+        # dnms = [pop, mst, lmd]
+
+        aug_key = True
+        mv = MusicVocabulary(pitch_kind='degree' if aug_key else 'midi')
+
         vocab_size, svs = None, None
         sv = True
         # sv = False
@@ -554,8 +502,8 @@ if __name__ == '__main__':
             vocab_size = 4096 * 4
             if sv:
                 sv = 'WordPiece-Tokenizer_{dnm=all}'
-        wmt = WordPieceMusicTrainer(mv, independent_global_token=True, punctuate=True)
-        songs = load_songs(*dnms)
+        wmt = WordPieceMusicTrainer(vocab=mv, augment_key=aug_key, independent_global_token=True, punctuate=True)
+        songs = load_songs(*dnms, score_only=False)
         tokenizer = wmt(vocab_size=vocab_size, songs=songs, save=sv)
 
         s2c = wmt.s2c
@@ -563,7 +511,7 @@ if __name__ == '__main__':
         check_preserve = False
         # check_preserve = True
         if check_preserve:
-            sample_txt_ = mv.clean_uncommon(sample_txt)
+            sample_txt_ = mv.clean_uncommon(sample_full)
             encoded = s2c(sample_txt_)
             encoded = tokenizer.encode(encoded).ids
             decoded = tokenizer.decode(encoded)
@@ -595,7 +543,7 @@ if __name__ == '__main__':
         # map_single = _CheckTrainedMap(mv, tokenizer)
         # mic(map_single(sample_txt2))
 
-        sample_txt2_cleaned = tokenizer.vocab.clean_uncommon(sample_txt2)
+        sample_txt2_cleaned = tokenizer.vocab.clean_uncommon(sample_full)
         # encoded = tokenizer.tokenize(sample_txt2_cleaned)
         # mic(encoded)
 
@@ -623,6 +571,9 @@ if __name__ == '__main__':
 
     def check_trained_tokenize_all():
         from collections import Counter
+
+        aug_key = True
+        mv = MusicVocabulary(pitch_kind='degree' if aug_key else 'midi')
 
         fnm = '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
         tokenizer = WordPieceMusicTokenizer.from_file(fnm)
@@ -667,16 +618,16 @@ if __name__ == '__main__':
                 if check_dist:
                     c.update(tokenizer.convert_ids_to_tokens(ids))
             mic(c)
-    check_trained_tokenize_all()
+    # check_trained_tokenize_all()
 
     def check_id2pch():
         tokenizer = MusicTokenizer()
-        ids = tokenizer.encode(sample_txt)
+        ids = tokenizer.encode(sample_full)
         pchs = tokenizer.ids2pitches(ids)
         mic(len(ids), len(pchs))
 
         wp_tokenizer = load_trained_tokenizer()
-        ids = wp_tokenizer.encode(sample_txt)
+        ids = wp_tokenizer.encode(sample_full)
         wp_pchs = wp_tokenizer.ids2pitches(ids)
         mic(len(ids), len(wp_pchs))
         assert wp_pchs == pchs

@@ -163,6 +163,12 @@ def note2dur(note: ExtNote) -> Dur:
         return note.duration.quarterLength
 
 
+def pitch2pitch_cleaned(pitch: Pitch) -> Pitch:
+    ret = Pitch(name=pitch.name, octave=pitch.octave)
+    assert ret.midi == pitch.midi and ret.step == pitch.step  # the only 2 properties we care about
+    return ret
+
+
 def note2note_cleaned(
         note: ExtNote, q_len=None, offset=None, for_output: bool = False, from_tuplet: bool = False
 ) -> ExtNote:
@@ -212,8 +218,11 @@ def note2note_cleaned(
     dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
     assert isinstance(note, (Note, Rest, Chord))
     if isinstance(note, Note):  # Removes e.g. `tie`s
-        pch = note.pitch
-        nt = Note(pitch=Pitch(midi=pch.midi, step=pch.step), **dur_args)
+        # if Pitch(midi=note.pitch.midi, step=note.pitch.step).step != note.pitch.step:
+        #     mic(pitch2pitch_cleaned(note.pitch), note.pitch, Pitch(midi=note.pitch.midi, step=note.pitch.step))
+        #     mid = note.pitch.midi
+        #     mic(mid % 12 + 1, mid // 12 - 1)
+        nt = Note(pitch=pitch2pitch_cleaned(note.pitch), **dur_args)
     elif isinstance(note, Rest):
         nt = Rest(offset=note.offset, **dur_args)
     else:

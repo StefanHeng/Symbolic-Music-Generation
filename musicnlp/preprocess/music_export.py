@@ -323,10 +323,10 @@ if __name__ == '__main__':
     # check_export_json_error()
 
     def export2json():
-        # dnm = 'POP909'
+        dnm = 'POP909'
         # dnm = 'MAESTRO'
         # dnm = 'LMD, MS'
-        dnm = 'LMD, LP'
+        # dnm = 'LMD, LP'
 
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
@@ -339,7 +339,7 @@ if __name__ == '__main__':
             save_each=True,
             with_tqdm=True,
             # parallel=False,
-            parallel=64,
+            parallel=8,
             parallel_mode=pl_md,
             # n_worker=1
         )
@@ -409,7 +409,7 @@ if __name__ == '__main__':
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    # export2json()
+    export2json()
 
     def _folder2count(path: str) -> int:
         _, _, fls = next(os.walk(path))
@@ -429,7 +429,7 @@ if __name__ == '__main__':
             pa = os_join(path, fd_nm)
             counts[fd_nm] = _folder2file_counts(pa) if 'LMD' in fd_nm else _folder2count(pa)
         print(pl.fmt(dict(counts=counts)))
-    check_extract_progress()
+    # check_extract_progress()
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
         fl_pattern = '*.json'
@@ -449,9 +449,9 @@ if __name__ == '__main__':
             combine_single_json_songs(singe_song_dir='22-10-02_MAESTRO_{md=m}', dataset_name='MAESTRO')
             # combine_single_json_songs(singe_song_dir='', dataset_name='LMD')
         else:
-            combine_single_json_songs(singe_song_dir='22-10-02_POP909_{md=f}', dataset_name='POP909')
-            combine_single_json_songs(singe_song_dir='22-10-02_MAESTRO_{md=f}', dataset_name='MAESTRO')
-            combine_single_json_songs(singe_song_dir='22-10-02_LMD_{md=f}', dataset_name='LMD')
+            # combine_single_json_songs(singe_song_dir='22-10-20_POP909_{md=f}', dataset_name='POP909')
+            # combine_single_json_songs(singe_song_dir='22-10-20_MAESTRO_{md=f}', dataset_name='MAESTRO')
+            combine_single_json_songs(singe_song_dir='22-10-20_LMD_{md=f}', dataset_name='LMD')
     # combine()
 
     def json2dset_with_split():
@@ -466,9 +466,9 @@ if __name__ == '__main__':
             fnm = '22-10-03_Extracted-MAESTRO_{n=1276}_{md=m, prec=5, th=1}'
             # fnm = ''
         else:
-            # fnm = '22-10-03_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
-            # fnm = '22-10-03_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}'
-            fnm = '22-10-03_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
+            # fnm = '22-10-21_Extracted-POP909_{n=909}_{md=f, prec=5, th=8}'
+            # fnm = '22-10-21_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=8}'
+            fnm = '22-10-21_Extracted-LMD_{n=176640}_{md=f, prec=5, th=8}'
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
         mic(dset)
         mic(len(dset['train']), len(dset['test']))
@@ -588,7 +588,7 @@ if __name__ == '__main__':
         import re
         import shutil
 
-        dir_nm = '22-10-02_LMD_{md=f}'
+        dir_nm = '22-10-20_LMD_{md=f}'
         path_process_base = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
         path_to_process = os_join(path_process_base, 'many, lp')
         mic(path_to_process)

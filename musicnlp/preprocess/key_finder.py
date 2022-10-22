@@ -14,6 +14,9 @@ from musicnlp.util.music_lib import *
 from musicnlp.vocab import Key, enum2key_str
 
 
+__all__ = ['KeyFinder', 'ScaleDegreeFinder']
+
+
 # Tuple of key and (un-normalized) confidence score
 Keys = Tuple[List[str], List[str]]
 KeysDict = Dict[Union[Key, str], float]
@@ -239,7 +242,7 @@ class ScaleDegreeFinder:
         return ret
 
     @staticmethod
-    def map_single(note: SNote, key: Union[Key, str]) -> int:
+    def map_single(note: Union[SNote, str], key: Union[Key, str]) -> int:
         """
         Map a note object to its scale degree in [1-7]
 
@@ -248,8 +251,9 @@ class ScaleDegreeFinder:
         """
         if isinstance(note, Rest):  # Rest notes don't have a scale degree
             return 0
-        elif isinstance(note, Note):
-            deg = ScaleDegreeFinder.t0_degrees[note.pitch.step]
+        elif isinstance(note, (str, Note)):
+            step = note.pitch.step if isinstance(note, Note) else note
+            deg = ScaleDegreeFinder.t0_degrees[step]
             if isinstance(key, Key):
                 key = enum2key_str[key]
             return (deg - ScaleDegreeFinder.t0_degrees[key[0]]) % 7 + 1

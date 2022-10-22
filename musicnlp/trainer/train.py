@@ -24,14 +24,17 @@ from musicnlp.trainer import WordPieceMusicTokenizer, load_trained_tokenizer as 
 
 
 def get_model_n_tokenizer(
-        model_name: str, model_size: str, prec: int = 5, wordpiece_tokenize: bool = False, model_config: Dict = None
+        model_name: str, model_size: str, prec: int = 5, wordpiece_tokenize: bool = False, insert_key: bool = False,
+        model_config: Dict = None
 ) -> Tuple[MusicTokenizer, torch.nn.Module, OrderedDict]:
     ca.check_mismatch('Model Name', model_name, ['transf-xl', 'reformer'])
+    # TODO: without augment key, use `step` for training, which is more info?
+    pitch_kind = 'degree' if insert_key else 'midi'
     if wordpiece_tokenize:
-        tokenizer: WordPieceMusicTokenizer = load_wordpiece_tokenizer()
+        tokenizer: WordPieceMusicTokenizer = load_wordpiece_tokenizer(pitch_kind=pitch_kind)
         assert tokenizer.precision == prec
     else:
-        tokenizer: MusicTokenizer = MusicTokenizer(precision=prec)
+        tokenizer: MusicTokenizer = MusicTokenizer(precision=prec, pitch_kind=pitch_kind)
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
         get_model_n_tokenizer.d_nm2cls = {
             'transf-xl': (MyTransfoXLConfig, MyTransfoXLLMHeadModel),
@@ -192,7 +195,7 @@ class TrainArgs:
             args.update(train_args)
 
         my_args: Dict[str, Union[int, str]] = dict(
-            logging_strategy='steps', tqdm=False, augment_key=False, proportional_mixing=False
+            logging_strategy='steps', tqdm=False, insert_key=False, proportional_mixing=False
         )
         my_args.update(my_train_args or dict())
         bsz = args['per_device_train_batch_size'] * args.get('gradient_accumulation_steps', 1)
@@ -304,22 +307,23 @@ def get_all_setup(
     )
     logger.info(f'Initializing training with {pl.fmt(d_log)}... ')
     my_train_args = my_train_args or dict()
-    wordpiece_tokenize, aug_key, mix_up, prop_mix = (
+    wordpiece_tokenize, ins_key, pch_shift, mix_up, prop_mix = (
         my_train_args.get(k, False)
-        for k in ['wordpiece_tokenize', 'augment_key', 'channel_mixup', 'proportional_mixing']
+        for k in ['wordpiece_tokenize', 'insert_key', 'pitch_shift', 'channel_mixup', 'proportional_mixing']
     )
     logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
-        model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, model_config=model_config
+        model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, insert_key=ins_key,
+        model_config=model_config
     )
 
     logger.info('Loading datasets... ')
     dset_args = dataset_args or dict()
 
     def load_once(dset_nms: Union[str, List[str]], **kwargs) -> datasets.DatasetDict:
-        if aug_key or mix_up:
+        if ins_key or pch_shift or mix_up:
             dset_args_ = dict(
-                get_dataset_kwargs=dset_args | kwargs, augment_key=aug_key, channel_mixup=mix_up,
+                get_dataset_kwargs=dset_args | kwargs, insert_key=ins_key, channel_mixup=mix_up, pitch_shift=pch_shift,
                 mode=my_train_args['mode']
             )
             logger.info(f'Loading {pl.i("Augmented")} dataset w/ {pl.i(dict(dataset_names=dset_nms) | dset_args_)}... ')
@@ -344,8 +348,8 @@ def get_all_setup(
         get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer.precision for ds in dset.values()
     )
 
-    cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if aug_key else 'vanilla')
-    if aug_key:
+    cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if ins_key else 'vanilla')
+    if ins_key:
         cls = train_util.MyTrainer
     else:  # if key not augmented, need to pass key info to each song for IKR logging
         # raise NotImplementedError(f'Update eval override after {pl.i("preprocess_logits_for_metrics")}')
@@ -390,24 +394,25 @@ if __name__ == '__main__':
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
         md_nm = 'reformer'
-        # md_sz = 'debug'
+        md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
         # md_sz = 'base'
-        md_sz = 'large'
+        # md_sz = 'large'
         mic(md_nm, md_sz)
 
         # TODO: smaller seq-len for now, until it shows longer dependency
-        model_config = None
-        # model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
+        # model_config = None
+        model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
 
-        augment_key = True
+        insert_key = True
+        pch_shift = True
         wordpiece_tokenize = True
         # channel_mixup = 'full'
         channel_mixup = False
         prop_mix = 1280
-        mic(augment_key, wordpiece_tokenize, channel_mixup, prop_mix)
+        mic(insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix)
 
         # n = 64
         n = None
@@ -420,10 +425,8 @@ if __name__ == '__main__':
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
             tqdm=True, logging_strategy='no',
-            augment_key=augment_key, proportional_mixing=prop_mix,
-            wordpiece_tokenize=wordpiece_tokenize,
-            channel_mixup=channel_mixup,
-            mode=md
+            mode=md, wordpiece_tokenize=wordpiece_tokenize, proportional_mixing=prop_mix,
+            insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup
         )
         trainer_args = dict(disable_train_metrics=True)
 
@@ -468,23 +471,22 @@ if __name__ == '__main__':
         n_ep = 128
         if 'debug' in md_sz:
             model_config = dict(max_length=64)
-            augment_key, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False
+            insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False, False
         else:
             model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
-            augment_key = True
+            insert_key = True
+            pch_shift = True
             wordpiece_tokenize = True
             channel_mixup = 'full'
             # prop_mix = 1536
             prop_mix = 1024 + 256
-        mic(augment_key, wordpiece_tokenize, channel_mixup, prop_mix)
+        mic(insert_key, wordpiece_tokenize, channel_mixup, prop_mix)
 
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
             tqdm=True, logging_strategy='no',
-            augment_key=augment_key, proportional_mixing=prop_mix,
-            wordpiece_tokenize=wordpiece_tokenize,
-            channel_mixup=channel_mixup,
-            mode=md
+            mode=md, wordpiece_tokenize=wordpiece_tokenize, proportional_mixing=prop_mix,
+            insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup
         )
         trainer_args = dict(disable_train_metrics=True)
 

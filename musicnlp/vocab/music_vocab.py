@@ -143,7 +143,7 @@ class MusicVocabulary:
         VocabType.special: 'm'
     }
 
-    _atonal_pitch_index2step_name: Dict[int, List[str]] = {  # Possible pitch step names given the index
+    _atonal_pitch_index2name: Dict[int, List[str]] = {  # Possible pitch step names given the index
         1: ['C'],
         2: ['C#', 'D-'],
         3: ['D'],
@@ -232,6 +232,18 @@ class MusicVocabulary:
         self.tok2id: Dict[str, int] = {  # back-to0back index as ids
             tok: id_ for id_, tok in enumerate(chain_its(toks for toks in self.toks.values()))
         }
+        _tok_added = set()
+        _tok_dup = []
+        # for tok in chain_its(toks for toks in self.toks.values()):
+        mic(len(self.toks['pitch']))
+        for tok in self.toks['pitch']:
+            if tok in _tok_added:
+                _tok_dup.append(tok)
+            _tok_added.add(tok)
+        mic(len(_tok_dup))
+        if len(_tok_dup):
+            raise ValueError(f'Duplicate tokens: {pl.i(_tok_dup)}')
+        mic(self.tok2id, len(self.tok2id))
         self.id2tok = {v: k for k, v in self.tok2id.items()}
         assert len(self.tok2id) == len(self.id2tok)  # Sanity check: no id collision
 
@@ -257,14 +269,16 @@ class MusicVocabulary:
         if self.pitch_kind == 'midi':
             return ret + [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
         elif self.pitch_kind == 'step':
-            args = []
+            pchs = []
             for i in range(128):
-                d = dict(midi=i)
                 idx = MusicVocabulary._pitch2local_index(i)
-                for step in MusicVocabulary._atonal_pitch_index2step_name[idx]:
-                    args.append(d | dict(step=step[0]))
-            return ret + [self.note2pitch_str(Pitch(**d)) for d in args]
-        else:
+                for name in MusicVocabulary._atonal_pitch_index2name[idx]:
+                    pch = Pitch(name=name, octave=MusicVocabulary.pitch_midi2octave(midi=i))
+                    # pch.step = name[0]  # passing into constructor directly doesn't work
+                    assert pch.midi == i
+                    pchs.append(pch)
+            return ret + [self.note2pitch_str(p) for p in pchs]
+        else:  # `degree`
             degs = list(range(1, 7+1))
             return ret + [self.note2pitch_str(Pitch(midi=i), degree=d) for i in range(128) for d in degs]
 
@@ -409,7 +423,7 @@ class MusicVocabulary:
             if compact == MusicVocabulary.rest_pitch_code:
                 return self.cache['rest']
             else:
-                pch, octave = compact % 12 + 1, compact // 12 - 1
+                pch, octave = compact % 12 + 1, MusicVocabulary.pitch_midi2octave(midi=compact)
                 return f'{self.cache["pref_pch"]}{pch}/{octave}'
         elif kind == VocabType.time_sig:
             assert isinstance(compact, tuple)
@@ -417,6 +431,10 @@ class MusicVocabulary:
         else:  # VocabType.tempo
             assert isinstance(compact, int)
             return f'{self.cache["pref_tempo"]}{compact}'
+
+    @staticmethod
+    def pitch_midi2octave(midi: int) -> int:
+        return midi // 12 - 1
 
     @staticmethod
     def pitch_midi2name(midi: int) -> str:
@@ -535,7 +553,7 @@ class MusicVocabulary:
         midi = p.midi if isinstance(p, Pitch) else p
         return (midi % 12) + 1
 
-    def note2pitch_str(self, note: Union[Note, Rest, Pitch], degree: int = None) -> str:
+    def note2pitch_str(self, note: Union[Note, Rest, Pitch, int], degree: int = None) -> str:
         """
         :param note: A note, tuplet, or a music21.pitch.Pitch
         :param degree: If given, the scale degree orginal of the note w.r.t a key
@@ -543,7 +561,12 @@ class MusicVocabulary:
         if isinstance(note, Rest):
             s = self.cache["rest"]
         else:
-            pitch = note.pitch if isinstance(note, Note) else note
+            if isinstance(note, int):
+                pitch = Pitch(midi=note)
+            elif isinstance(note, Note):
+                pitch = note.pitch
+            else:  # `Pitch`
+                pitch = note
             # `pitch.name` follows certain scale by music21 default, may cause confusion
             s = f'{self.cache["pref_pch"]}{MusicVocabulary._pitch2local_index(pitch)}/{pitch.octave}'
             if self.pitch_kind == 'step':
@@ -554,11 +577,22 @@ class MusicVocabulary:
                 s = f'{s}_{degree}'
         return pl.s(s, c='b') if self.color else s
 
+    def get_pitch_step(self, tok: str) -> str:
+        if self.pitch_kind in ['step', 'degree']:
+            m = self.pitch_pattern.match(tok)
+            step = m.group('step')
+            if self.pitch_kind == 'degree':
+                step = int(step)
+            return step
+        else:  # `midi`
+            raise ValueError(f'Step is not part of vocabulary for pitch kind {pl.i(self.pitch_kind)}')
+
     def clean_uncommon_token(self, tok: str) -> str:
         if tok in self.tok2id:
             return tok
         else:
             typ = self.type(tok)
+            mic(tok, typ)
             assert typ in (VocabType.duration, VocabType.time_sig, VocabType.tempo)  # sanity check
             if typ == VocabType.duration:
                 return MusicVocabulary.uncommon_duration
@@ -609,18 +643,15 @@ class MusicVocabulary:
 if __name__ == '__main__':
     mic.output_width = 256
 
-    mv = MusicVocabulary()
-    # mic(mv.get_durations(exp='dur'))
-
-    # mic(mv.to_dict(save=True))
-
     def check_vocab_size():
+        mv = MusicVocabulary()
         for k, v in mv.toks.items():
             mic(k, len(v))
         mic(sum(len(v) for v in mv.toks.values()))
     # check_vocab_size()
 
     def check_compact_pitch():
+        mv = MusicVocabulary()
         for i in range(128):
             pch = Pitch(midi=i)
             tok = mv.note2pitch_str(pch)
@@ -636,8 +667,8 @@ if __name__ == '__main__':
         mv_ = MusicVocabulary(pitch_kind=kind)
         pchs = mv_.toks['pitch']
         mic(pchs, len(pchs))
-    # check_pitch_set(kind='step')
-    check_pitch_set(kind='degree')
+    check_pitch_set(kind='step')
+    # check_pitch_set(kind='degree')
 
     def sanity_check_uncom():
         """
@@ -652,6 +683,7 @@ if __name__ == '__main__':
 
         np.random.seed(sconfig('random-seed'))
 
+        mv = MusicVocabulary()
         dnm = 'musicnlp music extraction, dnm=LMD, n=176640, meta={mode=melody, prec=5, th=1}, 2022-05-27_15-23-20'
         path = os_join(music_util.get_processed_path(), 'hf', dnm)
         dsets = datasets.load_from_disk(path)

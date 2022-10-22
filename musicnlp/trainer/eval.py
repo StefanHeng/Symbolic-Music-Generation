@@ -35,9 +35,10 @@ def load_trained(
                 ('reformer', 'All', '5-16ep'): ['2022-10-09_01-36-18_reformer', 'checkpoint-6850'],  # 1e-4
                 # w/ a loss slightly larger than the last one, generated not good
                 ('reformer', 'All', '16-16ep'): ['2022-10-09_01-36-18_reformer', 'trained'],  # 1e-4
-
                 # 1st try of proportional mixing, model w/ the best loss loaded in the end
-                ('reformer', 'All', 'x-128ep'): ['2022-10-15_22-44-10_reformer', 'trained']
+                ('reformer', 'All', 'x-128ep'): ['2022-10-15_22-44-10_reformer', 'trained'],
+
+                ('transf-xl', 'All', 'x-128ep'): ['2022-10-19_04-50-21_transf-xl', 'trained']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -216,7 +217,7 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # md_k = 'reformer', 'P&M', '256-256ep'
-    md_k = md_nm, ds_nm, ep_nm = 'reformer', 'All', 'x-128ep'
+    md_k = md_nm, ds_nm, ep_nm = 'transf-xl', 'All', 'x-128ep'
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
     sv_dir = f'{md_nm}_{ds_nm}_{ep_nm}'

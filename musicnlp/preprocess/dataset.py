@@ -1,6 +1,6 @@
 import os
 import json
-import random
+
 from os.path import join as os_join
 from typing import List, Tuple, Dict, Callable, Any, Union, Optional
 
@@ -10,8 +10,8 @@ from datasets import Dataset, DatasetDict, DatasetInfo
 
 from stefutil import *
 import musicnlp.util.music as music_util
-from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocabulary, MusicTokenizer
-from musicnlp.preprocess.music_converter import MusicConverter
+from musicnlp.vocab import VocabType, MusicTokenizer
+from musicnlp.preprocess.transform import *
 
 
 __all__ = [
@@ -24,20 +24,20 @@ DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {
     # `dataset name` => `mode` => `filename`
     'LMD': {
         'melody': '',
-        'full': '22-10-03_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
+        'full': '22-10-21_Extracted-LMD_{n=176640}_{md=f, prec=5, th=8}'
     },
     'MAESTRO': {
-        'melody': '22-10-03_Extracted-MAESTRO_{n=1276}_{md=m, prec=5, th=1}',
-        'full': '22-10-03_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}',
+        'melody': '',
+        'full': '22-10-21_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=8}',
     },
     'POP909': {
-        'melody': '22-10-03_Extracted-POP909_{n=909}_{md=m, prec=5, th=1}',
-        'full': '22-10-03_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
+        'melody': '',
+        'full': '22-10-21_Extracted-POP909_{n=909}_{md=f, prec=5, th=8}'
     }
 }
 
 
-def load_songs(*dnms) -> List[str]:
+def load_songs(*dnms, score_only: bool = True) -> Union[List[str], List[Dict[str, Any]]]:
     """
     Get individual song `score`s from a JSON `music_export` output
     """
@@ -48,7 +48,7 @@ def load_songs(*dnms) -> List[str]:
         load_songs.logger.info(f'Loading songs in dataset {pl.i(dnm_)}... ')
         with open(os.path.join(music_util.get_processed_path(), f'{dnm_}.json'), 'r') as f:
             dset = json.load(f)
-        return [s['score'] for s in dset['music']]
+        return [(s['score'] if score_only else s) for s in dset['music']]
     return sum((_load_single(dnm_) for dnm_ in dnms), start=[])
 
 
@@ -110,95 +110,6 @@ def get_dataset(
     return dset
 
 
-class ChannelMixer:
-    """
-    Reorder notes across channels while keeping the order within the channel
-
-    For each change of channel, prefix it
-    """
-    e_m, e_b = MusicElement(type=ElmType.melody), MusicElement(type=ElmType.bass)
-
-    def __init__(self, precision: int = 5, vocab: MusicVocabulary = None, mode: str = 'full'):
-        self.mc = MusicConverter(mode='full', precision=precision, vocab=vocab)
-        self.vocab = self.mc.vocab
-
-        ca(channel_mixup=mode)
-        self.mode = mode
-
-    def __call__(self, text: str, return_as_list: bool = False) -> str:
-        out = self.mc.str2notes(text, group=True)
-
-        # sanity_check = True
-        sanity_check = False
-        if sanity_check:
-            for elms in out.elms_by_bar:
-                mixed = self._mix_up_bar_notes(elms)
-                d = self.mc.split_notes(mixed)
-                mic(elms, mixed, d)
-                recon = [
-                    MusicElement(type=ElmType.melody), *d['melody'], MusicElement(type=ElmType.bass), *d['bass']
-                ]
-                assert elms == recon  # sanity check reconstruction, no info loss
-            exit(1)
-        ret = self.vocab.music_elm2toks(out.time_sig) + self.vocab.music_elm2toks(out.tempo)
-        if out.key:
-            ret += self.vocab.music_elm2toks(out.key)
-        ret += sum((self._bar_music_elms2str(elms) for elms in out.elms_by_bar), start=[])
-        ret += [self.vocab.end_of_song]
-        return ret if return_as_list else ' '.join(ret)
-
-    def _bar_music_elms2str(self, elms: List[MusicElement]):
-        return [self.vocab.start_of_bar] + sum(
-            (self.vocab.music_elm2toks(e) for e in self._mix_up_bar_notes(elms)), start=[]
-        )
-
-    @staticmethod
-    def _bin_sample() -> bool:
-        return random.randint(0, 1) == 0
-
-    def _mix_up_bar_notes(self, elms: List[MusicElement]) -> List[MusicElement]:
-        d_notes = self.mc.split_notes(elms)
-        notes_m, notes_b = d_notes['melody'], d_notes['bass']
-
-        if self.mode == 'full':
-            notes_m, notes_b = iter(notes_m), iter(notes_b)
-            elms = []
-            note_m, note_b = next(notes_m, None), next(notes_b, None)
-            c_cur, c_prev = None, None
-            add_mel = None
-            while note_m and note_b:
-                add_mel = ChannelMixer._bin_sample()
-                c_cur = Channel.melody if add_mel else Channel.bass
-                diff_c = c_cur != c_prev
-                if diff_c:
-                    elms.append(ChannelMixer.e_m if add_mel else ChannelMixer.e_b)
-                if c_cur == Channel.melody:
-                    elms.append(note_m)
-                    note_m = next(notes_m, None)
-                else:
-                    elms.append(note_b)
-                    note_b = next(notes_b, None)
-                c_prev = c_cur
-            assert add_mel is not None  # sanity check
-            if note_m:
-                if not add_mel:
-                    elms.append(ChannelMixer.e_m)
-                elms.append(note_m)
-                elms.extend(notes_m)
-            else:
-                if add_mel:
-                    elms.append(ChannelMixer.e_b)
-                assert note_b
-                elms.append(note_b)
-                elms.extend(notes_b)
-            return elms
-        else:  # `swap`
-            if ChannelMixer._bin_sample():
-                return elms
-            else:  # swap at 50% chance
-                return [ChannelMixer.e_b, *notes_b, ChannelMixer.e_m, *notes_m]
-
-
 class AugmentedDataset:
     """
     A wrapper around a datasets.Dataset, with my custom augmentation about
@@ -212,8 +123,8 @@ class AugmentedDataset:
         See `musicnlp.preprocess.key_finder.py`
     """
     def __init__(
-            self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None,
-            augment_key: bool = False, channel_mixup: Union[bool, str] = False, mode: str = None
+            self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None,  mode: str = None,
+            insert_key: bool = False, pitch_shift: bool = False, channel_mixup: Union[bool, str] = False
     ):
         ca(extract_mode=mode)
         if isinstance(dataset, str):
@@ -230,20 +141,29 @@ class AugmentedDataset:
         else:
             self.tokenizer = MusicTokenizer(precision=prec)
 
-        self.augment_key = augment_key
-        self.channel_mixup = channel_mixup
-        if channel_mixup and mode != 'full':
-            raise ValueError(f'{pl.i("mix_up")} only works with mode={pl.i("full")}')
-        self.cm = None
+        self.ki, self.ps, self.cm = None, None, None
+        self.insert_key, self.pitch_shift, self.channel_mixup = insert_key, pitch_shift, channel_mixup
+        if insert_key:
+            self.ki = KeyInsert(vocab=self.tokenizer.vocab, return_as_list=True)
+        if pitch_shift:
+            if not insert_key:
+                raise ValueError('A key must be inserted for pitch shifting')
+            pk = self.tokenizer.vocab.pitch_kind
+            if pk != 'degree':
+                raise ValueError(f'Tokenization will not work: '
+                                 f'Pitch Kind should be {pl.i("degree")} for pitch shifting, but found {pl.i(pk)}')
+            self.ps = PitchShift(return_as_list=True)
         if channel_mixup:
+            if mode != 'full':
+                raise ValueError(f'{pl.i("mix_up")} only works with mode={pl.i("full")}')
             mode = 'full' if isinstance(channel_mixup, bool) else channel_mixup
-            self.cm = ChannelMixer(precision=prec, vocab=self.tokenizer.vocab, mode=mode)
+            self.cm = ChannelMixer(precision=prec, vocab=self.tokenizer.vocab, mode=mode, return_as_list=True)
 
     @property
     def meta(self) -> Dict[str, Any]:
         d = dict()
-        if self.augment_key:
-            d['aug_key'] = 'T'
+        if self.insert_key:
+            d['ins_key'] = 'T'
         if self.channel_mixup:
             d['mix_up'] = self.cm.mode[0]
         return d
@@ -276,18 +196,12 @@ class AugmentedDataset:
 
         item = self.dset[idx]
         toks = item['score']
+        if self.insert_key:
+            toks = self.ki(toks, keys=item['keys'])
+        if self.pitch_shift:
+            toks = self.ps(toks)
         if self.channel_mixup:
-            toks = self.cm(toks, return_as_list=True)
-        if self.augment_key:
-            if isinstance(toks, list):  # already split into tokens, by `channel_mixup`
-                toks = toks
-            else:
-                toks = toks.split()
-            assert self.tokenizer.vocab.type(toks[0]) == VocabType.time_sig  # sanity check data well-formed
-            assert self.tokenizer.vocab.type(toks[1]) == VocabType.tempo
-
-            key_tok = self.tokenizer.vocab(pt_sample(item['keys']))[0]
-            toks.insert(2, key_tok)
+            toks = self.cm(toks)
         if isinstance(toks, list):
             toks = ' '.join(toks)
         return self.tokenizer(toks, padding='max_length', truncation=True)
