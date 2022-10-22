@@ -301,7 +301,7 @@ class MusicConverter:
 
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
-    from musicnlp._sample_score import sample_full, gen_broken
+    from musicnlp._sample_score import sample_full_midi, gen_broken
 
     md = 'full'
     mc = MusicConverter(mode=md)
@@ -316,7 +316,7 @@ if __name__ == '__main__':
     # check_map_elm()
 
     def check_encode():
-        scr = mc.str2score(sample_full, omit_eos=True, title='Test')
+        scr = mc.str2score(sample_full_midi, omit_eos=True, title='Test')
         mic(scr)
         scr.show()
     # check_encode()

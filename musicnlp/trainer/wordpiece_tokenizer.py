@@ -416,7 +416,7 @@ if __name__ == '__main__':
 
     def sanity_check_split():
         pre_tokenizer = pre_tokenizers.WhitespaceSplit()  # split on whitespace only
-        mic(pre_tokenizer.pre_tokenize_str(sample_full))
+        mic(pre_tokenizer.pre_tokenize_str(sample_full_midi))
     # sanity_check_split()
 
     # md = 'melody'
@@ -511,7 +511,7 @@ if __name__ == '__main__':
         check_preserve = False
         # check_preserve = True
         if check_preserve:
-            sample_txt_ = mv.clean_uncommon(sample_full)
+            sample_txt_ = mv.clean_uncommon(sample_full_midi)
             encoded = s2c(sample_txt_)
             encoded = tokenizer.encode(encoded).ids
             decoded = tokenizer.decode(encoded)
@@ -543,7 +543,7 @@ if __name__ == '__main__':
         # map_single = _CheckTrainedMap(mv, tokenizer)
         # mic(map_single(sample_txt2))
 
-        sample_txt2_cleaned = tokenizer.vocab.clean_uncommon(sample_full)
+        sample_txt2_cleaned = tokenizer.vocab.clean_uncommon(sample_full_midi)
         # encoded = tokenizer.tokenize(sample_txt2_cleaned)
         # mic(encoded)
 
@@ -622,12 +622,12 @@ if __name__ == '__main__':
 
     def check_id2pch():
         tokenizer = MusicTokenizer()
-        ids = tokenizer.encode(sample_full)
+        ids = tokenizer.encode(sample_full_midi)
         pchs = tokenizer.ids2pitches(ids)
         mic(len(ids), len(pchs))
 
         wp_tokenizer = load_trained_tokenizer()
-        ids = wp_tokenizer.encode(sample_full)
+        ids = wp_tokenizer.encode(sample_full_midi)
         wp_pchs = wp_tokenizer.ids2pitches(ids)
         mic(len(ids), len(wp_pchs))
         assert wp_pchs == pchs

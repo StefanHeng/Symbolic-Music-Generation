@@ -42,7 +42,7 @@ __all__ = [
     
     'ExtNote', 'SNote', 'Dur', 'TsTup', 'ordinal2dur_type', 'ScoreExt',
     'time_sig2n_slots',
-    'eps', 'is_int', 'is_8th', 'quarter_len2fraction',
+    'eps', 'is_int', 'is_8th', 'quarter_len2fraction', 'pitch2pitch_cleaned',
     'note2pitch', 'note2dur', 'note2note_cleaned', 'notes2offset_duration',
     'time_sig2bar_dur',
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
@@ -218,10 +218,6 @@ def note2note_cleaned(
     dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
     assert isinstance(note, (Note, Rest, Chord))
     if isinstance(note, Note):  # Removes e.g. `tie`s
-        # if Pitch(midi=note.pitch.midi, step=note.pitch.step).step != note.pitch.step:
-        #     mic(pitch2pitch_cleaned(note.pitch), note.pitch, Pitch(midi=note.pitch.midi, step=note.pitch.step))
-        #     mid = note.pitch.midi
-        #     mic(mid % 12 + 1, mid // 12 - 1)
         nt = Note(pitch=pitch2pitch_cleaned(note.pitch), **dur_args)
     elif isinstance(note, Rest):
         nt = Rest(offset=note.offset, **dur_args)

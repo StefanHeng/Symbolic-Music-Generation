@@ -5,6 +5,7 @@ from os.path import join as os_join
 from enum import Enum
 from typing import List, Tuple, Set, Dict, Iterator, Optional, Union, Literal
 from fractions import Fraction
+from dataclasses import dataclass
 from collections import OrderedDict
 
 import numpy as np
@@ -72,6 +73,15 @@ Compact = Union[
 
 
 WORDPIECE_CONTINUING_PREFIX = '##'
+
+
+@dataclass
+class PitchNames:
+    """
+    All possible pitch names for a given pitch ordinal
+    """
+    normal: List[str] = None
+    rare: List[str] = None
 
 
 class MusicVocabulary:
@@ -143,24 +153,26 @@ class MusicVocabulary:
         VocabType.special: 'm'
     }
 
-    _atonal_pitch_index2name: Dict[int, List[str]] = {  # Possible pitch step names given the index
-        1: ['C'],
-        2: ['C#', 'D-'],
-        3: ['D'],
-        4: ['D#', 'E-'],
-        5: ['E'],
-        6: ['F'],
-        7: ['F#', 'G-'],
-        8: ['G'],
-        9: ['G#', 'A-'],
-        10: ['A'],
-        11: ['A#', 'B-'],
-        12: ['B']
+    _atonal_pitch_index2name: Dict[int, PitchNames] = {  # Possible pitch step names given the index
+        # for rare ones, keep only those observed in the dataset to save vocab size
+        1: PitchNames(normal=['C'], rare=['B#']),
+        2: PitchNames(normal=['C#', 'D-'], rare=[]),  # ['B##', 'C--']
+        3: PitchNames(normal=['D'], rare=[]),  # ['C##']
+        4: PitchNames(normal=['D#', 'E-'], rare=[]),  # ['C###', 'D--']
+        5: PitchNames(normal=['E'], rare=['F-']),  # ['D##']
+        6: PitchNames(normal=['F'], rare=['E#']),
+        7: PitchNames(normal=['F#', 'G-'], rare=[]),  # ['E##', 'F--']
+        8: PitchNames(normal=['G'], rare=['F##']),
+        9: PitchNames(normal=['G#', 'A-'], rare=[]),  # ['F###', 'G--']
+        10: PitchNames(normal=['A'], rare=['B--']),  # ['G##']
+        11: PitchNames(normal=['A#', 'B-'], rare=[]),  # ['G###', 'A--']
+        12: PitchNames(normal=['B'], rare=['C-'])  # ['A##']
     }
 
     # TODO: remove, original training was without key support
     def __init__(
-            self, precision: int = 5, color: bool = False, is_wordpiece: bool = False, pitch_kind: str = 'midi'
+            self, precision: int = 5, color: bool = False, is_wordpiece: bool = False, pitch_kind: str = 'midi',
+            with_rare_step: bool = True
     ):
         """
         :param precision: See `musicnlp.preprocess.music_extractor`
@@ -172,12 +184,15 @@ class MusicVocabulary:
                 intended for music extraction with pitch step name
             If `degree`, 128 pitches and its 7 possible ordinals w.r.t. a key,
                 intended for training with scale degree annotation
+        :param with_rare_step: If True, rare pitch steps are kept in the vocabulary
+            Relevant only when `pitch_kind` is `step`
         """
         self.precision = precision
         self.color = color
         self.is_wordpiece = is_wordpiece
         ca.check_mismatch('Unique Pitch Kind', pitch_kind, ['midi', 'step', 'degree'])
         self.pitch_kind = pitch_kind
+        self.with_rare_step = with_rare_step
 
         specs = MusicVocabulary.SPEC_TOKS  # Syntactic sugar
         sep = specs['sep']
@@ -229,21 +244,13 @@ class MusicVocabulary:
             pitch=self._get_all_unique_pitches(),
             duration=[MusicVocabulary.uncommon_duration, *self.get_durations(exp='str')]
         ))
+        for toks in self.toks.values():
+            assert len(set(toks)) == len(toks)  # sanity check no duplicate tokens
         self.tok2id: Dict[str, int] = {  # back-to0back index as ids
             tok: id_ for id_, tok in enumerate(chain_its(toks for toks in self.toks.values()))
         }
         _tok_added = set()
         _tok_dup = []
-        # for tok in chain_its(toks for toks in self.toks.values()):
-        mic(len(self.toks['pitch']))
-        for tok in self.toks['pitch']:
-            if tok in _tok_added:
-                _tok_dup.append(tok)
-            _tok_added.add(tok)
-        mic(len(_tok_dup))
-        if len(_tok_dup):
-            raise ValueError(f'Duplicate tokens: {pl.i(_tok_dup)}')
-        mic(self.tok2id, len(self.tok2id))
         self.id2tok = {v: k for k, v in self.tok2id.items()}
         assert len(self.tok2id) == len(self.id2tok)  # Sanity check: no id collision
 
@@ -254,6 +261,9 @@ class MusicVocabulary:
         }
 
         self.logger = get_logger('Music Vocab')
+
+    def __contains__(self, item: str):
+        return item in self.tok2id
 
     @property
     def pitch_pattern(self) -> re.Pattern:
@@ -272,10 +282,19 @@ class MusicVocabulary:
             pchs = []
             for i in range(128):
                 idx = MusicVocabulary._pitch2local_index(i)
-                for name in MusicVocabulary._atonal_pitch_index2name[idx]:
-                    pch = Pitch(name=name, octave=MusicVocabulary.pitch_midi2octave(midi=i))
+                names = MusicVocabulary._atonal_pitch_index2name[idx]
+                names = names.normal + names.rare if self.with_rare_step else names.normal
+                for name in names:
+                    otv = MusicVocabulary.pitch_midi2octave(midi=i)
+                    if idx == 1 and name == 'B#':
+                        otv -= 1
+                    elif idx == 12 and name == 'C-':
+                        otv += 1
+                    pch = Pitch(name=name, octave=otv)
                     # pch.step = name[0]  # passing into constructor directly doesn't work
+                    mic(name, pch, pch.midi, i)
                     assert pch.midi == i
+                    # mic(i, pch, self.note2pitch_str(pch))
                     pchs.append(pch)
             return ret + [self.note2pitch_str(p) for p in pchs]
         else:  # `degree`
@@ -641,6 +660,12 @@ class MusicVocabulary:
 
 
 if __name__ == '__main__':
+    from collections import Counter
+
+    from tqdm.auto import tqdm
+
+    from musicnlp.preprocess.dataset import load_songs
+
     mic.output_width = 256
 
     def check_vocab_size():
@@ -703,3 +728,45 @@ if __name__ == '__main__':
                     c.update(mv.compact(t) for t in txt.split() if mv.has_compact(t))
         mic(c)
     # sanity_check_uncom()
+
+    def check_same_midi_diff_step():
+        from collections import defaultdict
+
+        mv = MusicVocabulary(pitch_kind='step', with_rare_step=False)
+
+        # dnm = '22-10-21_Extracted-POP909_{n=909}_{md=f, prec=5, th=8}'  # Pitch was wrong
+        pop = '22-10-22_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
+        songs = load_songs(pop)
+
+        counts = defaultdict(Counter)
+        for song in tqdm(songs):
+            pchs = [tok for tok in song.split() if mv.type(tok) == VocabType.pitch]
+            for pch in pchs:
+                midi = mv.compact(pch)
+                step = pch[-1]
+                pch_str = pch[:pch.rfind('_')]
+                counts[(pch_str, midi)][step] += 1
+        counts = {mid: dict(c) for mid, c in counts.items()}
+        mic(counts)
+    # check_same_midi_diff_step()
+
+    def get_rare_observed_pitches():
+        mv = MusicVocabulary(pitch_kind='step', with_rare_step=False)
+
+        # dnm = '22-10-21_Extracted-POP909_{n=909}_{md=f, prec=5, th=8}'  # Pitch was wrong
+        pop = '22-10-22_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
+        mst = '22-10-22_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}'
+        songs = load_songs(pop, mst)
+
+        counts = Counter()
+        for song in tqdm(songs):
+            toks = [tok for tok in song.split() if mv.type(tok) == VocabType.pitch and tok not in mv]
+            for tok in toks:
+                mid = mv.compact(tok)
+                idx = MusicVocabulary._pitch2local_index(mid)
+                step = tok[tok.rfind('_')+1:]
+                counts[idx, step] += 1
+        mic(counts)
+        idx2step = dict(counts.keys())
+        mic(idx2step)
+    # get_rare_observed_pitches()

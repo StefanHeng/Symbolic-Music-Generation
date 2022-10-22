@@ -323,8 +323,8 @@ if __name__ == '__main__':
     # check_export_json_error()
 
     def export2json():
-        dnm = 'POP909'
-        # dnm = 'MAESTRO'
+        # dnm = 'POP909'
+        dnm = 'MAESTRO'
         # dnm = 'LMD, MS'
         # dnm = 'LMD, LP'
 
@@ -335,11 +335,11 @@ if __name__ == '__main__':
         # mode = 'melody'
         mode = 'full'
         args = dict(
-            extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=8, with_pitch_step=True),
+            extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1, with_pitch_step=True),
             save_each=True,
             with_tqdm=True,
             # parallel=False,
-            parallel=8,
+            parallel=16,
             parallel_mode=pl_md,
             # n_worker=1
         )
@@ -355,7 +355,7 @@ if __name__ == '__main__':
             # resume = False
             resume = True
             if resume:
-                dir_nm_ = f'22-10-20_LMD_{{md={mode[0]}}}'
+                dir_nm_ = f'22-10-22_LMD_{{md={mode[0]}}}'
             else:
                 date = now(fmt='short-date')
                 dir_nm_ = f'{date}_LMD_{{md={mode[0]}}}'
@@ -409,16 +409,21 @@ if __name__ == '__main__':
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    export2json()
+    # export2json()
+
+    def is_folder_path(path: str) -> bool:
+        return os.path.isdir(path) and not path.endswith('.zip')
 
     def _folder2count(path: str) -> int:
+        # mic(path)
+        # mic(os.listdir(path))
         _, _, fls = next(os.walk(path))
         return len(fls)
 
     def _folder2file_counts(root_path: str) -> Dict[str, int]:
         return {
             d: _folder2count(os_join(root_path, d)) for d in sorted(os.listdir(root_path))
-            if os.path.isdir(os_join(root_path, d))
+            if is_folder_path(os_join(root_path, d))
         }
 
     def check_extract_progress():
@@ -427,9 +432,10 @@ if __name__ == '__main__':
         counts = dict()
         for fd_nm in sorted(os.listdir(path)):
             pa = os_join(path, fd_nm)
-            counts[fd_nm] = _folder2file_counts(pa) if 'LMD' in fd_nm else _folder2count(pa)
+            if is_folder_path(pa):
+                counts[fd_nm] = _folder2file_counts(pa) if 'LMD' in fd_nm else _folder2count(pa)
         print(pl.fmt(dict(counts=counts)))
-    # check_extract_progress()
+    check_extract_progress()
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
         fl_pattern = '*.json'
@@ -449,9 +455,9 @@ if __name__ == '__main__':
             combine_single_json_songs(singe_song_dir='22-10-02_MAESTRO_{md=m}', dataset_name='MAESTRO')
             # combine_single_json_songs(singe_song_dir='', dataset_name='LMD')
         else:
-            # combine_single_json_songs(singe_song_dir='22-10-20_POP909_{md=f}', dataset_name='POP909')
-            # combine_single_json_songs(singe_song_dir='22-10-20_MAESTRO_{md=f}', dataset_name='MAESTRO')
-            combine_single_json_songs(singe_song_dir='22-10-20_LMD_{md=f}', dataset_name='LMD')
+            combine_single_json_songs(singe_song_dir='22-10-22_POP909_{md=f}', dataset_name='POP909')
+            combine_single_json_songs(singe_song_dir='22-10-22_MAESTRO_{md=f}', dataset_name='MAESTRO')
+            # combine_single_json_songs(singe_song_dir='22-10-22_LMD_{md=f}', dataset_name='LMD')
     # combine()
 
     def json2dset_with_split():
@@ -588,7 +594,7 @@ if __name__ == '__main__':
         import re
         import shutil
 
-        dir_nm = '22-10-20_LMD_{md=f}'
+        dir_nm = '22-10-22_LMD_{md=f}'
         path_process_base = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
         path_to_process = os_join(path_process_base, 'many, lp')
         mic(path_to_process)
