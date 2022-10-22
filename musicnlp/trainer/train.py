@@ -24,12 +24,12 @@ from musicnlp.trainer import WordPieceMusicTokenizer, load_trained_tokenizer as 
 
 
 def get_model_n_tokenizer(
-        model_name: str, model_size: str, prec: int = 5, wordpiece_tokenize: bool = False, insert_key: bool = False,
+        model_name: str, model_size: str, prec: int = 5, wordpiece_tokenize: bool = False, pitch_shift: bool = False,
         model_config: Dict = None
 ) -> Tuple[MusicTokenizer, torch.nn.Module, OrderedDict]:
     ca.check_mismatch('Model Name', model_name, ['transf-xl', 'reformer'])
     # TODO: without augment key, use `step` for training, which is more info?
-    pitch_kind = 'degree' if insert_key else 'midi'
+    pitch_kind = 'degree' if pitch_shift else 'midi'
     if wordpiece_tokenize:
         tokenizer: WordPieceMusicTokenizer = load_wordpiece_tokenizer(pitch_kind=pitch_kind)
         assert tokenizer.precision == prec
@@ -313,7 +313,7 @@ def get_all_setup(
     )
     logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
-        model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, insert_key=ins_key,
+        model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, pitch_shift=pch_shift,
         model_config=model_config
     )
 
@@ -372,6 +372,8 @@ def get_all_setup(
 if __name__ == '__main__':
     import transformers
 
+    mic.output_width = 256
+
     def check_model_size():
         md_nm = 'reformer'
         # md_sz = 'small'
@@ -385,9 +387,10 @@ if __name__ == '__main__':
 
     # md = 'melody'
     md = 'full'
+    dnms = ['POP909']
     # dnms = ['LMD']
     # dnms = ['POP909', 'MAESTRO']
-    dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['POP909', 'MAESTRO', 'LMD']
     dnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
 
     def train_reformer(**kwargs):
@@ -408,14 +411,13 @@ if __name__ == '__main__':
 
         insert_key = True
         pch_shift = True
-        wordpiece_tokenize = True
-        # channel_mixup = 'full'
-        channel_mixup = False
+        wordpiece_tokenize = False
+        channel_mixup = 'full'
         prop_mix = 1280
         mic(insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix)
 
-        # n = 64
-        n = None
+        n = 64
+        # n = None
         # n_ep = 8
         # n_ep = 16
         # n_ep = 32

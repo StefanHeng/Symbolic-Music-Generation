@@ -90,6 +90,8 @@ class MusicConverter:
             MusicConverter._input_format_error(len(time_sigs) == 1, f'Expect only 1 time signature ')
             MusicConverter._input_format_error(len(tempos) == 1, f'Expect only 1 tempo ')
         time_sig, tempo = next(time_sigs, None), next(tempos, None)
+        ts_tup = (time_sig.numerator, time_sig.denominator) if time_sig else None
+        tempo = tempo.number if tempo else None
 
         key = None
         if insert_key:
@@ -104,7 +106,7 @@ class MusicConverter:
                 all(not isinstance(e, m21.stream.Voice) for e in bar), f'Expect no voice in bar#{pl.i(i)}')
             # as `vocab` converts each music element to a list
             toks.append(sum([self.vocab(e) for e in self._bar2grouped_bar(bar)], start=[]))
-        return PartExtractOutput(time_sig=time_sig, tempo=tempo, key=key, toks=toks)
+        return PartExtractOutput(time_sig=ts_tup, tempo=tempo, key=key, toks=toks)
 
     def mxl2str(
             self, song: Union[str, Score], join: bool = True, n_bar: int = None, insert_key: Union[bool, str] = False
@@ -157,7 +159,7 @@ class MusicConverter:
         toks += [self.vocab.start_of_bar if for_gen else self.vocab.end_of_song]
         return ' '.join(toks) if join else toks
 
-    def str2notes(
+    def str2music_elms(
             self, decoded: Union[str, List[str]], group: bool = True, omit_eos: bool = False, strict: bool = True
     ) -> ElmParseOutput:
         """
@@ -205,8 +207,8 @@ class MusicConverter:
                 lst_out.append(MusicElement(type=ElmType.time_sig, meta=(comp(tok))))
             elif typ == VocabType.tempo:
                 lst_out.append(MusicElement(type=ElmType.tempo, meta=(comp(tok))))
-            elif typ == VocabType.key:  # ignore
-                pass
+            elif typ == VocabType.key:
+                lst_out.append(MusicElement(type=ElmType.key, meta=(comp(tok))))
             else:
                 assert typ == VocabType.pitch
                 tok_d = next(it, None)
@@ -284,7 +286,7 @@ class MusicConverter:
             All occurrences of eos in the sequence are ignored
         :param title: Title of the music
         """
-        lst = self.str2notes(decoded, group=True, omit_eos=omit_eos)
+        lst = self.str2music_elms(decoded, group=True, omit_eos=omit_eos)
         ts, tp, key, lst = lst.time_sig, lst.tempo, lst.key, lst.elms_by_bar
 
         if self.mode == 'melody':
@@ -309,7 +311,7 @@ if __name__ == '__main__':
     def check_map_elm():
         text = music_util.get_extracted_song_eg(k='平凡之路')
         mic(text)
-        toks = mc.str2notes(text)
+        toks = mc.str2music_elms(text)
         mic(toks)
         scr = mc.str2score(text)
         scr.show()

@@ -15,7 +15,7 @@ import music21 as m21
 from stefutil import *
 from musicnlp.util.music_lib import *
 import musicnlp.util.music as music_util
-from musicnlp.vocab.elm_type import ElmType, MusicElement, Key, key_str2enum
+from musicnlp.vocab.elm_type import ElmType, MusicElement, Key, key_str2enum, enum2key_str
 
 
 __all__ = [
@@ -291,10 +291,7 @@ class MusicVocabulary:
                     elif idx == 12 and name == 'C-':
                         otv += 1
                     pch = Pitch(name=name, octave=otv)
-                    # pch.step = name[0]  # passing into constructor directly doesn't work
-                    mic(name, pch, pch.midi, i)
-                    assert pch.midi == i
-                    # mic(i, pch, self.note2pitch_str(pch))
+                    assert pch.midi == i  # sanity check
                     pchs.append(pch)
             return ret + [self.note2pitch_str(p) for p in pchs]
         else:  # `degree`
@@ -414,10 +411,16 @@ class MusicVocabulary:
                     return MusicVocabulary._get_group1(tok, tpl['int'])
             elif typ == VocabType.pitch:
                 if tok == self.cache['rest']:
-                    return MusicVocabulary.rest_pitch_code
+                    mid = MusicVocabulary.rest_pitch_code
+                    return mid if self.pitch_kind == 'midi' else (mid, None)
                 else:
-                    pch, octave = MusicVocabulary._get_group2(tok, tpl)
-                    return pch-1 + (octave+1)*12  # See `pch2step`, restore the pitch; +1 cos octave starts from -1
+                    m = self.pitch_pattern.match(tok)
+                    pch, octave = int(m.group('numer')), int(m.group('denom'))
+                    mid = pch-1 + (octave+1)*12  # See `pch2step`, restore the pitch; +1 cos octave starts from -1
+                    if self.pitch_kind == 'midi':
+                        return mid
+                    else:  # `step`, `degree`
+                        return mid, m.group('step')
             elif typ == VocabType.time_sig:
                 return MusicVocabulary._get_group2(tok, tpl)
             elif typ == VocabType.tempo:
@@ -438,18 +441,39 @@ class MusicVocabulary:
             else:
                 return f'{self.cache["pref_dur"]}{compact.numerator}/{compact.denominator}'
         elif kind == VocabType.pitch:
-            assert isinstance(compact, int)
-            if compact == MusicVocabulary.rest_pitch_code:
-                return self.cache['rest']
-            else:
-                pch, octave = compact % 12 + 1, MusicVocabulary.pitch_midi2octave(midi=compact)
-                return f'{self.cache["pref_pch"]}{pch}/{octave}'
+            if self.pitch_kind == 'midi':
+                assert isinstance(compact, int)
+                return self._uncompact_midi_pitch(compact)
+            else:  # `step`, `degree`
+                assert isinstance(compact, tuple)
+                mid, step = compact
+                assert isinstance(mid, int)  # sanity check
+                if step is not None:
+                    assert isinstance(step, (str, int))
+
+                ret = self._uncompact_midi_pitch(mid)
+                if step is None:
+                    assert mid == MusicVocabulary.rest_pitch_code  # sanity check
+                    return ret
+                else:
+                    return f'{ret}_{step}'
         elif kind == VocabType.time_sig:
             assert isinstance(compact, tuple)
             return f'{self.cache["pref_time_sig"]}{compact[0]}/{compact[1]}'
-        else:  # VocabType.tempo
+        elif kind == VocabType.tempo:
             assert isinstance(compact, int)
             return f'{self.cache["pref_tempo"]}{compact}'
+        else:
+            assert kind == VocabType.key
+            raise NotImplementedError
+            # return f'{self.cache["pref_key"]}{key_enum2str[compact]}'
+
+    def _uncompact_midi_pitch(self, compact: int) -> str:
+        if compact == MusicVocabulary.rest_pitch_code:
+            return self.cache['rest']
+        else:
+            pch, octave = compact % 12 + 1, MusicVocabulary.pitch_midi2octave(midi=compact)
+            return f'{self.cache["pref_pch"]}{pch}/{octave}'
 
     @staticmethod
     def pitch_midi2octave(midi: int) -> int:
@@ -488,7 +512,7 @@ class MusicVocabulary:
             return self._colorize_token(tok)
 
     def __call__(
-            self, elm: Union[ExtNote, Union[TimeSignature, TsTup], Union[MetronomeMark, int], str],
+            self, elm: Union[ExtNote, Union[TimeSignature, TsTup], Union[MetronomeMark, int], Union[str, Key]],
             color: bool = None,
             return_int: bool = False  # TODO
     ) -> Union[List[str], List[int]]:  # TODO: Support chords?
@@ -526,12 +550,14 @@ class MusicVocabulary:
             return [colorize(bot)] + [
                 (self.note2pitch_str(e)) for e in elm
             ] + [self._note2dur_str(elm)] + [colorize(eot)]
-        elif isinstance(elm, str):
-            assert elm in key_str2enum
+        elif isinstance(elm, (str, Key)):
+            if isinstance(elm, str):
+                assert elm in key_str2enum
+            else:
+                elm = enum2key_str[elm]
             return [colorize(self.cache['pref_key'] + str(elm))]
         else:  # TODO: chords
-            mic('other element type', elm)
-            exit(1)
+            raise NotImplementedError(f'Unknown element type: {pl.i(elm)} w/ type {pl.i(type(elm))}')
 
     def music_elm2toks(self, e: MusicElement) -> List[str]:
         if e.type in MusicVocabulary.special_elm_type2tok:
@@ -611,7 +637,7 @@ class MusicVocabulary:
             return tok
         else:
             typ = self.type(tok)
-            mic(tok, typ)
+            # mic(tok, typ)
             assert typ in (VocabType.duration, VocabType.time_sig, VocabType.tempo)  # sanity check
             if typ == VocabType.duration:
                 return MusicVocabulary.uncommon_duration

@@ -19,7 +19,7 @@ from stefutil import *
 from musicnlp.util import *
 from musicnlp.vocab.music_vocab import MusicVocabulary, VocabType, WORDPIECE_CONTINUING_PREFIX
 from musicnlp.vocab.music_tokenizer import MusicTokenizer
-from musicnlp.preprocess import KeyInsert, PitchShift
+from musicnlp.preprocess import KeyInsert, PitchShift, iter_songs_with_key
 
 
 def get_uni_chars_cache() -> List[str]:
@@ -73,6 +73,7 @@ class Score2Chars:
         """
         self.vocab = vocab
         if chars:
+            # mic(len(chars), len(vocab), vocab.pitch_kind)
             assert len(chars) == len(vocab)
         else:
             chars = Score2Chars.get_uni_chars(len(vocab))
@@ -102,16 +103,13 @@ class Score2Chars:
         if self.need_split:  # prevent merge via separating by space, see `__call__` pre_tokenizer
             toks = self.split(score, join=False)  # efficient as `encode` can take split tokens
 
-            # sanity_check = False
-            sanity_check = True
+            sanity_check = False
+            # sanity_check = True
             if sanity_check:
                 ret = ' '.join([self.encode(t) for t in toks])
                 _toks = ret.split()
                 _toks = [self.decode(_t) for _t in _toks]
                 assert ' '.join(_toks) == self.vocab.clean_uncommon(score)
-                for t in _toks:
-                    mic(t)
-                exit(1)
             return ' '.join([self.encode(t) for t in toks])
         else:
             return self.encode(score)
@@ -170,9 +168,6 @@ class Score2Chars:
         toks = s.split() if isinstance(s, str) else s
         if clean:
             toks = [self.vocab.clean_uncommon_token(t) for t in toks]
-        mic(toks)
-        mic([self.vocab.tok2id[tok] for tok in toks])
-        mic(len(self.dec_chars), len(self.vocab))
         return ''.join([self.dec_chars[self.vocab.tok2id[tok]] for tok in toks])
 
     def decode(self, s: str) -> str:
@@ -224,8 +219,6 @@ class WordPieceMusicTrainer:
         # every token should be known
         # TODO: What is `max_input_chars_per_word`? set no lim
         logger = get_logger(self.__class__.__qualname__)
-        d_log = {'vocab-size': vocab_size, '#song': len(songs)}
-        logger.info(f'Training launched with {pl.i(d_log)}')
 
         tokenizer = Tokenizer(model=models.WordPiece(vocab=None, max_input_chars_per_word=int(1e10)))
         if self.s2c.need_split:
@@ -237,19 +230,16 @@ class WordPieceMusicTrainer:
             vocab_size=vocab_size, initial_alphabet=init_alph, show_progress=True,
             continuing_subword_prefix=WordPieceMusicTrainer.continuing_prefix
         )
-        if self.augment_key:
-            ki = KeyInsert(vocab=self.vocab)  # pitch kind irrelevant
-            ps = PitchShift(vocab_degree=self.vocab)  # pitch kind irrelevant
 
-            def gen():
-                for s in songs:
-                    txt = s['score']
-                    for key in s['keys']:
-                        _txt = ki(text=txt, key=key)
-                        yield ps(text=_txt)
-            gen = gen()
+        d_log = {'vocab-size': vocab_size, '#song': len(songs)}
+        if self.augment_key:
+            out = iter_songs_with_key(songs, vocab=self.vocab)
+            it = out.generator
+            d_log['#key-augmented-song'] = out.total
         else:
-            gen = (self.s2c(s['score']) for s in songs)
+            it = (s['score'] for s in songs)
+        logger.info(f'Training WordPiece tokenization w/ {pl.i(d_log)}')
+        gen = (self.s2c(s) for s in it)
         tokenizer.train_from_iterator(gen, trainer=trainer)
         if save:
             fnm = save if isinstance(save, str) else 'WordPiece-Tokenizer'
@@ -285,12 +275,14 @@ class MyPreTrainedTokenizerFast(PreTrainedTokenizerFast):
 class WordPieceMusicTokenizer(MusicTokenizer):
 
     def __init__(
-            self, tokenizer: Tokenizer, precision: int = 5, s2c_args: Dict = None, omit_eos: bool = False, **kwargs
+            self, tokenizer: Tokenizer, precision: int = 5, s2c_args: Dict = None, omit_eos: bool = False,
+            augment_key: bool = False, **kwargs
     ):
         """
         :param tokenizer: A trained WordPiece tokenizer on characters
         """
-        super().__init__(precision=precision, name_or_path=self.__class__.__qualname__, **kwargs)
+        pch_kind = 'degree' if augment_key else 'midi'
+        super().__init__(precision=precision, pitch_kind=pch_kind, name_or_path=self.__class__.__qualname__, **kwargs)
         self._tokenizer = MyPreTrainedTokenizerFast(
             tokenizer_object=tokenizer, pad_token=self.pad_token, eos_token=self.eos_token
         )  # now vocab size is correctly set
@@ -314,7 +306,7 @@ class WordPieceMusicTokenizer(MusicTokenizer):
     @classmethod
     def from_file(cls, fnm: str, output_path: str = u.tokenizer_path, **kwargs):
         _tokenizer = Tokenizer.from_file(os_join(output_path, f'{fnm}.json'))
-        with open(os_join(output_path, f'{fnm}_music_meta.json'), 'r') as f:
+        with open(os_join(output_path, f'{fnm}_meta.json'), 'r') as f:
             meta = json.load(f)
         prec = meta['music_vocab'].pop('prec')
         return cls(_tokenizer, precision=prec, s2c_args=meta['score2chars'], **kwargs)
@@ -460,9 +452,14 @@ if __name__ == '__main__':
         mv = MusicVocabulary(pitch_kind=kind)
         if kind == 'midi':
             sample = sample_full_midi
-        else:
-            assert kind == 'step'
+        else:  # `step`, `degree`
             sample = sample_full_step
+            if kind == 'degree':
+                ki = KeyInsert(vocab=mv, return_as_list=True)  # pitch kind irrelevant
+                ps = PitchShift(vocab_degree=mv)  # pitch kind irrelevant
+                key = 'CMajor'  # Pick an arbitrary key
+                sample = ps(text=ki(text=sample, key=key))
+                # mic(sample)
         # chs = get_uni_chars(40)
         # mic(chs, len(chs))
         # exit(1)
@@ -474,15 +471,17 @@ if __name__ == '__main__':
         mic(decoded)
         assert ' '.join(sample_txt_) == decoded
     # try_char_map(kind='midi')
-    try_char_map(kind='step')
+    # try_char_map(kind='step')
+    # try_char_map(kind='degree')
 
     def train():
         from collections import Counter
 
         from tqdm.auto import tqdm
 
-        dnms = [pop]
-        # dnms = [pop, mst, lmd]
+        # dnms = [pop]
+        # dnms = [pop, mst]
+        dnms = [pop, mst, lmd]
 
         aug_key = True
         mv = MusicVocabulary(pitch_kind='degree' if aug_key else 'midi')
@@ -502,6 +501,8 @@ if __name__ == '__main__':
             vocab_size = 4096 * 4
             if sv:
                 sv = 'WordPiece-Tokenizer_{dnm=all}'
+        if aug_key:
+            vocab_size *= 2
         wmt = WordPieceMusicTrainer(vocab=mv, augment_key=aug_key, independent_global_token=True, punctuate=True)
         songs = load_songs(*dnms, score_only=False)
         tokenizer = wmt(vocab_size=vocab_size, songs=songs, save=sv)
@@ -532,7 +533,7 @@ if __name__ == '__main__':
                 encoded = tokenizer.encode(encoded)
                 c.update([s2c.trained_tok2tok(t) for t in encoded.tokens])
             mic(c)
-    # train()
+    train()
 
     def check_trained_property():
         # fnm = '2022-06-15_20-50-15_Word-Piece-Music-Tokenizer, dnm=POP909, vsz=4096, n=909'
@@ -573,20 +574,27 @@ if __name__ == '__main__':
         from collections import Counter
 
         aug_key = True
-        mv = MusicVocabulary(pitch_kind='degree' if aug_key else 'midi')
 
-        fnm = '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
-        tokenizer = WordPieceMusicTokenizer.from_file(fnm)
+        # fnm = '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
+        fnm = '22-10-22_WordPiece-Tokenizer_{dnm=POP909}_{vsz=8192, n=909}'
+        tokenizer = WordPieceMusicTokenizer.from_file(fnm, augment_key=aug_key)
+        mv = tokenizer.vocab
         # inputs = tokenizer(sample_txt)
         # mic(tokenizer.decode(inputs['input_ids']))
 
         check_preserve = True  # sanity check, encoding & decoding, every token is still preserved
         check_dist = True
 
-        # dnms = [pop]
+        dnms = [pop]
         # dnms = [lmd]
-        dnms = [pop, mst, lmd]
-        songs = load_songs(*dnms)
+        # dnms = [pop, mst, lmd]
+        _songs: List[Dict] = load_songs(*dnms, score_only=False)
+        if aug_key:
+            out = iter_songs_with_key(_songs, vocab=mv)
+            n, songs = out.total, out.generator
+        else:
+            n, songs = len(_songs), (s['score'] for s in _songs)
+
         concurrent = True
         # concurrent = False
         if concurrent:
@@ -599,14 +607,12 @@ if __name__ == '__main__':
                 with_tqdm=dict(desc='ids=>tokens', chunksize=128), mode='process'
             )
             c = Counter()
-            for toks in tqdm(toks, desc='Updating token dist', unit='song'):
+            for toks in tqdm(toks, desc='Updating token dist', unit='song', total=n):
                 c.update(toks)
             mic(c)
-            with open(os_join(u.tokenizer_path, f'{fnm} distribution check.json'), 'w') as f:
-                json.dump(dict(count=c), f, indent=4)
         else:
             c = Counter()
-            it = tqdm(songs)  # TODO: tokenizing long texts in MAESTRO take a long time...
+            it = tqdm(songs, total=n)
             for song in it:
                 toks = mv.clean_uncommon(song, return_joined=False)
                 song = ' '.join(toks)
@@ -618,6 +624,8 @@ if __name__ == '__main__':
                 if check_dist:
                     c.update(tokenizer.convert_ids_to_tokens(ids))
             mic(c)
+        with open(os_join(u.tokenizer_path, f'{fnm} distribution check.json'), 'w') as f:
+            json.dump(dict(count=c), f, indent=4)
     # check_trained_tokenize_all()
 
     def check_id2pch():

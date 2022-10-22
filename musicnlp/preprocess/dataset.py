@@ -1,8 +1,9 @@
 import os
 import json
+from dataclasses import dataclass
 
 from os.path import join as os_join
-from typing import List, Tuple, Dict, Callable, Any, Union, Optional
+from typing import List, Tuple, Dict, Callable, Any, Union, Optional, Iterable
 
 import datasets
 import torch
@@ -10,12 +11,12 @@ from datasets import Dataset, DatasetDict, DatasetInfo
 
 from stefutil import *
 import musicnlp.util.music as music_util
-from musicnlp.vocab import VocabType, MusicTokenizer
+from musicnlp.vocab import MusicVocabulary, MusicTokenizer
 from musicnlp.preprocess.transform import *
 
 
 __all__ = [
-    'load_songs',
+    'load_songs', 'iter_songs_with_key',
     'DATASET_NAME2MODE2FILENAME', 'get_dataset', 'AugmentedDataset', 'ProportionMixingDataset'
 ]
 
@@ -24,15 +25,15 @@ DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {
     # `dataset name` => `mode` => `filename`
     'LMD': {
         'melody': '',
-        'full': '22-10-21_Extracted-LMD_{n=176640}_{md=f, prec=5, th=8}'
+        'full': '22-10-22_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
     },
     'MAESTRO': {
         'melody': '',
-        'full': '22-10-21_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=8}',
+        'full': '22-10-22_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}',
     },
     'POP909': {
         'melody': '',
-        'full': '22-10-21_Extracted-POP909_{n=909}_{md=f, prec=5, th=8}'
+        'full': '22-10-22_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
     }
 }
 
@@ -50,6 +51,36 @@ def load_songs(*dnms, score_only: bool = True) -> Union[List[str], List[Dict[str
             dset = json.load(f)
         return [(s['score'] if score_only else s) for s in dset['music']]
     return sum((_load_single(dnm_) for dnm_ in dnms), start=[])
+
+
+@dataclass
+class IterSongOutput:
+    generator: Iterable[str] = None
+    total: int = None
+
+
+def iter_songs_with_key(songs: Iterable[Dict[str, Any]], vocab: MusicVocabulary = None) -> IterSongOutput:
+    """
+    :param songs: songs, each containing `score` and possible `key`s, per music extraction API
+    :param vocab: A `degree` vocab for augmentation
+    :return: songs, each with each of its possible key inserted and pitch shifted
+    """
+    if vocab is None:
+        vocab = MusicVocabulary(pitch_kind='degree')
+    else:
+        assert vocab.pitch_kind == 'degree'
+    ki = KeyInsert(vocab=vocab, return_as_list=True)
+    ps = PitchShift(vocab_degree=vocab)
+
+    n = sum(len(s['keys']) for s in songs)
+
+    def gen():
+        for s in songs:
+            txt = s['score']
+            for key in s['keys']:
+                _txt = ki(text=txt, key=key)
+                yield ps(text=_txt)
+    return IterSongOutput(generator=gen(), total=n)
 
 
 def get_dataset(
@@ -163,9 +194,11 @@ class AugmentedDataset:
     def meta(self) -> Dict[str, Any]:
         d = dict()
         if self.insert_key:
-            d['ins_key'] = 'T'
+            d['ins-key'] = 'T'
+        if self.pitch_shift:
+            d['pch-sft'] = 'T'
         if self.channel_mixup:
-            d['mix_up'] = self.cm.mode[0]
+            d['mix-up'] = self.cm.mode[0]
         return d
 
     @classmethod
@@ -197,13 +230,19 @@ class AugmentedDataset:
         item = self.dset[idx]
         toks = item['score']
         if self.insert_key:
-            toks = self.ki(toks, keys=item['keys'])
+            toks = self.ki(toks, item['keys'])
         if self.pitch_shift:
             toks = self.ps(toks)
         if self.channel_mixup:
             toks = self.cm(toks)
         if isinstance(toks, list):
             toks = ' '.join(toks)
+        sanity_check = False
+        # sanity_check = True
+        if sanity_check:
+            ori, new = item['score'][:200], toks[:200]
+            mic(ori, new)
+            raise NotImplementedError
         return self.tokenizer(toks, padding='max_length', truncation=True)
 
 
@@ -238,7 +277,7 @@ class ProportionMixingDataset:
         metas = [(d.meta if hasattr(d, 'meta') else None) for d in self.dsets]
         assert all(metas[0] == m for m in metas)  # sanity check datasets of the same type
         d = metas[0] or dict()
-        d['mix_limit'] = self.k
+        d['mix-lim'] = self.k
         return d
 
     @property

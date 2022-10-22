@@ -435,7 +435,7 @@ if __name__ == '__main__':
             if is_folder_path(pa):
                 counts[fd_nm] = _folder2file_counts(pa) if 'LMD' in fd_nm else _folder2count(pa)
         print(pl.fmt(dict(counts=counts)))
-    check_extract_progress()
+    # check_extract_progress()
 
     def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
         fl_pattern = '*.json'
@@ -455,9 +455,9 @@ if __name__ == '__main__':
             combine_single_json_songs(singe_song_dir='22-10-02_MAESTRO_{md=m}', dataset_name='MAESTRO')
             # combine_single_json_songs(singe_song_dir='', dataset_name='LMD')
         else:
-            combine_single_json_songs(singe_song_dir='22-10-22_POP909_{md=f}', dataset_name='POP909')
-            combine_single_json_songs(singe_song_dir='22-10-22_MAESTRO_{md=f}', dataset_name='MAESTRO')
-            # combine_single_json_songs(singe_song_dir='22-10-22_LMD_{md=f}', dataset_name='LMD')
+            # combine_single_json_songs(singe_song_dir='22-10-22_POP909_{md=f}', dataset_name='POP909')
+            # combine_single_json_songs(singe_song_dir='22-10-22_MAESTRO_{md=f}', dataset_name='MAESTRO')
+            combine_single_json_songs(singe_song_dir='22-10-22_LMD_{md=f}', dataset_name='LMD')
     # combine()
 
     def json2dset_with_split():
@@ -472,9 +472,9 @@ if __name__ == '__main__':
             fnm = '22-10-03_Extracted-MAESTRO_{n=1276}_{md=m, prec=5, th=1}'
             # fnm = ''
         else:
-            # fnm = '22-10-21_Extracted-POP909_{n=909}_{md=f, prec=5, th=8}'
-            # fnm = '22-10-21_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=8}'
-            fnm = '22-10-21_Extracted-LMD_{n=176640}_{md=f, prec=5, th=8}'
+            # fnm = '22-10-22_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
+            # fnm = '22-10-22_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}'
+            fnm = '22-10-22_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
         dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
         mic(dset)
         mic(len(dset['train']), len(dset['test']))
@@ -482,7 +482,7 @@ if __name__ == '__main__':
         tr_samples['score'] = [s[:100] for s in tr_samples['score']]
         ts_samples['score'] = [s[:100] for s in ts_samples['score']]
         mic(tr_samples, ts_samples)
-    # json2dset_with_split()
+    json2dset_with_split()
 
     def fix_insert_key():
         """

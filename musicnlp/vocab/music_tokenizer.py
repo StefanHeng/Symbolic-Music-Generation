@@ -83,6 +83,9 @@ class MusicTokenizer(PreTrainedTokenizer):
         """
         return [self.vocab.compact(i) for i in ids if self.vocab.type(i) == VocabType.pitch]
 
+    def colorize(self, song: str) -> str:
+        return ' '.join(self.vocab.colorize_token(tok) for tok in self.tokenize(song))
+
 
 if __name__ == '__main__':
     from stefutil import *
@@ -181,7 +184,7 @@ if __name__ == '__main__':
         dnms = [pop, mst, lmd]
 
         def song2n_note(t: str) -> List[int]:
-            elms = mc.str2notes(t)
+            elms = mc.str2music_elms(t)
             tups = [e.meta for e in elms if e.type == ElmType.tuplets]
             return [len(t[0]) for t in tups]
 

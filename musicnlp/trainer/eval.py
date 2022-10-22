@@ -23,6 +23,7 @@ def load_trained(
         model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: Tuple[str, str, str] = None,
         mode: str = 'full'
 ) -> Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel]:
+    ca.check_mismatch('Model Name', model_name, ['reformer', 'transfo-xl'])
     if not hasattr(load_trained, 'key2path'):
         load_trained.key2path = dict(
             full={
@@ -73,7 +74,7 @@ class MusicGenerator:
 
     def __init__(
             self, model: Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel], mode: str = 'full',
-            max_length: int = None, wordpiece_tokenizer: bool = True
+            max_length: int = None, wordpiece_tokenizer: bool = True, tokenizer_args: Dict = None,
     ):
         self.model = model
         if max_length:
@@ -83,11 +84,11 @@ class MusicGenerator:
                 self.max_len = model.config.max_position_embeddings
             else:  # transf xl
                 self.max_len = model.config.max_length_
-        tk_args = dict(model_max_length=self.max_len)
+        tokenizer_args = dict(model_max_length=self.max_len) | tokenizer_args
         if wordpiece_tokenizer:
-            self.tokenizer = load_wordpiece_tokenizer(omit_eos=True, **tk_args)
+            self.tokenizer = load_wordpiece_tokenizer(omit_eos=True, **tokenizer_args)
         else:
-            self.tokenizer = MusicTokenizer(**tk_args)
+            self.tokenizer = MusicTokenizer(**tokenizer_args)
         self.vocab = self.tokenizer.vocab
         self.converter = MusicConverter(mode=mode, precision=self.tokenizer.precision, vocab=self.vocab)
 
@@ -102,9 +103,6 @@ class MusicGenerator:
             if k in args:
                 out = f'{out}, {k_out}={args[k]}'
         return f'{{{out}}}'
-
-    def colorize_song(self, song: str) -> str:
-        return ' '.join([self.tokenizer.vocab.colorize_token(tok) for tok in self.tokenizer.tokenize(song)])
 
     def __call__(
             self, mode: str, strategy: str, to_score: bool = False,
@@ -168,7 +166,7 @@ class MusicGenerator:
             assert (k in ['do_sample', 'num_beams', 'num_beam_groups', 'early_stopping'] for k in generate_args)
             assert generate_args['num_beams'] > 1, f'{pl.i("num_beams")} must >1 for beam-search generation'
         args |= generate_args
-        prompt_colored = self.colorize_song(prompt)
+        prompt_colored = self.tokenizer.colorize(prompt)
         d_log = dict(mode=mode, strategy=strategy, args=generate_args | prompt_args, prompt=prompt_colored)
         self.logger.info(f'Generating with {pl.i(d_log)}')
         t = datetime.datetime.now()
@@ -218,12 +216,13 @@ if __name__ == '__main__':
 
     # md_k = 'reformer', 'P&M', '256-256ep'
     md_k = md_nm, ds_nm, ep_nm = 'transf-xl', 'All', 'x-128ep'
+    tk_args = dict(pitch_kind='midi')
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
     sv_dir = f'{md_nm}_{ds_nm}_{ep_nm}'
     # save_dir_ = 'reformer-base, 14/32ep'
     # mic(get_model_num_trainable_parameter(mdl))
-    mg = MusicGenerator(model=mdl, mode=md)
+    mg = MusicGenerator(model=mdl, mode=md, tokenizer_args=tk_args)
 
     # key_aug = False
     key_aug = True

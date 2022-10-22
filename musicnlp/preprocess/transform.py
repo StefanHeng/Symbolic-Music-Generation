@@ -36,9 +36,34 @@ class KeyInsert(Transform):
         assert self.vocab.type(toks[1]) == VocabType.tempo
 
         if isinstance(key, dict):
-            key = self.vocab(pt_sample(key))[0]
-        toks.insert(2, key)
+            key = pt_sample(key)
+        toks.insert(2, self.vocab(key)[0])
         return toks if self.return_as_list else ' '.join(toks)
+
+
+class _ShiftSingle:
+    """
+    Convert from `step` pitch to `degree` pitch, see `PitchShift`
+    """
+    def __init__(
+            self, vocab_step: MusicVocabulary = None, vocab_degree: MusicVocabulary = None,
+            sdf: ScaleDegreeFinder = None, key_token: str = None,
+    ):
+        self.vocab_step = vocab_step
+        self.vocab_degree = vocab_degree
+        self.sdf = sdf
+        self.key_token = key_token
+
+    def __call__(self, tok: str) -> str:
+        # doesn't matter which vocab
+        if self.vocab_step.type(tok) == VocabType.pitch and tok != self.vocab_step.rest:
+            step = self.vocab_step.get_pitch_step(tok)
+            deg = self.sdf.map_single(note=step, key=self.vocab_step.compact(self.key_token))
+            midi, _step = self.vocab_step.compact(tok)  # doesn't matter which vocab
+            assert step == _step  # sanity check implementation
+            return self.vocab_degree.note2pitch_str(note=midi, degree=deg)
+        else:
+            return tok
 
 
 class PitchShift(Transform):
@@ -62,22 +87,20 @@ class PitchShift(Transform):
         key = toks[2]
         assert self.vocab_step.type(key) == VocabType.key  # sanity check; doesn't matter which vocab
 
-        def _shift_single(tok: str) -> str:  # Convert from `step` to `degree` pitch
-            # doesn't matter which vocab
-            if self.vocab_step.type(tok) == VocabType.pitch and tok != self.vocab_step.rest:
-                step = self.vocab_step.get_pitch_step(tok)
-                deg = self.sdf.map_single(note=step, key=key)
-                midi = self.vocab_step.compact(tok)   # doesn't matter which vocab
-                return self.vocab_degree.note2pitch_str(note=midi, degree=deg)
-            else:
-                return tok
-        toks = [_shift_single(tok) for tok in toks]
+        ss = _ShiftSingle(vocab_step=self.vocab_step, vocab_degree=self.vocab_degree, sdf=self.sdf, key_token=key)
+        toks = [ss(tok) for tok in toks]
 
-        sanity_check = True
+        sanity_check = False
+        # sanity_check = True
         if sanity_check:
-            ori = ' '.join(text)
+            ori = ' '.join(text) if isinstance(text, list) else text
             new = ' '.join(toks)
-            mic(ori[:200], new[:200])
+            mic(ori[:100])
+            mic(new[:100])
+
+            # new = ' '.join(self.vocab_degree.colorize_token(tok) for tok in toks)
+            # print(f'new: {new[:40pip0]}')
+            raise NotImplementedError
         return toks if self.return_as_list else ' '.join(toks)
 
 
@@ -100,10 +123,10 @@ class ChannelMixer(Transform):
         self.mode = mode
 
     def __call__(self, text: Union[str, List[str]]) -> str:
-        out = self.mc.str2notes(text, group=True)
+        out = self.mc.str2music_elms(text, group=True)
 
-        sanity_check = True
-        # sanity_check = False
+        # sanity_check = True
+        sanity_check = False
         if sanity_check:
             for elms in out.elms_by_bar:
                 mixed = self._mix_up_bar_notes(elms)
@@ -113,17 +136,40 @@ class ChannelMixer(Transform):
                     MusicElement(type=ElmType.melody), *d['melody'], MusicElement(type=ElmType.bass), *d['bass']
                 ]
                 assert elms == recon  # sanity check reconstruction, no info loss
-            exit(1)
+            raise NotImplementedError
         ret = self.vocab.music_elm2toks(out.time_sig) + self.vocab.music_elm2toks(out.tempo)
         if out.key:
             ret += self.vocab.music_elm2toks(out.key)
         ret += sum((self._bar_music_elms2str(elms) for elms in out.elms_by_bar), start=[])
         ret += [self.vocab.end_of_song]
+
+        # sanity_check = True
+        sanity_check = False
+        if sanity_check:  # Should be able to re-construct the text w/ default ordering
+            _text = ' '.join(text)
+            # mic('Channel Mix san check', _text)
+            # mic(self.mc.vocab.pitch_kind)
+            ori_out = self.mc.str2music_elms(' '.join(ret), group=True)
+            ori_toks = self.vocab.music_elm2toks(ori_out.time_sig) + self.vocab.music_elm2toks(ori_out.tempo)
+            if ori_out.key:
+                ori_toks += self.vocab.music_elm2toks(ori_out.key)
+            mic(ori_toks, ori_out.key)
+            for bar in ori_out.elms_by_bar:
+                d_notes = self.mc.split_notes(bar)
+                notes = [ChannelMixer.e_m, *d_notes['melody'], ChannelMixer.e_b, *d_notes['bass']]
+                ori_toks += self._bar_music_elms2str(notes, mix=False)
+            ori_toks += [self.vocab.end_of_song]
+            ori = ' '.join(ori_toks)
+            mic(_text[:200], ori[:200])
+            mic(ori == _text)
+            raise NotImplementedError
         return ret if self.return_as_list else ' '.join(ret)
 
-    def _bar_music_elms2str(self, elms: List[MusicElement]):
+    def _bar_music_elms2str(self, elms: List[MusicElement], mix: bool = True):
+        if mix:
+            elms = self._mix_up_bar_notes(elms)
         return [self.vocab.start_of_bar] + sum(
-            (self.vocab.music_elm2toks(e) for e in self._mix_up_bar_notes(elms)), start=[]
+            (self.vocab.music_elm2toks(e) for e in elms), start=[]
         )
 
     @staticmethod
