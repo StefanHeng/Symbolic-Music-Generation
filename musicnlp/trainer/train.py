@@ -18,7 +18,7 @@ from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
 from musicnlp.vocab import MusicTokenizer, key_ordinal2str
-from musicnlp.preprocess import DATASET_NAME2MODE2FILENAME, get_dataset, AugmentedDataset, ProportionMixingDataset
+from musicnlp.preprocess import dataset
 from musicnlp.models import MyReformerConfig, MyReformerModelWithLMHead, MyTransfoXLConfig, MyTransfoXLLMHeadModel
 from musicnlp.trainer import WordPieceMusicTokenizer, load_trained_tokenizer as load_wordpiece_tokenizer, metrics
 
@@ -327,9 +327,9 @@ def get_all_setup(
                 mode=my_train_args['mode']
             )
             logger.info(f'Loading {pl.i("Augmented")} dataset w/ {pl.i(dict(dataset_names=dset_nms) | dset_args_)}... ')
-            return AugmentedDataset.from_hf(dset_nms, tokenizer=tokenizer, **dset_args_)
+            return dataset.AugmentedDataset.from_hf(dset_nms, tokenizer=tokenizer, **dset_args_)
         else:
-            return get_dataset(
+            return dataset.get_dataset(
                 dataset_names=dset_nms, map_func=VanillaMap(tokenizer),
                 remove_columns=['title', 'score', 'keys'], **dset_args  # i.e. keep the input ids only
             )
@@ -337,7 +337,7 @@ def get_all_setup(
         prop_mix = prop_mix if isinstance(prop_mix, int) else 2048
         dsets_tr = [load_once(dnm, splits='train')['train'] for dnm in dataset_names]
         dset = datasets.DatasetDict(dict(
-            train=ProportionMixingDataset(dataset_list=dsets_tr, k=prop_mix),
+            train=dataset.ProportionMixingDataset(dataset_list=dsets_tr, k=prop_mix),
             test=load_once(dataset_names, splits='test')['test']
         ))
     else:
@@ -391,7 +391,7 @@ if __name__ == '__main__':
     # dnms = ['LMD']
     # dnms = ['POP909', 'MAESTRO']
     # dnms = ['POP909', 'MAESTRO', 'LMD']
-    dnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
+    dnms = [dataset.get_dataset_dir_name(*dnms)]
 
     def train_reformer(**kwargs):
         # not set seed if reformer for LSH attention,

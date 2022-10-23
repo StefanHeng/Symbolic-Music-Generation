@@ -8,7 +8,7 @@ Intended to trade sequence length with vocabulary size
 
 import json
 from os.path import join as os_join
-from typing import List, Tuple, Dict, Union, Iterable, Any
+from typing import List, Dict, Union, Iterable, Any
 
 from transformers import PreTrainedTokenizerFast
 from tokenizers import Tokenizer
@@ -19,7 +19,7 @@ from stefutil import *
 from musicnlp.util import *
 from musicnlp.vocab.music_vocab import MusicVocabulary, VocabType, WORDPIECE_CONTINUING_PREFIX
 from musicnlp.vocab.music_tokenizer import MusicTokenizer
-from musicnlp.preprocess import transform, iter_songs_n_key
+from musicnlp.preprocess import transform, dataset
 
 
 __all__ = ['WordPieceMusicTrainer', 'WordPieceMusicTokenizer', 'load_trained_tokenizer']
@@ -195,23 +195,6 @@ class Score2Chars:
         return {self.trained_tok2tok(tok): i for tok, i in vocab.items()}
 
 
-class _AugmentKey:
-    def __init__(self, vocab: MusicVocabulary):
-        if vocab:
-            assert vocab.pitch_kind == 'degree'
-            self.vocab = vocab
-        else:
-            self.vocab = MusicVocabulary(pitch_kind='degree')
-
-        self.ki = transform.KeyInsert(vocab=self.vocab, return_as_list=True)
-        self.ps = transform.PitchShift(vocab_degree=self.vocab)
-
-    def __call__(self, pair: Tuple[str, str]):
-        txt, key = pair
-        txt = self.ki(text=txt, key=key)
-        return self.ps(text=txt)
-
-
 class WordPieceMusicTrainer:
     """
     Wrapper for training music-score representation with WordPiece tokenizer
@@ -260,17 +243,25 @@ class WordPieceMusicTrainer:
         if self.augment_key:
             assert self.pitch_kind == 'degree'
 
-            out = iter_songs_n_key(songs)
+            out = dataset.iter_songs_n_key(songs)
             it, n = out.generator, out.total
             d_log['#key-augmented-song'] = out.total
 
             # concurrent = True
             concurrent = False
-            fn = _AugmentKey(vocab=self.vocab)
+            fn = transform.AugmentKey(vocab=self.vocab)
             if concurrent:
                 it = conc_yield(fn=fn, args=it, mode='process')
             else:
                 it = (fn(pair) for pair in it)
+
+            sanity_check = True
+            if sanity_check:
+                for e in tqdm(it, total=n, desc='Sanity check s2c'):
+                    mic(e)
+                    self.s2c(e)
+                raise NotImplementedError
+            d_log['concurrent'] = concurrent
         else:  # `midi`, `step`
             it = (s['score'] for s in songs)
             if self.pitch_kind == 'midi':  # Since expect extracted song sequences to be in pitch_kind `step`
@@ -318,14 +309,13 @@ class MyPreTrainedTokenizerFast(PreTrainedTokenizerFast):
 class WordPieceMusicTokenizer(MusicTokenizer):
 
     def __init__(
-            self, tokenizer: Tokenizer, precision: int = 5, s2c_args: Dict = None, omit_eos: bool = False,
-            augment_key: bool = False, **kwargs
+            self, tokenizer: Tokenizer, precision: int = 5, s2c_args: Dict = None, omit_eos: bool = False, **kwargs
     ):
         """
         :param tokenizer: A trained WordPiece tokenizer on characters
         """
-        pch_kind = 'degree' if augment_key else 'midi'
-        super().__init__(precision=precision, pitch_kind=pch_kind, name_or_path=self.__class__.__qualname__, **kwargs)
+        init_args = dict(precision=precision, name_or_path=self.__class__.__qualname__, is_wordpiece=True) | kwargs
+        super().__init__(**init_args)
         self._tokenizer = MyPreTrainedTokenizerFast(
             tokenizer_object=tokenizer, pad_token=self.pad_token, eos_token=self.eos_token
         )  # now vocab size is correctly set
@@ -417,15 +407,14 @@ class WordPieceMusicTokenizer(MusicTokenizer):
 def load_trained_tokenizer(  # has independent global token & bar split
         fnm: str = None, pitch_kind: str = None, **kwargs
 ) -> WordPieceMusicTokenizer:
-    if pitch_kind is None:
-        pitch_kind = 'midi'
+    pitch_kind = pitch_kind or 'midi'
     if pitch_kind == 'midi':
         fnm = fnm or '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
     elif pitch_kind == 'step':
         raise NotImplementedError('Recompute tokenizer w/ new music extraction tokens but no key aug')
     else:
         assert pitch_kind == 'degree'
-        raise NotImplementedError('TODO')
+        fnm = fnm or '22-10-23_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
     return WordPieceMusicTokenizer.from_file(fnm, is_wordpiece=True, pitch_kind=pitch_kind, **kwargs)
 
 
@@ -447,7 +436,7 @@ if __name__ == '__main__':
     from tqdm.auto import tqdm
 
     from musicnlp._sample_score import sample_full_midi, sample_full_step
-    from musicnlp.preprocess import load_songs, DATASET_NAME2MODE2FILENAME
+    from musicnlp.preprocess import dataset
 
     mic.output_width = 256
 
@@ -458,7 +447,7 @@ if __name__ == '__main__':
 
     # md = 'melody'
     md = 'full'
-    pop, mst, lmd = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in ['POP909', 'MAESTRO', 'LMD']]
+    pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
 
     def check_tokenize_train():
         mv = MusicVocabulary()
@@ -469,7 +458,7 @@ if __name__ == '__main__':
         trainer = WordPieceTrainer(
             vocab_size=int(2e5), initial_alphabet=list(mv.tok2id.keys()), special_tokens=[unk], show_progress=True
         )
-        songs = load_songs(pop)
+        songs = dataset.load_songs(pop)
         tokenizer.train_from_iterator(songs, trainer=trainer)
         mic(tokenizer.get_vocab_size())
         mic(tokenizer.get_vocab())
@@ -519,6 +508,17 @@ if __name__ == '__main__':
     # try_char_map(kind='step')
     # try_char_map(kind='degree')
 
+    def profile_s2c():
+        vocab = MusicVocabulary(pitch_kind='step')
+        songs = dataset.load_songs(pop)
+        s2c = Score2Chars(vocab=vocab, independent_global_token=True, punctuate=True)
+
+        def fn():
+            for song in tqdm(songs):
+                s2c(song)
+        profile_runtime(fn)
+    # profile_s2c()
+
     def train():
         from collections import Counter
 
@@ -553,7 +553,7 @@ if __name__ == '__main__':
         wmt = WordPieceMusicTrainer(
             vocab=mv, pitch_kind=pch_kd, augment_key=aug_key, independent_global_token=True, punctuate=True
         )
-        songs = load_songs(*dnms, score_only=False)
+        songs = dataset.load_songs(*dnms, score_only=False)
         tokenizer = wmt(vocab_size=vocab_size, songs=songs, save=sv)
 
         s2c = wmt.s2c
@@ -622,11 +622,13 @@ if __name__ == '__main__':
     def check_trained_tokenize_all():
         from collections import Counter
 
-        aug_key = True
+        pch_kd = 'degree'
+        aug_key = pch_kd == 'degree'
+        mic('Check trained tokenizer', pch_kd, aug_key)
 
-        # fnm = '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
-        fnm = '22-10-22_WordPiece-Tokenizer_{dnm=POP909}_{vsz=8192, n=909}'
-        tokenizer = WordPieceMusicTokenizer.from_file(fnm, augment_key=aug_key)
+        fnm = '22-10-23_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
+        # fnm = '22-10-22_WordPiece-Tokenizer_{dnm=POP909}_{vsz=8192, n=909}'
+        tokenizer = WordPieceMusicTokenizer.from_file(fnm, pitch_kind=pch_kd)
         mv = tokenizer.vocab
         # inputs = tokenizer(sample_txt)
         # mic(tokenizer.decode(inputs['input_ids']))
@@ -634,13 +636,24 @@ if __name__ == '__main__':
         check_preserve = True  # sanity check, encoding & decoding, every token is still preserved
         check_dist = True
 
-        dnms = [pop]
+        # dnms = [pop]
         # dnms = [lmd]
-        # dnms = [pop, mst, lmd]
-        _songs: List[Dict] = load_songs(*dnms, score_only=False)
+        dnms = [pop, mst, lmd]
+        _songs: List[Dict] = dataset.load_songs(*dnms, score_only=False)
         if aug_key:
-            out = iter_songs_n_key(_songs, vocab=mv)
+            out = dataset.iter_songs_n_key(_songs)
             n, songs = out.total, out.generator
+
+            fn = transform.AugmentKey(vocab=mv)
+
+            concurrent = True
+            mic(concurrent)
+            if concurrent:
+                # songs = conc_yield(fn=fn, args=songs, mode='process')
+                with_tqdm = dict(desc='Augmenting key', total=n, chunksize=64)
+                songs = conc_map(fn=fn, args=songs, mode='process', with_tqdm=with_tqdm)
+            else:
+                songs = (fn(pair) for pair in songs)
         else:
             n, songs = len(_songs), (s['score'] for s in _songs)
 

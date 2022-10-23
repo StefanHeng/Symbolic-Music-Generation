@@ -111,7 +111,7 @@ setuptools==61.2.0
 six==1.16.0
 soupsieve==2.3.2.post1
 stack-data==0.3.0
-stefutils==0.18.2
+stefutils==0.19.1
 sty==1.0.4
 tensorboard==2.10.1
 tensorboard-data-server==0.6.1

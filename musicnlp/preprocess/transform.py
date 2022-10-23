@@ -5,11 +5,11 @@ Augmentations to a song, including
     3) Mixup the relative order of melody & bass
 """
 
-__all__ = ['KeyInsert', 'PitchShift', 'ToMidiPitch', 'ChannelMixer']
+__all__ = ['KeyInsert', 'TokenPitchShift', 'PitchShift', 'AugmentKey', 'ToMidiPitch', 'ChannelMixer']
 
 
 import random
-from typing import List, Dict, Union
+from typing import List, Tuple, Dict, Union
 
 from stefutil import *
 from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocabulary
@@ -26,6 +26,9 @@ class _IsNonRestPitch:
 
     def __call__(self, tok: str) -> bool:
         return self.vocab.type(tok) == VocabType.pitch and tok != self.vocab.rest
+
+
+nrp = _IsNonRestPitch()
 
 
 class Transform:
@@ -52,7 +55,7 @@ class KeyInsert(Transform):
         return toks if self.return_as_list else ' '.join(toks)
 
 
-class _ShiftSingle:
+class TokenPitchShift:
     """
     Convert from `step` pitch to `degree` pitch, see `PitchShift`
     """
@@ -62,19 +65,36 @@ class _ShiftSingle:
     ):
         self.vocab_step = vocab_step
         self.vocab_degree = vocab_degree
-        self.sdf = sdf
+        self.sdf = sdf or ScaleDegreeFinder()
         self.key_token = key_token
-
-        self.nrp = _IsNonRestPitch(vocab_step)
 
     def __call__(self, tok: str) -> str:
         # doesn't matter which vocab
-        if self.nrp(tok):
-            step = self.vocab_step.get_pitch_step(tok)
-            deg = self.sdf.map_single(note=step, key=self.vocab_step.compact(self.key_token))
-            midi, _step = self.vocab_step.compact(tok)  # doesn't matter which vocab
-            assert step == _step  # sanity check implementation
-            return self.vocab_degree.note2pitch_str(note=midi, degree=deg)
+        if nrp(tok):
+            # TODO: move to a sanitize rate transform
+            if self.vocab_step.is_rarest_step_pitch(tok):  # ignore; TODO: process the tok string as many edge cases?
+                mic('found rare', tok)
+                assert tok not in self.vocab_step  # sanity check
+                return self.vocab_step.uncommon_pitch
+            else:
+                if tok not in self.vocab_step:  # sanity check all rare pitch steps covered
+                    raise ValueError(f'Pitch step {pl.i(tok)} not in step vocab')
+                assert tok in self.vocab_step
+                step = self.vocab_step.get_pitch_step(tok)
+                deg = self.sdf.map_single(note=step, key=self.vocab_step.compact(self.key_token))
+                midi, _step = self.vocab_step.compact(tok)  # doesn't matter which vocab
+                assert step == _step  # sanity check implementation
+
+                # sanity_check = True
+                sanity_check = False
+                if sanity_check:
+                    ret = self.vocab_degree.uncompact(kind=VocabType.pitch, compact=(midi, deg))
+                    if ret == 'p_5/10_2' or ret not in self.vocab_degree:
+                        mic(tok, step, deg, midi, ret)
+                        raise NotImplementedError('token not in degree vocab')
+                    elif tok == 'p_11/0_C':
+                        mic(tok, step, deg, midi, ret)
+                return self.vocab_degree.uncompact(kind=VocabType.pitch, compact=(midi, deg))
         else:
             return tok
 
@@ -100,8 +120,8 @@ class PitchShift(Transform):
         key = toks[2]
         assert self.vocab_step.type(key) == VocabType.key  # sanity check; doesn't matter which vocab
 
-        ss = _ShiftSingle(vocab_step=self.vocab_step, vocab_degree=self.vocab_degree, sdf=self.sdf, key_token=key)
-        toks = [ss(tok) for tok in toks]
+        tps = TokenPitchShift(vocab_step=self.vocab_step, vocab_degree=self.vocab_degree, sdf=self.sdf, key_token=key)
+        toks = [tps(tok) for tok in toks]
 
         sanity_check = False
         # sanity_check = True
@@ -117,6 +137,23 @@ class PitchShift(Transform):
         return toks if self.return_as_list else ' '.join(toks)
 
 
+class AugmentKey:
+    def __init__(self, vocab: MusicVocabulary):
+        if vocab:
+            assert vocab.pitch_kind == 'degree'
+            self.vocab = vocab
+        else:
+            self.vocab = MusicVocabulary(pitch_kind='degree')
+
+        self.ki = KeyInsert(vocab=self.vocab, return_as_list=True)
+        self.ps = PitchShift(vocab_degree=self.vocab)
+
+    def __call__(self, pair: Tuple[str, str]):
+        txt, key = pair
+        txt = self.ki(text=txt, key=key)
+        return self.ps(text=txt)
+
+
 class ToMidiPitch(Transform):
     """
     Convert songs with music-theory annotated pitch (pitch kind `step`, `degree`) to midi pitch
@@ -127,11 +164,9 @@ class ToMidiPitch(Transform):
         assert vocab.pitch_kind != 'midi'
         self.vocab = vocab
 
-        self.nrp = _IsNonRestPitch(vocab)
-
     def __call__(self, text: Union[str, List[str]]) -> str:
         toks = text if isinstance(text, list) else text.split()
-        toks = [(self.vocab.pitch2midi_pitch(tok) if self.nrp(tok) else tok) for tok in toks]
+        toks = [(self.vocab.pitch2midi_pitch(tok) if nrp(tok) else tok) for tok in toks]
 
         sanity_check = False
         if sanity_check:
@@ -255,3 +290,59 @@ class ChannelMixer(Transform):
                 return elms
             else:  # swap at 50% chance
                 return [ChannelMixer.e_b, *notes_b, ChannelMixer.e_m, *notes_m]
+
+
+if __name__ == '__main__':
+    mic.output_width = 128
+
+    def profile_tsf():
+        from tqdm.auto import tqdm
+
+        from musicnlp.preprocess import dataset
+
+        aug_key = False
+
+        vocab = MusicVocabulary(pitch_kind='degree' if aug_key else 'step')
+
+        pop = dataset.get_dataset_dir_name('POP909')
+
+        if aug_key:
+            songs = dataset.load_songs(pop, score_only=False)
+            out = dataset.iter_songs_n_key(songs)
+            it, n = out.generator, out.total
+        else:
+            it = dataset.load_songs(pop)
+            n = len(it)
+
+        if aug_key:
+            fn = AugmentKey(vocab=vocab)
+            it = (fn(pair) for pair in it)
+        else:
+            fn = ChannelMixer(vocab=vocab)
+            it = (fn(txt) for txt in it)
+        for _ in tqdm(it, total=n):
+            pass
+    # profile_runtime(profile_tsf)
+
+    def check_step_pitch_mappable_to_degree_pitch():
+        vocab_step = MusicVocabulary(pitch_kind='step')
+        vocab_degree = MusicVocabulary(pitch_kind='degree')
+
+        # t = vocab_step.type('p_1/-1_C')
+        # mic(t, VocabType.pitch, t == VocabType.pitch)
+        # exit(1)
+
+        mic(vocab_step.toks['pitch'])
+        mic(vocab_degree.toks['pitch'])
+
+        key_toks = vocab_step.toks['key']
+        mic(len(key_toks))
+        for key in key_toks:
+            mic(key)
+            tps = TokenPitchShift(vocab_step=vocab_step, vocab_degree=vocab_degree, key_token=key)
+            for pch in vocab_step.toks['pitch']:
+                tok_deg = tps(tok=pch)
+                if tok_deg not in vocab_degree:
+                    mic(key, pch, tok_deg)
+                    raise NotImplementedError
+    check_step_pitch_mappable_to_degree_pitch()

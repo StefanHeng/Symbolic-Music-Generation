@@ -16,9 +16,13 @@ from musicnlp.preprocess import transform
 
 
 __all__ = [
+    'get_dataset_dir_name', 'DATASET_NAME2MODE2FILENAME',
     'load_songs', 'iter_songs_n_key',
-    'DATASET_NAME2MODE2FILENAME', 'get_dataset', 'AugmentedDataset', 'ProportionMixingDataset'
+    'get_dataset', 'AugmentedDataset', 'ProportionMixingDataset'
 ]
+
+
+logger = get_logger('Dataset')
 
 
 DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {  # Are in pitch_kind `step`
@@ -38,15 +42,22 @@ DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {  # Are in pitch_kind `
 }
 
 
+def get_dataset_dir_name(*dnms, mode='full') -> Union[str, List[str]]:
+    def _get_single(dnm: str) -> str:
+        ca.check_mismatch('Dataset Name', dnm, DATASET_NAME2MODE2FILENAME.keys())
+        return get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{mode}')
+    if len(dnms) == 1:
+        return _get_single(dnms[0])
+    else:
+        return [_get_single(dnm) for dnm in dnms]
+
+
 def load_songs(*dnms, score_only: bool = True) -> Union[List[str], List[Dict[str, Any]]]:
     """
     Get individual song `score`s from a JSON `music_export` output
     """
-    if not hasattr(load_songs, 'logger'):
-        load_songs.logger = get_logger('Load Songs')
-
     def _load_single(dnm_):
-        load_songs.logger.info(f'Loading songs in dataset {pl.i(dnm_)}... ')
+        logger.info(f'Loading songs in dataset {pl.i(dnm_)}... ')
         with open(os.path.join(music_util.get_processed_path(), f'{dnm_}.json'), 'r') as f:
             dset = json.load(f)
         return [(s['score'] if score_only else s) for s in dset['music']]
@@ -88,7 +99,6 @@ def get_dataset(
     def load_single(dnm: str) -> Union[Dataset, DatasetDict]:
         return datasets.load_from_disk(os_join(music_util.get_processed_path(), 'hf', dnm))
 
-    logger = get_logger('Get Dataset')
     logger.info('Loading dataset from disk... ')
     if isinstance(dataset_names, (list, tuple)):
         dset = [load_single(dnm) for dnm in dataset_names]
