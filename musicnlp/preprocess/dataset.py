@@ -11,17 +11,17 @@ from datasets import Dataset, DatasetDict, DatasetInfo
 
 from stefutil import *
 import musicnlp.util.music as music_util
-from musicnlp.vocab import MusicVocabulary, MusicTokenizer
-from musicnlp.preprocess.transform import *
+from musicnlp.vocab import MusicTokenizer
+from musicnlp.preprocess import transform
 
 
 __all__ = [
-    'load_songs', 'iter_songs_with_key',
+    'load_songs', 'iter_songs_n_key',
     'DATASET_NAME2MODE2FILENAME', 'get_dataset', 'AugmentedDataset', 'ProportionMixingDataset'
 ]
 
 
-DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {
+DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {  # Are in pitch_kind `step`
     # `dataset name` => `mode` => `filename`
     'LMD': {
         'melody': '',
@@ -55,31 +55,22 @@ def load_songs(*dnms, score_only: bool = True) -> Union[List[str], List[Dict[str
 
 @dataclass
 class IterSongOutput:
-    generator: Iterable[str] = None
+    generator: Iterable[Tuple[str, str]] = None
     total: int = None
 
 
-def iter_songs_with_key(songs: Iterable[Dict[str, Any]], vocab: MusicVocabulary = None) -> IterSongOutput:
+def iter_songs_n_key(songs: Iterable[Dict[str, Any]]) -> IterSongOutput:
     """
     :param songs: songs, each containing `score` and possible `key`s, per music extraction API
-    :param vocab: A `degree` vocab for augmentation
-    :return: songs, each with each of its possible key inserted and pitch shifted
+    :return: songs, each with each of its possible key
     """
-    if vocab is None:
-        vocab = MusicVocabulary(pitch_kind='degree')
-    else:
-        assert vocab.pitch_kind == 'degree'
-    ki = KeyInsert(vocab=vocab, return_as_list=True)
-    ps = PitchShift(vocab_degree=vocab)
-
     n = sum(len(s['keys']) for s in songs)
 
     def gen():
         for s in songs:
             txt = s['score']
             for key in s['keys']:
-                _txt = ki(text=txt, key=key)
-                yield ps(text=_txt)
+                yield txt, key
     return IterSongOutput(generator=gen(), total=n)
 
 
@@ -175,7 +166,7 @@ class AugmentedDataset:
         self.ki, self.ps, self.cm = None, None, None
         self.insert_key, self.pitch_shift, self.channel_mixup = insert_key, pitch_shift, channel_mixup
         if insert_key:
-            self.ki = KeyInsert(vocab=self.tokenizer.vocab, return_as_list=True)
+            self.ki = transform.KeyInsert(vocab=self.tokenizer.vocab, return_as_list=True)
         if pitch_shift:
             if not insert_key:
                 raise ValueError('A key must be inserted for pitch shifting')
@@ -183,12 +174,12 @@ class AugmentedDataset:
             if pk != 'degree':
                 raise ValueError(f'Tokenization will not work: '
                                  f'Pitch Kind should be {pl.i("degree")} for pitch shifting, but found {pl.i(pk)}')
-            self.ps = PitchShift(return_as_list=True)
+            self.ps = transform.PitchShift(return_as_list=True)
         if channel_mixup:
             if mode != 'full':
                 raise ValueError(f'{pl.i("mix_up")} only works with mode={pl.i("full")}')
             mode = 'full' if isinstance(channel_mixup, bool) else channel_mixup
-            self.cm = ChannelMixer(precision=prec, vocab=self.tokenizer.vocab, mode=mode, return_as_list=True)
+            self.cm = transform.ChannelMixer(precision=prec, vocab=self.tokenizer.vocab, mode=mode, return_as_list=True)
 
     @property
     def meta(self) -> Dict[str, Any]:

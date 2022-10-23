@@ -207,6 +207,11 @@ class MusicVocabulary:
         )
         self.rest = self.cache['rest'] = self.cache['pref_pch'] + specs['rest']
 
+        self._pitch_kind2pattern: Dict[str, re.Pattern] = dict(
+            midi=re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$'),
+            step=re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[A-G])$'),
+            degree=re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[1-7])$')
+        )
         self.type2compact_re = {
             VocabType.duration: dict(
                 int=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE1}$'),
@@ -267,12 +272,7 @@ class MusicVocabulary:
 
     @property
     def pitch_pattern(self) -> re.Pattern:
-        if self.pitch_kind == 'midi':
-            return re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}$')
-        elif self.pitch_kind == 'step':
-            return re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[A-G])$')
-        else:  # `degree`
-            return re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[1-7])$')
+        return self._pitch_kind2pattern[self.pitch_kind]
 
     def _get_all_unique_pitches(self) -> List[str]:
         ret = [self.cache['rest']]
@@ -474,6 +474,11 @@ class MusicVocabulary:
         else:
             pch, octave = compact % 12 + 1, MusicVocabulary.pitch_midi2octave(midi=compact)
             return f'{self.cache["pref_pch"]}{pch}/{octave}'
+
+    def pitch2midi_pitch(self, tok: str) -> str:
+        assert self.type(tok) == VocabType.pitch
+        mid, step = self.compact(tok)
+        return self._uncompact_midi_pitch(mid)
 
     @staticmethod
     def pitch_midi2octave(midi: int) -> int:
@@ -693,6 +698,22 @@ if __name__ == '__main__':
     from musicnlp.preprocess.dataset import load_songs
 
     mic.output_width = 256
+
+    def check_rare_pitch(name_rare: str = None, name_norm: str = None, octave: int = 0):
+        from music21 import pitch
+        p_rare = pitch.Pitch(name=name_rare, octave=octave)
+        p_norm = pitch.Pitch(name=name_norm, octave=octave)
+        mic(p_rare, p_rare.midi)
+        mic(p_norm, p_norm.midi)
+    # check_rare_pitch(name_rare='B#', name_norm='C', octave=0)  # Raise octave
+    # check_rare_pitch(name_rare='B--', name_norm='A', octave=2)
+    # check_rare_pitch(name_rare='A##', name_norm='B', octave=2)
+    # check_rare_pitch(name_rare='C-', name_norm='B', octave=2)  # Raise octave
+    # check_rare_pitch(name_rare='A##', name_norm='B', octave=2)
+    # check_rare_pitch(name_rare='F-', name_norm='E', octave=2)
+    # check_rare_pitch(name_rare='E#', name_norm='F', octave=2)
+    # check_rare_pitch(name_rare='F##', name_norm='G', octave=2)
+    # check_rare_pitch(name_rare='G#', name_norm='A-', octave=2)
 
     def check_vocab_size():
         mv = MusicVocabulary()

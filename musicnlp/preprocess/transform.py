@@ -5,16 +5,27 @@ Augmentations to a song, including
     3) Mixup the relative order of melody & bass
 """
 
-__all__ = ['KeyInsert', 'PitchShift', 'ChannelMixer']
+__all__ = ['KeyInsert', 'PitchShift', 'ToMidiPitch', 'ChannelMixer']
 
 
 import random
 from typing import List, Dict, Union
 
 from stefutil import *
-from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocabulary, MusicTokenizer
+from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocabulary
 from musicnlp.preprocess.key_finder import ScaleDegreeFinder
 from musicnlp.preprocess.music_converter import MusicConverter
+
+
+class _IsNonRestPitch:
+    def __init__(self, vocab: MusicVocabulary = None):
+        if vocab:
+            self.vocab = vocab  # any pitch kind will do
+        else:
+            self.vocab = MusicVocabulary()
+
+    def __call__(self, tok: str) -> bool:
+        return self.vocab.type(tok) == VocabType.pitch and tok != self.vocab.rest
 
 
 class Transform:
@@ -54,9 +65,11 @@ class _ShiftSingle:
         self.sdf = sdf
         self.key_token = key_token
 
+        self.nrp = _IsNonRestPitch(vocab_step)
+
     def __call__(self, tok: str) -> str:
         # doesn't matter which vocab
-        if self.vocab_step.type(tok) == VocabType.pitch and tok != self.vocab_step.rest:
+        if self.nrp(tok):
             step = self.vocab_step.get_pitch_step(tok)
             deg = self.sdf.map_single(note=step, key=self.vocab_step.compact(self.key_token))
             midi, _step = self.vocab_step.compact(tok)  # doesn't matter which vocab
@@ -100,6 +113,31 @@ class PitchShift(Transform):
 
             # new = ' '.join(self.vocab_degree.colorize_token(tok) for tok in toks)
             # print(f'new: {new[:40pip0]}')
+            raise NotImplementedError
+        return toks if self.return_as_list else ' '.join(toks)
+
+
+class ToMidiPitch(Transform):
+    """
+    Convert songs with music-theory annotated pitch (pitch kind `step`, `degree`) to midi pitch
+        Intended for rendering output
+    """
+    def __init__(self, vocab: MusicVocabulary = None, **kwargs):
+        super().__init__(**kwargs)
+        assert vocab.pitch_kind != 'midi'
+        self.vocab = vocab
+
+        self.nrp = _IsNonRestPitch(vocab)
+
+    def __call__(self, text: Union[str, List[str]]) -> str:
+        toks = text if isinstance(text, list) else text.split()
+        toks = [(self.vocab.pitch2midi_pitch(tok) if self.nrp(tok) else tok) for tok in toks]
+
+        sanity_check = False
+        if sanity_check:
+            ori = text[:400]
+            new = ' '.join(toks)[:400]
+            mic(ori, new)
             raise NotImplementedError
         return toks if self.return_as_list else ' '.join(toks)
 

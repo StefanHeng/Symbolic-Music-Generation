@@ -9,6 +9,9 @@ from musicnlp.vocab import ElmType, Channel, MusicElement, VocabType, MusicVocab
 from musicnlp.preprocess import KeyFinder
 
 
+__all__ = ['MusicConverter']
+
+
 @dataclass
 class PartExtractOutput:
     time_sig: TsTup = None

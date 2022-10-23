@@ -8,7 +8,7 @@ Intended to trade sequence length with vocabulary size
 
 import json
 from os.path import join as os_join
-from typing import List, Dict, Union, Iterable, Any
+from typing import List, Tuple, Dict, Union, Iterable, Any
 
 from transformers import PreTrainedTokenizerFast
 from tokenizers import Tokenizer
@@ -19,7 +19,10 @@ from stefutil import *
 from musicnlp.util import *
 from musicnlp.vocab.music_vocab import MusicVocabulary, VocabType, WORDPIECE_CONTINUING_PREFIX
 from musicnlp.vocab.music_tokenizer import MusicTokenizer
-from musicnlp.preprocess import KeyInsert, PitchShift, iter_songs_with_key
+from musicnlp.preprocess import transform, iter_songs_n_key
+
+
+__all__ = ['WordPieceMusicTrainer', 'WordPieceMusicTokenizer', 'load_trained_tokenizer']
 
 
 def get_uni_chars_cache() -> List[str]:
@@ -192,24 +195,46 @@ class Score2Chars:
         return {self.trained_tok2tok(tok): i for tok, i in vocab.items()}
 
 
+class _AugmentKey:
+    def __init__(self, vocab: MusicVocabulary):
+        if vocab:
+            assert vocab.pitch_kind == 'degree'
+            self.vocab = vocab
+        else:
+            self.vocab = MusicVocabulary(pitch_kind='degree')
+
+        self.ki = transform.KeyInsert(vocab=self.vocab, return_as_list=True)
+        self.ps = transform.PitchShift(vocab_degree=self.vocab)
+
+    def __call__(self, pair: Tuple[str, str]):
+        txt, key = pair
+        txt = self.ki(text=txt, key=key)
+        return self.ps(text=txt)
+
+
 class WordPieceMusicTrainer:
     """
     Wrapper for training music-score representation with WordPiece tokenizer
     """
     continuing_prefix = WORDPIECE_CONTINUING_PREFIX
 
-    def __init__(self, vocab: MusicVocabulary, augment_key: bool = True, **kwargs):
+    def __init__(self, vocab: MusicVocabulary, pitch_kind: str = None, augment_key: bool = True, **kwargs):
         """
         :param vocab: Music Vocabulary, for internal mapping between music tokens & characters
+            Determines base vocabulary for tokenizer
         :param augment_key: If true, each score have each possible key inserted & pitch shifted accordingly
             Otherwise, train with raw music extraction scores
         """
-        # vocab matters cos it influences base vocab
-        if augment_key:
-            assert vocab.pitch_kind == 'degree'
-        else:  # TODO: maybe support `step` vocab?
-            assert vocab.pitch_kind == 'midi'
-        self.vocab = vocab
+        if vocab:
+            if pitch_kind:
+                assert pitch_kind == vocab.pitch_kind
+            self.vocab = vocab
+        else:
+            self.vocab = MusicVocabulary(pitch_kind=pitch_kind)
+        self.pitch_kind = self.vocab.pitch_kind
+
+        # they must go hand-in-hand
+        assert (self.pitch_kind == 'degree' and augment_key) or (self.pitch_kind != 'degree' and not augment_key)
         self.augment_key = augment_key
 
         self.s2c = Score2Chars(vocab=vocab, continuing_prefix=WordPieceMusicTrainer.continuing_prefix, **kwargs)
@@ -233,21 +258,39 @@ class WordPieceMusicTrainer:
 
         d_log = {'vocab-size': vocab_size, '#song': len(songs)}
         if self.augment_key:
-            out = iter_songs_with_key(songs, vocab=self.vocab)
-            it = out.generator
+            assert self.pitch_kind == 'degree'
+
+            out = iter_songs_n_key(songs)
+            it, n = out.generator, out.total
             d_log['#key-augmented-song'] = out.total
-        else:
+
+            # concurrent = True
+            concurrent = False
+            fn = _AugmentKey(vocab=self.vocab)
+            if concurrent:
+                it = conc_yield(fn=fn, args=it, mode='process')
+            else:
+                it = (fn(pair) for pair in it)
+        else:  # `midi`, `step`
             it = (s['score'] for s in songs)
+            if self.pitch_kind == 'midi':  # Since expect extracted song sequences to be in pitch_kind `step`
+                mv = MusicVocabulary(pitch_kind='step')
+                tmp = transform.ToMidiPitch(vocab=mv)
+                it = (tmp(s) for s in it)
+
         logger.info(f'Training WordPiece tokenization w/ {pl.i(d_log)}')
         gen = (self.s2c(s) for s in it)
         tokenizer.train_from_iterator(gen, trainer=trainer)
         if save:
             fnm = save if isinstance(save, str) else 'WordPiece-Tokenizer'
             date = now(fmt='short-date')
-            fnm = f'{date}_{fnm}_{{vsz={vocab_size}, n={len(songs)}}}'
+            meta = dict(vsz=vocab_size, n=len(songs), pch=self.pitch_kind[0])
+            if self.augment_key:
+                meta['aug-key'] = 'T'
+            fnm = f'{date}_{fnm}_{{{pl.pa(meta)}}}'
             path_tok = os_join(u.tokenizer_path, f'{fnm}.json')
             tokenizer.save(path_tok)
-            logger.info(f'{pl.i("Tokenizer")} saved to {pl.i(path_tok)}')
+            logger.info(f'Tokenizer saved to {pl.i(path_tok)}')
             path_meta = os_join(u.tokenizer_path, f'{fnm}_meta.json')
             with open(path_meta, 'w') as f:
                 json.dump(dict(  # For reconstructing class properties, see `WordPieceMusicTokenizer`
@@ -406,6 +449,8 @@ if __name__ == '__main__':
     from musicnlp._sample_score import sample_full_midi, sample_full_step
     from musicnlp.preprocess import load_songs, DATASET_NAME2MODE2FILENAME
 
+    mic.output_width = 256
+
     def sanity_check_split():
         pre_tokenizer = pre_tokenizers.WhitespaceSplit()  # split on whitespace only
         mic(pre_tokenizer.pre_tokenize_str(sample_full_midi))
@@ -455,8 +500,8 @@ if __name__ == '__main__':
         else:  # `step`, `degree`
             sample = sample_full_step
             if kind == 'degree':
-                ki = KeyInsert(vocab=mv, return_as_list=True)  # pitch kind irrelevant
-                ps = PitchShift(vocab_degree=mv)  # pitch kind irrelevant
+                ki = transform.KeyInsert(vocab=mv, return_as_list=True)  # pitch kind irrelevant
+                ps = transform.PitchShift(vocab_degree=mv)  # pitch kind irrelevant
                 key = 'CMajor'  # Pick an arbitrary key
                 sample = ps(text=ki(text=sample, key=key))
                 # mic(sample)
@@ -479,12 +524,14 @@ if __name__ == '__main__':
 
         from tqdm.auto import tqdm
 
-        # dnms = [pop]
+        dnms = [pop]
         # dnms = [pop, mst]
-        dnms = [pop, mst, lmd]
+        # dnms = [pop, mst, lmd]
 
-        aug_key = True
-        mv = MusicVocabulary(pitch_kind='degree' if aug_key else 'midi')
+        # pch_kd = 'midi'
+        pch_kd = 'degree'
+        aug_key = pch_kd == 'degree'
+        mv = MusicVocabulary(pitch_kind=pch_kd if aug_key else 'midi')
 
         vocab_size, svs = None, None
         sv = True
@@ -503,7 +550,9 @@ if __name__ == '__main__':
                 sv = 'WordPiece-Tokenizer_{dnm=all}'
         if aug_key:
             vocab_size *= 2
-        wmt = WordPieceMusicTrainer(vocab=mv, augment_key=aug_key, independent_global_token=True, punctuate=True)
+        wmt = WordPieceMusicTrainer(
+            vocab=mv, pitch_kind=pch_kd, augment_key=aug_key, independent_global_token=True, punctuate=True
+        )
         songs = load_songs(*dnms, score_only=False)
         tokenizer = wmt(vocab_size=vocab_size, songs=songs, save=sv)
 
@@ -590,7 +639,7 @@ if __name__ == '__main__':
         # dnms = [pop, mst, lmd]
         _songs: List[Dict] = load_songs(*dnms, score_only=False)
         if aug_key:
-            out = iter_songs_with_key(_songs, vocab=mv)
+            out = iter_songs_n_key(_songs, vocab=mv)
             n, songs = out.total, out.generator
         else:
             n, songs = len(_songs), (s['score'] for s in _songs)
