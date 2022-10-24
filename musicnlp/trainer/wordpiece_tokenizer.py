@@ -254,11 +254,13 @@ class WordPieceMusicTrainer:
 
             it = ((sr(txt), key) for txt, key in it)
 
-            # concurrent = True
-            concurrent = False
+            concurrent = True
+            # concurrent = False
+            # bsz = 32
+            bsz = None
             fn = transform.AugmentKey(vocab=self.vocab)
             if concurrent:
-                it = conc_yield(fn=fn, args=it, mode='process')
+                it = conc_yield(fn=fn, args=it, mode='process', batch_size=bsz)
             else:
                 it = (fn(pair) for pair in it)
 
@@ -269,6 +271,8 @@ class WordPieceMusicTrainer:
                     self.s2c(e)
                 raise NotImplementedError
             d_log['concurrent'] = concurrent
+            if concurrent:
+                d_log['batch_size'] = bsz
         else:  # `midi`, `step`
             it = (s['score'] for s in songs)
             it = (sr(txt) for txt in it)
@@ -553,9 +557,10 @@ if __name__ == '__main__':
         # dnms = [pop, mst, lmd]
 
         # pch_kd = 'midi'
-        pch_kd = 'step'
-        # pch_kd = 'degree'
+        # pch_kd = 'step'
+        pch_kd = 'degree'
         aug_key = pch_kd == 'degree'
+        mic(pch_kd, aug_key)
         mv = MusicVocabulary(pitch_kind=pch_kd, is_wordpiece=True)
 
         vocab_size, svs = None, None
@@ -579,35 +584,8 @@ if __name__ == '__main__':
             vocab=mv, pitch_kind=pch_kd, augment_key=aug_key, independent_global_token=True, punctuate=True
         )
         songs = dataset.load_songs(*dnms, score_only=False)
-        tokenizer = wmt(vocab_size=vocab_size, songs=songs, save=sv)
-
-        s2c = wmt.s2c
-
-        check_preserve = False
-        # check_preserve = True
-        if check_preserve:
-            sample_txt_ = mv.sanitize_rare_tokens(sample_full_midi)
-            encoded = s2c(sample_txt_)
-            encoded = tokenizer.encode(encoded).ids
-            decoded = tokenizer.decode(encoded)
-            decoded = s2c.decode(decoded)
-            assert decoded == sample_txt_
-            exit(1)
-
-        check_dist = False
-        # check_dist = True
-        if check_dist:
-            c = Counter()
-            it = tqdm(songs, desc='Counting token dist', unit='song')
-            for song in it:
-                toks = mv.sanitize_rare_tokens(song, return_as_list=False)
-                it.set_postfix(n_tok=len(toks))
-                song = ' '.join(toks)
-                encoded = s2c(song)
-                encoded = tokenizer.encode(encoded)
-                c.update([s2c.trained_tok2tok(t) for t in encoded.tokens])
-            mic(c)
-    # train()
+        wmt(vocab_size=vocab_size, songs=songs, save=sv)
+    train()
 
     def check_trained_property():
         # fnm = '2022-06-15_20-50-15_Word-Piece-Music-Tokenizer, dnm=POP909, vsz=4096, n=909'
@@ -622,7 +600,7 @@ if __name__ == '__main__':
         # encoded = tokenizer.tokenize(sample_txt2_cleaned)
         # mic(encoded)
 
-        inputs = tokenizer(sample_txt2_cleaned, padding=True)
+        tokenizer(sample_txt2_cleaned, padding=True)
     # check_trained_property()
 
     def check_trained_has_single_token():
@@ -672,20 +650,21 @@ if __name__ == '__main__':
     # check_broken_if_has_rare_token()
 
     def check_trained_tokenize_all():
-        pch_kd = 'step'
-        # pch_kd = 'degree'
+        # pch_kd = 'step'
+        pch_kd = 'degree'
         aug_key = pch_kd == 'degree'
         mic('Check trained tokenizer', pch_kd, aug_key)
 
-        fnm = '22-10-24_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=8192, n=2185, pch=s}'
+        # fnm = '22-10-24_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=8192, n=2185, pch=s}'
+        fnm = '22-10-24_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
         tokenizer = WordPieceMusicTokenizer.from_file(fnm, pitch_kind=pch_kd)
-        mv = tokenizer.vocab
 
         check_recon = True  # encoding & decoding reconstructs original text
+        mic(check_recon)
 
         # dnms = [pop]
-        dnms = [pop, mst]
-        # dnms = [pop, mst, lmd]
+        # dnms = [pop, mst]
+        dnms = [pop, mst, lmd]
         _songs: List[Dict] = dataset.load_songs(*dnms, score_only=False)
         if aug_key:
             out = dataset.iter_songs_n_key(_songs)
@@ -710,7 +689,7 @@ if __name__ == '__main__':
             mic(c)
         with open(os_join(u.tokenizer_path, f'{fnm} distribution check.json'), 'w') as f:
             json.dump(dict(count=c), f, indent=4)
-    check_trained_tokenize_all()
+    # check_trained_tokenize_all()
 
     def check_id2pch():
         tokenizer = MusicTokenizer()
