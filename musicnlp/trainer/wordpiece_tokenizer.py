@@ -99,7 +99,7 @@ class Score2Chars:
         assert 0 < n <= len(Score2Chars.uni_chars_cache)
         return Score2Chars.uni_chars_cache[:n]
 
-    def __call__(self, score: str, clean: bool = True) -> str:
+    def __call__(self, score: str) -> str:
         """
         Vanilla music token representation => character string ready for training
         """
@@ -109,13 +109,17 @@ class Score2Chars:
             sanity_check = False
             # sanity_check = True
             if sanity_check:  # encode-decode reconstructs the original sequence
-                ret = ' '.join([self.encode(t) for t in toks])
+                ret = ' '.join([self.encode_single(t) for t in toks])
                 _toks = ret.split()
                 _toks = [self.decode(_t) for _t in _toks]
-                assert ' '.join(_toks) == self.vocab.sanitize_rare_tokens(score)
-            return ' '.join([self.encode(t) for t in toks])
+                assert ' '.join(_toks) == score
+                raise NotImplementedError
+            return ' '.join([self.encode_single(t) for t in toks])
         else:
-            return self.encode(score)
+            return self.encode_single(score)
+
+    def encode(self, score: str) -> str:
+        return self.__call__(score)
 
     def split(self, score: str, join: bool = True) -> Union[List[str], List[List[str]]]:
         toks = score.split()
@@ -164,22 +168,21 @@ class Score2Chars:
             words.append(curr_word)
         return [' '.join(w) for w in words] if join else words
 
-    def encode(self, s: Union[str, List[str]], clean: bool = True) -> str:
+    def encode_single(self, s: Union[str, List[str]]) -> str:
         """
         score => chars
         """
         toks = s.split() if isinstance(s, str) else s
-        if clean:
-            toks = [self.vocab.sanitize_rare_token(t) for t in toks]
         return ''.join([self.dec_chars[self.vocab.tok2id[tok]] for tok in toks])
 
     def decode(self, s: str) -> str:
         """
         chars => score
         """
-        def _decode(s_: str) -> str:
-            return ' '.join([self.vocab.id2tok[self.enc_chars[c]] for c in s_])
-        return ' '.join([_decode(s) for s in s.split()]) if self.need_split else _decode(s)
+        return ' '.join([self.decode_single(s) for s in s.split()]) if self.need_split else self.decode_single(s)
+
+    def decode_single(self, s_: str) -> str:
+        return ' '.join([self.vocab.id2tok[self.enc_chars[c]] for c in s_])
 
     def trained_tok2tok(self, tok: str) -> str:
         if tok.startswith(self.continuing_prefix):
@@ -240,6 +243,8 @@ class WordPieceMusicTrainer:
         )
 
         d_log = {'vocab-size': vocab_size, '#song': len(songs)}
+
+        sr = transform.SanitizeRare(vocab=self.vocab)
         if self.augment_key:
             assert self.pitch_kind == 'degree'
 
@@ -247,15 +252,18 @@ class WordPieceMusicTrainer:
             it, n = out.generator, out.total
             d_log['#key-augmented-song'] = out.total
 
-            # concurrent = True
-            concurrent = False
+            it = ((sr(txt), key) for txt, key in it)
+
+            concurrent = True
+            # concurrent = False
             fn = transform.AugmentKey(vocab=self.vocab)
             if concurrent:
                 it = conc_yield(fn=fn, args=it, mode='process')
             else:
                 it = (fn(pair) for pair in it)
 
-            sanity_check = True
+            sanity_check = False
+            # sanity_check = True
             if sanity_check:
                 for e in tqdm(it, total=n, desc='Sanity check s2c'):
                     self.s2c(e)
@@ -263,6 +271,7 @@ class WordPieceMusicTrainer:
             d_log['concurrent'] = concurrent
         else:  # `midi`, `step`
             it = (s['score'] for s in songs)
+            it = (sr(txt) for txt in it)
             if self.pitch_kind == 'midi':  # Since expect extracted song sequences to be in pitch_kind `step`
                 mv = MusicVocabulary(pitch_kind='step')
                 tmp = transform.ToMidiPitch(vocab=mv)
@@ -277,7 +286,7 @@ class WordPieceMusicTrainer:
             meta = dict(vsz=vocab_size, n=len(songs), pch=self.pitch_kind[0])
             if self.augment_key:
                 meta['aug-key'] = 'T'
-            fnm = f'{date}_{fnm}_{{{pl.pa(meta)}}}'
+            fnm = f'{date}_{fnm}_{pl.pa(meta)}'
             path_tok = os_join(u.tokenizer_path, f'{fnm}.json')
             tokenizer.save(path_tok)
             logger.info(f'Tokenizer saved to {pl.i(path_tok)}')
@@ -326,7 +335,7 @@ class WordPieceMusicTokenizer(MusicTokenizer):
 
         # self._add_special_token(self.vocab.pad)
         assert self._tokenizer.pad_token_id is None  # TODO: Unlike `MusicTokenizer`, not sure why not defined already
-        self._tokenizer.pad_token_id = tokenizer.token_to_id(self.s2c.encode(self.pad_token))
+        self._tokenizer.pad_token_id = tokenizer.token_to_id(self.s2c.encode_single(self.pad_token))
 
         self._id2pchs: Dict[int, List[int]] = dict()  # cache, from each id to pitch if it contains any
         for i in range(self.vocab_size):
@@ -359,10 +368,10 @@ class WordPieceMusicTokenizer(MusicTokenizer):
 
     def __call__(self, text, **kwargs):
         if isinstance(text, str):
-            return self._tokenizer(self.s2c(text, clean=True), **kwargs)
+            return self._tokenizer(self.s2c(text), **kwargs)
         else:
             assert isinstance(text, (list, tuple)) and isinstance(text[0], str)
-            return self._tokenizer([self.s2c(t, clean=True) for t in text], **kwargs)
+            return self._tokenizer([self.s2c(t) for t in text], **kwargs)
 
     def tokenize(self, text, mode: str = 'music', entire_score: bool = True, **kwargs):
         """
@@ -374,7 +383,7 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         """
         ca.check_mismatch('Tokenization Mode', mode, ['music', 'char'])
         if isinstance(text, str):
-            encoded = self.s2c(text, clean=True) if entire_score else self.s2c.encode(text, clean=True)
+            encoded = self.s2c(text) if entire_score else self.s2c.encode_single(text)
             toks = self._tokenizer.tokenize(encoded, **kwargs)
             return [self.s2c.trained_tok2tok(t) for t in toks] if mode == 'music' else toks
         else:
@@ -382,7 +391,7 @@ class WordPieceMusicTokenizer(MusicTokenizer):
 
     def encode(self, text, **kwargs):
         if isinstance(text, str):
-            return self._tokenizer.encode(self.s2c(text, clean=True), **kwargs)
+            return self._tokenizer.encode(self.s2c(text), **kwargs)
         else:
             raise NotImplementedError('TODO')
 
@@ -392,9 +401,6 @@ class WordPieceMusicTokenizer(MusicTokenizer):
             return self.s2c.decode(decoded)
         else:
             raise NotImplementedError('Not implemented for iterable input')
-
-    # def _convert_token_to_id(self, token):
-    #     raise NotImplementedError()
 
     def _convert_id_to_token(self, index: int) -> str:
         return self.s2c.decode(self._tokenizer.decode(index).removeprefix(self.continuing_prefix))
@@ -417,25 +423,22 @@ def load_trained_tokenizer(  # has independent global token & bar split
     return WordPieceMusicTokenizer.from_file(fnm, is_wordpiece=True, pitch_kind=pitch_kind, **kwargs)
 
 
-class _CheckTrainedMap:
-    """
-    **debugging**, see `check_trained`
-    """
-    def __init__(self, vocab: MusicVocabulary, tokenizer):
-        self.vocab = vocab
-        self.tokenizer = tokenizer
-
-    def __call__(self, song_: str) -> List[int]:
-        toks_ = self.vocab.sanitize_rare_tokens(song_, return_as_list=False)
-        song_ = ' '.join(toks_)
-        return self.tokenizer(song_)['input_ids']
+# class _CheckTrainedMap:
+#     """
+#     **debugging**, see `check_trained`
+#     """
+#     def __init__(self, vocab: MusicVocabulary, tokenizer):
+#         self.vocab = vocab
+#         self.tokenizer = tokenizer
+#
+#     def __call__(self, text: str) -> List[int]:
+#         return self.tokenizer(text)['input_ids']
 
 
 if __name__ == '__main__':
     from tqdm.auto import tqdm
 
     from musicnlp._sample_score import sample_full_midi, sample_full_step
-    from musicnlp.preprocess import dataset
 
     mic.output_width = 256
 
@@ -614,7 +617,7 @@ if __name__ == '__main__':
             it.set_postfix(dict(tok=tok, encoded=encoded))
             if len(encoded) != 1:
                 mic(tok, encoded)
-                mic(tokenizer.s2c.encode(tok))
+                mic(tokenizer.s2c.encode_single(tok))
             assert len(encoded) == 1
     # check_trained_has_single_token()
 
@@ -625,7 +628,7 @@ if __name__ == '__main__':
         aug_key = pch_kd == 'degree'
         mic('Check trained tokenizer', pch_kd, aug_key)
 
-        fnm = '22-10-23_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
+        fnm = '22-10-24_WordPiece-Tokenizer_{dnm=POP&MST}_{{vsz=16384, n=2185, pch=d, aug-key=T}}'
         # fnm = '22-10-22_WordPiece-Tokenizer_{dnm=POP909}_{vsz=8192, n=909}'
         tokenizer = WordPieceMusicTokenizer.from_file(fnm, pitch_kind=pch_kd)
         mv = tokenizer.vocab
@@ -636,8 +639,8 @@ if __name__ == '__main__':
         check_dist = True
 
         # dnms = [pop]
-        # dnms = [lmd]
-        dnms = [pop, mst, lmd]
+        dnms = [pop, mst]
+        # dnms = [pop, mst, lmd]
         _songs: List[Dict] = dataset.load_songs(*dnms, score_only=False)
         if aug_key:
             out = dataset.iter_songs_n_key(_songs)
@@ -659,10 +662,8 @@ if __name__ == '__main__':
         concurrent = True
         # concurrent = False
         if concurrent:
-            map_single = _CheckTrainedMap(mv, tokenizer)
-            lst_ids = conc_map(
-                map_single, songs, with_tqdm=dict(desc='Checking trained tokenizer', chunksize=128), mode='process'
-            )
+            with_tqdm = dict(desc='Checking trained tokenizer', chunksize=128)
+            lst_ids = conc_map(lambda text: tokenizer(text)['input_ids'], songs, with_tqdm=with_tqdm, mode='process')
             toks = conc_map(
                 tokenizer.convert_ids_to_tokens, lst_ids,
                 with_tqdm=dict(desc='ids=>tokens', chunksize=128), mode='process'

@@ -17,8 +17,8 @@ import evaluate
 from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.train as train_util
-from musicnlp.vocab import MusicTokenizer, key_ordinal2str
-from musicnlp.preprocess import dataset
+from musicnlp.vocab import MusicTokenizer
+from musicnlp.preprocess import dataset, transform
 from musicnlp.models import MyReformerConfig, MyReformerModelWithLMHead, MyTransfoXLConfig, MyTransfoXLLMHeadModel
 from musicnlp.trainer import WordPieceMusicTokenizer, load_trained_tokenizer as load_wordpiece_tokenizer, metrics
 
@@ -274,26 +274,6 @@ class ComputeMetrics:
         return d_metric
 
 
-class VanillaMap:
-    """
-    Class instead of local function for pickling
-
-    Map for vanilla training where keys need to be separately passed
-    """
-    n_key = len(key_ordinal2str)
-
-    def __init__(self, tokenizer):
-        self.tokenizer = tokenizer
-
-    def __call__(self, samples):
-        ret = self.tokenizer(samples['score'], padding='max_length', truncation=True)
-        keys: List[Dict[str, Optional[float]]] = samples['keys']
-        # convert to a tensor format to eventually pass down to `compute_loss` and `compute_metrics`
-        # -1 for metric computation to ignore
-        ret['key_scores'] = [[(d[key_ordinal2str[i]] or -1) for i in range(VanillaMap.n_key)] for d in keys]
-        return ret
-
-
 def get_all_setup(
         model_name: str = None, model_size: str = None, model_config: Dict = None,
         dataset_names: Union[str, List[str]] = None, prec: int = 5, dataset_args: Dict = None,
@@ -330,7 +310,7 @@ def get_all_setup(
             return dataset.AugmentedDataset.from_hf(dset_nms, tokenizer=tokenizer, **dset_args_)
         else:
             return dataset.get_dataset(
-                dataset_names=dset_nms, map_func=VanillaMap(tokenizer),
+                dataset_names=dset_nms, map_func=transform.CombineKeys(tokenizer),
                 remove_columns=['title', 'score', 'keys'], **dset_args  # i.e. keep the input ids only
             )
     if prop_mix:

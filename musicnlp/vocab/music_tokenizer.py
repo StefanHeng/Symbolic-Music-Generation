@@ -6,6 +6,9 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from musicnlp.vocab.music_vocab import VocabType, MusicVocabulary
 
 
+__all__ = ['MusicTokenizer']
+
+
 class MusicTokenizer(PreTrainedTokenizer):
     """
     Conversion between music tokens & int ids

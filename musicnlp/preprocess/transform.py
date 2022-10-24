@@ -5,19 +5,23 @@ Augmentations to a song, including
     3) Mixup the relative order of melody & bass
 """
 
-__all__ = ['KeyInsert', 'TokenPitchShift', 'PitchShift', 'AugmentKey', 'ToMidiPitch', 'ChannelMixer']
+__all__ = [
+    'SanitizeRare',
+    'KeyInsert', 'TokenPitchShift', 'PitchShift', 'AugmentKey', 'CombineKeys', 'ToMidiPitch',
+    'ChannelMixer'
+]
 
 
 import random
-from typing import List, Tuple, Dict, Union
+from typing import List, Tuple, Dict, Union, Optional
 
 from stefutil import *
-from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocabulary
+from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocabulary, MusicTokenizer, key_ordinal2str
 from musicnlp.preprocess.key_finder import ScaleDegreeFinder
 from musicnlp.preprocess.music_converter import MusicConverter
 
 
-class _IsNonRestPitch:
+class _IsNonRestValidPitch:
     def __init__(self, vocab: MusicVocabulary = None):
         if vocab:
             self.vocab = vocab  # any pitch kind will do
@@ -25,10 +29,10 @@ class _IsNonRestPitch:
             self.vocab = MusicVocabulary()
 
     def __call__(self, tok: str) -> bool:
-        return self.vocab.type(tok) == VocabType.pitch and tok != self.vocab.rest
+        return self.vocab.type(tok) == VocabType.pitch and tok != self.vocab.rest and tok != self.vocab.rare_pitch
 
 
-nrp = _IsNonRestPitch()
+nrp = _IsNonRestValidPitch()
 
 
 class Transform:
@@ -82,30 +86,29 @@ class TokenPitchShift:
     def __call__(self, tok: str) -> str:
         # doesn't matter which vocab
         if nrp(tok):
-            # TODO: move to a sanitize rate transform
-            if self.vocab_step.is_rarest_step_pitch(tok):  # ignore; TODO: process the tok string as many edge cases?
-                mic('found rare', tok)
-                assert tok not in self.vocab_step  # sanity check
-                return self.vocab_step.rare_pitch
-            else:
-                if tok not in self.vocab_step:  # sanity check all rare pitch steps covered
-                    raise ValueError(f'Pitch step {pl.i(tok)} not in step vocab')
-                assert tok in self.vocab_step
-                step = self.vocab_step.get_pitch_step(tok)
-                deg = self.sdf.map_single(note=step, key=self.vocab_step.tok2meta(self.key_token))
-                midi, _step = self.vocab_step.tok2meta(tok)  # doesn't matter which vocab
-                assert step == _step  # sanity check implementation
+            # if self.vocab_step.is_rarest_step_pitch(tok):  # ignore; TODO: process the tok string as many edge cases?
+            #     mic('found rare', tok)
+            #     assert tok not in self.vocab_step  # sanity check
+            #     return self.vocab_step.rare_pitch
+            # else:
+            # if tok not in self.vocab_step:  # sanity check all rare pitch steps covered
+            #     raise ValueError(f'Pitch step {pl.i(tok)} not in step vocab')
+            assert tok in self.vocab_step  # expect all rare pitch tokens sanitized for correct behavior
+            step = self.vocab_step.get_pitch_step(tok)
+            deg = self.sdf.map_single(note=step, key=self.vocab_step.tok2meta(self.key_token))
+            midi, _step = self.vocab_step.tok2meta(tok)  # doesn't matter which vocab
+            # assert step == _step  # sanity check implementation
 
-                # sanity_check = True
-                sanity_check = False
-                if sanity_check:
-                    ret = self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg))
-                    if ret == 'p_5/10_2' or ret not in self.vocab_degree:
-                        mic(tok, step, deg, midi, ret)
-                        raise NotImplementedError('token not in degree vocab')
-                    elif tok == 'p_11/0_C':
-                        mic(tok, step, deg, midi, ret)
-                return self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg))
+            # sanity_check = True
+            sanity_check = False
+            if sanity_check:
+                ret = self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg))
+                if ret == 'p_5/10_2' or ret not in self.vocab_degree:
+                    mic(tok, step, deg, midi, ret)
+                    raise NotImplementedError('token not in degree vocab')
+                elif tok == 'p_11/0_C':
+                    mic(tok, step, deg, midi, ret)
+            return self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg))
         else:
             return tok
 
@@ -163,6 +166,29 @@ class AugmentKey:
         txt, key = pair
         txt = self.ki(text=txt, key=key)
         return self.ps(text=txt)
+
+
+class CombineKeys:
+    """
+    Class instead of local function for pickling
+
+    Map for vanilla training where keys need to be separately passed
+    """
+    n_key = len(key_ordinal2str)
+
+    def __init__(self, tokenizer: MusicTokenizer = None):
+        self.tokenizer = tokenizer
+
+        self.sr = SanitizeRare(vocab=tokenizer.vocab)
+
+    def __call__(self, samples):
+        txt = self.sr(samples['score'])
+        ret = self.tokenizer(txt, padding='max_length', truncation=True)
+        keys: List[Dict[str, Optional[float]]] = samples['keys']
+        # convert to a tensor format to eventually pass down to `compute_loss` and `compute_metrics`
+        # -1 for metric computation to ignore
+        ret['key_scores'] = [[(d[key_ordinal2str[i]] or -1) for i in range(CombineKeys.n_key)] for d in keys]
+        return ret
 
 
 class ToMidiPitch(Transform):

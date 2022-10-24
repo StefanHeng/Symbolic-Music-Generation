@@ -173,6 +173,7 @@ class AugmentedDataset:
         else:
             self.tokenizer = MusicTokenizer(precision=prec)
 
+        self.sr = transform.SanitizeRare(vocab=tokenizer.vocab)
         self.ki, self.ps, self.cm = None, None, None
         self.insert_key, self.pitch_shift, self.channel_mixup = insert_key, pitch_shift, channel_mixup
         if insert_key:
@@ -230,6 +231,7 @@ class AugmentedDataset:
 
         item = self.dset[idx]
         toks = item['score']
+        toks = self.sr(toks)
         if self.insert_key:
             toks = self.ki(toks, item['keys'])
         if self.pitch_shift:
