@@ -56,7 +56,7 @@ class VocabType(Enum):
     time_sig, tempo, key, duration, pitch, special = list(range(6))
 
     @classmethod
-    def compact(cls) -> Iterator['VocabType']:
+    def with_meta(cls) -> Iterator['VocabType']:
         """
         :return: Iterator of all token types with compact representation
         """
@@ -66,9 +66,9 @@ class VocabType(Enum):
 
 int_types = (int, np.int32, np.int64, torch.Tensor)
 Int = Union[int, np.int32, np.int64, torch.Tensor]
-Compact = Union[
+TokenMeta = Union[
     TsTup, int, Dur, Key,
-    Tuple[None, None], None  # for uncommon tokens
+    Tuple[None, None], None  # for rare tokens
 ]
 
 
@@ -85,7 +85,7 @@ class PitchNames:
 
 
 @dataclass
-class UnzipMidi:
+class MidiPitchMetaOut:
     """
     Output from midi pitch step expanding
     """
@@ -112,16 +112,16 @@ class MusicVocabulary:
     tempo_pref = 'Tempo'
     pitch_pref = 'p'
     dur_pref = 'd'
-    uncommon_time_sig = f'{time_sig_pref}{sep}uncommon'
-    uncommon_low_tempo = f'{tempo_pref}{sep}low'
-    uncommon_high_tempo = f'{tempo_pref}{sep}high'
-    uncommon_pitch = f'{pitch_pref}{sep}uncommon'  # relevant only for non-midi pitch kind, see `_rarest_index_n_names`
-    uncommon_duration = f'{dur_pref}{sep}uncommon'  # has to be too long, assuming durations are quantized
-    compact_uncommon_time_sig = (None, None)  # TODO: check, may break things?
-    compact_low_tempo = 40-1  # See `COMMON_TEMPOS`
-    compact_high_tempo = 240+1
-    compact_uncommon_pitch = None
-    compact_uncommon_duration = None
+    rare_time_sig = f'{time_sig_pref}{sep}rare'
+    rare_low_tempo = f'{tempo_pref}{sep}low'
+    rare_high_tempo = f'{tempo_pref}{sep}high'
+    rare_pitch = f'{pitch_pref}{sep}rare'  # relevant only for non-midi pitch kind, see `_rarest_index_n_names`
+    rare_duration = f'{dur_pref}{sep}rare'  # has to be too long, assuming durations are quantized
+    rate_time_sig_meta = (None, None)  # TODO: check, may break things?
+    low_tempo_meta = 40 - 1  # See `COMMON_TEMPOS`
+    high_tempo_meta = 240 + 1
+    rare_pitch_meta = None
+    rare_duration_meta = None
 
     special_elm_type2tok = {
         ElmType.bar_start: start_of_bar,
@@ -283,7 +283,7 @@ class MusicVocabulary:
             step=re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[A-G])$'),
             degree=re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[1-7])$')
         )
-        self.type2compact_re = {
+        self.tok_type2pattern = {
             VocabType.duration: dict(
                 int=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE1}$'),
                 frac=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE2}$'),
@@ -294,15 +294,15 @@ class MusicVocabulary:
             VocabType.key: re.compile(rf'^{self.cache["pref_key"]}(?P<key>.*)$'),
         }
 
-        self.compacts: Set[VocabType] = set(VocabType.compact())
-        self.uncom_tok2compact = {
-            MusicVocabulary.uncommon_time_sig: MusicVocabulary.compact_uncommon_time_sig,
-            MusicVocabulary.uncommon_low_tempo: MusicVocabulary.compact_low_tempo,
-            MusicVocabulary.uncommon_high_tempo: MusicVocabulary.compact_high_tempo,
-            MusicVocabulary.uncommon_duration: MusicVocabulary.compact_uncommon_duration
+        self.types_with_meta: Set[VocabType] = set(VocabType.with_meta())
+        self.rare_tok2meta = {
+            MusicVocabulary.rare_time_sig: MusicVocabulary.rate_time_sig_meta,
+            MusicVocabulary.rare_low_tempo: MusicVocabulary.low_tempo_meta,
+            MusicVocabulary.rare_high_tempo: MusicVocabulary.high_tempo_meta,
+            MusicVocabulary.rare_duration: MusicVocabulary.rare_duration_meta
         }
         if self.pitch_kind != 'midi':
-            self.uncom_tok2compact[MusicVocabulary.uncommon_pitch] = MusicVocabulary.compact_uncommon_pitch
+            self.rare_tok2meta[MusicVocabulary.rare_pitch] = MusicVocabulary.rare_pitch_meta
 
         def elm2str(elm):
             return self(elm, color=False, return_int=False)
@@ -322,11 +322,11 @@ class MusicVocabulary:
         special.append(MusicVocabulary.pad)
         self.toks: Dict[str, List[str]] = OrderedDict(dict(
             special=special,
-            time_sig=[MusicVocabulary.uncommon_time_sig, *tss],
-            tempo=[MusicVocabulary.uncommon_low_tempo, *tempos, MusicVocabulary.uncommon_high_tempo],
+            time_sig=[MusicVocabulary.rare_time_sig, *tss],
+            tempo=[MusicVocabulary.rare_low_tempo, *tempos, MusicVocabulary.rare_high_tempo],
             key=keys,
             pitch=self._get_all_unique_pitches(),
-            duration=[MusicVocabulary.uncommon_duration, *self.get_durations(exp='str')]
+            duration=[MusicVocabulary.rare_duration, *self.get_durations(exp='str')]
         ))
         for toks in self.toks.values():
             assert len(set(toks)) == len(toks)  # sanity check no duplicate tokens
@@ -340,8 +340,8 @@ class MusicVocabulary:
 
         # cache them for efficiency
         self.id2type: Dict[int, VocabType] = {id_: self.type(tok) for id_, tok in self.id2tok.items()}
-        self.id2compact: Dict[int, Compact] = {
-            id_: self.compact(tok) for id_, tok in self.id2tok.items() if self.has_compact(tok)
+        self.id2meta: Dict[int, TokenMeta] = {
+            id_: self.tok2meta(tok) for id_, tok in self.id2tok.items() if self.with_meta(tok)
         }
 
         self.logger = get_logger('Music Vocab')
@@ -358,7 +358,7 @@ class MusicVocabulary:
         if self.pitch_kind == 'midi':
             ret += [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
         else:
-            ret.append(MusicVocabulary.uncommon_pitch)
+            ret.append(MusicVocabulary.rare_pitch)
             if self.pitch_kind == 'step':
                 pchs = []
                 for i in range(128):
@@ -371,13 +371,7 @@ class MusicVocabulary:
                             otv -= 1
                         elif idx == 12 and name == 'C-':
                             otv += 1
-                            # mic(i, idx, otv, name, self.note2pitch_str(Pitch(name=name, octave=otv)))
-                        # elif idx == 11 and name == 'C--':
-                        #     otv += 1
-                            # mic(self.note2pitch_str(Pitch(name=name, octave=otv)))
-                            # raise NotImplementedError
                         pch = Pitch(name=name, octave=otv)
-                        # mic(i, idx, otv, name, pch.midi)
                         assert pch.midi == i  # sanity check
                         pchs.append(pch)
                 ret += [self.note2pitch_str(p) for p in pchs]
@@ -389,7 +383,7 @@ class MusicVocabulary:
 
     def is_rarest_step_pitch(self, tok: str) -> bool:
         assert self.pitch_kind == 'step'
-        mid, step = self.compact(tok, strict=False)
+        mid, step = self.tok2meta(tok, strict=False)
         idx_n_nm = self.pitch2local_index(mid), step
         # mic(idx_n_nm)
         return idx_n_nm in MusicVocabulary._rarest_pitch_index_n_names or tok in MusicVocabulary._rarest_pitch_tokens
@@ -441,7 +435,7 @@ class MusicVocabulary:
     def __len__(self):
         return len(self.tok2id)
 
-    def has_compact(self, tok: Union[str, int]) -> bool:
+    def with_meta(self, tok: Union[str, int]) -> bool:  # See VocabType.with_meta
         return self.type(tok) != VocabType.special
 
     def type(self, tok: Union[str, Int]) -> VocabType:
@@ -471,13 +465,15 @@ class MusicVocabulary:
         m = tpl.match(tok)
         return int(m.group('numer')), int(m.group('denom'))
 
-    def compact(self, token: Union[str, Int], strict: bool = True) -> Compact:
+    def tok2meta(self, token: Union[str, Int], strict: bool = True) -> TokenMeta:
         """
         Convert tokens to the numeric format
 
         More compact, intended for statistics
 
         Raise error is special tokens passed
+
+        Inverse of `meta2tok`
 
         :param token: token to compress
         :param strict: If true, enforce that the token must be in the vocabulary
@@ -490,30 +486,25 @@ class MusicVocabulary:
 
         representation remains faithful to the token for the uncommon ones
         """
-        assert self.has_compact(token), ValueError(f'{pl.i(token)} does not have a compact representation')
+        assert self.with_meta(token), ValueError(f'{pl.i(token)} does not have a compact representation')
         if isinstance(token, int_types):
-            return self.id2compact[int(token)]
-        elif token in self.uncom_tok2compact:
-            return self.uncom_tok2compact[token]
+            return self.id2meta[int(token)]
+        elif token in self.rare_tok2meta:
+            return self.rare_tok2meta[token]
         else:
             typ = self.type(token)
-            tpl = self.type2compact_re[typ]
+            tpl = self.tok_type2pattern[typ]
             if typ == VocabType.pitch:
                 if token == self.rest:
                     mid = MusicVocabulary.rest_pitch_code
                     return mid if self.pitch_kind == 'midi' else (mid, None)
                 else:
                     m = self.pitch_pattern.match(token)
-                    # if not m:
-                    #     mic(tok, self.uncom_tok2compact, self.pitch_kind)
                     idx, octave = int(m.group('numer')), int(m.group('denom'))
                     if self.pitch_kind == 'step' and self.with_rare_step:
                         # edge case, see `_get_all_unique_pitches`,
                         # cannot return the midi value in proper range to maintain bijection
                         if octave == -2:
-                            if not (not strict or token == 'p_1/-2_B'):
-                                mic(token, idx, octave)
-                                raise NotImplementedError
                             assert not strict or token == 'p_1/-2_B'
                             # octave += 1  # this would get the original midi value
                             strict = False
@@ -521,14 +512,8 @@ class MusicVocabulary:
                             assert not strict or token == 'p_12/9_C'
                             # octave -= 1
                             strict = False
-                        # elif pch == 11 and m.group('step') == 'C':
-                        #     # assert tok == 'p_11/0_C'  # kinda not needed...
-                        #     octave -= 1
                     mid = idx-1 + (octave+1)*12  # See `pch2step`, restore the pitch; +1 cos octave starts from -1
                     if strict:
-                        if not (0 <= mid < 128):
-                            mic(token, idx, octave)
-                            raise NotImplementedError(f'Pitch {token} is out of range')
                         assert 0 <= mid < 128  # sanity check
                     if self.pitch_kind == 'midi':
                         return mid
@@ -552,27 +537,27 @@ class MusicVocabulary:
                 assert typ == VocabType.key
                 return key_str2enum[tpl.match(token)['key']]
 
-    def uncompact(self, kind: VocabType, compact: Optional[Compact] = None) -> str:
+    def meta2tok(self, kind: VocabType, meta: Optional[TokenMeta] = None) -> str:
         """
         Reverse operation of `compact`, returns the music "decoded" string
         """
         assert kind != VocabType.special, ValueError(f'Compact representation for special types not supported')
         if kind == VocabType.duration:
-            assert isinstance(compact, (int, Fraction))
-            if isinstance(compact, int):
-                return f'{self.cache["pref_dur"]}{compact}'
+            assert isinstance(meta, (int, Fraction))
+            if isinstance(meta, int):
+                return f'{self.cache["pref_dur"]}{meta}'
             else:
-                return f'{self.cache["pref_dur"]}{compact.numerator}/{compact.denominator}'
+                return f'{self.cache["pref_dur"]}{meta.numerator}/{meta.denominator}'
         elif kind == VocabType.pitch:
             if self.pitch_kind == 'midi':
-                assert isinstance(compact, int)
-                return self._uncompact_midi_pitch(compact).token
+                assert isinstance(meta, int)
+                return self.midi_pitch2meta(meta).token
             else:  # `step`, `degree`
-                assert isinstance(compact, tuple)
-                mid, step = compact
+                assert isinstance(meta, tuple)
+                mid, step = meta
                 assert isinstance(mid, int)  # sanity check
 
-                out = self._uncompact_midi_pitch(mid)
+                out = self.midi_pitch2meta(mid)
                 tok, idx, otv = out.token, out.local_index, out.octave
                 if step is None:
                     assert mid == MusicVocabulary.rest_pitch_code  # sanity check
@@ -581,41 +566,34 @@ class MusicVocabulary:
                     if self.pitch_kind == 'degree':  # sanity check
                         assert isinstance(step, int)
                     else:  # `step`
-                        # edge cases, see `_get_all_unique_pitches`
-                        # if (idx, otv) == (1, -1) and step == 'B':
-                        #     otv -= 1
-                        #     tok = f'{self.cache["pref_pch"]}{idx}/{otv}'
-                        # elif (idx, otv) == (12, 8) and step == 'C':
-                        #     otv += 1
-                        #     tok = f'{self.cache["pref_pch"]}{idx}/{otv}'
                         assert isinstance(step, str)
                     return f'{tok}_{step}'
         elif kind == VocabType.time_sig:
-            assert isinstance(compact, tuple)
-            return f'{self.cache["pref_time_sig"]}{compact[0]}/{compact[1]}'
+            assert isinstance(meta, tuple)
+            return f'{self.cache["pref_time_sig"]}{meta[0]}/{meta[1]}'
         elif kind == VocabType.tempo:
-            assert isinstance(compact, int)
-            return f'{self.cache["pref_tempo"]}{compact}'
+            assert isinstance(meta, int)
+            return f'{self.cache["pref_tempo"]}{meta}'
         else:
             mic(kind)
             assert kind == VocabType.key
             raise NotImplementedError
             # return f'{self.cache["pref_key"]}{key_enum2str[compact]}'
 
-    def _uncompact_midi_pitch(self, compact: int) -> UnzipMidi:
-        if compact == MusicVocabulary.rest_pitch_code:
-            return UnzipMidi(token=self.rest)
+    def midi_pitch2meta(self, meta: int) -> MidiPitchMetaOut:
+        if meta == MusicVocabulary.rest_pitch_code:
+            return MidiPitchMetaOut(token=self.rest)
         else:
-            pch, octave = compact % 12 + 1, MusicVocabulary.pitch_midi2octave(midi=compact)
-            return UnzipMidi(
+            pch, octave = meta % 12 + 1, MusicVocabulary.pitch_midi2octave(midi=meta)
+            return MidiPitchMetaOut(
                 token=f'{self.cache["pref_pch"]}{pch}/{octave}',
                 local_index=pch, octave=octave
             )
 
     def pitch2midi_pitch(self, tok: str) -> str:
         assert self.type(tok) == VocabType.pitch
-        mid, step = self.compact(tok)
-        return self._uncompact_midi_pitch(mid)
+        mid, step = self.tok2meta(tok)
+        return self.midi_pitch2meta(mid).token
 
     @staticmethod
     def pitch_midi2octave(midi: int) -> int:
@@ -708,14 +686,14 @@ class MusicVocabulary:
             return self.__call__(e.meta, color=False)
         elif e.type == ElmType.note:
             pch, dur = e.meta
-            return [self.uncompact(VocabType.pitch, pch), self.uncompact(VocabType.duration, dur)]
+            return [self.meta2tok(VocabType.pitch, pch), self.meta2tok(VocabType.duration, dur)]
         else:
             assert e.type == ElmType.tuplets
             pchs, dur = e.meta
             return [
                 self.start_of_tuplet,
-                *[self.uncompact(VocabType.pitch, pch) for pch in pchs],
-                self.uncompact(VocabType.duration, dur),
+                *[self.meta2tok(VocabType.pitch, pch) for pch in pchs],
+                self.meta2tok(VocabType.duration, dur),
                 self.end_of_tuplet
             ]
 
@@ -771,44 +749,41 @@ class MusicVocabulary:
         else:  # `midi`
             raise ValueError(f'Step is not part of vocabulary for pitch kind {pl.i(self.pitch_kind)}')
 
-    def clean_uncommon_token(self, tok: str) -> str:
+    def sanitize_rare_token(self, tok: str) -> str:
         if tok in self.tok2id:
             return tok
         else:
             typ = self.type(tok)
-            uncom_types = (VocabType.pitch, VocabType.duration, VocabType.time_sig, VocabType.tempo)  # sanity check
+            rare_types = (VocabType.pitch, VocabType.duration, VocabType.time_sig, VocabType.tempo)  # sanity check
             if self.pitch_kind != 'midi':
-                uncom_types = tuple([*uncom_types, VocabType.pitch])
+                rare_types = tuple([*rare_types, VocabType.pitch])
 
-            if typ not in uncom_types:
+            if typ not in rare_types:
                 mic(tok, typ)
                 mic(self.tok2id)
                 raise NotImplementedError(f'Token {pl.i(tok)} with type {pl.i(typ)} is not in vocabulary '
                                           f'w/ pitch kind {pl.i(self.pitch_kind)}')
-            assert typ in uncom_types
+            assert typ in rare_types
             if typ == VocabType.pitch:
-                assert tok == MusicVocabulary.uncommon_pitch
-                return MusicVocabulary.uncommon_pitch
+                return MusicVocabulary.rare_pitch
             if typ == VocabType.duration:
-                assert tok == MusicVocabulary.uncommon_duration
-                return MusicVocabulary.uncommon_duration
+                return MusicVocabulary.rare_duration
             elif typ == VocabType.time_sig:
-                return MusicVocabulary.uncommon_time_sig
+                return MusicVocabulary.rare_time_sig
             else:
                 assert typ == VocabType.tempo
-                tp = self.compact(tok)  # get the actual BPM
-                return MusicVocabulary.uncommon_low_tempo if tp < 40 else MusicVocabulary.uncommon_high_tempo
+                tp = self.tok2meta(tok)  # get the actual BPM
+                return MusicVocabulary.rare_low_tempo if tp < 40 else MusicVocabulary.rare_high_tempo
 
-    def clean_uncommon(self, s: str, return_joined: bool = True) -> str:
+    def sanitize_rare_tokens(self, s: str, return_as_list: bool = True) -> str:
         """
         Convert uncommon tokens from input score into the special `uncommon` token
         """
-        toks = [(tok if tok in self.tok2id else self.clean_uncommon_token(tok)) for tok in s.split()]
-        return ' '.join(toks) if return_joined else toks
+        toks = [self.sanitize_rare_token(tok) for tok in s.split()]
+        return toks if return_as_list else ' '.join(toks)
 
     def t2i(self, tok):
-        if tok not in self.tok2id:  # uncommon
-            tok = self.clean_uncommon_token(tok)
+        tok = self.sanitize_rare_token(tok)
         return self.tok2id[tok]
 
     def i2t(self, id_):
@@ -898,18 +873,18 @@ if __name__ == '__main__':
         mic(sum(len(v) for v in mv.toks.values()))
     # check_vocab_size()
 
-    def check_compact_pitch():
+    def check_pitch_meta():
         mv = MusicVocabulary()
         for i in range(128):
             pch = Pitch(midi=i)
             tok = mv.note2pitch_str(pch)
-            mic(i, tok, mv.compact(tok))
-            comp = mv.compact(tok)
+            mic(i, tok, mv.tok2meta(tok))
+            comp = mv.tok2meta(tok)
             assert i == comp == pch.midi
-            uncomp = mv.uncompact(VocabType.pitch, comp)
-            assert tok == uncomp
-            mic(tok, uncomp)
-    # check_compact_pitch()
+            tok_ = mv.meta2tok(VocabType.pitch, comp)
+            assert tok == tok_
+            mic(tok, tok_)
+    check_pitch_meta()
 
     def check_pitch_set(kind: str = 'step'):
         mv_ = MusicVocabulary(pitch_kind=kind)
@@ -918,7 +893,7 @@ if __name__ == '__main__':
     # check_pitch_set(kind='step')
     # check_pitch_set(kind='degree')
 
-    def sanity_check_uncom():
+    def sanity_check_rare():
         """
         A small ratio of tokens should be set to uncommon
         """
@@ -941,13 +916,13 @@ if __name__ == '__main__':
                 idxs = np.random.choice(n_dset, size=n, replace=False)
                 for i in tqdm(idxs, desc=split):
                     txt = dset[int(i)]['score']
-                    c.update(mv.compact(t) for t in txt.split() if mv.has_compact(t))
+                    c.update(mv.tok2meta(t) for t in txt.split() if mv.with_meta(t))
             else:
                 for row in tqdm(dset, desc=split):
                     txt = row['score']
-                    c.update(mv.compact(t) for t in txt.split() if mv.has_compact(t))
+                    c.update(mv.tok2meta(t) for t in txt.split() if mv.with_meta(t))
         mic(c)
-    # sanity_check_uncom()
+    # sanity_check_rare()
 
     def check_same_midi_diff_step():
 
@@ -961,7 +936,7 @@ if __name__ == '__main__':
         for song in tqdm(songs):
             pchs = [tok for tok in song.split() if mv.type(tok) == VocabType.pitch]
             for pch in pchs:
-                midi = mv.compact(pch)
+                midi = mv.tok2meta(pch)
                 step = pch[-1]
                 pch_str = pch[:pch.rfind('_')]
                 counts[(pch_str, midi)][step] += 1
@@ -986,7 +961,7 @@ if __name__ == '__main__':
             if per_song:
                 toks = set(toks)
             for tok in toks:
-                mid, step = mv.compact(tok, strict=False)
+                mid, step = mv.tok2meta(tok, strict=False)
 
                 if not (0 <= mid < 128):  # No overflow of octave due to the key
                     counts_out_of_range[tok] += 1
@@ -1047,8 +1022,8 @@ if __name__ == '__main__':
                     mic(tok, in_vocab, rare)
                 assert mut_ex  # mutually exclusive
                 # able to reconstruct pitch for either case
-                comp = mv.compact(token=tok, strict=in_vocab)
-                recon = mv.uncompact(kind=VocabType.pitch, compact=comp)
+                comp = mv.tok2meta(token=tok, strict=in_vocab)
+                recon = mv.meta2tok(kind=VocabType.pitch, meta=comp)
                 if tok != recon:
                     mic(tok, comp, recon)
                     mic(rare)

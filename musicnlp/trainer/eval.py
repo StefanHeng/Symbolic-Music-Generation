@@ -135,7 +135,7 @@ class MusicGenerator:
             key = pt_sample(KeyFinder(path)(return_type='dict'))  # just sample a key for generation, TODO?
         if mode == 'unconditional':
             # TODO: sample the time signature and tempos?
-            prompt = [self.vocab.uncompact(VocabType.time_sig, (4, 4)), self.vocab.uncompact(VocabType.tempo, 120)]
+            prompt = [self.vocab.meta2tok(VocabType.time_sig, (4, 4)), self.vocab.meta2tok(VocabType.tempo, 120)]
             if key:
                 prompt.append(key)
             prompt = ' '.join([*prompt, self.vocab.start_of_bar])

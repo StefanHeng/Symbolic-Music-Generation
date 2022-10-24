@@ -35,7 +35,7 @@ class MusicVisualize:
     See `preprocess.music_export.py`
     """
     key_dnm = 'dataset_name'
-    color_uncom = hex2rgb('#E06C75', normalize=True)
+    color_rare = hex2rgb('#E06C75', normalize=True)
     pattern_frac = re.compile(r'^(?P<numer>\d+)/(?P<denom>\d+)$')
 
     def __init__(
@@ -263,16 +263,16 @@ class MusicVisualize:
                 else:
                     t.set_text(txt)
                 if txt not in com_tss:
-                    t.set_color(self.color_uncom)
+                    t.set_color(self.color_rare)
             ax.set_xticks(ax.get_xticks())  # Hack to force rendering for `show`, TODO: better ways?
             ax.set_xticklabels([t.get_text() for t in xtick_lbs])
         ca(dist_plot_type=kind)
         title = 'Distribution of Time Signature'
         if kind == 'hist':
-            tss_uncom = sorted([  # sort by duration of the time signature
+            tss_rare = sorted([  # sort by duration of the time signature
                 ts for ts in self.df.time_sig.unique() if ts not in COMMON_TIME_SIGS], key=lambda ts: ts[0]/ts[1]
             )
-            tss = COMMON_TIME_SIGS + tss_uncom
+            tss = COMMON_TIME_SIGS + tss_rare
             tss_print = [f'{numer}/{denom}' for numer, denom in tss]
             df_col2cat_col(self.df, 'time_sig_str', tss_print)
             c_nm, xlab = 'time_sig_str', 'Time Signature'
@@ -299,7 +299,7 @@ class MusicVisualize:
             for t in xtick_lbs:
                 # matplotlib encoding for negative int label
                 if int(re.sub(u'\u2212', '-', t.get_text())) not in COMMON_TEMPOS:
-                    t.set_color(self.color_uncom)
+                    t.set_color(self.color_rare)
             ax.set_xticks(ax.get_xticks())
             ax.set_xticklabels([t.get_text() for t in xtick_lbs])  # Hack
         title, xlab = 'Distribution of Tempo', 'Tempo (bpm)'
@@ -309,23 +309,23 @@ class MusicVisualize:
     def key_dist(self, weighted=True, **kwargs):
         self.logger.info('Getting stats... ')
         key_pattern = re.compile(r'^(?P<key>[A-G])(?P<shift>[#b])?(?P<class>.*)$')
-        cls2cls_compact = dict(Major='maj', Minor='mi')
+        cls2cls_post = dict(Major='maj', Minor='mi')
 
-        def key2key_compact(key: str) -> str:
+        def key2shorter_key(key: str) -> str:
             m = key_pattern.match(key)
             assert m is not None
             k_, sh, cls = m.group('key'), m.group('shift'), m.group('class')
             if sh:
                 k_ = f'{k_}{sh}'
-            return f'{k_}{cls2cls_compact[cls]}'
+            return f'{k_}{cls2cls_post[cls]}'
         keys = list(key_str2enum.keys())
-        key2key_compact = {k: key2key_compact(k) for k in keys}
+        key2shorter_key = {k: key2shorter_key(k) for k in keys}
 
         k = 'keys' if weighted else 'keys_unweighted'
         df = self._count_by_dataset(k)
         df.rename(columns={k: 'key'}, inplace=True)
         df_col2cat_col(df, 'key', categories=keys)
-        df.key = df.key.apply(lambda k: key2key_compact[k])
+        df.key = df.key.apply(lambda k: key2shorter_key[k])
 
         title, xlab = 'Distribution of Key', 'Key'
         if weighted:
@@ -357,7 +357,7 @@ class MusicVisualize:
         df = self._count_by_dataset(k)
         df.rename(columns={k: 'pitch'}, inplace=True)
         ma, mi = df.pitch.max(), df.pitch.min()
-        assert mi == self.vocab.compact(self.vocab.rest)
+        assert mi == self.vocab.tok2meta(self.vocab.rest)
 
         def callback(ax):
             plt.gcf().canvas.draw()
@@ -415,7 +415,7 @@ class MusicVisualize:
                         val = int(txt)
                         t.set_text(txt)
                     if val > bound:
-                        t.set_color(self.color_uncom)
+                        t.set_color(self.color_rare)
                 ax.set_xticks(ax.get_xticks())  # disables warning
                 ax.set_xticklabels([t.get_text() for t in xtick_lbs])  # Hack
             return self.hist_wrapper(
@@ -558,18 +558,18 @@ if __name__ == '__main__':
         mic(df)
     # check_warn()
 
-    def check_uncommon_tempos():
+    def check_rare_tempos():
         tempos = mv.df.tempo.unique()
         mic(tempos)
         mic(set(tempos) - set(COMMON_TEMPOS))
-    # check_uncommon_tempos()
+    # check_rare_tempos()
 
-    def check_uncommon_time_sigs():
+    def check_rare_time_sigs():
         tss = mv.df.time_sig.unique()
         mic(tss)
-        uncom_tss = sorted(set(tss) - set(COMMON_TIME_SIGS), key=lambda ts: (ts[1], ts[0]))  # by denom first then numer
-        mic(uncom_tss)
-    # check_uncommon_time_sigs()
+        rare_tss = sorted(set(tss) - set(COMMON_TIME_SIGS), key=lambda ts: (ts[1], ts[0]))  # by denom first then numer
+        mic(rare_tss)
+    # check_rare_time_sigs()
 
     def plots():
         args = dict(stat='percent', upper_percentile=97.7)  # ~2std

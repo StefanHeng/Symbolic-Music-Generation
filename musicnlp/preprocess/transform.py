@@ -39,6 +39,17 @@ class Transform:
         raise NotImplementedError
 
 
+class SanitizeRare(Transform):
+    # See `MusicVocabulary.sanitize_rare_tokens`
+    def __init__(self, vocab: MusicVocabulary = None, **kwargs):
+        super().__init__(**kwargs)
+        self.vocab = vocab
+
+    def __call__(self, s: str) -> str:
+        toks = [self.vocab.sanitize_rare_token(tok) for tok in s.split()]
+        return toks if self.return_as_list else ' '.join(toks)
+
+
 class KeyInsert(Transform):
     def __init__(self, vocab: MusicVocabulary = None, **kwargs):
         super().__init__(**kwargs)
@@ -75,26 +86,26 @@ class TokenPitchShift:
             if self.vocab_step.is_rarest_step_pitch(tok):  # ignore; TODO: process the tok string as many edge cases?
                 mic('found rare', tok)
                 assert tok not in self.vocab_step  # sanity check
-                return self.vocab_step.uncommon_pitch
+                return self.vocab_step.rare_pitch
             else:
                 if tok not in self.vocab_step:  # sanity check all rare pitch steps covered
                     raise ValueError(f'Pitch step {pl.i(tok)} not in step vocab')
                 assert tok in self.vocab_step
                 step = self.vocab_step.get_pitch_step(tok)
-                deg = self.sdf.map_single(note=step, key=self.vocab_step.compact(self.key_token))
-                midi, _step = self.vocab_step.compact(tok)  # doesn't matter which vocab
+                deg = self.sdf.map_single(note=step, key=self.vocab_step.tok2meta(self.key_token))
+                midi, _step = self.vocab_step.tok2meta(tok)  # doesn't matter which vocab
                 assert step == _step  # sanity check implementation
 
                 # sanity_check = True
                 sanity_check = False
                 if sanity_check:
-                    ret = self.vocab_degree.uncompact(kind=VocabType.pitch, compact=(midi, deg))
+                    ret = self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg))
                     if ret == 'p_5/10_2' or ret not in self.vocab_degree:
                         mic(tok, step, deg, midi, ret)
                         raise NotImplementedError('token not in degree vocab')
                     elif tok == 'p_11/0_C':
                         mic(tok, step, deg, midi, ret)
-                return self.vocab_degree.uncompact(kind=VocabType.pitch, compact=(midi, deg))
+                return self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg))
         else:
             return tok
 

@@ -25,7 +25,8 @@ class MusicStats:
         toks = sorted(toks)
         type2toks = {k: list(v) for k, v in itertools.groupby(toks, key=lambda tok: self.vocab.type(tok))}
         type2toks = {
-            k: list(self.vocab.compact(t, strict=strict) for t in v) for k, v in type2toks.items() if k in self.vocab.compacts
+            k: list(self.vocab.tok2meta(t, strict=strict) for t in v)
+            for k, v in type2toks.items() if k in self.vocab.types_with_meta
         }
         return {k.name: Counter(v) for k, v in type2toks.items()}
 
@@ -38,13 +39,13 @@ class MusicStats:
         notes = [elm for elm in self.converter.str2music_elms(toks).elms if elm.type in [ElmType.note, ElmType.tuplets]]
 
         def elm2notes(elm: MusicElement):
-            typ, compacts = elm.type, elm.meta
+            typ, meta = elm.type, elm.meta
             if typ == ElmType.note:
-                return [compacts]
+                return [meta]
             else:
-                comps_p, comp_d = compacts
-                comp_d = Fraction(comp_d, len(comps_p))
-                return [(comp_p, comp_d) for comp_p in comps_p]
+                ms_p, m_d = meta
+                m_d = Fraction(m_d, len(ms_p))
+                return [(m_p, m_d) for m_p in ms_p]
 
         note_n_dur = sorted(sum((elm2notes(elm) for elm in notes), start=[]))
         pch2dur = {

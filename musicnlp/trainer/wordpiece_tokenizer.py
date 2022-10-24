@@ -108,11 +108,11 @@ class Score2Chars:
 
             sanity_check = False
             # sanity_check = True
-            if sanity_check:
+            if sanity_check:  # encode-decode reconstructs the original sequence
                 ret = ' '.join([self.encode(t) for t in toks])
                 _toks = ret.split()
                 _toks = [self.decode(_t) for _t in _toks]
-                assert ' '.join(_toks) == self.vocab.clean_uncommon(score)
+                assert ' '.join(_toks) == self.vocab.sanitize_rare_tokens(score)
             return ' '.join([self.encode(t) for t in toks])
         else:
             return self.encode(score)
@@ -170,7 +170,7 @@ class Score2Chars:
         """
         toks = s.split() if isinstance(s, str) else s
         if clean:
-            toks = [self.vocab.clean_uncommon_token(t) for t in toks]
+            toks = [self.vocab.sanitize_rare_token(t) for t in toks]
         return ''.join([self.dec_chars[self.vocab.tok2id[tok]] for tok in toks])
 
     def decode(self, s: str) -> str:
@@ -258,7 +258,6 @@ class WordPieceMusicTrainer:
             sanity_check = True
             if sanity_check:
                 for e in tqdm(it, total=n, desc='Sanity check s2c'):
-                    mic(e)
                     self.s2c(e)
                 raise NotImplementedError
             d_log['concurrent'] = concurrent
@@ -427,7 +426,7 @@ class _CheckTrainedMap:
         self.tokenizer = tokenizer
 
     def __call__(self, song_: str) -> List[int]:
-        toks_ = self.vocab.clean_uncommon(song_, return_joined=False)
+        toks_ = self.vocab.sanitize_rare_tokens(song_, return_as_list=False)
         song_ = ' '.join(toks_)
         return self.tokenizer(song_)['input_ids']
 
@@ -498,7 +497,7 @@ if __name__ == '__main__':
         # mic(chs, len(chs))
         # exit(1)
         s2c = Score2Chars(mv)
-        sample_txt_ = mv.clean_uncommon(sample, return_joined=False)
+        sample_txt_ = mv.sanitize_rare_tokens(sample, return_as_list=False)
         encoded = s2c(sample_txt_)
         mic(encoded)
         decoded = s2c.decode(encoded)
@@ -524,9 +523,9 @@ if __name__ == '__main__':
 
         from tqdm.auto import tqdm
 
-        dnms = [pop]
+        # dnms = [pop]
         # dnms = [pop, mst]
-        # dnms = [pop, mst, lmd]
+        dnms = [pop, mst, lmd]
 
         # pch_kd = 'midi'
         pch_kd = 'degree'
@@ -561,7 +560,7 @@ if __name__ == '__main__':
         check_preserve = False
         # check_preserve = True
         if check_preserve:
-            sample_txt_ = mv.clean_uncommon(sample_full_midi)
+            sample_txt_ = mv.sanitize_rare_tokens(sample_full_midi)
             encoded = s2c(sample_txt_)
             encoded = tokenizer.encode(encoded).ids
             decoded = tokenizer.decode(encoded)
@@ -575,7 +574,7 @@ if __name__ == '__main__':
             c = Counter()
             it = tqdm(songs, desc='Counting token dist', unit='song')
             for song in it:
-                toks = mv.clean_uncommon(song, return_joined=False)
+                toks = mv.sanitize_rare_tokens(song, return_as_list=False)
                 it.set_postfix(n_tok=len(toks))
                 song = ' '.join(toks)
                 encoded = s2c(song)
@@ -593,7 +592,7 @@ if __name__ == '__main__':
         # map_single = _CheckTrainedMap(mv, tokenizer)
         # mic(map_single(sample_txt2))
 
-        sample_txt2_cleaned = tokenizer.vocab.clean_uncommon(sample_full_midi)
+        sample_txt2_cleaned = tokenizer.vocab.sanitize_rare_tokens(sample_full_midi)
         # encoded = tokenizer.tokenize(sample_txt2_cleaned)
         # mic(encoded)
 
@@ -676,7 +675,7 @@ if __name__ == '__main__':
             c = Counter()
             it = tqdm(songs, total=n)
             for song in it:
-                toks = mv.clean_uncommon(song, return_joined=False)
+                toks = mv.sanitize_rare_tokens(song, return_as_list=False)
                 song = ' '.join(toks)
                 it.set_postfix(n_tok=len(toks))
                 ids = tokenizer(song)['input_ids']

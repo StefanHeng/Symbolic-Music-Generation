@@ -63,7 +63,7 @@ class IkrMetric:
                 if not self.vocab.type(key_tok_id) == VocabType.key:
                     tok = self.tokenizer.decode([key_tok_id])
                     raise ValueError(f'Expect key token at 3rd position of label, got {pl.i(key_tok_id)}:{pl.i(tok)}')
-                ikrs.append(self.get_in_key_ratio(pred[label != PT_LOSS_PAD], self.vocab.compact(key_tok_id)))
+                ikrs.append(self.get_in_key_ratio(pred[label != PT_LOSS_PAD], self.vocab.tok2meta(key_tok_id)))
         return np.array(ikrs).mean()
 
     def get_init_key_est(self, gt_token_seq: Union[str, List[str]]):
@@ -79,7 +79,7 @@ class IkrMetric:
             filterfalse(lambda x: self.vocab.type(x) != VocabType.pitch, tok_lst[:bar_idx[self.n_init_bars]])
         )
         key_cls = [music21.pitch.Pitch(
-            midi=self.vocab.compact(p)).pitchClass for p in pitch_lst]
+            midi=self.vocab.tok2meta(p)).pitchClass for p in pitch_lst]
         key_est = Counter(key_cls).most_common()[0][0]
         return key_est
 
@@ -94,9 +94,9 @@ class IkrMetric:
         pitch_lst = list(filterfalse(
             lambda x: self.vocab.type(x) != VocabType.pitch, tok_lst))
         stats_pitch_cls_int = Counter([music21.pitch.Pitch(
-            midi=self.vocab.compact(p)).pitchClass for p in pitch_lst])
+            midi=self.vocab.tok2meta(p)).pitchClass for p in pitch_lst])
         stats_pitch_cls_str = Counter([music21.pitch.Pitch(
-            midi=self.vocab.compact(p)).name for p in pitch_lst])
+            midi=self.vocab.tok2meta(p)).name for p in pitch_lst])
         mic(stats_pitch_cls_str)
         mic(stats_pitch_cls_int)
 

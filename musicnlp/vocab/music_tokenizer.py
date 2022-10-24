@@ -38,15 +38,17 @@ class MusicTokenizer(PreTrainedTokenizer):
         # mic(self.pad_token, self.eos_token)
 
         self.sob_token = self.vocab.start_of_bar
-        self.uncommon_time_sig_token = self.vocab.uncommon_time_sig
-        self.uncommon_low_tempo_token = self.vocab.uncommon_low_tempo
-        self.uncommon_high_tempo_token = self.vocab.uncommon_high_tempo
-        self.uncommon_duration_token = self.vocab.uncommon_duration
+        self.rare_time_sig_token = self.vocab.rare_time_sig
+        self.rare_low_tempo_token = self.vocab.rare_low_tempo
+        self.rare_high_tempo_token = self.vocab.rare_high_tempo
+        self.rare_duration_token = self.vocab.rare_duration
+        self.rare_pitch_token = self.vocab.rare_pitch
         self.sob_token_id = self._convert_token_to_id(self.sob_token)
-        self.uncommon_time_sig_token_id = self._convert_token_to_id(self.uncommon_time_sig_token)
-        self.uncommon_low_tempo_token_id = self._convert_token_to_id(self.uncommon_low_tempo_token)
-        self.uncommon_high_tempo_token_id = self._convert_token_to_id(self.uncommon_high_tempo_token)
-        self.uncommon_duration_token_id = self._convert_token_to_id(self.uncommon_duration_token)
+        self.rare_time_sig_token_id = self._convert_token_to_id(self.rare_time_sig_token)
+        self.rare_low_tempo_token_id = self._convert_token_to_id(self.rare_low_tempo_token)
+        self.rare_high_tempo_token_id = self._convert_token_to_id(self.rare_high_tempo_token)
+        self.rare_duration_token_id = self._convert_token_to_id(self.rare_duration_token)
+        self.rare_pitch_token_id = self._convert_token_to_id(self.rare_pitch_token)
 
     def _add_special_token(self, tok):
         assert tok not in self.spec_toks_enc
@@ -81,7 +83,7 @@ class MusicTokenizer(PreTrainedTokenizer):
         :param ids: token ids for a score, or split tokens
         :return: compact representation of all pitch (midi, see `MusicVocabulary`) in the score
         """
-        return [self.vocab.compact(i) for i in ids if self.vocab.type(i) == VocabType.pitch]
+        return [self.vocab.tok2meta(i) for i in ids if self.vocab.type(i) == VocabType.pitch]
 
     def colorize(self, song: str) -> str:
         return ' '.join(self.vocab.colorize_token(tok) for tok in self.tokenize(song))
@@ -140,9 +142,9 @@ if __name__ == '__main__':
         mic(vocab.t2i(vocab.end_of_song))
     # check_pad_n_eos()
 
-    def sanity_check_uncom():
+    def sanity_check_rare():
         """
-        A small ratio of tokens should be set to uncommon
+        A small ratio of tokens should be set to rare
         """
         import numpy as np
 
@@ -167,7 +169,7 @@ if __name__ == '__main__':
                 for row in tqdm(dset, desc=split):
                     txt = row['score']
                     tkzer(txt)
-    # sanity_check_uncom()
+    # sanity_check_rare()
 
     def check_n_note_in_tup():
         from collections import Counter

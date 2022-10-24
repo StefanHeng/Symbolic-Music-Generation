@@ -171,7 +171,7 @@ class MusicConverter:
         Expects each music element to be in the correct format
         """
         def comp(x):  # syntactic sugar
-            return self.vocab.compact(x, strict=strict)
+            return self.vocab.tok2meta(x, strict=strict)
 
         if isinstance(decoded, str):
             decoded = decoded.split()
@@ -250,7 +250,7 @@ class MusicConverter:
         pitch, q_len = note.meta
         dur = m21.duration.Duration(quarterLength=q_len)
         if note.type == ElmType.note:
-            if pitch == -1:  # rest, see MusicVocabulary.compact
+            if pitch == MusicVocabulary.rest_pitch_code:
                 return [Rest(duration=dur)]
             else:
                 return [Note(pitch=m21.pitch.Pitch(midi=pitch), duration=dur)]

@@ -26,8 +26,8 @@ class WarnLog:
     RestInTup = 'Rest in Tuplet'
     HighPchOvl, HighPchOvlTup = 'Higher Pitch Overlap', 'Higher Pitch Overlap with Triplet'
     LowPchMakeup, LowPchMakeupRmv = 'Lower Pitch Makeup', 'Lower Pitch Makeup Removed'
-    IncTimeSig, UncomTimeSig = 'Inconsistent Time Signatures', 'Uncommon Time Signature'
-    UncomTempo = 'Uncommon Mean Tempo'
+    IncTimeSig, RareTimeSig = 'Inconsistent Time Signatures', 'Rare Time Signature'
+    RareTempo = 'Rare Mean Tempo'
     NoteNotQuant, TupNoteQuant = 'Notes Beyond Quantization', 'Tuplet Notes Quantizable'
     InvBarDur = 'Invalid Bar Notes Duration'
     TupNoteGap = 'Gap Observed in Consecutive Tuplets'
@@ -38,7 +38,7 @@ class WarnLog:
         EmptyStrt, EmptyEnd,
         MultTempo, MultTimeSig,
         MissTempo,
-        IncTimeSig, UncomTimeSig, UncomTempo,
+        IncTimeSig, RareTimeSig, RareTempo,
         HighPchOvl, HighPchOvlTup,
         LowPchMakeup, LowPchMakeupRmv,
         InvTupSz,
@@ -62,8 +62,8 @@ class WarnLog:
         MultTimeSig: 2,
         MissTempo: 3,
         IncTimeSig: 3,
-        UncomTimeSig: 3,
-        UncomTempo: 3,
+        RareTimeSig: 3,
+        RareTempo: 3,
         HighPchOvl: 6,
         HighPchOvlTup: 6,
         LowPchMakeup: 6,
@@ -119,11 +119,11 @@ class WarnLog:
         elif warn_nm == WarnLog.ExcecTupNote:
             msg = '{warn_name}: Too much Chord notes in tuplet group at bar#{bar_num}' \
                   ' - note choices {note_choices}, threshold {threshold}'
-        elif warn_nm == WarnLog.UncomTimeSig:
-            msg = '{warn_name}: Time Signature is uncommon' \
+        elif warn_nm == WarnLog.RareTimeSig:
+            msg = '{warn_name}: Time Signature is rare' \
                   ' - Expect one of: {time_sig_expect}, got {time_sig_got}'
-        elif warn_nm == WarnLog.UncomTempo:
-            msg = '{warn_name}: Mean Tempo is uncommon' \
+        elif warn_nm == WarnLog.RareTempo:
+            msg = '{warn_name}: Mean Tempo is rare' \
                   ' - Expect one of: {tempo_expect}, got {tempo_got}'
         elif warn_nm == WarnLog.IncTimeSig:
             msg = '{warn_name}: ratio of mode time signature below {threshold}' \
@@ -211,9 +211,9 @@ class WarnLog:
             assert all(k in args for k in ['bar_num', 'n_rest', 'n_note'])
         elif nm in [WarnLog.HighPchOvl, WarnLog.HighPchOvlTup, WarnLog.LowPchMakeup, WarnLog.LowPchMakeupRmv]:
             assert 'bar_num' in args
-        elif nm == WarnLog.UncomTimeSig:
+        elif nm == WarnLog.RareTimeSig:
             assert 'time_sig_expect' in args and 'time_sig_got' in args
-        elif nm == WarnLog.UncomTempo:
+        elif nm == WarnLog.RareTempo:
             assert 'tempo_expect' in args and 'tempo_got' in args
         elif nm in [WarnLog.EmptyStrt, WarnLog.EmptyEnd]:
             assert 'bar_range' in args

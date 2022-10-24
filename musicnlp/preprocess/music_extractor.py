@@ -89,9 +89,9 @@ class MusicExtractor:
         )
 
     @staticmethod
-    def meta2fnm_meta(d: Dict = None, compact: bool = True) -> str:
-        keys = ('md', 'prec', 'th') if compact else ('mode', 'precision', 'threshold')
-        vals = (d['mode'][0] if compact else d['mode']), d['precision'], d['greedy_tuplet_pitch_threshold']
+    def meta2fnm_meta(d: Dict = None, short: bool = True) -> str:
+        keys = ('md', 'prec', 'th') if short else ('mode', 'precision', 'threshold')
+        vals = (d['mode'][0] if short else d['mode']), d['precision'], d['greedy_tuplet_pitch_threshold']
         return pl.pa(dict(zip(keys, vals)))
 
     def log_warn(self, log_d: Dict = None, **kwargs):
@@ -935,9 +935,9 @@ class MusicExtractor:
         if len(lst_tp) > 1:
             self.log_warn(warn_name=WarnLog.MultTempo, tempos=sorted(lst_tp))
         if not is_common_time_sig(time_sig_mode):
-            self.log_warn(warn_name=WarnLog.UncomTimeSig, time_sig_expect=COMMON_TIME_SIGS, time_sig_got=time_sig_mode)
+            self.log_warn(warn_name=WarnLog.RareTimeSig, time_sig_expect=COMMON_TIME_SIGS, time_sig_got=time_sig_mode)
         if not is_common_tempo(mean_tempo):
-            self.log_warn(warn_name=WarnLog.UncomTempo, tempo_expect=COMMON_TEMPOS, tempo_got=mean_tempo)
+            self.log_warn(warn_name=WarnLog.RareTempo, tempo_expect=COMMON_TEMPOS, tempo_got=mean_tempo)
         for warn_dict in empty_warns:  # Postpone warning message until after logging song info
             self.log_warn(warn_dict)
 
