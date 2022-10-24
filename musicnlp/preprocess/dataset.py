@@ -57,7 +57,7 @@ def load_songs(*dnms, score_only: bool = True) -> Union[List[str], List[Dict[str
     Get individual song `score`s from a JSON `music_export` output
     """
     def _load_single(dnm_):
-        logger.info(f'Loading songs in dataset {pl.i(dnm_)}... ')
+        logger.info(f'Loading songs from JSON dataset {pl.i(dnm_)}... ')
         with open(os.path.join(music_util.get_processed_path(), f'{dnm_}.json'), 'r') as f:
             dset = json.load(f)
         return [(s['score'] if score_only else s) for s in dset['music']]
