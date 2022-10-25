@@ -16,23 +16,11 @@ import random
 from typing import List, Tuple, Dict, Union, Optional
 
 from stefutil import *
-from musicnlp.vocab import VocabType, ElmType, Channel, MusicElement, MusicVocabulary, MusicTokenizer, key_ordinal2str
+from musicnlp.vocab import (
+    VocabType, ElmType, Channel, MusicElement, MusicVocabulary, nrp, MusicTokenizer, key_ordinal2str
+)
 from musicnlp.preprocess.key_finder import ScaleDegreeFinder
 from musicnlp.preprocess.music_converter import MusicConverter
-
-
-class _IsNonRestValidPitch:
-    def __init__(self, vocab: MusicVocabulary = None):
-        if vocab:
-            self.vocab = vocab  # any pitch kind will do
-        else:
-            self.vocab = MusicVocabulary()
-
-    def __call__(self, tok: str) -> bool:
-        return self.vocab.type(tok) == VocabType.pitch and tok != self.vocab.rest and tok != self.vocab.rare_pitch
-
-
-nrp = _IsNonRestValidPitch()
 
 
 class Transform:
@@ -152,7 +140,7 @@ class PitchShift(Transform):
 
 
 class AugmentKey:
-    def __init__(self, vocab: MusicVocabulary):
+    def __init__(self, vocab: MusicVocabulary, return_as_list: bool = False):
         if vocab:
             assert vocab.pitch_kind == 'degree'
             self.vocab = vocab
@@ -160,7 +148,7 @@ class AugmentKey:
             self.vocab = MusicVocabulary(pitch_kind='degree')
 
         self.ki = KeyInsert(vocab=self.vocab, return_as_list=True)
-        self.ps = PitchShift(vocab_degree=self.vocab)
+        self.ps = PitchShift(vocab_degree=self.vocab, return_as_list=return_as_list)
 
     def __call__(self, pair: Tuple[str, str]):
         txt, key = pair
@@ -199,11 +187,11 @@ class ToMidiPitch(Transform):
     def __init__(self, vocab: MusicVocabulary = None, **kwargs):
         super().__init__(**kwargs)
         assert vocab.pitch_kind != 'midi'
-        self.vocab = vocab
+        self.vocab = vocab or MusicVocabulary(pitch_kind='step')
 
     def __call__(self, text: Union[str, List[str]]) -> str:
         toks = text if isinstance(text, list) else text.split()
-        toks = [(self.vocab.pitch2midi_pitch(tok) if nrp(tok) else tok) for tok in toks]
+        toks = [(self.vocab.pitch_tok2midi_pitch_tok(tok) if nrp(tok) else tok) for tok in toks]
 
         sanity_check = False
         if sanity_check:

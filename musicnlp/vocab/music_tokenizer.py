@@ -41,6 +41,8 @@ class MusicTokenizer(PreTrainedTokenizer):
         else:
             init_args = dict(precision=precision, color=False, is_wordpiece=is_wordpiece, pitch_kind=pitch_kind)
             self.vocab = MusicVocabulary(**init_args)
+        self.pitch_kind = pitch_kind
+
         self.spec_toks_enc, self.spec_toks_dec = dict(), dict()
         # if add_pad:
         #     self._add_pad_token()
@@ -95,8 +97,13 @@ class MusicTokenizer(PreTrainedTokenizer):
         """
         :param ids: token ids for a score, or split tokens
         :return: compact representation of all pitch (midi, see `MusicVocabulary`) in the score
+            Rest notes and rare pitches are ignored
         """
-        return [self.vocab.tok2meta(i) for i in ids if self.vocab.type(i) == VocabType.pitch]
+        ret = [self.vocab.tok2meta(i) for i in ids if self.vocab.type(i) == VocabType.pitch]
+        ret = [i for i in ret if i != self.vocab.rare_pitch_meta]
+        if self.pitch_kind != 'midi':  # meta is a tuple
+            ret = [i[0] for i in ret]
+        return ret
 
     def colorize(self, song: str) -> str:
         return ' '.join(self.vocab.colorize_token(tok) for tok in self.tokenize(song))

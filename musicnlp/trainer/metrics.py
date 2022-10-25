@@ -35,7 +35,7 @@ class IkrMetric:
         self.vocab = tokenizer.vocab
         self.n_init_bars = n_init_bars
 
-        ca.check_mismatch('Training Mode for IKR', mode, ['vanilla', 'key-aug'])
+        ca.check_mismatch('Training Mode for IKR', mode, ['vanilla', 'ins-key'])
         self.mode = mode
 
         self.clm_pred_shifted = clm_pred_shifted
@@ -57,7 +57,7 @@ class IkrMetric:
                 pred = pred[label != PT_LOSS_PAD]
                 _ikrs = [self.get_in_key_ratio(pred, key_ordinal2key_enum[o]) for o in ords]
                 ikrs.append(np.average(_ikrs, weights=scores))
-        elif self.mode == 'key-aug':
+        elif self.mode == 'ins-key':
             for pred, label in zip(preds, labels):
                 key_tok_id = label[1 if self.clm_pred_shifted else 2]  # expect labels to be well-formed
                 if not self.vocab.type(key_tok_id) == VocabType.key:

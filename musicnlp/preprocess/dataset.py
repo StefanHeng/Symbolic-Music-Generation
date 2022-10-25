@@ -156,9 +156,11 @@ class AugmentedDataset:
     """
     def __init__(
             self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None,  mode: str = None,
-            insert_key: bool = False, pitch_shift: bool = False, channel_mixup: Union[bool, str] = False
+            pitch_kind: str = None, insert_key: bool = False, pitch_shift: bool = False,
+            channel_mixup: Union[bool, str] = False, dataset_split: str = None
     ):
         ca(extract_mode=mode)
+        ca.check_mismatch('Dataset Split', dataset_split, ['train', 'test'])
         if isinstance(dataset, str):
             self.dset = datasets.load_from_disk(os_join(music_util.get_processed_path(), 'processed', dataset))
         else:
@@ -169,9 +171,13 @@ class AugmentedDataset:
         prec = get(json.loads(self.dset.info.description), 'extractor_meta.precision')
         if tokenizer:
             self.tokenizer = tokenizer
-            assert prec == tokenizer.precision
+            assert prec == tokenizer.precision and pitch_kind == tokenizer.pitch_kind
         else:
-            self.tokenizer = MusicTokenizer(precision=prec)
+            self.tokenizer = MusicTokenizer(precision=prec, pitch_kind=pitch_kind)
+
+        self.pitch_kind, self.tmp = pitch_kind, None
+        if pitch_kind == 'midi':
+            self.tmp = transform.ToMidiPitch()
 
         self.sr = transform.SanitizeRare(vocab=tokenizer.vocab)
         self.ki, self.ps, self.cm = None, None, None
@@ -181,20 +187,25 @@ class AugmentedDataset:
         if pitch_shift:
             if not insert_key:
                 raise ValueError('A key must be inserted for pitch shifting')
-            pk = self.tokenizer.vocab.pitch_kind
+            pk = self.tokenizer.pitch_kind
             if pk != 'degree':
                 raise ValueError(f'Tokenization will not work: '
                                  f'Pitch Kind should be {pl.i("degree")} for pitch shifting, but found {pl.i(pk)}')
             self.ps = transform.PitchShift(return_as_list=True)
+            assert pitch_kind == 'degree'
+        else:
+            assert pitch_kind != 'degree'  # incompatible
         if channel_mixup:
             if mode != 'full':
                 raise ValueError(f'{pl.i("mix_up")} only works with mode={pl.i("full")}')
             mode = 'full' if isinstance(channel_mixup, bool) else channel_mixup
             self.cm = transform.ChannelMixer(precision=prec, vocab=self.tokenizer.vocab, mode=mode, return_as_list=True)
 
+        self.dataset_split = dataset_split
+
     @property
     def meta(self) -> Dict[str, Any]:
-        d = dict()
+        d = dict(pch=self.pitch_kind[0])
         if self.insert_key:
             d['ins-key'] = 'T'
         if self.pitch_shift:
@@ -232,11 +243,15 @@ class AugmentedDataset:
         item = self.dset[idx]
         toks = item['score']
         toks = self.sr(toks)
+
+        if self.pitch_kind == 'midi':
+            toks = self.tmp(toks)
+
         if self.insert_key:
             toks = self.ki(toks, item['keys'])
         if self.pitch_shift:
             toks = self.ps(toks)
-        if self.channel_mixup:
+        if self.channel_mixup and self.dataset_split == 'train':  # No random swapping order in eval
             toks = self.cm(toks)
         if isinstance(toks, list):
             toks = ' '.join(toks)

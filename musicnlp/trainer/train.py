@@ -24,12 +24,10 @@ from musicnlp.trainer import WordPieceMusicTokenizer, load_trained_tokenizer as 
 
 
 def get_model_n_tokenizer(
-        model_name: str, model_size: str, prec: int = 5, wordpiece_tokenize: bool = False, pitch_shift: bool = False,
+        model_name: str, model_size: str, prec: int = 5, wordpiece_tokenize: bool = False, pitch_kind: str = None,
         model_config: Dict = None
 ) -> Tuple[MusicTokenizer, torch.nn.Module, OrderedDict]:
     ca.check_mismatch('Model Name', model_name, ['transf-xl', 'reformer'])
-    # TODO: without augment key, use `step` for training, which is more info?
-    pitch_kind = 'degree' if pitch_shift else 'midi'
     if wordpiece_tokenize:
         tokenizer: WordPieceMusicTokenizer = load_wordpiece_tokenizer(pitch_kind=pitch_kind)
         assert tokenizer.precision == prec
@@ -246,7 +244,7 @@ class ComputeMetrics:
     def __init__(self, tokenizer: MusicTokenizer, mode: str = 'vanilla', clm_pred_shifted: bool = False):
         self.acc = evaluate.load('accuracy')
         self.ikr = metrics.IkrMetric(tokenizer=tokenizer, mode=mode, clm_pred_shifted=clm_pred_shifted)
-        ca.check_mismatch('Training Mode', mode, ['vanilla', 'key-aug'])
+        ca.check_mismatch('Training Mode', mode, ['vanilla', 'ins-key'])
         self.mode = mode
 
         self.clm_pred_shifted = clm_pred_shifted
@@ -287,38 +285,39 @@ def get_all_setup(
     )
     logger.info(f'Initializing training with {pl.fmt(d_log)}... ')
     my_train_args = my_train_args or dict()
-    wordpiece_tokenize, ins_key, pch_shift, mix_up, prop_mix = (
-        my_train_args.get(k, False)
-        for k in ['wordpiece_tokenize', 'insert_key', 'pitch_shift', 'channel_mixup', 'proportional_mixing']
-    )
+    keys = ['pitch_kind', 'insert_key', 'pitch_shift', 'wordpiece_tokenize', 'channel_mixup', 'proportional_mixing']
+    pch_kd, ins_key, pch_shift, wordpiece_tokenize, mix_up, prop_mix = (my_train_args.get(k, False) for k in keys)
     logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
-        model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, pitch_shift=pch_shift,
+        model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, pitch_kind=pch_kd,
         model_config=model_config
     )
 
     logger.info('Loading datasets... ')
     dset_args = dataset_args or dict()
 
-    def load_once(dset_nms: Union[str, List[str]], **kwargs) -> datasets.DatasetDict:
-        if ins_key or pch_shift or mix_up:
+    def load_once(dset_nms: Union[str, List[str]], split: str = None) -> Union[datasets.Dataset, datasets.DatasetDict]:
+        get_dset_args = dict(splits=split) if split else dict()
+        if pch_kd != 'step' or ins_key or pch_shift or mix_up:
             dset_args_ = dict(
-                get_dataset_kwargs=dset_args | kwargs, insert_key=ins_key, channel_mixup=mix_up, pitch_shift=pch_shift,
+                get_dataset_kwargs=dset_args | get_dset_args,
+                pitch_kind=pch_kd, insert_key=ins_key, channel_mixup=mix_up, pitch_shift=pch_shift,
                 mode=my_train_args['mode']
-            )
+            ) | (dict(dataset_split=split) if split else dict())
             logger.info(f'Loading {pl.i("Augmented")} dataset w/ {pl.i(dict(dataset_names=dset_nms) | dset_args_)}... ')
-            return dataset.AugmentedDataset.from_hf(dset_nms, tokenizer=tokenizer, **dset_args_)
-        else:
-            return dataset.get_dataset(
+            ret = dataset.AugmentedDataset.from_hf(dset_nms, tokenizer=tokenizer, **dset_args_)
+        else:  # Dataset default pitch kind is `step`
+            ret = dataset.get_dataset(
                 dataset_names=dset_nms, map_func=transform.CombineKeys(tokenizer),
-                remove_columns=['title', 'score', 'keys'], **dset_args  # i.e. keep the input ids only
+                remove_columns=['title', 'score', 'keys'], **(dset_args | get_dset_args)  # i.e. keep the input ids only
             )
+        return ret[split] if split else ret
     if prop_mix:
         prop_mix = prop_mix if isinstance(prop_mix, int) else 2048
-        dsets_tr = [load_once(dnm, splits='train')['train'] for dnm in dataset_names]
+        dsets_tr = [load_once(dnm, split='train') for dnm in dataset_names]
         dset = datasets.DatasetDict(dict(
             train=dataset.ProportionMixingDataset(dataset_list=dsets_tr, k=prop_mix),
-            test=load_once(dataset_names, splits='test')['test']
+            test=load_once(dataset_names, split='test')
         ))
     else:
         dset = load_once(dataset_names)
@@ -328,7 +327,7 @@ def get_all_setup(
         get(json.loads(ds.info.description), 'extractor_meta.precision') == tokenizer.precision for ds in dset.values()
     )
 
-    cm = ComputeMetrics(tokenizer=tokenizer, mode='key-aug' if ins_key else 'vanilla')
+    cm = ComputeMetrics(tokenizer=tokenizer, mode='ins-key' if ins_key else 'vanilla')
     if ins_key:
         cls = train_util.MyTrainer
     else:  # if key not augmented, need to pass key info to each song for IKR logging
@@ -451,23 +450,30 @@ if __name__ == '__main__':
         # n_ep = 4
         # n_ep = 64
         n_ep = 128
-        if 'debug' in md_sz:
-            model_config = dict(max_length=64)
-            insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False, False
+        # model_config = dict(max_length=64)
+        # model_config = dict(max_length=512)
+        # if 'debug' in md_sz:
+        #     model_config = dict(max_length=64)
+        #     insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False, False
+        # else:
+        model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
+        pch_kd = 'degree'
+        insert_key = True
+        pch_shift = True
+        if pch_shift:
+            assert insert_key and pch_kd == 'degree'
         else:
-            model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
-            insert_key = True
-            pch_shift = True
-            wordpiece_tokenize = True
-            channel_mixup = 'full'
-            prop_mix = 1280
-        mic(insert_key, wordpiece_tokenize, channel_mixup, prop_mix)
+            assert pch_kd != 'degree'
+        wordpiece_tokenize = True
+        channel_mixup = 'full'
+        prop_mix = 1280
+        mic(pch_kd, insert_key, wordpiece_tokenize, channel_mixup, prop_mix)
 
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
             tqdm=True, logging_strategy='no',
             mode=md, wordpiece_tokenize=wordpiece_tokenize, proportional_mixing=prop_mix,
-            insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup
+            pitch_kind=pch_kd, insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup
         )
         trainer_args = dict(disable_train_metrics=True)
 
@@ -488,8 +494,8 @@ if __name__ == '__main__':
             train_args=train_args, my_train_args=my_train_args, trainer_args=trainer_args
         )
 
-        if 'debug' in md_sz:
-            trainer.train_dataset = trainer.eval_dataset
+        # if 'debug' in md_sz:
+        #     trainer.train_dataset = trainer.eval_dataset
 
         transformers.set_seed(seed)
         # ignore so that `None` don't get detached
@@ -497,4 +503,4 @@ if __name__ == '__main__':
         train_call_args = dict(ignore_keys_for_eval=ignore_keys_for_eval)
         trainer.train(**(train_call_args | kwargs))
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    # train_xl()
+    train_xl()

@@ -37,8 +37,14 @@ class MyTransfoXLConfig(TransfoXLConfig):
             d_head=hd_sz // n_head,  # ensure dim_head x #head == hidden size
             mem_len=m_len,  # TODO: if i understand correctly this is segment length?
             clamp_len=c_len,
-            # intended that adaptive softmax is effectively not needed, given the small Music vocab size
-            div_val=1, cutoffs=[]
+            # ~~intended that adaptive softmax is effectively not needed, given the small Music vocab size~~
+            # div_val=1, cutoffs=[]
+            # Now, use the softmax cutoff since
+            #   1. HF implementation has `gather` on labels and fails to ignore padding in forward pass,
+            #       if keep no cutoff, need to override adaptive attention, ugly
+            #   2. now with wordpiece, a vocabulary size of 30k slows down vanilla softmax
+            # See `__init__`
+            # TODO what's `div_val`?
         ))
         # Don't understand `proj_share_all_but_first` and it's not used in modeling
         # `adaptive` is not really configurable
@@ -46,7 +52,13 @@ class MyTransfoXLConfig(TransfoXLConfig):
     def __init__(self, model_size: str = 'base', tokenizer: MusicTokenizer = None, max_length: int = None, **kwargs):
         config = MyTransfoXLConfig.presets[model_size]
         if tokenizer:  # same argument as in `reformer`
-            config['vocab_size'] = tokenizer.vocab_size
+            vsz = config['vocab_size'] = tokenizer.vocab_size
+            if vsz >= 32768:
+                config['cutoffs'] = [10000]
+            elif vsz >= 16384:
+                config['cutoffs'] = [5000]
+            else:
+                config['cutoffs'] = [1000]
         config.update(kwargs)
         super().__init__(**config)
         # still fix a cut-off for training memory cap
