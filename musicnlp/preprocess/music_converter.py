@@ -217,6 +217,9 @@ class MusicConverter:
                 tok_d = next(it, None)
                 assert tok_d is not None and self.vocab.type(tok_d) == VocabType.duration, \
                     f'Pitch token {pl.i(tok)} should be followed by a duration token but got {pl.i(tok_d)}'
+                # if not isinstance(comp(tok)[-1], int):
+                #     mic(tok, self.vocab.pitch_kind, comp(tok))
+                #     raise NotImplementedError
                 lst_out.append(MusicElement(type=ElmType.note, meta=(comp(tok), comp(tok_d))))
             tok = next(it, None)
 

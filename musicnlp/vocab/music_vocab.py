@@ -526,7 +526,10 @@ class MusicVocabulary:
                     if self.pitch_kind == 'midi':
                         return mid
                     else:  # `step`, `degree`
-                        return mid, m.group('step')
+                        step = m.group('step')
+                        if self.pitch_kind == 'degree':
+                            step = int(step)
+                        return mid, step
             elif typ == VocabType.duration:
                 if '/' in token:
                     numer, denom = MusicVocabulary._get_group2(token, tpl['frac'])
@@ -578,6 +581,7 @@ class MusicVocabulary:
                         return tok
                     else:
                         if self.pitch_kind == 'degree':  # sanity check
+                            # mic(meta, tok, idx, otv, step)
                             assert isinstance(step, int)
                         else:  # `step`
                             assert isinstance(step, str)

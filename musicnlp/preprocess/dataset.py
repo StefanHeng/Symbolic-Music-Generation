@@ -11,7 +11,7 @@ from datasets import Dataset, DatasetDict, DatasetInfo
 
 from stefutil import *
 import musicnlp.util.music as music_util
-from musicnlp.vocab import MusicTokenizer
+from musicnlp.vocab import MusicVocabulary, MusicTokenizer
 from musicnlp.preprocess import transform
 
 
@@ -179,11 +179,13 @@ class AugmentedDataset:
         if pitch_kind == 'midi':
             self.tmp = transform.ToMidiPitch()
 
-        self.sr = transform.SanitizeRare(vocab=tokenizer.vocab)
+        vocab = self.tokenizer.vocab
+        sr_vocab = vocab if vocab.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
+        self.sr = transform.SanitizeRare(vocab=sr_vocab, return_as_list=True)  # since input text will be in `step`
         self.ki, self.ps, self.cm = None, None, None
         self.insert_key, self.pitch_shift, self.channel_mixup = insert_key, pitch_shift, channel_mixup
         if insert_key:
-            self.ki = transform.KeyInsert(vocab=self.tokenizer.vocab, return_as_list=True)
+            self.ki = transform.KeyInsert(vocab=vocab, return_as_list=True)
         if pitch_shift:
             if not insert_key:
                 raise ValueError('A key must be inserted for pitch shifting')
@@ -199,7 +201,7 @@ class AugmentedDataset:
             if mode != 'full':
                 raise ValueError(f'{pl.i("mix_up")} only works with mode={pl.i("full")}')
             mode = 'full' if isinstance(channel_mixup, bool) else channel_mixup
-            self.cm = transform.ChannelMixer(precision=prec, vocab=self.tokenizer.vocab, mode=mode, return_as_list=True)
+            self.cm = transform.ChannelMixer(precision=prec, vocab=vocab, mode=mode, return_as_list=True)
 
         self.dataset_split = dataset_split
 
@@ -255,12 +257,15 @@ class AugmentedDataset:
             toks = self.cm(toks)
         if isinstance(toks, list):
             toks = ' '.join(toks)
-        sanity_check = False
-        # sanity_check = True
+        # sanity_check = False
+        sanity_check = True
         if sanity_check:
-            ori, new = item['score'][:200], toks[:200]
-            mic(ori, new)
-            raise NotImplementedError
+            ori, new = item['score'], toks
+            if self.tokenizer.vocab.rare_pitch in new:
+                assert self.tokenizer.vocab.rare_pitch in ori
+            # ori, new = ori[:200], new[:200]
+                mic(ori, new)
+                raise NotImplementedError
         return self.tokenizer(toks, padding='max_length', truncation=True)
 
 

@@ -437,7 +437,7 @@ def load_trained_tokenizer(  # has independent global token & bar split
         fnm = fnm or '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=8192, n=2185, pch=s}'
     else:
         assert pitch_kind == 'degree'
-        fnm = fnm or '22-10-24_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
+        fnm = fnm or '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=16384, n=2185, pch=d, aug-key=T}'
     return WordPieceMusicTokenizer.from_file(fnm, is_wordpiece=True, pitch_kind=pitch_kind, **kwargs)
 
 
@@ -580,8 +580,8 @@ if __name__ == '__main__':
 
     def train():
         # dnms = [pop]
-        dnms = [pop, mst]
-        # dnms = [pop, mst, lmd]
+        # dnms = [pop, mst]
+        dnms = [pop, mst, lmd]
 
         # pch_kd = 'midi'
         # pch_kd = 'step'
@@ -589,6 +589,10 @@ if __name__ == '__main__':
         aug_key = pch_kd == 'degree'
         mic(pch_kd, aug_key)
         mv = MusicVocabulary(pitch_kind=pch_kd, is_wordpiece=True)
+
+        # conc = 128 if len(dnms) == 3 else 32
+        conc = False
+        mic(conc)
 
         vocab_size, svs = None, None
         sv = True
@@ -611,8 +615,8 @@ if __name__ == '__main__':
             vocab=mv, pitch_kind=pch_kd, augment_key=aug_key, independent_global_token=True, punctuate=True
         )
         songs = dataset.load_songs(*dnms, score_only=False)
-        wmt(vocab_size=vocab_size, songs=songs, save=sv, concurrent=32)
-    # train()
+        wmt(vocab_size=vocab_size, songs=songs, save=sv, concurrent=conc)
+    train()
 
     def check_trained_property():
         aug_key = True
@@ -743,11 +747,12 @@ if __name__ == '__main__':
                 c.update(fn(song))
             # mic(c)
         c_ = dict()
-        for tok, n in c.most_common():  # Make sure file write is in the order of most common
+        # Make sure file write is in the order of most common
+        for tok, n in tqdm(c.most_common(), desc='Ordering counts for output', total=len(c)):
             c_[tok] = n
         with open(os_join(u.tokenizer_path, f'{fnm} distribution check.json'), 'w') as f:
             json.dump(dict(count=c_), f, indent=4)
-    check_trained_tokenize_all()
+    # check_trained_tokenize_all()
 
     def check_id2pch():
         tokenizer = MusicTokenizer()

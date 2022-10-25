@@ -442,14 +442,14 @@ if __name__ == '__main__':
         # md_sz = 'base'
         mic(md_nm, md_sz)
 
-        n = 8
+        # n = 8
         # n = 16
-        # n = 128
+        n = 128
         # n = 1024
         # n = None
         # n_ep = 4
-        # n_ep = 64
-        n_ep = 128
+        n_ep = 64
+        # n_ep = 128
         # model_config = dict(max_length=64)
         # model_config = dict(max_length=512)
         # if 'debug' in md_sz:
