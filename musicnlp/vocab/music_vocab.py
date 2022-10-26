@@ -95,6 +95,19 @@ class MidiPitchMetaOut:
     octave: int = None
 
 
+def _get_unique_step_pitch_midis() -> List[int]:
+    """
+    For the few rare pitches included in the step vocab, with "vanilla" midis outside [0, 127]
+        A lazy way to make sure all rare pitches have corresponding tokens in degree vocab
+
+    Basically [-12, *[0, 127], 131]
+    """
+    vocab = MusicVocabulary(pitch_kind='step')
+    toks = vocab.toks['pitch']
+    toks = [tok for tok in toks if tok not in (vocab.rest, vocab.rare_pitch)]
+    return sorted(set(vocab.pitch_tok2midi_pitch_meta(tok) for tok in toks))
+
+
 class MusicVocabulary:
     """
     Stores mapping between string tokens and integer ids
@@ -182,6 +195,7 @@ class MusicVocabulary:
         12: PitchNames(normal=['B'], rare=['C-'])  # ['A##']
     }
 
+    # All in `step` pitch:
     # Occurring below 1k times per-token or below 50 per-song across all 3 datasets are considered rarest
     #       & ignored in vocab
     # the per-token and per-song counts are shown
@@ -375,7 +389,7 @@ class MusicVocabulary:
                     names = names.normal + names.rare if self.with_rare_step else names.normal
                     for name in names:
                         otv = MusicVocabulary.pitch_midi2octave(midi=i)
-                        if idx == 1 and name == 'B#':  # TODO: not sure why I don't need to filter out the edge octaves?
+                        if idx == 1 and name == 'B#':
                             otv -= 1
                         elif idx == 12 and name == 'C-':
                             otv += 1
@@ -385,7 +399,9 @@ class MusicVocabulary:
                 ret += [self.note2pitch_str(p) for p in pchs]
             else:  # `degree`
                 degs = range(1, 7+1)
-                ret += [self.note2pitch_str(Pitch(midi=i), degree=d) for i in range(128) for d in degs]
+                # mids = _get_unique_step_pitch_midis()
+                mids = range(128)
+                ret += [self.note2pitch_str(Pitch(midi=i), degree=d) for i in mids for d in degs]
         assert len(ret) == len(set(ret))  # sanity check unique
         return ret
 
@@ -622,7 +638,13 @@ class MusicVocabulary:
         return self.midi_pitch_meta2tok(mid).token
 
     def pitch_tok2midi_pitch_meta(self, tok: str) -> int:
-        # Intended for efficiency in IKR; TODO: reduce code duplication to `tok2meta`?
+        """
+        Faster implementation to  get midi value from pitch token; TODO: reduce code duplication to `tok2meta`?
+
+        Intended for efficient IKR
+
+        User responsible to make sure a valid pitch is passed in, e.g. not a rest pitch
+        """
         assert self.type(tok) == VocabType.pitch
         m = self.pitch_pattern.match(tok)
         idx, octave = int(m.group('numer')), int(m.group('denom'))
@@ -759,7 +781,7 @@ class MusicVocabulary:
         .. note:: Involves music21 object, may be inefficient, try `uncompact`
         """
         if isinstance(note, Rest):
-            s = self.cache["rest"]
+            s = self.rest
         else:
             pitch = note.pitch if isinstance(note, Note) else note
             # `pitch.name` follows certain scale by music21 default, may cause confusion
@@ -928,12 +950,15 @@ if __name__ == '__main__':
             tok_ = mv.meta2tok(VocabType.pitch, comp)
             assert tok == tok_
             mic(tok, tok_)
-    check_pitch_meta()
+    # check_pitch_meta()
 
     def check_pitch_set(kind: str = 'step'):
-        mv_ = MusicVocabulary(pitch_kind=kind)
-        pchs = mv_.toks['pitch']
+        mv = MusicVocabulary(pitch_kind=kind)
+        pchs = mv.toks['pitch']
         mic(pchs, len(pchs))
+
+        tok = 'p_12/9_4'
+        mic(tok in mv)
     # check_pitch_set(kind='step')
     # check_pitch_set(kind='degree')
 
@@ -1032,14 +1057,13 @@ if __name__ == '__main__':
         # mic(mv.compact(tok))
     # check_rare_pitches()
 
-    def check_all_pitches_covered():
+    def check_all_step_pitches_covered():
         mv = MusicVocabulary(pitch_kind='step')
 
         # mic(mv.toks['pitch'])
         # exit(1)
 
         overlap = set(mv.toks['pitch']) & set(MusicVocabulary._rarest_pitch_tokens)
-        # mic(overlap)
         assert len(overlap) == 0  # No overlap
 
         # dnms = [pop]
@@ -1078,4 +1102,4 @@ if __name__ == '__main__':
                         _count_per_song[tok] += 1
                     added = True
         mic(_count, _count_per_song)
-    check_all_pitches_covered()
+    check_all_step_pitches_covered()

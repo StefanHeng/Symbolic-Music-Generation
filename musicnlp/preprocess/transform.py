@@ -73,29 +73,22 @@ class TokenPitchShift:
 
     def __call__(self, tok: str) -> str:
         # doesn't matter which vocab
-        if nrp(tok):
-            # if self.vocab_step.is_rarest_step_pitch(tok):  # ignore; TODO: process the tok string as many edge cases?
-            #     mic('found rare', tok)
-            #     assert tok not in self.vocab_step  # sanity check
-            #     return self.vocab_step.rare_pitch
-            # else:
-            # if tok not in self.vocab_step:  # sanity check all rare pitch steps covered
-            #     raise ValueError(f'Pitch step {pl.i(tok)} not in step vocab')
+        if nrp(tok):  # TODO: process rare step tok tokens as many edge cases? but not much of them anyway...
             assert tok in self.vocab_step  # expect all rare pitch tokens sanitized for correct behavior
             step = self.vocab_step.get_pitch_step(tok)
             deg = self.sdf.map_single(note=step, key=self.vocab_step.tok2meta(self.key_token))
             midi, _step = self.vocab_step.tok2meta(tok)  # doesn't matter which vocab
-            # assert step == _step  # sanity check implementation
 
-            # sanity_check = True
-            sanity_check = False
-            if sanity_check:
-                ret = self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg))
-                if ret == 'p_5/10_2' or ret not in self.vocab_degree:
-                    mic(tok, step, deg, midi, ret)
-                    raise NotImplementedError('token not in degree vocab')
-                elif tok == 'p_11/0_C':
-                    mic(tok, step, deg, midi, ret)
+            # Edge case, rare pitch token that's part of vocab, see `MusicVocabulary::_get_all_unique_pitches`
+            if midi == -12:
+                assert tok == 'p_1/-2_B'
+                midi += 12
+                # TODO: debugging
+                assert self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg)).startswith('p_1/-1_')
+            elif midi == 131:
+                assert tok == 'p_12/9_C'
+                midi -= 12
+                assert self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg)).startswith('p_12/8_')
             return self.vocab_degree.meta2tok(kind=VocabType.pitch, meta=(midi, deg))
         else:
             return tok
@@ -318,13 +311,13 @@ class ChannelMixer(Transform):
 
 
 if __name__ == '__main__':
+    from tqdm.auto import tqdm
+
+    from musicnlp.preprocess import dataset
+
     mic.output_width = 128
 
     def profile_tsf():
-        from tqdm.auto import tqdm
-
-        from musicnlp.preprocess import dataset
-
         aug_key = False
 
         vocab = MusicVocabulary(pitch_kind='degree' if aug_key else 'step')
@@ -332,7 +325,7 @@ if __name__ == '__main__':
         pop = dataset.get_dataset_dir_name('POP909')
 
         if aug_key:
-            songs = dataset.load_songs(pop, score_only=False)
+            songs = dataset.load_songs(pop, as_dict=False)
             out = dataset.iter_songs_n_key(songs)
             it, n = out.generator, out.total
         else:
@@ -370,4 +363,34 @@ if __name__ == '__main__':
                 if tok_deg not in vocab_degree:
                     mic(key, pch, tok_deg)
                     raise NotImplementedError
-    check_step_pitch_mappable_to_degree_pitch()
+    # check_step_pitch_mappable_to_degree_pitch()
+
+    pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
+
+    def check_all_degree_pitches_covered():
+        # mic(_get_unique_step_pitch_midis())
+        # exit(1)
+        vocab = MusicVocabulary(pitch_kind='degree')
+
+        # dnms = [pop]
+        # dnms = [pop, mst]
+        dnms = [pop, mst, lmd]
+        songs = dataset.load_songs(*dnms)
+        # for s in songs:
+        #     mic(s)
+
+        sr = SanitizeRare(vocab=MusicVocabulary(pitch_kind='step'), return_as_list=True)
+        ak = AugmentKey(vocab=vocab, return_as_list=True)
+
+        out = dataset.iter_songs_n_key(songs)
+        it, n = out.generator, out.total
+
+        for txt, key in tqdm(it, desc='Checking toks in degree vocab', total=n):
+            # mic(txt, key)
+            text = sr(txt)
+            text = ak((text, key))
+            for tok in text:
+                if tok not in vocab:
+                    mic(tok)
+                    raise NotImplementedError(pl.i(tok))
+    check_all_degree_pitches_covered()

@@ -52,7 +52,10 @@ def get_dataset_dir_name(*dnms, mode='full') -> Union[str, List[str]]:
         return [_get_single(dnm) for dnm in dnms]
 
 
-def load_songs(*dnms, score_only: bool = True) -> Union[List[str], List[Dict[str, Any]]]:
+_Song = Union[str, Dict[str, Any]]
+
+
+def load_songs(*dnms, as_dict: bool = True, as_iter: bool = False) -> Union[List[_Song], Iterable[_Song]]:
     """
     Get individual song `score`s from a JSON `music_export` output
     """
@@ -60,8 +63,15 @@ def load_songs(*dnms, score_only: bool = True) -> Union[List[str], List[Dict[str
         logger.info(f'Loading songs from JSON dataset {pl.i(dnm_)}... ')
         with open(os.path.join(music_util.get_processed_path(), f'{dnm_}.json'), 'r') as f:
             dset = json.load(f)
-        return [(s['score'] if score_only else s) for s in dset['music']]
-    return sum((_load_single(dnm_) for dnm_ in dnms), start=[])
+
+        def gen():
+            for s in dset['music']:
+                yield s if as_dict else s['score']
+        return gen() if as_iter else list(gen())
+    if as_iter:
+        return chain_its(_load_single(dnm) for dnm in dnms)
+    else:
+        return sum((_load_single(dnm_) for dnm_ in dnms), start=[])
 
 
 @dataclass
@@ -75,7 +85,7 @@ def iter_songs_n_key(songs: Iterable[Dict[str, Any]]) -> IterSongOutput:
     :param songs: songs, each containing `score` and possible `key`s, per music extraction API
     :return: songs, each with each of its possible key
     """
-    n = sum(len(s['keys']) for s in songs)
+    n = sum(len(s['keys']) for s in songs) if isinstance(songs, list) else None  # Don't consume it otherwise
 
     def gen():
         for s in songs:

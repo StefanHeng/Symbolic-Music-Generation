@@ -614,7 +614,7 @@ if __name__ == '__main__':
         wmt = WordPieceMusicTrainer(
             vocab=mv, pitch_kind=pch_kd, augment_key=aug_key, independent_global_token=True, punctuate=True
         )
-        songs = dataset.load_songs(*dnms, score_only=False)
+        songs = dataset.load_songs(*dnms)
         wmt(vocab_size=vocab_size, songs=songs, save=sv, concurrent=conc)
     train()
 
@@ -714,7 +714,7 @@ if __name__ == '__main__':
         # dnms = [pop]
         dnms = [pop, mst]
         # dnms = [pop, mst, lmd]
-        _songs: List[Dict] = dataset.load_songs(*dnms, score_only=False)
+        _songs: List[Dict] = dataset.load_songs(*dnms, as_dict=False)
         if aug_key:
             out = dataset.iter_songs_n_key(_songs)
             n, songs = out.total, out.generator
