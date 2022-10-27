@@ -5,7 +5,7 @@ import music21 as m21
 
 from stefutil import *
 from musicnlp.util.music_lib import *
-from musicnlp.vocab import ElmType, Channel, MusicElement, VocabType, MusicVocabulary
+from musicnlp.vocab import Song, ElmType, Channel, MusicElement, VocabType, MusicVocabulary
 from musicnlp.preprocess import KeyFinder
 
 
@@ -163,7 +163,7 @@ class MusicConverter:
         return ' '.join(toks) if join else toks
 
     def str2music_elms(
-            self, decoded: Union[str, List[str]], group: bool = True, omit_eos: bool = False, strict: bool = True
+            self, text: Song, group: bool = True, omit_eos: bool = False, strict: bool = True
     ) -> ElmParseOutput:
         """
         Convert token string or pre-tokenized tokens into a compact format of music element tuples
@@ -173,9 +173,8 @@ class MusicConverter:
         def comp(x):  # syntactic sugar
             return self.vocab.tok2meta(x, strict=strict)
 
-        if isinstance(decoded, str):
-            decoded = decoded.split()
-        it = iter(decoded)
+        text = text if isinstance(text, list) else text.split()
+        it = iter(text)
 
         tok = next(it, None)
         lst_out = []
@@ -273,13 +272,16 @@ class MusicConverter:
         lst_melody, lst_bass = [], []
         it = iter(notes)
         c = Channel.melody if next(it).type == ElmType.melody else Channel.bass  # 1st note have to specify this
-        for n in notes:
+
+        n = next(it, None)
+        while n is not None:
             if n.type == ElmType.melody:
                 c = Channel.melody
             elif n.type == ElmType.bass:
                 c = Channel.bass
             else:
                 (lst_melody if c == Channel.melody else lst_bass).append(n)
+            n = next(it, None)
         return dict(melody=lst_melody, bass=lst_bass)
 
     def str2score(

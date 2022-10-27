@@ -376,7 +376,10 @@ if __name__ == '__main__':
     dnms = [pop, mst, lmd]
 
     def profile_transform_dataload():
-        from tqdm.auto import tqdm
+        from tqdm.auto import tqdm, trange
+
+        transformers.set_seed(seed)
+
         dsets = []
         tokenizer = load_wordpiece_tokenizer(pitch_kind='degree')
         tokenizer.model_max_length = 2048
@@ -391,8 +394,8 @@ if __name__ == '__main__':
         dset = dataset.ProportionMixingDataset(dataset_list=dsets, k=1280)
         # mic(dset.k, dset.dset_szs, dset.sz)
 
-        for e in tqdm(dset):
-            pass
+        for i in trange(len(dset)):  # Just iterating dset seems to index one more than it supposed to...
+            dset[i]
     profile_runtime(profile_transform_dataload)
 
     def train_reformer(**kwargs):

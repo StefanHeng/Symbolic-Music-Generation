@@ -12,18 +12,17 @@ __all__ = [
 ]
 
 
+from typing import List, Tuple, Dict, Union, Optional
+from dataclasses import dataclass
+
 import torch
-from typing import List, Tuple, Dict, Union, Optional, Any
 
 from stefutil import *
 from musicnlp.vocab import (
-    VocabType, ElmType, Channel, MusicElement, MusicVocabulary, nrp, MusicTokenizer, key_ordinal2str
+    Song, VocabType, ElmType, Channel, MusicElement, MusicVocabulary, nrp, MusicTokenizer, key_ordinal2str
 )
 from musicnlp.preprocess.key_finder import ScaleDegreeFinder
 from musicnlp.preprocess.music_converter import MusicConverter
-
-
-Song = Union[str, List[str]]
 
 
 class Transform:
@@ -81,7 +80,8 @@ class RandomCrop(Transform):
             if idx != 0:
                 toks = RandomCrop._crop(toks=toks, idx=idx, idxs_bar=idxs_bar)
 
-            sanity_check = True
+            sanity_check = False
+            # sanity_check = True
             if sanity_check:
                 n_bar_ = sum([tok == self.sob for tok in toks])
                 assert n_bar_ >= self.min_seg_length
@@ -97,10 +97,12 @@ class RandomCrop(Transform):
         global_toks = toks[:idxs_bar[0]]
         bar_list = [toks[idx:idxs_bar[i + 1]] for i, idx in enumerate(idxs_bar[:-1])] + [toks[idxs_bar[-1]:]]
 
-        sanity_check = True
+        sanity_check = False
+        # sanity_check = True
         if sanity_check:
             assert global_toks + sum(bar_list, start=[]) == toks
-        return global_toks + sum(bar_list[idx:], start=[])
+        # return global_toks + sum(bar_list[idx:], start=[])
+        return global_toks + list(chain_its(bar_list[idx:]))
 
 
 class KeyInsert(Transform):
@@ -123,22 +125,33 @@ class TokenPitchShift:
     """
     Convert from `step` pitch to `degree` pitch, see `PitchShift`
     """
-    def __init__(
-            self, vocab_step: MusicVocabulary = None, vocab_degree: MusicVocabulary = None,
-            sdf: ScaleDegreeFinder = None, key_token: str = None,
-    ):
+    sdf = ScaleDegreeFinder()
+
+    def __init__(self, vocab_step: MusicVocabulary = None, vocab_degree: MusicVocabulary = None, key_token: str = None):
         self.vocab_step = vocab_step
         self.vocab_degree = vocab_degree
-        self.sdf = sdf or ScaleDegreeFinder()
-        self.key_token = key_token
+
+        self.key_meta = None
+        self._key_token = key_token
+
+    @property
+    def key_token(self) -> str:
+        return self._key_token
+
+    @key_token.setter
+    def key_token(self, val: str):
+        if val != self._key_token:
+            self._key_token = val
+            self.key_meta = self.vocab_step.tok2meta(self._key_token)
 
     def __call__(self, tok: str) -> str:
         # doesn't matter which vocab
         if nrp(tok):  # TODO: process rare step tok tokens as many edge cases? but not much of them anyway...
             assert tok in self.vocab_step  # expect all rare pitch tokens sanitized for correct behavior
             step = self.vocab_step.get_pitch_step(tok)
-            deg = self.sdf.map_single(note=step, key=self.vocab_step.tok2meta(self.key_token))
-            midi, _step = self.vocab_step.tok2meta(tok)  # doesn't matter which vocab
+            deg = TokenPitchShift.sdf.map_single(note=step, key=self.key_meta)
+            # midi, _step = self.vocab_step.tok2meta(tok)  # doesn't matter which vocab
+            midi = self.vocab_step.pitch_tok2midi_pitch_meta(tok)
 
             # Edge case, rare pitch token that's part of vocab, see `MusicVocabulary::_get_all_unique_pitches`
             if midi == -12:
@@ -163,6 +176,8 @@ class PitchShift(Transform):
         self.vocab_step = PitchShift._load_vocab(vocab=vocab_step, target_kind='step')
         self.vocab_degree = PitchShift._load_vocab(vocab=vocab_degree, target_kind='degree')
 
+        self.tps = TokenPitchShift(vocab_step=self.vocab_step, vocab_degree=self.vocab_degree)
+
     @staticmethod
     def _load_vocab(vocab: MusicVocabulary = None, target_kind: str = None):
         if vocab is None:
@@ -176,8 +191,8 @@ class PitchShift(Transform):
         key = toks[2]
         assert self.vocab_step.type(key) == VocabType.key  # sanity check; doesn't matter which vocab
 
-        tps = TokenPitchShift(vocab_step=self.vocab_step, vocab_degree=self.vocab_degree, sdf=self.sdf, key_token=key)
-        toks = [tps(tok) for tok in toks]
+        self.tps.key_token = key
+        toks = [self.tps(tok) for tok in toks]
 
         sanity_check = False
         # sanity_check = True
@@ -188,7 +203,7 @@ class PitchShift(Transform):
             mic(new[:100])
 
             # new = ' '.join(self.vocab_degree.colorize_token(tok) for tok in toks)
-            # print(f'new: {new[:40pip0]}')
+            # print(f'new: {new[:400]}')
             raise NotImplementedError
         return toks if self.return_as_list else ' '.join(toks)
 
@@ -256,6 +271,24 @@ class ToMidiPitch(Transform):
         return toks if self.return_as_list else ' '.join(toks)
 
 
+MusicElm = List[str]
+
+
+@dataclass
+class SongSplitOutput:
+    elms: List[MusicElm] = None
+    time_sig: MusicElm = None
+    tempo: MusicElm = None
+    key: MusicElm = None
+    elms_by_bar: List[List[MusicElm]] = None
+
+
+@dataclass
+class BarChannelSplitOutput:
+    melody: List[MusicElm] = None
+    bass: List[MusicElm] = None
+
+
 class ChannelMixer(Transform):
     """
     Reorder notes across channels while keeping the order within the channel
@@ -272,9 +305,93 @@ class ChannelMixer(Transform):
         self.vocab = self.mc.vocab
 
         ca(channel_mixup=mode)
-        self.mode = mode
+        self.mix_mode = mode
+
+        self._non_tup_spec = {
+            self.vocab.start_of_bar, self.vocab.end_of_song, self.vocab.start_of_melody, self.vocab.start_of_bass
+        }
 
     def __call__(self, text: Song) -> Song:
+        out = self.str2tok_elms(text)
+        toks = out.time_sig + out.tempo
+        if out.key:
+            toks += out.key
+
+        # toks += sum((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar), start=[])
+        toks += list(chain_its((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar)))
+        toks += [self.vocab.end_of_song]
+
+        # sanity_check = True
+        sanity_check = False
+        if sanity_check:  # Should be able to re-construct the text w/ default ordering
+            _text = ' '.join(text)
+            mic(_text)
+            ori_out = self.mc.str2music_elms(' '.join(toks), group=True)
+            ori_toks = self.vocab.music_elm2toks(ori_out.time_sig) + self.vocab.music_elm2toks(ori_out.tempo)
+            if ori_out.key:
+                ori_toks += self.vocab.music_elm2toks(ori_out.key)
+            for bar in ori_out.elms_by_bar:
+                d_notes = self.mc.split_notes(bar)
+                notes = [ChannelMixer.e_m, *d_notes['melody'], ChannelMixer.e_b, *d_notes['bass']]
+                ori_toks += self._bar_music_elms2str(notes, mix=False)
+            # ori_toks += [self.vocab.end_of_song]
+            ori = ' '.join(ori_toks)
+
+            mic(ori[:200], _text[:200])
+            mic(ori == _text)
+            raise NotImplementedError
+        return toks if self.return_as_list else ' '.join(toks)
+
+    def str2tok_elms(self, text: Song) -> SongSplitOutput:
+        """
+        Like `MusicConverter:str2music_elms`, but split into token groups only, without the conversion to `MusicElement`
+        """
+        toks = text if isinstance(text, list) else text.split()
+        elms: List[MusicElm] = []
+        it = iter(toks)
+        tok = next(it, None)
+        while tok is not None:
+            typ = self.vocab.type(tok)
+            if typ == VocabType.special:
+                if tok in self._non_tup_spec:
+                    elms.append([tok])
+                else:
+                    assert tok == self.vocab.start_of_tuplet  # sanity check
+                    tok = next(it, None)
+                    toks_tup = []
+                    while tok != self.vocab.end_of_tuplet:
+                        toks_tup.append(tok)
+                        tok = next(it, None)  # in the end, consumes `end_of_tuplet` token
+                    toks_p, tok_d = toks_tup[:-1], toks_tup[-1]
+                    assert len(toks_tup) >= 3  # sanity check
+                    assert all(self.vocab.type(t) == VocabType.pitch for t in toks_p)
+                    assert self.vocab.type(tok_d) == VocabType.duration
+                    elms.append([self.vocab.start_of_tuplet, *toks_p, tok_d, self.vocab.end_of_tuplet])
+            elif typ in [VocabType.time_sig, VocabType.tempo, VocabType.key]:
+                elms.append([tok])
+            else:
+                assert typ == VocabType.pitch
+                tok_d = next(it, None)
+                assert self.vocab.type(tok_d) == VocabType.duration
+                elms.append([tok, tok_d])
+            tok = next(it, None)
+
+        ts, tp, key, elms = elms[0], elms[1], None, elms[2:]
+        assert self.vocab.type(ts[0]) == VocabType.time_sig
+        assert self.vocab.type(tp[0]) == VocabType.tempo
+        if self.vocab.type(elms[0][0]) == VocabType.key:
+            key = elms[0]
+            elms = elms[1:]
+
+        idxs_bar = [i for i, es in enumerate(elms) if es == [self.vocab.start_of_bar]]
+        # bar_lst = [lst[idx:idxs_bar_start[i + 1]] for i, idx in enumerate(idxs_bar_start[:-1])] + \
+        #           [lst[idxs_bar_start[-1]:]]
+        elms_by_bar = [elms[idx:idxs_bar[i+1]] for i, idx in enumerate(idxs_bar[:-1])] + [elms[idxs_bar[-1]:]]
+        elms_by_bar = [es[1:] for es in elms_by_bar]  # skip the bar start token
+        return SongSplitOutput(elms=elms, time_sig=ts, tempo=tp, key=key, elms_by_bar=elms_by_bar)
+
+    def __call__obsolete(self, text: Song) -> Song:
+        # Going through the `str => MusicElement => str` conversion is slow
         out = self.mc.str2music_elms(text, group=True)
 
         # sanity_check = True
@@ -289,11 +406,11 @@ class ChannelMixer(Transform):
                 ]
                 assert elms == recon  # sanity check reconstruction, no info loss
             raise NotImplementedError
-        ret = self.vocab.music_elm2toks(out.time_sig) + self.vocab.music_elm2toks(out.tempo)
+        toks = self.vocab.music_elm2toks(out.time_sig) + self.vocab.music_elm2toks(out.tempo)
         if out.key:
-            ret += self.vocab.music_elm2toks(out.key)
-        ret += sum((self._bar_music_elms2str(elms) for elms in out.elms_by_bar), start=[])
-        ret += [self.vocab.end_of_song]
+            toks += self.vocab.music_elm2toks(out.key)
+        toks += sum((self._bar_music_elms2str(elms) for elms in out.elms_by_bar), start=[])
+        toks += [self.vocab.end_of_song]
 
         # sanity_check = True
         sanity_check = False
@@ -301,7 +418,7 @@ class ChannelMixer(Transform):
             _text = ' '.join(text)
             # mic('Channel Mix san check', _text)
             # mic(self.mc.vocab.pitch_kind)
-            ori_out = self.mc.str2music_elms(' '.join(ret), group=True)
+            ori_out = self.mc.str2music_elms(' '.join(toks), group=True)
             ori_toks = self.vocab.music_elm2toks(ori_out.time_sig) + self.vocab.music_elm2toks(ori_out.tempo)
             if ori_out.key:
                 ori_toks += self.vocab.music_elm2toks(ori_out.key)
@@ -315,7 +432,7 @@ class ChannelMixer(Transform):
             mic(_text[:200], ori[:200])
             mic(ori == _text)
             raise NotImplementedError
-        return ret if self.return_as_list else ' '.join(ret)
+        return toks if self.return_as_list else ' '.join(toks)
 
     def _bar_music_elms2str(self, elms: List[MusicElement], mix: bool = True):
         if mix:
@@ -328,13 +445,73 @@ class ChannelMixer(Transform):
     def _bin_sample() -> bool:
         return torch.randint(2, (1,)).item() == 0
 
+    def _split_bar_toks(self, elms: List[MusicElm]):
+        melody, bass = [], []
+        it = iter(elms)
+
+        e1 = next(it)
+        assert e1[0] in [self.vocab.start_of_melody, self.vocab.start_of_bass]
+        c = Channel.melody if e1[0] == self.vocab.start_of_melody else Channel.bass  # 1st note have to specify this
+
+        for e in it:
+            if e[0] == self.vocab.start_of_melody:
+                c = Channel.melody
+            elif e[0] == self.vocab.start_of_bass:
+                c = Channel.bass
+            else:
+                (melody if c == Channel.melody else bass).append(e)
+        return BarChannelSplitOutput(melody=melody, bass=bass)
+
+    def _mix_up_bar_toks(self, elms: List[MusicElm]) -> List[str]:
+        out = self._split_bar_toks(elms)
+        elms_m, elms_b = out.melody, out.bass
+
+        if self.mix_mode == 'full':
+            elms_m, elms_b = iter(elms_m), iter(elms_b)
+            ret = []
+
+            elm_m, elm_b = next(elms_m, None), next(elms_b, None)
+            curr, prev = None, None
+            add_to_melody = None
+            while elm_m and elm_b:
+                add_to_melody = self._bin_sample()
+                curr = [self.vocab.start_of_melody] if add_to_melody else [self.vocab.start_of_bass]
+                diff_channel = curr != prev
+                if diff_channel:
+                    ret += curr
+                if add_to_melody:
+                    ret += elm_m
+                    elm_m = next(elms_m, None)
+                else:
+                    ret += elm_b
+                    elm_b = next(elms_b, None)
+                prev = curr
+            if elm_m:
+                if not add_to_melody:
+                    ret += [self.vocab.start_of_melody]
+                ret += elm_m
+                for elm_m in elms_m:
+                    ret += elm_m
+            else:
+                assert elm_b
+                if add_to_melody:
+                    ret += [self.vocab.start_of_bass]
+                ret += elm_b
+                for elm_b in elms_b:
+                    ret += elm_b
+        else:  # `swap`
+            toks_m = [self.vocab.start_of_melody] + sum(elms_m, start=[])
+            toks_b = [self.vocab.start_of_bass] + sum(elms_b, start=[])
+            ret = (toks_m + toks_b) if self._bin_sample() else (toks_b + toks_m)
+        return [self.vocab.start_of_bar] + ret
+
     def _mix_up_bar_notes(self, elms: List[MusicElement]) -> List[MusicElement]:
         d_notes = self.mc.split_notes(elms)
         notes_m, notes_b = d_notes['melody'], d_notes['bass']
 
-        if self.mode == 'full':
+        if self.mix_mode == 'full':
             notes_m, notes_b = iter(notes_m), iter(notes_b)
-            elms = []
+            ret = []
             note_m, note_b = next(notes_m, None), next(notes_b, None)
             c_cur, c_prev = None, None
             add_mel = None
@@ -343,28 +520,28 @@ class ChannelMixer(Transform):
                 c_cur = Channel.melody if add_mel else Channel.bass
                 diff_c = c_cur != c_prev
                 if diff_c:
-                    elms.append(ChannelMixer.e_m if add_mel else ChannelMixer.e_b)
-                if c_cur == Channel.melody:
-                    elms.append(note_m)
+                    ret.append(ChannelMixer.e_m if add_mel else ChannelMixer.e_b)
+                if add_mel:
+                    ret.append(note_m)
                     note_m = next(notes_m, None)
                 else:
-                    elms.append(note_b)
+                    ret.append(note_b)
                     note_b = next(notes_b, None)
                 c_prev = c_cur
             assert add_mel is not None  # sanity check
             if note_m:
                 if not add_mel:
-                    elms.append(ChannelMixer.e_m)
-                elms.append(note_m)
-                elms.extend(notes_m)
+                    ret.append(ChannelMixer.e_m)
+                ret.append(note_m)
+                ret.extend(notes_m)
             else:
                 if add_mel:
-                    elms.append(ChannelMixer.e_b)
+                    ret.append(ChannelMixer.e_b)
                 assert note_b
-                elms.append(note_b)
-                elms.extend(notes_b)
-            return elms
-        else:  # `swap`
+                ret.append(note_b)
+                ret.extend(notes_b)
+            return ret
+        else:  # `swap`; Seems to break training, pbb cos don't know which channel to start
             if ChannelMixer._bin_sample():
                 return elms
             else:  # swap at 50% chance

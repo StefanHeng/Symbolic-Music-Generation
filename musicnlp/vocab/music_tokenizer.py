@@ -6,7 +6,10 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from musicnlp.vocab.music_vocab import VocabType, MusicVocabulary
 
 
-__all__ = ['MusicTokenizer']
+__all__ = ['Song', 'MusicTokenizer']
+
+
+Song = Union[str, List[str]]
 
 
 class MusicTokenizer(PreTrainedTokenizer):
@@ -112,7 +115,7 @@ class MusicTokenizer(PreTrainedTokenizer):
 if __name__ == '__main__':
     from stefutil import *
 
-    from musicnlp.preprocess import get_dataset
+    from musicnlp.preprocess.dataset import get_dataset
 
     # mode = 'melody'
     mode = 'full'

@@ -224,13 +224,16 @@ class AugmentedDataset:
 
     @property
     def meta(self) -> Dict[str, Any]:
-        d = dict(pch=self.pitch_kind[0])
+        d = dict()
+        if self.random_crop:
+            d['crop'] = self.random_crop
+        d['pch'] = self.pitch_kind[0]
         if self.insert_key:
             d['ins-key'] = 'T'
         if self.pitch_shift:
             d['pch-sft'] = 'T'
         if self.channel_mixup:
-            d['mix-up'] = self.cm.mode[0]
+            d['mix-up'] = self.cm.mix_mode[0]
         return d
 
     @classmethod

@@ -648,7 +648,7 @@ class MusicVocabulary:
 
         User responsible to make sure a valid pitch is passed in, e.g. not a rest pitch
         """
-        assert self.type(tok) == VocabType.pitch
+        # assert self.type(tok) == VocabType.pitch
         m = self.pitch_pattern.match(tok)
         idx, octave = int(m.group('numer')), int(m.group('denom'))
         return idx-1 + (octave+1)*12
