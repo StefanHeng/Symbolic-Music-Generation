@@ -12,7 +12,7 @@ __all__ = [
 
 
 class ElmType(Enum):
-    bar_start, melody, bass, song_end, time_sig, tempo, key, note, tuplets = list(range(9))
+    seg_omit, bar_start, melody, bass, song_end, time_sig, tempo, key, note, tuplets = list(range(10))
 
 
 class Channel(Enum):

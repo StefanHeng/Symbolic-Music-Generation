@@ -6,14 +6,14 @@ Augmentations to a song, including
 """
 
 __all__ = [
-    'SanitizeRare',
+    'SanitizeRare', 'RandomCrop',
     'KeyInsert', 'TokenPitchShift', 'PitchShift', 'AugmentKey', 'CombineKeys', 'ToMidiPitch',
     'ChannelMixer'
 ]
 
 
-import random
-from typing import List, Tuple, Dict, Union, Optional
+import torch
+from typing import List, Tuple, Dict, Union, Optional, Any
 
 from stefutil import *
 from musicnlp.vocab import (
@@ -23,11 +23,14 @@ from musicnlp.preprocess.key_finder import ScaleDegreeFinder
 from musicnlp.preprocess.music_converter import MusicConverter
 
 
+Song = Union[str, List[str]]
+
+
 class Transform:
     def __init__(self, return_as_list: bool = False):
         self.return_as_list = return_as_list
 
-    def __call__(self, text: Union[str, List[str]]) -> Union[str, List[str]]:
+    def __call__(self, text: Song) -> Song:
         raise NotImplementedError
 
 
@@ -37,9 +40,67 @@ class SanitizeRare(Transform):
         super().__init__(**kwargs)
         self.vocab = vocab
 
-    def __call__(self, s: str) -> str:
-        toks = [self.vocab.sanitize_rare_token(tok) for tok in s.split()]
+    def __call__(self, text: Song) -> Song:
+        toks = text if isinstance(text, list) else text.split()
+        toks = [self.vocab.sanitize_rare_token(tok) for tok in toks]
         return toks if self.return_as_list else ' '.join(toks)
+
+
+class RandomCrop(Transform):
+    """
+    Crop segments of the song for training
+
+    Since song sequences are typically longer than model max length, try to make use of them all
+    """
+    def __init__(self, start_of_bar: str = None, min_seg_length: int = 8, crop_mult: int = 1, **kwargs):
+        """
+        :param start_of_bar: token for start of bar
+        :param min_seg_length: minimum length of a cropped song segment
+        :param crop_mult: Distance between 2 consecutive crop points, in unit of bar
+            TODO: higher song fidelity to crop at multiple of 4 bars?
+        """
+        super().__init__(**kwargs)
+        self.sob = start_of_bar
+        self.min_seg_length = min_seg_length
+        self.crop_mult = crop_mult
+
+    def __call__(self, text: Song) -> Song:
+        toks = text if isinstance(text, list) else text.split()
+        idxs_bar = [i for i, tok in enumerate(toks) if tok == self.sob]
+        n_bar = len(idxs_bar)
+        if n_bar > self.min_seg_length:
+            high = len(idxs_bar) - self.min_seg_length
+
+            idx = 0
+            if self.crop_mult == 1:
+                idx = torch.randint(low=0, high=high+1, size=(1,)).item()
+            else:
+                if high >= self.crop_mult:
+                    high = high // self.crop_mult
+                    idx = torch.randint(low=0, high=high+1, size=(1,)).item() * self.crop_mult
+            if idx != 0:
+                toks = RandomCrop._crop(toks=toks, idx=idx, idxs_bar=idxs_bar)
+
+            sanity_check = True
+            if sanity_check:
+                n_bar_ = sum([tok == self.sob for tok in toks])
+                assert n_bar_ >= self.min_seg_length
+                assert n_bar - n_bar_ == idx
+                _high = high if self.crop_mult == 1 else high * self.crop_mult
+                mic(n_bar, _high, idx)
+                if _high == idx:  # this should happen
+                    raise NotImplementedError
+        return toks if self.return_as_list else ' '.join(toks)
+
+    @staticmethod
+    def _crop(toks: List[str] = None, idx: int = None, idxs_bar: List[int] = None) -> List[str]:
+        global_toks = toks[:idxs_bar[0]]
+        bar_list = [toks[idx:idxs_bar[i + 1]] for i, idx in enumerate(idxs_bar[:-1])] + [toks[idxs_bar[-1]:]]
+
+        sanity_check = True
+        if sanity_check:
+            assert global_toks + sum(bar_list, start=[]) == toks
+        return global_toks + sum(bar_list[idx:], start=[])
 
 
 class KeyInsert(Transform):
@@ -47,7 +108,7 @@ class KeyInsert(Transform):
         super().__init__(**kwargs)
         self.vocab = vocab
 
-    def __call__(self, text: str, key: Union[str, Dict[str, float]]):
+    def __call__(self, text: Song, key: Union[str, Dict[str, float]]) -> Song:
         toks = text if isinstance(text, list) else text.split()
         assert self.vocab.type(toks[0]) == VocabType.time_sig  # sanity check data well-formed
         assert self.vocab.type(toks[1]) == VocabType.tempo
@@ -110,7 +171,7 @@ class PitchShift(Transform):
             assert vocab.pitch_kind == target_kind
         return vocab
 
-    def __call__(self, text: Union[str, List[str]]):
+    def __call__(self, text: Song) -> Song:
         toks = text if isinstance(text, list) else text.split()
         key = toks[2]
         assert self.vocab_step.type(key) == VocabType.key  # sanity check; doesn't matter which vocab
@@ -143,7 +204,7 @@ class AugmentKey:
         self.ki = KeyInsert(vocab=self.vocab, return_as_list=True)
         self.ps = PitchShift(vocab_degree=self.vocab, return_as_list=return_as_list)
 
-    def __call__(self, pair: Tuple[str, str]):
+    def __call__(self, pair: Tuple[str, str]) -> Song:
         txt, key = pair
         txt = self.ki(text=txt, key=key)
         return self.ps(text=txt)
@@ -162,10 +223,10 @@ class CombineKeys:
 
         self.sr = SanitizeRare(vocab=tokenizer.vocab)
 
-    def __call__(self, samples):
-        txt = self.sr(samples['score'])
+    def __call__(self, sample):
+        txt = self.sr(sample['score'])
         ret = self.tokenizer(txt, padding='max_length', truncation=True)
-        keys: List[Dict[str, Optional[float]]] = samples['keys']
+        keys: List[Dict[str, Optional[float]]] = sample['keys']
         # convert to a tensor format to eventually pass down to `compute_loss` and `compute_metrics`
         # -1 for metric computation to ignore
         ret['key_scores'] = [[(d[key_ordinal2str[i]] or -1) for i in range(CombineKeys.n_key)] for d in keys]
@@ -182,7 +243,7 @@ class ToMidiPitch(Transform):
         assert vocab.pitch_kind != 'midi'
         self.vocab = vocab or MusicVocabulary(pitch_kind='step')
 
-    def __call__(self, text: Union[str, List[str]]) -> str:
+    def __call__(self, text: Song) -> Song:
         toks = text if isinstance(text, list) else text.split()
         toks = [(self.vocab.pitch_tok2midi_pitch_tok(tok) if nrp(tok) else tok) for tok in toks]
 
@@ -213,7 +274,7 @@ class ChannelMixer(Transform):
         ca(channel_mixup=mode)
         self.mode = mode
 
-    def __call__(self, text: Union[str, List[str]]) -> str:
+    def __call__(self, text: Song) -> Song:
         out = self.mc.str2music_elms(text, group=True)
 
         # sanity_check = True
@@ -265,7 +326,7 @@ class ChannelMixer(Transform):
 
     @staticmethod
     def _bin_sample() -> bool:
-        return random.randint(0, 1) == 0
+        return torch.randint(2, (1,)).item() == 0
 
     def _mix_up_bar_notes(self, elms: List[MusicElement]) -> List[MusicElement]:
         d_notes = self.mc.split_notes(elms)

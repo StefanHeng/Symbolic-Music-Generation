@@ -2,6 +2,7 @@
 Proposed method: on compact melody & bass representation for autoregressive music generation
     Trying Transformer-XL, Reformer
 """
+
 import json
 import math
 from os.path import join as os_join
@@ -285,11 +286,14 @@ def get_all_setup(
     )
     logger.info(f'Initializing training with {pl.fmt(d_log)}... ')
     my_train_args = my_train_args or dict()
-    keys = ['pitch_kind', 'insert_key', 'pitch_shift', 'wordpiece_tokenize', 'channel_mixup', 'proportional_mixing']
-    pch_kd, ins_key, pch_shift, wordpiece_tokenize, mix_up, prop_mix = (my_train_args.get(k, False) for k in keys)
+    keys = [
+        'random_crop' 'pitch_kind', 'insert_key', 'pitch_shift', 'channel_mixup',
+        'wordpiece_tokenize', 'proportional_mixing'
+    ]
+    rand_crop, pch_kd, ins_key, pch_shift, mix_up, wp_tokenize, prop_mix = (my_train_args.get(k, False) for k in keys)
     logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
-        model_name, model_size, prec=prec, wordpiece_tokenize=wordpiece_tokenize, pitch_kind=pch_kd,
+        model_name, model_size, prec=prec, wordpiece_tokenize=wp_tokenize, pitch_kind=pch_kd,
         model_config=model_config
     )
 
@@ -298,11 +302,11 @@ def get_all_setup(
 
     def load_once(dset_nms: Union[str, List[str]], split: str = None) -> Union[datasets.Dataset, datasets.DatasetDict]:
         get_dset_args = dict(splits=split) if split else dict()
-        if pch_kd != 'step' or ins_key or pch_shift or mix_up:
+        if rand_crop or pch_kd != 'step' or ins_key or pch_shift or mix_up:
             dset_args_ = dict(
-                get_dataset_kwargs=dset_args | get_dset_args,
-                pitch_kind=pch_kd, insert_key=ins_key, channel_mixup=mix_up, pitch_shift=pch_shift,
-                mode=my_train_args['mode']
+                get_dataset_args=dset_args | get_dset_args, mode=my_train_args['mode'],
+                random_crop=rand_crop,
+                pitch_kind=pch_kd, insert_key=ins_key, channel_mixup=mix_up, pitch_shift=pch_shift
             ) | (dict(dataset_split=split) if split else dict())
             logger.info(f'Loading {pl.i("Augmented")} dataset w/ {pl.i(dict(dataset_names=dset_nms) | dset_args_)}... ')
             ret = dataset.AugmentedDataset.from_hf(dset_nms, tokenizer=tokenizer, **dset_args_)
@@ -315,9 +319,11 @@ def get_all_setup(
     if prop_mix:
         prop_mix = prop_mix if isinstance(prop_mix, int) else 2048
         dsets_tr = [load_once(dnm, split='train') for dnm in dataset_names]
+        dsets_ts = [load_once(dnm, split='test') for dnm in dataset_names]
         dset = datasets.DatasetDict(dict(
             train=dataset.ProportionMixingDataset(dataset_list=dsets_tr, k=prop_mix),
-            test=load_once(dataset_names, split='test')
+            # test=load_once(dataset_names, split='test')
+            test=dataset.ProportionMixingDataset(dataset_list=dsets_ts, k=prop_mix // 10)  # Smaller eval for speed
         ))
     else:
         dset = load_once(dataset_names)
@@ -366,11 +372,28 @@ if __name__ == '__main__':
 
     # md = 'melody'
     md = 'full'
-    dnms = ['POP909']
-    # dnms = ['LMD']
-    # dnms = ['POP909', 'MAESTRO']
-    # dnms = ['POP909', 'MAESTRO', 'LMD']
-    dnms = [dataset.get_dataset_dir_name(*dnms)]
+    pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
+    dnms = [pop, mst, lmd]
+
+    def profile_transform_dataload():
+        from tqdm.auto import tqdm
+        dsets = []
+        tokenizer = load_wordpiece_tokenizer(pitch_kind='degree')
+        tokenizer.model_max_length = 2048
+
+        sp = 'train'
+        for dnm in [pop, mst, lmd]:
+            dsets.append(dataset.AugmentedDataset.from_hf(
+                dnm, tokenizer=tokenizer, get_dataset_args=dict(shuffle_seed=seed, splits=sp),
+                mode=md, random_crop=4, pitch_kind='degree', insert_key=True, channel_mixup=True, pitch_shift=True,
+                dataset_split=sp
+            )[sp])
+        dset = dataset.ProportionMixingDataset(dataset_list=dsets, k=1280)
+        # mic(dset.k, dset.dset_szs, dset.sz)
+
+        for e in tqdm(dset):
+            pass
+    profile_runtime(profile_transform_dataload)
 
     def train_reformer(**kwargs):
         # not set seed if reformer for LSH attention,
@@ -436,20 +459,22 @@ if __name__ == '__main__':
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
-        md_sz = 'debug'
+        # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        # md_sz = 'base'
+        md_sz = 'base'
         mic(md_nm, md_sz)
 
         # n = 8
         # n = 16
-        n = 128
+        # n = 128
         # n = 1024
-        # n = None
+        n = None
         # n_ep = 4
-        n_ep = 64
-        # n_ep = 128
+        # n_ep = 64
+        n_ep = 128
+        mic(n, n_ep)
+
         # model_config = dict(max_length=64)
         # model_config = dict(max_length=512)
         # if 'debug' in md_sz:
@@ -457,6 +482,7 @@ if __name__ == '__main__':
         #     insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False, False
         # else:
         model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
+        rand_crop = 4
         pch_kd = 'degree'
         insert_key = True
         pch_shift = True
@@ -464,16 +490,18 @@ if __name__ == '__main__':
             assert insert_key and pch_kd == 'degree'
         else:
             assert pch_kd != 'degree'
-        wordpiece_tokenize = True
         channel_mixup = 'full'
+        wordpiece_tokenize = True
         prop_mix = 1280
         mic(pch_kd, insert_key, wordpiece_tokenize, channel_mixup, prop_mix)
 
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
             tqdm=True, logging_strategy='no',
-            mode=md, wordpiece_tokenize=wordpiece_tokenize, proportional_mixing=prop_mix,
-            pitch_kind=pch_kd, insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup
+            mode=md,
+            random_crop=rand_crop,
+            pitch_kind=pch_kd, insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup,
+            wordpiece_tokenize=wordpiece_tokenize, proportional_mixing=prop_mix,
         )
         trainer_args = dict(disable_train_metrics=True)
 
@@ -484,7 +512,7 @@ if __name__ == '__main__':
             ))
         else:
             train_args.update(dict(
-                dataloader_num_workers=4,
+                dataloader_num_workers=8 if pch_shift else 4,  # TODO: torch recommends 4 always?
                 per_device_train_batch_size=20,
                 per_device_eval_batch_size=20,
             ))
@@ -494,13 +522,10 @@ if __name__ == '__main__':
             train_args=train_args, my_train_args=my_train_args, trainer_args=trainer_args
         )
 
-        # if 'debug' in md_sz:
-        #     trainer.train_dataset = trainer.eval_dataset
-
         transformers.set_seed(seed)
         # ignore so that `None` don't get detached
         ignore_keys_for_eval = ['losses', 'mems', 'hidden_states', 'attentions']
         train_call_args = dict(ignore_keys_for_eval=ignore_keys_for_eval)
         trainer.train(**(train_call_args | kwargs))
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    train_xl()
+    # train_xl()

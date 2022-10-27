@@ -166,6 +166,7 @@ class AugmentedDataset:
     """
     def __init__(
             self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None,  mode: str = None,
+            random_crop: Union[bool, int] = False,
             pitch_kind: str = None, insert_key: bool = False, pitch_shift: bool = False,
             channel_mixup: Union[bool, str] = False, dataset_split: str = None
     ):
@@ -190,6 +191,12 @@ class AugmentedDataset:
             self.tmp = transform.ToMidiPitch()
 
         vocab = self.tokenizer.vocab
+
+        self.random_crop, self.rc = random_crop, None
+        if random_crop:
+            cm = random_crop if isinstance(random_crop, int) else 1
+            self.rc = transform.RandomCrop(start_of_bar=vocab.start_of_bar, crop_mult=cm, return_as_list=True)
+
         sr_vocab = vocab if vocab.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
         self.sr = transform.SanitizeRare(vocab=sr_vocab, return_as_list=True)  # since input text will be in `step`
         self.ki, self.ps, self.cm = None, None, None
@@ -229,12 +236,12 @@ class AugmentedDataset:
     @classmethod
     def from_hf(
             cls, dataset_names: Union[str, List[str]], tokenizer: MusicTokenizer = None,
-            get_dataset_kwargs: Dict = None, **kwargs
-    ) -> Union['AugmentedDataset', Dict[str, 'AugmentedDataset'], DatasetDict]:
+            get_dataset_args: Dict = None, **kwargs
+    ) -> Union['AugmentedDataset', Dict[str, 'AugmentedDataset'], Dataset, DatasetDict]:
         """
         From path(s) to huggingface dataset(s), based on `get_dataset`
         """
-        dset = get_dataset(dataset_names, **(get_dataset_kwargs or dict()))
+        dset = get_dataset(dataset_names, **(get_dataset_args or dict()))
         if isinstance(dset, Dataset):
             return cls(dset, tokenizer, **kwargs)
         else:
@@ -254,8 +261,11 @@ class AugmentedDataset:
 
         item = self.dset[idx]
         toks = item['score']
-        toks = self.sr(toks)
 
+        if self.random_crop and self.dataset_split == 'train':  # TODO: Do this for eval too for consistency?
+            toks = self.rc(toks)
+
+        toks = self.sr(toks)
         if self.pitch_kind == 'midi':
             toks = self.tmp(toks)
 
@@ -263,19 +273,19 @@ class AugmentedDataset:
             toks = self.ki(toks, item['keys'])
         if self.pitch_shift:
             toks = self.ps(toks)
-        if self.channel_mixup and self.dataset_split == 'train':  # No random swapping order in eval
+        # if self.channel_mixup and self.dataset_split == 'train':  # No random swapping order in eval
+        if self.channel_mixup:  # TODO: too large a difference, not sure if best loss makes sense
             toks = self.cm(toks)
         if isinstance(toks, list):
             toks = ' '.join(toks)
-        # sanity_check = False
-        sanity_check = True
+
+        sanity_check = False
+        # sanity_check = True
         if sanity_check:
             ori, new = item['score'], toks
-            if self.tokenizer.vocab.rare_pitch in new:
-                assert self.tokenizer.vocab.rare_pitch in ori
-            # ori, new = ori[:200], new[:200]
-                mic(ori, new)
-                raise NotImplementedError
+            ori, new = ori[:200], new[:200]
+            mic(ori, new)
+            raise NotImplementedError
         return self.tokenizer(toks, padding='max_length', truncation=True)
 
 
@@ -376,6 +386,15 @@ if __name__ == '__main__':
 
     seed = sconfig('random-seed')
     transformers.set_seed(seed)  # to test key sampling
+
+    pop, mst, lmd = get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
+
+    def check_n_song():
+        dnms = [pop, mst, lmd]
+        for dnm in dnms:
+            dsets = get_dataset(dnm)
+            mic(dnm, dsets)
+    check_n_song()
 
     def check_combined_dset():
         dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'

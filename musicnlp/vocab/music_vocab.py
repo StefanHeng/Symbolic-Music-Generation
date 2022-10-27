@@ -113,13 +113,15 @@ class MusicVocabulary:
     Stores mapping between string tokens and integer ids
     & support the conversion, from relevant `music21` objects to [`str`, `int] conversion
     """
+    pad = '[PAD]'  # Needed for type-checking, see `musicnlp.models.metric.get_in_key_ratio`
+    # For training sequences subsequences that doesn't start from beginning of song, see `transform::`
+    omitted_segment = '[OMIT]'
     start_of_bar = '<bar>'
     start_of_melody = '<melody>'
     start_of_bass = '<bass>'
     end_of_song = '</s>'
     start_of_tuplet = '<tup>'
     end_of_tuplet = '</tup>'
-    pad = '[PAD]'  # Needed for type-checking, see `musicnlp.models.metric.get_in_key_ratio`
 
     sep = '_'  # Separation
     time_sig_pref = 'TimeSig'
@@ -138,6 +140,7 @@ class MusicVocabulary:
     rare_duration_meta = None
 
     special_elm_type2tok = {
+        ElmType.seg_omit: omitted_segment,
         ElmType.bar_start: start_of_bar,
         ElmType.melody: start_of_melody,
         ElmType.bass: start_of_bass,
@@ -150,6 +153,8 @@ class MusicVocabulary:
         rest='r',
         prefix_pitch=pitch_pref,
         prefix_duration=dur_pref,
+        omitted_segment=omitted_segment,
+        pad=pad,
         start_of_tuplet=start_of_tuplet,
         end_of_tuplet=end_of_tuplet,
         start_of_bar=start_of_bar,
@@ -339,9 +344,9 @@ class MusicVocabulary:
         # TODO: with music-theory, mod-7 scale degree, vocab size would increase
         # TODO: changed the order of sob & eos and added melody & bass prefix, this will affect prior models trained
         special = [specs[k] for k in (
-            'start_of_bar', 'end_of_song', 'start_of_melody', 'start_of_bass', 'start_of_tuplet', 'end_of_tuplet'
+            'omitted_segment', 'pad', 'start_of_bar', 'end_of_song',
+            'start_of_melody', 'start_of_bass', 'start_of_tuplet', 'end_of_tuplet'
         )]
-        special.append(MusicVocabulary.pad)
         self.toks: Dict[str, List[str]] = OrderedDict(dict(
             special=special,
             time_sig=[MusicVocabulary.rare_time_sig, *tss],
@@ -365,8 +370,6 @@ class MusicVocabulary:
         self.id2meta: Dict[int, TokenMeta] = {
             id_: self.tok2meta(tok) for id_, tok in self.id2tok.items() if self.with_meta(tok)
         }
-
-        self.logger = get_logger('Music Vocab')
 
     def __contains__(self, item: str):
         return item in self.tok2id
@@ -934,10 +937,11 @@ if __name__ == '__main__':
 
     def check_vocab_size():
         mv = MusicVocabulary()
+        mic(mv.tok2id)
         for k, v in mv.toks.items():
             mic(k, len(v))
         mic(sum(len(v) for v in mv.toks.values()))
-    # check_vocab_size()
+    check_vocab_size()
 
     def check_pitch_meta():
         mv = MusicVocabulary()
@@ -1102,4 +1106,4 @@ if __name__ == '__main__':
                         _count_per_song[tok] += 1
                     added = True
         mic(_count, _count_per_song)
-    check_all_step_pitches_covered()
+    # check_all_step_pitches_covered()

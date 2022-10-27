@@ -314,6 +314,8 @@ class WordPieceMusicTrainer:
                         independent_global_token=self.s2c.independent_global_token,
                         punctuate=self.s2c.punctuate
                     ),
+                    # For sanity check vocabulary not obsolete, see `WordPieceMusicTokenizer::from_file`
+                    tok2id=self.vocab.tok2id
                 ), f, indent=4)
             logger.info(f'{pl.i("Tokenizer")} music metadata saved to {pl.i(path_meta)}')
         return tokenizer
@@ -367,7 +369,9 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         with open(f'{path}_meta.json', 'r') as f:
             meta = json.load(f)
         init_args = meta['music_vocab'] | kwargs
-        return cls(_tokenizer, s2c_args=meta['score2chars'], **init_args)
+        ret = cls(_tokenizer, s2c_args=meta['score2chars'], **init_args)
+        assert ret.vocab.tok2id == meta['tok2id']
+        return ret
 
     @property
     def model_max_length(self) -> int:
@@ -437,7 +441,7 @@ def load_trained_tokenizer(  # has independent global token & bar split
         fnm = fnm or '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=8192, n=2185, pch=s}'
     else:
         assert pitch_kind == 'degree'
-        fnm = fnm or '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=16384, n=2185, pch=d, aug-key=T}'
+        fnm = fnm or '22-10-26_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
     return WordPieceMusicTokenizer.from_file(fnm, is_wordpiece=True, pitch_kind=pitch_kind, **kwargs)
 
 
@@ -616,7 +620,7 @@ if __name__ == '__main__':
         )
         songs = dataset.load_songs(*dnms)
         wmt(vocab_size=vocab_size, songs=songs, save=sv, concurrent=conc)
-    train()
+    # train()
 
     def check_trained_property():
         aug_key = True
@@ -701,24 +705,24 @@ if __name__ == '__main__':
         aug_key = pch_kd == 'degree'
         mic('Check trained tokenizer', pch_kd, aug_key)
 
-        fnm = '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=16384, n=2185, pch=d, aug-key=T}'
-        # fnm = '22-10-24_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
+        # fnm = '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=16384, n=2185, pch=d, aug-key=T}'
+        fnm = '22-10-26_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
         tokenizer = WordPieceMusicTokenizer.from_file(fnm, pitch_kind=pch_kd)
 
-        # check_recon = True  # encoding & decoding reconstructs original text
-        check_recon = False
+        check_recon = True  # encoding & decoding reconstructs original text
+        # check_recon = False
 
         sample = 3
         mic(check_recon, sample)
 
         # dnms = [pop]
-        dnms = [pop, mst]
-        # dnms = [pop, mst, lmd]
-        _songs: List[Dict] = dataset.load_songs(*dnms, as_dict=False)
+        # dnms = [pop, mst]
+        dnms = [pop, mst, lmd]
+        _songs: List[Dict] = dataset.load_songs(*dnms)
         if aug_key:
             out = dataset.iter_songs_n_key(_songs)
             n, songs = out.total, out.generator
-            if sample:  # TODO: total will be wrong...
+            if sample:  # total will be wrong...
                 songs = (s for s in songs if random.randint(0, sample-1) == 0)
         else:
             n, songs = len(_songs), (s['score'] for s in _songs)
@@ -751,8 +755,8 @@ if __name__ == '__main__':
         for tok, n in tqdm(c.most_common(), desc='Ordering counts for output', total=len(c)):
             c_[tok] = n
         with open(os_join(u.tokenizer_path, f'{fnm} distribution check.json'), 'w') as f:
-            json.dump(dict(count=c_), f, indent=4)
-    # check_trained_tokenize_all()
+            json.dump(dict(sample=sample, count=c_), f, indent=4)
+    check_trained_tokenize_all()
 
     def check_id2pch():
         tokenizer = MusicTokenizer()

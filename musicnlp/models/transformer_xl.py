@@ -44,7 +44,7 @@ class MyTransfoXLConfig(TransfoXLConfig):
             #       if keep no cutoff, need to override adaptive attention, ugly
             #   2. now with wordpiece, a vocabulary size of 30k slows down vanilla softmax
             # See `__init__`
-            # TODO what's `div_val`?
+            div_val=1  # TODO: looks like non-1 div val breaks w. fp16...
         ))
         # Don't understand `proj_share_all_but_first` and it's not used in modeling
         # `adaptive` is not really configurable
@@ -137,6 +137,16 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
             output_hidden_states: Optional[bool] = None,
             return_dict: Optional[bool] = None,
     ):
+        # return super().forward(
+        #     input_ids=input_ids,
+        #     mems=mems,
+        #     head_mask=head_mask,
+        #     inputs_embeds=inputs_embeds,
+        #     labels=labels,
+        #     output_attentions=output_attentions,
+        #     output_hidden_states=output_hidden_states,
+        #     return_dict=return_dict
+        # )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if input_ids is not None:
             bsz, tgt_len = input_ids.size(0), input_ids.size(1)

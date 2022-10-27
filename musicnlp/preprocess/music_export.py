@@ -238,14 +238,19 @@ class MusicExport:
 
     @staticmethod
     def json2dataset(
-            fnm: str, path_out=music_util.get_processed_path(), split_args: Dict = None
+            fnm: str, path_out=music_util.get_processed_path(), split: bool = False, test_size: float = 0.02,
+            test_size_range: Tuple[int, int] = None, seed: int = None
     ) -> Union[datasets.Dataset, datasets.DatasetDict]:
         """
         Save extracted `.json` dataset by `__call__`, as HuggingFace Dataset to disk
 
         :param fnm: File name to a combined json dataset
         :param path_out: Dataset export path
-        :param split_args: arguments for datasets.Dataset.
+        :param split: Whether to split the dataset into train/test
+        :param test_size: Test set size, as a fraction of the total dataset
+        :param test_size_range: Test set size threshold in (min, max)
+            will override `test_size` if outside threshold
+        :param seed: Random seed for splitting
         """
         logger = get_logger('JSON=>HF dataset')
         logger.info(f'Loading {pl.i(fnm)} JSON file... ')
@@ -270,8 +275,19 @@ class MusicExport:
         logger.info('Creating HuggingFace dataset... ')
         info = datasets.DatasetInfo(description=json.dumps(d_info))
         dset = datasets.Dataset.from_pandas(pd.DataFrame(entries), info=info)
-        if split_args:
-            dset = dset.train_test_split(**split_args)
+        if split:
+            n_ts = len(dset) * test_size
+
+            override = False
+            if test_size_range is not None:
+                mi, ma = test_size_range
+                if mi and n_ts < mi:
+                    n_ts = mi
+                    override = True
+                elif ma and n_ts > ma:
+                    n_ts = ma
+                    override = True
+            dset = dset.train_test_split(test_size=n_ts if override else test_size, shuffle=True, seed=seed)
 
         path = os_join(path_out, 'hf')
         logger.info(f'Saving dataset to {pl.i(path)}... ')
@@ -475,7 +491,7 @@ if __name__ == '__main__':
             # fnm = '22-10-22_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
             # fnm = '22-10-22_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}'
             fnm = '22-10-22_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
-        dset = me.json2dataset(fnm, split_args=dict(test_size=0.02, shuffle=True, seed=seed))
+        dset = me.json2dataset(fnm, split=True, test_size=0.02, test_size_range=(50, 500), seed=seed)
         mic(dset)
         mic(len(dset['train']), len(dset['test']))
         tr_samples, ts_samples = dset['train'][:2], dset['test'][:2]

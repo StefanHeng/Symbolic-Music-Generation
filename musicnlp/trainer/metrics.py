@@ -224,7 +224,7 @@ if __name__ == '__main__':
         #         x['score'], padding='max_length', truncation=True),
         #     remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=seed
         # )
-        dset = AugmentedDataset.from_hf(dnms, tokenizer=tokenizer, get_dataset_kwargs=dict(n_sample=n_sample))
+        dset = AugmentedDataset.from_hf(dnms, tokenizer=tokenizer, get_dataset_args=dict(n_sample=n_sample))
         # effectively get the fist tokens of model size, simulating training data-loading
         for split, ds in dset.items():
             strt, end = 4900, len(ds)
