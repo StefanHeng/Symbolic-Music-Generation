@@ -195,7 +195,7 @@ class AugmentedDataset:
         self.random_crop, self.rc = random_crop, None
         if random_crop:
             cm = random_crop if isinstance(random_crop, int) else 1
-            self.rc = transform.RandomCrop(start_of_bar=vocab.start_of_bar, crop_mult=cm, return_as_list=True)
+            self.rc = transform.RandomCrop(vocab=vocab, crop_mult=cm, return_as_list=True)
 
         sr_vocab = vocab if vocab.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
         self.sr = transform.SanitizeRare(vocab=sr_vocab, return_as_list=True)  # since input text will be in `step`
@@ -282,13 +282,13 @@ class AugmentedDataset:
         if isinstance(toks, list):
             toks = ' '.join(toks)
 
-        sanity_check = False
-        # sanity_check = True
+        # sanity_check = False
+        sanity_check = True
         if sanity_check:
             ori, new = item['score'], toks
             ori, new = ori[:200], new[:200]
             mic(ori, new)
-            raise NotImplementedError
+            # raise NotImplementedError
         return self.tokenizer(toks, padding='max_length', truncation=True)
 
 

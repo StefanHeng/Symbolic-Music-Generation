@@ -287,7 +287,7 @@ def get_all_setup(
     logger.info(f'Initializing training with {pl.fmt(d_log)}... ')
     my_train_args = my_train_args or dict()
     keys = [
-        'random_crop' 'pitch_kind', 'insert_key', 'pitch_shift', 'channel_mixup',
+        'random_crop', 'pitch_kind', 'insert_key', 'pitch_shift', 'channel_mixup',
         'wordpiece_tokenize', 'proportional_mixing'
     ]
     rand_crop, pch_kd, ins_key, pch_shift, mix_up, wp_tokenize, prop_mix = (my_train_args.get(k, False) for k in keys)
@@ -394,9 +394,9 @@ if __name__ == '__main__':
         dset = dataset.ProportionMixingDataset(dataset_list=dsets, k=1280)
         # mic(dset.k, dset.dset_szs, dset.sz)
 
-        for i in trange(len(dset)):  # Just iterating dset seems to index one more than it supposed to...
-            dset[i]
-    profile_runtime(profile_transform_dataload)
+        for i in trange(len(dset)):  # Since `__iter__` not implemented
+            _ = dset[i]
+    # profile_runtime(profile_transform_dataload)
 
     def train_reformer(**kwargs):
         # not set seed if reformer for LSH attention,
@@ -411,8 +411,8 @@ if __name__ == '__main__':
         mic(md_nm, md_sz)
 
         # TODO: smaller seq-len for now, until it shows longer dependency
-        # model_config = None
-        model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
+        model_config = None
+        # model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
 
         insert_key = True
         pch_shift = True
@@ -462,10 +462,10 @@ if __name__ == '__main__':
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
-        # md_sz = 'debug'
+        md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        md_sz = 'base'
+        # md_sz = 'base'
         mic(md_nm, md_sz)
 
         # n = 8
@@ -478,13 +478,13 @@ if __name__ == '__main__':
         n_ep = 128
         mic(n, n_ep)
 
-        # model_config = dict(max_length=64)
+        model_config = dict(max_length=64)
         # model_config = dict(max_length=512)
         # if 'debug' in md_sz:
         #     model_config = dict(max_length=64)
         #     insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False, False
         # else:
-        model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
+        # model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
         rand_crop = 4
         pch_kd = 'degree'
         insert_key = True
@@ -531,4 +531,4 @@ if __name__ == '__main__':
         train_call_args = dict(ignore_keys_for_eval=ignore_keys_for_eval)
         trainer.train(**(train_call_args | kwargs))
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    # train_xl()
+    train_xl()

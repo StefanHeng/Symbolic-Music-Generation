@@ -132,7 +132,7 @@ class Score2Chars:
     def split(self, score: Union[str, List[str]], join: bool = True) -> Union[List[str], List[List[str]]]:
         toks = score.split() if isinstance(score, str) else score
         if self.need_split:
-            ts, tp, key, toks = toks[0], toks[1], None, toks[2:]
+            ts, tp, key, omit, toks = toks[0], toks[1], None, None, toks[2:]
             assert self.vocab.type(ts) == VocabType.time_sig
             assert self.vocab.type(tp) == VocabType.tempo
 
@@ -140,6 +140,11 @@ class Score2Chars:
             assert t1 in (VocabType.special, VocabType.key)
             if t1 == VocabType.key:
                 key, toks = toks[0], toks[1:]
+
+            t1 = toks[0]
+            if t1 == self.vocab.omitted_segment:
+                omit, toks = toks[0], toks[1:]
+
             assert toks[0] == self.vocab.start_of_bar
             if not self.omit_eos:
                 assert toks[-1] == self.vocab.end_of_song
@@ -148,8 +153,12 @@ class Score2Chars:
                     words = [ts, tp]
                 else:
                     words = [[ts], [tp]]
+
                 if key:
                     words.append([key] if join else key)
+                if omit:
+                    words.append([omit] if join else omit)
+
                 if self.punctuate:
                     words += self._split_bar_notes(toks, join=join)
                 else:

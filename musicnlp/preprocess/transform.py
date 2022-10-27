@@ -51,7 +51,7 @@ class RandomCrop(Transform):
 
     Since song sequences are typically longer than model max length, try to make use of them all
     """
-    def __init__(self, start_of_bar: str = None, min_seg_length: int = 8, crop_mult: int = 1, **kwargs):
+    def __init__(self, vocab: MusicVocabulary = None, min_seg_length: int = 8, crop_mult: int = 1, **kwargs):
         """
         :param start_of_bar: token for start of bar
         :param min_seg_length: minimum length of a cropped song segment
@@ -59,13 +59,13 @@ class RandomCrop(Transform):
             TODO: higher song fidelity to crop at multiple of 4 bars?
         """
         super().__init__(**kwargs)
-        self.sob = start_of_bar
+        self.vocab = vocab
         self.min_seg_length = min_seg_length
         self.crop_mult = crop_mult
 
     def __call__(self, text: Song) -> Song:
         toks = text if isinstance(text, list) else text.split()
-        idxs_bar = [i for i, tok in enumerate(toks) if tok == self.sob]
+        idxs_bar = [i for i, tok in enumerate(toks) if tok == self.vocab.start_of_bar]
         n_bar = len(idxs_bar)
         if n_bar > self.min_seg_length:
             high = len(idxs_bar) - self.min_seg_length
@@ -78,12 +78,12 @@ class RandomCrop(Transform):
                     high = high // self.crop_mult
                     idx = torch.randint(low=0, high=high+1, size=(1,)).item() * self.crop_mult
             if idx != 0:
-                toks = RandomCrop._crop(toks=toks, idx=idx, idxs_bar=idxs_bar)
+                toks = self._crop(toks=toks, idx=idx, idxs_bar=idxs_bar)
 
             sanity_check = False
             # sanity_check = True
             if sanity_check:
-                n_bar_ = sum([tok == self.sob for tok in toks])
+                n_bar_ = sum([tok == self.vocab.start_of_bar for tok in toks])
                 assert n_bar_ >= self.min_seg_length
                 assert n_bar - n_bar_ == idx
                 _high = high if self.crop_mult == 1 else high * self.crop_mult
@@ -92,8 +92,7 @@ class RandomCrop(Transform):
                     raise NotImplementedError
         return toks if self.return_as_list else ' '.join(toks)
 
-    @staticmethod
-    def _crop(toks: List[str] = None, idx: int = None, idxs_bar: List[int] = None) -> List[str]:
+    def _crop(self, toks: List[str] = None, idx: int = None, idxs_bar: List[int] = None) -> List[str]:
         global_toks = toks[:idxs_bar[0]]
         bar_list = [toks[idx:idxs_bar[i + 1]] for i, idx in enumerate(idxs_bar[:-1])] + [toks[idxs_bar[-1]:]]
 
@@ -102,7 +101,7 @@ class RandomCrop(Transform):
         if sanity_check:
             assert global_toks + sum(bar_list, start=[]) == toks
         # return global_toks + sum(bar_list[idx:], start=[])
-        return global_toks + list(chain_its(bar_list[idx:]))
+        return global_toks + [self.vocab.omitted_segment] + list(chain_its(bar_list[idx:]))
 
 
 class KeyInsert(Transform):
@@ -150,7 +149,6 @@ class TokenPitchShift:
             assert tok in self.vocab_step  # expect all rare pitch tokens sanitized for correct behavior
             step = self.vocab_step.get_pitch_step(tok)
             deg = TokenPitchShift.sdf.map_single(note=step, key=self.key_meta)
-            # midi, _step = self.vocab_step.tok2meta(tok)  # doesn't matter which vocab
             midi = self.vocab_step.pitch_tok2midi_pitch_meta(tok)
 
             # Edge case, rare pitch token that's part of vocab, see `MusicVocabulary::_get_all_unique_pitches`
@@ -280,6 +278,7 @@ class SongSplitOutput:
     time_sig: MusicElm = None
     tempo: MusicElm = None
     key: MusicElm = None
+    omit: MusicElm = None
     elms_by_bar: List[List[MusicElm]] = None
 
 
@@ -308,14 +307,21 @@ class ChannelMixer(Transform):
         self.mix_mode = mode
 
         self._non_tup_spec = {
+            self.vocab.omitted_segment,
             self.vocab.start_of_bar, self.vocab.end_of_song, self.vocab.start_of_melody, self.vocab.start_of_bass
         }
+
+    @staticmethod
+    def _bin_sample() -> bool:
+        return torch.randint(2, (1,)).item() == 0
 
     def __call__(self, text: Song) -> Song:
         out = self.str2tok_elms(text)
         toks = out.time_sig + out.tempo
         if out.key:
             toks += out.key
+        if out.omit:
+            toks += out.omit
 
         # toks += sum((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar), start=[])
         toks += list(chain_its((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar)))
@@ -376,11 +382,14 @@ class ChannelMixer(Transform):
                 elms.append([tok, tok_d])
             tok = next(it, None)
 
-        ts, tp, key, elms = elms[0], elms[1], None, elms[2:]
+        ts, tp, key, omit, elms = elms[0], elms[1], None, None, elms[2:]
         assert self.vocab.type(ts[0]) == VocabType.time_sig
         assert self.vocab.type(tp[0]) == VocabType.tempo
         if self.vocab.type(elms[0][0]) == VocabType.key:
             key = elms[0]
+            elms = elms[1:]
+        if elms[0][0] == self.vocab.omitted_segment:
+            omit = elms[0]
             elms = elms[1:]
 
         idxs_bar = [i for i, es in enumerate(elms) if es == [self.vocab.start_of_bar]]
@@ -388,62 +397,7 @@ class ChannelMixer(Transform):
         #           [lst[idxs_bar_start[-1]:]]
         elms_by_bar = [elms[idx:idxs_bar[i+1]] for i, idx in enumerate(idxs_bar[:-1])] + [elms[idxs_bar[-1]:]]
         elms_by_bar = [es[1:] for es in elms_by_bar]  # skip the bar start token
-        return SongSplitOutput(elms=elms, time_sig=ts, tempo=tp, key=key, elms_by_bar=elms_by_bar)
-
-    def __call__obsolete(self, text: Song) -> Song:
-        # Going through the `str => MusicElement => str` conversion is slow
-        out = self.mc.str2music_elms(text, group=True)
-
-        # sanity_check = True
-        sanity_check = False
-        if sanity_check:
-            for elms in out.elms_by_bar:
-                mixed = self._mix_up_bar_notes(elms)
-                d = self.mc.split_notes(mixed)
-                mic(elms, mixed, d)
-                recon = [
-                    MusicElement(type=ElmType.melody), *d['melody'], MusicElement(type=ElmType.bass), *d['bass']
-                ]
-                assert elms == recon  # sanity check reconstruction, no info loss
-            raise NotImplementedError
-        toks = self.vocab.music_elm2toks(out.time_sig) + self.vocab.music_elm2toks(out.tempo)
-        if out.key:
-            toks += self.vocab.music_elm2toks(out.key)
-        toks += sum((self._bar_music_elms2str(elms) for elms in out.elms_by_bar), start=[])
-        toks += [self.vocab.end_of_song]
-
-        # sanity_check = True
-        sanity_check = False
-        if sanity_check:  # Should be able to re-construct the text w/ default ordering
-            _text = ' '.join(text)
-            # mic('Channel Mix san check', _text)
-            # mic(self.mc.vocab.pitch_kind)
-            ori_out = self.mc.str2music_elms(' '.join(toks), group=True)
-            ori_toks = self.vocab.music_elm2toks(ori_out.time_sig) + self.vocab.music_elm2toks(ori_out.tempo)
-            if ori_out.key:
-                ori_toks += self.vocab.music_elm2toks(ori_out.key)
-            mic(ori_toks, ori_out.key)
-            for bar in ori_out.elms_by_bar:
-                d_notes = self.mc.split_notes(bar)
-                notes = [ChannelMixer.e_m, *d_notes['melody'], ChannelMixer.e_b, *d_notes['bass']]
-                ori_toks += self._bar_music_elms2str(notes, mix=False)
-            ori_toks += [self.vocab.end_of_song]
-            ori = ' '.join(ori_toks)
-            mic(_text[:200], ori[:200])
-            mic(ori == _text)
-            raise NotImplementedError
-        return toks if self.return_as_list else ' '.join(toks)
-
-    def _bar_music_elms2str(self, elms: List[MusicElement], mix: bool = True):
-        if mix:
-            elms = self._mix_up_bar_notes(elms)
-        return [self.vocab.start_of_bar] + sum(
-            (self.vocab.music_elm2toks(e) for e in elms), start=[]
-        )
-
-    @staticmethod
-    def _bin_sample() -> bool:
-        return torch.randint(2, (1,)).item() == 0
+        return SongSplitOutput(elms=elms, time_sig=ts, tempo=tp, key=key, omit=omit, elms_by_bar=elms_by_bar)
 
     def _split_bar_toks(self, elms: List[MusicElm]):
         melody, bass = [], []
@@ -504,6 +458,57 @@ class ChannelMixer(Transform):
             toks_b = [self.vocab.start_of_bass] + sum(elms_b, start=[])
             ret = (toks_m + toks_b) if self._bin_sample() else (toks_b + toks_m)
         return [self.vocab.start_of_bar] + ret
+
+    def __call__obsolete(self, text: Song) -> Song:
+        # Going through the `str => MusicElement => str` conversion is slow
+        out = self.mc.str2music_elms(text, group=True)
+
+        # sanity_check = True
+        sanity_check = False
+        if sanity_check:
+            for elms in out.elms_by_bar:
+                mixed = self._mix_up_bar_notes(elms)
+                d = self.mc.split_notes(mixed)
+                mic(elms, mixed, d)
+                recon = [
+                    MusicElement(type=ElmType.melody), *d['melody'], MusicElement(type=ElmType.bass), *d['bass']
+                ]
+                assert elms == recon  # sanity check reconstruction, no info loss
+            raise NotImplementedError
+        toks = self.vocab.music_elm2toks(out.time_sig) + self.vocab.music_elm2toks(out.tempo)
+        if out.key:
+            toks += self.vocab.music_elm2toks(out.key)
+        toks += sum((self._bar_music_elms2str(elms) for elms in out.elms_by_bar), start=[])
+        toks += [self.vocab.end_of_song]
+
+        # sanity_check = True
+        sanity_check = False
+        if sanity_check:  # Should be able to re-construct the text w/ default ordering
+            _text = ' '.join(text)
+            # mic('Channel Mix san check', _text)
+            # mic(self.mc.vocab.pitch_kind)
+            ori_out = self.mc.str2music_elms(' '.join(toks), group=True)
+            ori_toks = self.vocab.music_elm2toks(ori_out.time_sig) + self.vocab.music_elm2toks(ori_out.tempo)
+            if ori_out.key:
+                ori_toks += self.vocab.music_elm2toks(ori_out.key)
+            mic(ori_toks, ori_out.key)
+            for bar in ori_out.elms_by_bar:
+                d_notes = self.mc.split_notes(bar)
+                notes = [ChannelMixer.e_m, *d_notes['melody'], ChannelMixer.e_b, *d_notes['bass']]
+                ori_toks += self._bar_music_elms2str(notes, mix=False)
+            ori_toks += [self.vocab.end_of_song]
+            ori = ' '.join(ori_toks)
+            mic(_text[:200], ori[:200])
+            mic(ori == _text)
+            raise NotImplementedError
+        return toks if self.return_as_list else ' '.join(toks)
+
+    def _bar_music_elms2str(self, elms: List[MusicElement], mix: bool = True):
+        if mix:
+            elms = self._mix_up_bar_notes(elms)
+        return [self.vocab.start_of_bar] + sum(
+            (self.vocab.music_elm2toks(e) for e in elms), start=[]
+        )
 
     def _mix_up_bar_notes(self, elms: List[MusicElement]) -> List[MusicElement]:
         d_notes = self.mc.split_notes(elms)
