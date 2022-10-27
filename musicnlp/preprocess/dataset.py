@@ -282,13 +282,13 @@ class AugmentedDataset:
         if isinstance(toks, list):
             toks = ' '.join(toks)
 
-        # sanity_check = False
-        sanity_check = True
+        sanity_check = False
+        # sanity_check = True
         if sanity_check:
             ori, new = item['score'], toks
             ori, new = ori[:200], new[:200]
             mic(ori, new)
-            # raise NotImplementedError
+            raise NotImplementedError
         return self.tokenizer(toks, padding='max_length', truncation=True)
 
 

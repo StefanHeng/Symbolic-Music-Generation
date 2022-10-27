@@ -462,10 +462,10 @@ if __name__ == '__main__':
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
-        md_sz = 'debug'
+        # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        # md_sz = 'base'
+        md_sz = 'base'
         mic(md_nm, md_sz)
 
         # n = 8
@@ -478,13 +478,12 @@ if __name__ == '__main__':
         n_ep = 128
         mic(n, n_ep)
 
-        model_config = dict(max_length=64)
-        # model_config = dict(max_length=512)
+        # model_config = dict(max_length=64)
         # if 'debug' in md_sz:
         #     model_config = dict(max_length=64)
         #     insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False, False
         # else:
-        # model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
+        model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
         rand_crop = 4
         pch_kd = 'degree'
         insert_key = True
@@ -496,7 +495,7 @@ if __name__ == '__main__':
         channel_mixup = 'full'
         wordpiece_tokenize = True
         prop_mix = 1280
-        mic(pch_kd, insert_key, wordpiece_tokenize, channel_mixup, prop_mix)
+        mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, wordpiece_tokenize, prop_mix)
 
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
@@ -515,9 +514,10 @@ if __name__ == '__main__':
             ))
         else:
             train_args.update(dict(
-                dataloader_num_workers=8 if pch_shift else 4,  # TODO: torch recommends 4 always?
-                per_device_train_batch_size=20,
-                per_device_eval_batch_size=20,
+                # dataloader_num_workers=8 if pch_shift else 4,  # TODO: torch recommends 4 always?
+                dataloader_num_workers=4,  # TODO: torch recommends 4 always?
+                per_device_train_batch_size=22,
+                per_device_eval_batch_size=22,
             ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
