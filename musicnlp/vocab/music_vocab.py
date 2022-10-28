@@ -689,6 +689,9 @@ class MusicVocabulary:
         else:
             return self._colorize_token(tok)
 
+    def colorize_tokens(self, toks: List[str]) -> str:
+        return ' '.join(self.colorize_token(t) for t in toks)
+
     def __call__(
             self, elm: Union[ExtNote, Union[TimeSignature, TsTup], Union[MetronomeMark, int], Union[str, Key]],
             color: bool = None,

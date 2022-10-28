@@ -9,7 +9,10 @@ from musicnlp.vocab import Song, ElmType, Channel, MusicElement, VocabType, Musi
 from musicnlp.preprocess import KeyFinder
 
 
-__all__ = ['MusicConverter']
+__all__ = [
+    'MusicConverter',
+    'MusicElm', 'SongSplitOutput'
+]
 
 
 @dataclass
@@ -29,6 +32,20 @@ class ElmParseOutput:
     elms_by_bar: List[List[MusicElement]] = None
 
 
+MusicElm = List[str]
+
+
+@dataclass
+class SongSplitOutput:
+    elms: List[MusicElm] = None
+    time_sig: str = None
+    tempo: str = None
+    key: str = None
+    omit: str = None
+    elms_by_bar: List[List[MusicElm]] = None
+    end_of_song: str = None
+
+
 class MusicConverter:
     error_prefix = 'MusicConvertor Song Input Format Check'
 
@@ -40,6 +57,11 @@ class MusicConverter:
             self.vocab = vocab
         else:
             self.vocab = MusicVocabulary(precision=precision, color=False)
+
+        self._non_tup_spec = {
+            self.vocab.omitted_segment,
+            self.vocab.start_of_bar, self.vocab.end_of_song, self.vocab.start_of_melody, self.vocab.start_of_bass
+        }
 
     def _bar2grouped_bar(self, bar: Measure) -> List[ExtNote]:
         """
@@ -161,6 +183,87 @@ class MusicConverter:
         for_gen = n_bar is not None
         toks += [self.vocab.start_of_bar if for_gen else self.vocab.end_of_song]
         return ' '.join(toks) if join else toks
+
+    def str2tok_elms(self, text: Song) -> SongSplitOutput:
+        """
+        Like `str2music_elms`, but split into token groups only, without the conversion to `MusicElement`
+        """
+        toks = text if isinstance(text, list) else text.split()
+        elms: List[MusicElm] = []
+        it = iter(toks)
+        tok = next(it, None)
+        while tok is not None:
+            typ = self.vocab.type(tok)
+            if typ == VocabType.special:
+                if tok in self._non_tup_spec:
+                    elms.append([tok])
+                else:
+                    assert tok == self.vocab.start_of_tuplet  # sanity check
+                    tok = next(it, None)
+                    toks_tup = []
+                    while tok != self.vocab.end_of_tuplet:
+                        toks_tup.append(tok)
+                        tok = next(it, None)  # in the end, consumes `end_of_tuplet` token
+                    toks_p, tok_d = toks_tup[:-1], toks_tup[-1]
+                    assert len(toks_tup) >= 3  # sanity check
+                    assert all(self.vocab.type(t) == VocabType.pitch for t in toks_p)
+                    assert self.vocab.type(tok_d) == VocabType.duration
+                    elms.append([self.vocab.start_of_tuplet, *toks_p, tok_d, self.vocab.end_of_tuplet])
+            elif typ in [VocabType.time_sig, VocabType.tempo, VocabType.key]:
+                elms.append([tok])
+            else:
+                assert typ == VocabType.pitch
+                tok_d = next(it, None)
+                assert self.vocab.type(tok_d) == VocabType.duration
+                elms.append([tok, tok_d])
+            tok = next(it, None)
+
+        ts, tp, key, omit, elms = elms[0], elms[1], None, None, elms[2:]
+        assert self.vocab.type(ts[0]) == VocabType.time_sig
+        assert self.vocab.type(tp[0]) == VocabType.tempo
+        ts, tp = ts[0], tp[0]
+        if self.vocab.type(elms[0][0]) == VocabType.key:
+            key = elms[0][0]
+            elms = elms[1:]
+        if elms[0][0] == self.vocab.omitted_segment:
+            omit = elms[0][0]
+            elms = elms[1:]
+
+        idxs_bar = [i for i, es in enumerate(elms) if es == [self.vocab.start_of_bar]]
+        elms_by_bar = [elms[idx:idxs_bar[i+1]] for i, idx in enumerate(idxs_bar[:-1])] + [elms[idxs_bar[-1]:]]
+        elms_by_bar = [es[1:] for es in elms_by_bar]  # skip the bar start token
+
+        eos = None
+        if elms_by_bar[-1][-1] == [self.vocab.end_of_song]:
+            elms_by_bar[-1] = elms_by_bar[-1][:-1]
+            eos = self.vocab.end_of_song
+        return SongSplitOutput(
+            elms=elms, time_sig=ts, tempo=tp, key=key, omit=omit, elms_by_bar=elms_by_bar, end_of_song=eos
+        )
+
+    def visualize_str(self, score: Union[str, List[str], List[List[str]]]):
+        """
+        Visualize a complete song in tokens, one bar per row
+        """
+        groups: List[List[str]]
+        if isinstance(score, (list, tuple)) and isinstance(score[0], (list, tuple)):
+            groups = score
+        else:
+            # toks = score.split() if isinstance(score, str) else score
+            out = self.str2tok_elms(score)
+            # mic(out)
+            # globs = [out.time_sig, out.tempo, out.key, out.omit]
+            # mic(globs)
+            # groups = [sum((g for g in globs if g is not None), start=[])]
+            groups = [[g for g in [out.time_sig, out.tempo, out.key, out.omit] if g is not None]]
+            groups += [sum(elms, start=[]) for elms in out.elms_by_bar]
+        # mic(groups)
+
+        n_pad = len(str(len(groups)))
+
+        def map_prefix(i_row):
+            return pl.s(f'{i_row:>{n_pad}}:', c='y')
+        return '\n'.join(f'{map_prefix(i)} {self.vocab.colorize_tokens(toks)}' for i, toks in enumerate(groups))
 
     def str2music_elms(
             self, text: Song, group: bool = True, omit_eos: bool = False, strict: bool = True

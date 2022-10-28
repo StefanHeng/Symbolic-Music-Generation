@@ -22,7 +22,7 @@ from musicnlp.vocab import (
     Song, VocabType, ElmType, Channel, MusicElement, MusicVocabulary, nrp, MusicTokenizer, key_ordinal2str
 )
 from musicnlp.preprocess.key_finder import ScaleDegreeFinder
-from musicnlp.preprocess.music_converter import MusicConverter
+from musicnlp.preprocess.music_converter import MusicConverter, MusicElm
 
 
 class Transform:
@@ -101,7 +101,7 @@ class RandomCrop(Transform):
         if sanity_check:
             assert global_toks + sum(bar_list, start=[]) == toks
         # return global_toks + sum(bar_list[idx:], start=[])
-        return global_toks + [self.vocab.omitted_segment] + list(chain_its(bar_list[idx:]))
+        return global_toks + [self.vocab.omitted_segment] + list(chain_its(bar_list[idx:]))  # faster
 
 
 class KeyInsert(Transform):
@@ -269,19 +269,6 @@ class ToMidiPitch(Transform):
         return toks if self.return_as_list else ' '.join(toks)
 
 
-MusicElm = List[str]
-
-
-@dataclass
-class SongSplitOutput:
-    elms: List[MusicElm] = None
-    time_sig: MusicElm = None
-    tempo: MusicElm = None
-    key: MusicElm = None
-    omit: MusicElm = None
-    elms_by_bar: List[List[MusicElm]] = None
-
-
 @dataclass
 class BarChannelSplitOutput:
     melody: List[MusicElm] = None
@@ -306,29 +293,24 @@ class ChannelMixer(Transform):
         ca(channel_mixup=mode)
         self.mix_mode = mode
 
-        self._non_tup_spec = {
-            self.vocab.omitted_segment,
-            self.vocab.start_of_bar, self.vocab.end_of_song, self.vocab.start_of_melody, self.vocab.start_of_bass
-        }
-
     @staticmethod
     def _bin_sample() -> bool:
         return torch.randint(2, (1,)).item() == 0
 
     def __call__(self, text: Song) -> Song:
-        out = self.str2tok_elms(text)
-        toks = out.time_sig + out.tempo
+        out = self.mc.str2tok_elms(text)
+        toks = [out.time_sig, out.tempo]
         if out.key:
-            toks += out.key
+            toks.append(out.key)
         if out.omit:
-            toks += out.omit
+            toks.append(out.omit)
 
         # toks += sum((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar), start=[])
-        toks += list(chain_its((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar)))
-        toks += [self.vocab.end_of_song]
+        toks += list(chain_its((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar)))  # Faster
+        toks.append(self.vocab.end_of_song)
 
-        # sanity_check = True
-        sanity_check = False
+        sanity_check = True
+        # sanity_check = False
         if sanity_check:  # Should be able to re-construct the text w/ default ordering
             _text = ' '.join(text)
             mic(_text)
@@ -347,57 +329,6 @@ class ChannelMixer(Transform):
             mic(ori == _text)
             raise NotImplementedError
         return toks if self.return_as_list else ' '.join(toks)
-
-    def str2tok_elms(self, text: Song) -> SongSplitOutput:
-        """
-        Like `MusicConverter:str2music_elms`, but split into token groups only, without the conversion to `MusicElement`
-        """
-        toks = text if isinstance(text, list) else text.split()
-        elms: List[MusicElm] = []
-        it = iter(toks)
-        tok = next(it, None)
-        while tok is not None:
-            typ = self.vocab.type(tok)
-            if typ == VocabType.special:
-                if tok in self._non_tup_spec:
-                    elms.append([tok])
-                else:
-                    assert tok == self.vocab.start_of_tuplet  # sanity check
-                    tok = next(it, None)
-                    toks_tup = []
-                    while tok != self.vocab.end_of_tuplet:
-                        toks_tup.append(tok)
-                        tok = next(it, None)  # in the end, consumes `end_of_tuplet` token
-                    toks_p, tok_d = toks_tup[:-1], toks_tup[-1]
-                    assert len(toks_tup) >= 3  # sanity check
-                    assert all(self.vocab.type(t) == VocabType.pitch for t in toks_p)
-                    assert self.vocab.type(tok_d) == VocabType.duration
-                    elms.append([self.vocab.start_of_tuplet, *toks_p, tok_d, self.vocab.end_of_tuplet])
-            elif typ in [VocabType.time_sig, VocabType.tempo, VocabType.key]:
-                elms.append([tok])
-            else:
-                assert typ == VocabType.pitch
-                tok_d = next(it, None)
-                assert self.vocab.type(tok_d) == VocabType.duration
-                elms.append([tok, tok_d])
-            tok = next(it, None)
-
-        ts, tp, key, omit, elms = elms[0], elms[1], None, None, elms[2:]
-        assert self.vocab.type(ts[0]) == VocabType.time_sig
-        assert self.vocab.type(tp[0]) == VocabType.tempo
-        if self.vocab.type(elms[0][0]) == VocabType.key:
-            key = elms[0]
-            elms = elms[1:]
-        if elms[0][0] == self.vocab.omitted_segment:
-            omit = elms[0]
-            elms = elms[1:]
-
-        idxs_bar = [i for i, es in enumerate(elms) if es == [self.vocab.start_of_bar]]
-        # bar_lst = [lst[idx:idxs_bar_start[i + 1]] for i, idx in enumerate(idxs_bar_start[:-1])] + \
-        #           [lst[idxs_bar_start[-1]:]]
-        elms_by_bar = [elms[idx:idxs_bar[i+1]] for i, idx in enumerate(idxs_bar[:-1])] + [elms[idxs_bar[-1]:]]
-        elms_by_bar = [es[1:] for es in elms_by_bar]  # skip the bar start token
-        return SongSplitOutput(elms=elms, time_sig=ts, tempo=tp, key=key, omit=omit, elms_by_bar=elms_by_bar)
 
     def _split_bar_toks(self, elms: List[MusicElm]):
         melody, bass = [], []
@@ -560,12 +491,12 @@ if __name__ == '__main__':
 
     mic.output_width = 128
 
+    pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
+
     def profile_tsf():
         aug_key = False
 
         vocab = MusicVocabulary(pitch_kind='degree' if aug_key else 'step')
-
-        pop = dataset.get_dataset_dir_name('POP909')
 
         if aug_key:
             songs = dataset.load_songs(pop, as_dict=False)
@@ -608,8 +539,6 @@ if __name__ == '__main__':
                     raise NotImplementedError
     # check_step_pitch_mappable_to_degree_pitch()
 
-    pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
-
     def check_all_degree_pitches_covered():
         # mic(_get_unique_step_pitch_midis())
         # exit(1)
@@ -636,4 +565,29 @@ if __name__ == '__main__':
                 if tok not in vocab:
                     mic(tok)
                     raise NotImplementedError(pl.i(tok))
-    check_all_degree_pitches_covered()
+    # check_all_degree_pitches_covered()
+
+    def viz_transform_output():
+        import musicnlp.util.music as music_util
+        from musicnlp.preprocess import MusicExtractor
+
+        fnm = 'Canon piano'
+        fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
+        mic(fnm)
+
+        me = MusicExtractor(mode='full', with_pitch_step=True)
+        out = me(fnm, exp='str_join', return_meta=True, return_key=True)
+        text, keys = out.score, out.keys
+
+        vocab = MusicVocabulary(pitch_kind='degree')
+        mc = MusicConverter(mode='full', vocab=vocab)
+
+        print(f'Extracted: {mc.visualize_str(text)}')
+        mic(keys)
+        key = max(keys, key=keys.get)
+        mic(key)
+
+        ak = AugmentKey(vocab=vocab)
+        text = ak((text, key))
+        print(f'Added key & scale degree: {mc.visualize_str(text)}')
+    viz_transform_output()

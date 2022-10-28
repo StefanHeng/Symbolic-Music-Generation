@@ -12,7 +12,7 @@ from copy import deepcopy
 from typing import List, Tuple, Dict, Iterable, Union, Any
 from fractions import Fraction
 from dataclasses import dataclass
-from collections import defaultdict, Counter, OrderedDict
+from collections import defaultdict, Counter
 
 import numpy as np
 import music21 as m21
@@ -33,6 +33,16 @@ class BarInfo:
 
 
 ExtractedNotes = List[List[ExtNote]]
+
+
+@dataclass
+class MusicExtractorOutput:
+    score: ScoreExt = None
+    song_path: str = None
+    title: str = None
+    duration: int = None
+    warnings: List[Dict[str, Any]] = None
+    keys: Dict[str, float] = None
 
 
 class MusicExtractor:
@@ -861,7 +871,7 @@ class MusicExtractor:
 
     def __call__(
             self, song: Union[str, Score], exp='mxl', return_meta: bool = False, return_key: bool = False
-    ) -> Union[ScoreExt, Dict[str, Union[ScoreExt, Any]]]:
+    ) -> Union[ScoreExt, MusicExtractorOutput]:
         """
         :param song: A music21 Score object, or file path to an MXL file
         :param exp: Export mode, one of ['mxl', 'str', 'id', 'str_join', 'visualize']
@@ -1004,7 +1014,8 @@ class MusicExtractor:
                              f'with warnings {pl.i(self.warn_logger.tracked())}')
         ret = scr_out
         if return_meta:
-            ret = dict(score=scr_out, title=title, duration=secs, warnings=self.warn_logger.tracked(exp='serialize'))
+            warnings = self.warn_logger.tracked(exp='serialize') if self.warn_logger else None
+            ret = dict(score=scr_out, title=title, duration=secs, warnings=warnings)
             if song_path:
                 ret['song_path'] = song_path
         if return_key:
@@ -1013,7 +1024,7 @@ class MusicExtractor:
                 ret['keys'] = keys
             else:
                 ret = dict(score=scr_out, keys=keys)
-        return ret
+        return MusicExtractorOutput(**ret) if isinstance(ret, dict) else ret
 
 
 if __name__ == '__main__':
@@ -1029,8 +1040,8 @@ if __name__ == '__main__':
         # fnm = 'Faded'
         # fnm = 'Piano Sonata'
         # fnm = 'Merry Christmas'
-        fnm = 'Merry Go Round of Life'
-        # fnm = 'Canon piano'
+        # fnm = 'Merry Go Round of Life'
+        fnm = 'Canon piano'
         # fnm = '易燃易爆炸'
         # fnm = 'Shape of You'
         # fnm = '平凡之路'
@@ -1056,9 +1067,9 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             mic(d_out)
-        # check_mxl_out()
+        check_mxl_out()
         # check_str()
-        check_visualize()
+        # check_visualize()
         # check_return_meta_n_key()
     toy_example()
 
