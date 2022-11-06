@@ -60,13 +60,17 @@ class MusicTokenizer(PreTrainedTokenizer):
         self.rare_low_tempo_token = self.vocab.rare_low_tempo
         self.rare_high_tempo_token = self.vocab.rare_high_tempo
         self.rare_duration_token = self.vocab.rare_duration
-        self.rare_pitch_token = self.vocab.rare_pitch
         self.sob_token_id = self._convert_token_to_id(self.sob_token)
         self.rare_time_sig_token_id = self._convert_token_to_id(self.rare_time_sig_token)
         self.rare_low_tempo_token_id = self._convert_token_to_id(self.rare_low_tempo_token)
         self.rare_high_tempo_token_id = self._convert_token_to_id(self.rare_high_tempo_token)
         self.rare_duration_token_id = self._convert_token_to_id(self.rare_duration_token)
-        self.rare_pitch_token_id = self._convert_token_to_id(self.rare_pitch_token)
+
+        if self. pitch_kind == 'midi':
+            self.rare_pitch_token, self.rare_pitch_token_id = None, None
+        else:
+            self.rare_pitch_token = self.vocab.rare_pitch
+            self.rare_pitch_token_id = self._convert_token_to_id(self.rare_pitch_token)
 
     def _add_special_token(self, tok):
         assert tok not in self.spec_toks_enc

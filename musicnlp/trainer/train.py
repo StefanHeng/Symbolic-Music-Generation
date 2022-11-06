@@ -475,7 +475,8 @@ if __name__ == '__main__':
         n = None
         # n_ep = 4
         # n_ep = 64
-        n_ep = 128
+        # n_ep = 128
+        n_ep = 256
         mic(n, n_ep)
 
         # model_config = dict(max_length=64)

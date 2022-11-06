@@ -341,10 +341,9 @@ class MusicVocabulary:
         tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS]
         keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
 
-        # TODO: with music-theory, mod-7 scale degree, vocab size would increase
-        # TODO: changed the order of sob & eos and added melody & bass prefix, this will affect prior models trained
         special = [specs[k] for k in (
-            'omitted_segment', 'pad', 'start_of_bar', 'end_of_song',
+            'omitted_segment',  # TODO: for running earlier models
+            'pad', 'start_of_bar', 'end_of_song',
             'start_of_melody', 'start_of_bass', 'start_of_tuplet', 'end_of_tuplet'
         )]
         self.toks: Dict[str, List[str]] = OrderedDict(dict(
@@ -402,7 +401,6 @@ class MusicVocabulary:
                 ret += [self.note2pitch_str(p) for p in pchs]
             else:  # `degree`
                 degs = range(1, 7+1)
-                # mids = _get_unique_step_pitch_midis()
                 mids = range(128)
                 ret += [self.note2pitch_str(Pitch(midi=i), degree=d) for i in mids for d in degs]
         assert len(ret) == len(set(ret))  # sanity check unique
@@ -412,7 +410,6 @@ class MusicVocabulary:
         assert self.pitch_kind == 'step'
         mid, step = self.tok2meta(tok, strict=False)
         idx_n_nm = self.pitch2local_index(mid), step
-        # mic(idx_n_nm)
         return idx_n_nm in MusicVocabulary._rarest_pitch_index_n_names or tok in MusicVocabulary._rarest_pitch_tokens
 
     def to_dict(self, save=False):
@@ -648,7 +645,6 @@ class MusicVocabulary:
 
         User responsible to make sure a valid pitch is passed in, e.g. not a rest pitch
         """
-        # assert self.type(tok) == VocabType.pitch
         m = self.pitch_pattern.match(tok)
         idx, octave = int(m.group('numer')), int(m.group('denom'))
         return idx-1 + (octave+1)*12
@@ -815,12 +811,6 @@ class MusicVocabulary:
             return tok
         else:
             typ = self.type(tok)
-
-            # if typ not in self.likely_rare_types:
-            #     mic(tok, typ)
-            #     mic(self.tok2id)
-            #     raise NotImplementedError(f'Token {pl.i(tok)} with type {pl.i(typ)} is not in vocabulary '
-            #                               f'w/ pitch kind {pl.i(self.pitch_kind)}')
             assert typ in self.likely_rare_types  # sanity check
             if typ == VocabType.pitch:
                 return MusicVocabulary.rare_pitch

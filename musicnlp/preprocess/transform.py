@@ -100,7 +100,6 @@ class RandomCrop(Transform):
         # sanity_check = True
         if sanity_check:
             assert global_toks + sum(bar_list, start=[]) == toks
-        # return global_toks + sum(bar_list[idx:], start=[])
         return global_toks + [self.vocab.omitted_segment] + list(chain_its(bar_list[idx:]))  # faster
 
 
@@ -305,12 +304,11 @@ class ChannelMixer(Transform):
         if out.omit:
             toks.append(out.omit)
 
-        # toks += sum((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar), start=[])
         toks += list(chain_its((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar)))  # Faster
         toks.append(self.vocab.end_of_song)
 
-        sanity_check = True
-        # sanity_check = False
+        # sanity_check = True
+        sanity_check = False
         if sanity_check:  # Should be able to re-construct the text w/ default ordering
             _text = ' '.join(text)
             mic(_text)

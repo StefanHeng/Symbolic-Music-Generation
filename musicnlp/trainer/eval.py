@@ -12,34 +12,40 @@ import torch
 
 from stefutil import *
 from musicnlp.util import *
-from musicnlp.vocab.music_vocab import VocabType
-from musicnlp.vocab import MusicTokenizer
-from musicnlp.preprocess import KeyFinder, MusicConverter
+from musicnlp.vocab import VocabType, MusicVocabulary, MusicTokenizer
+from musicnlp.preprocess import KeyFinder, MusicConverter, transform
 from musicnlp.models import MyReformerModelWithLMHead, MyTransfoXLLMHeadModel
 from musicnlp.trainer.wordpiece_tokenizer import load_trained_tokenizer as load_wordpiece_tokenizer
 
 
 def load_trained(
-        model_name: str = None, directory_name:  Union[str, Iterable[str]] = None, model_key: Tuple[str, str, str] = None,
-        mode: str = 'full'
+        model_name: str = None, directory_name:  Union[str, Iterable[str]] = None,
+        model_key: Tuple[str, str, str, str] = None, mode: str = 'full'
 ) -> Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel]:
     ca.check_mismatch('Model Name', model_name, ['reformer', 'transfo-xl'])
     if not hasattr(load_trained, 'key2path'):
         load_trained.key2path = dict(
             full={
-                # (model name, datasets, #epoch)
+                # (model name, datasets, #epoch, comment) => path
                 # pretty good generation
-                ('reformer', 'P&M', '256-256ep'): ['2022-10-03_11-58-11_reformer', 'trained'],  # 3e-4
+                ('reformer', 'P&M', '256-256ep', 'mid-pch'): ['2022-10-03_11-58-11_reformer', 'trained'],
 
                 # not good generation
-                ('reformer', 'All', '8-8ep'): ['2022-10-06_04-32-51_reformer', 'trained'],  # 3e-4
-                ('reformer', 'All', '5-16ep'): ['2022-10-09_01-36-18_reformer', 'checkpoint-6850'],  # 1e-4
+                ('reformer', 'All', '8-8ep', 'mid-pch'): ['2022-10-06_04-32-51_reformer', 'trained'],
+                ('reformer', 'All', '5-16ep', 'mid-pch_1e-4'): ['2022-10-09_01-36-18_reformer', 'checkpoint-6850'],
                 # w/ a loss slightly larger than the last one, generated not good
-                ('reformer', 'All', '16-16ep'): ['2022-10-09_01-36-18_reformer', 'trained'],  # 1e-4
+                ('reformer', 'All', '16-16ep', 'mid-pch_1e-4'): ['2022-10-09_01-36-18_reformer', 'trained'],
                 # 1st try of proportional mixing, model w/ the best loss loaded in the end
-                ('reformer', 'All', 'x-128ep'): ['2022-10-15_22-44-10_reformer', 'trained'],
+                ('reformer', 'All', 'x-128ep', '1st-prop-mix'): ['2022-10-15_22-44-10_reformer', 'trained'],
 
-                ('transf-xl', 'All', 'x-128ep'): ['2022-10-19_04-50-21_transf-xl', 'trained']
+                ('transf-xl', 'All', 'x-128ep', 'prop-mix'): ['2022-10-19_04-50-21_transf-xl', 'trained'],  # midi pitch
+                # degree pitch, eval set no channel mixup
+                ('transf-xl', 'All', '128-128ep', 'deg-pch_eval-no-mixup'): [
+                    '2022-10-26_08-41-26_transf-xl', 'trained'],
+                ('transf-xl', 'All', '128-128ep', 'with-crop'): ['2022-10-27_07-56-03_transf-xl', 'trained'],
+                ('transf-xl', 'All', '256-256ep', 'with-crop_train-longer'): [
+                    '2022-10-29_08-28-57_transf-xl', 'trained'],
+
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -58,6 +64,8 @@ def load_trained(
     logger = get_logger('Load Trained')
     model = cls.from_pretrained(path)
     logger.info(f'Loaded {pl.i(cls.__qualname__)} with config {pl.fmt(model.config.to_dict())}')
+    if model_name == 'transf-xl':
+        model.pad_token_id = model.config.eos_token_id  # for open-end generation 
     return model
 
 
@@ -74,7 +82,8 @@ class MusicGenerator:
 
     def __init__(
             self, model: Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel], mode: str = 'full',
-            max_length: int = None, wordpiece_tokenizer: bool = True, tokenizer_args: Dict = None,
+            max_length: int = None, vocab: MusicVocabulary = None,
+            wordpiece_tokenizer: bool = True, tokenizer_args: Dict = None, augment_key: bool = False
     ):
         self.model = model
         if max_length:
@@ -89,8 +98,12 @@ class MusicGenerator:
             self.tokenizer = load_wordpiece_tokenizer(omit_eos=True, **tokenizer_args)
         else:
             self.tokenizer = MusicTokenizer(**tokenizer_args)
-        self.vocab = self.tokenizer.vocab
-        self.converter = MusicConverter(mode=mode, precision=self.tokenizer.precision, vocab=self.vocab)
+        self.tokenizer.pad_token_id = self.tokenizer.eos_token_id  # TODO: logging still shows
+        mic(len(self.tokenizer))
+        self.vocab = vocab or self.tokenizer.vocab
+        self.converter = MusicConverter(
+            mode=mode, precision=self.tokenizer.precision, vocab=self.vocab, augment_key=augment_key
+        )
 
         self.logger = get_logger('Music Generator')
         d_log = dict(model_max_length=self.max_len)
@@ -127,24 +140,27 @@ class MusicGenerator:
 
         generate_args = (generate_args or dict())
         prompt_args: Dict[str, Any] = dict(n_bar=4, insert_key=False) | (prompt_args or dict())
-        key = prompt_args['insert_key']
-        if key is True:
+        ins_key, pch_sft = (prompt_args.get(k, False) for k in ('insert_key', 'pitch_shift'))
+        if ins_key is True:
             path = prompt_args.get('path', None)
             assert path, f'A path to a song must be provided to {pl.i("prompt_args")} to extract key ' \
                          f'when key is not already provided'
-            key = pt_sample(KeyFinder(path)(return_type='dict'))  # just sample a key for generation, TODO?
+            ins_key = pt_sample(KeyFinder(path)(return_type='dict'))  # just sample a key for generation, TODO?
         if mode == 'unconditional':
             # TODO: sample the time signature and tempos?
             prompt = [self.vocab.meta2tok(VocabType.time_sig, (4, 4)), self.vocab.meta2tok(VocabType.tempo, 120)]
-            if key:
-                prompt.append(key)
+            # TODO: randomly sample a key?
             prompt = ' '.join([*prompt, self.vocab.start_of_bar])
         else:  # 'conditional'
             prompt, path = prompt_args.get('prompt', None), prompt_args.get('path', None)
             assert prompt is not None or path is not None, f'Expect either {pl.i("prompt")} or {pl.i("path")}'
             if prompt is None:
-                prompt = self.converter.mxl2str(path, n_bar=prompt_args['n_bar'], insert_key=key)
+                prompt = self.converter.mxl2str(path, n_bar=prompt_args['n_bar'], insert_key=ins_key)
+            if pch_sft:
+                ps = transform.PitchShift()
+                prompt = ps(prompt)
         inputs = self.tokenizer(prompt, return_tensors='pt')
+        # inputs['attention_mask'] = torch.ones_like(inputs['input_ids'])  # TODO: generation warning still shows
         args = dict(max_length=self.max_len)
         if strategy == 'greedy':
             assert (k in ['do_sample'] for k in generate_args)
@@ -181,6 +197,7 @@ class MusicGenerator:
             assert len(idxs_eob) > 0, f'No start of bar token found when {pl.i("truncate_to_sob")} enabled'
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
+        mic(decoded)
         title = f'{save}-generated' if save else None
         score = self.converter.str2score(decoded, omit_eos=True, title=title)  # incase model can't finish generation
         if save:
@@ -215,17 +232,21 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # md_k = 'reformer', 'P&M', '256-256ep'
-    md_k = md_nm, ds_nm, ep_nm = 'transf-xl', 'All', 'x-128ep'
-    tk_args = dict(pitch_kind='midi')
+    # md_k = md_nm, ds_nm, ep_nm = 'transf-xl', 'All', 'x-128ep'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128-128ep', 'deg-pch_eval-no-mixup'
+
+    pch_kd = 'degree'
+    tk_args = dict(pitch_kind=pch_kd)
+
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
-    sv_dir = f'{md_nm}_{ds_nm}_{ep_nm}'
+    sv_dir = f'{md_nm}_{ds_nm}_{ep_nm}_{desc}'
     # save_dir_ = 'reformer-base, 14/32ep'
     # mic(get_model_num_trainable_parameter(mdl))
-    mg = MusicGenerator(model=mdl, mode=md, tokenizer_args=tk_args)
+    # step vocab for `MusicConverter::mxl2str`
 
-    # key_aug = False
     key_aug = True
+    mg = MusicGenerator(model=mdl, mode=md, tokenizer_args=tk_args, augment_key=True)
 
     def explore_generate_unconditional():
         # as in `CTRL` paper
@@ -245,7 +266,7 @@ if __name__ == '__main__':
         # strat, gen_args = 'sample', dict(top_k=32, top_p=0.9)
         strat, gen_args = 'sample', dict(top_k=64, top_p=0.9, temperature=1)
         # strat, gen_args = 'beam', dict(num_beams=4, num_beam_groups=2)
-        prompt_args = dict(path=path, n_bar=4, insert_key=key_aug)
+        prompt_args = dict(path=path, n_bar=4, insert_key=True)
         mg(
             mode='conditional', strategy=strat, generate_args=gen_args, prompt_args=prompt_args, save=fnm,
             save_dir=sv_dir
@@ -263,9 +284,8 @@ if __name__ == '__main__':
     # check_why_tie_in_output()
 
     def export_generated():
-        fnms = ['Merry Go Round of Life', 'Canon piano', 'Shape of You', 'Merry Christmas']
-        # fnms = ['Merry Christmas']
-        # fnms = ['Faded', 'Piano Sonata', 'Merry Christmas']
+        pch_sft = True
+        fnms = ['Merry Go Round of Life', 'Canon piano', 'Shape of You', 'Merry Christmas', 'Piano Sonata']
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
         # gen_args = dict(top_k=32, top_p=0.95)
         # gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
@@ -274,7 +294,7 @@ if __name__ == '__main__':
         n_bar = 4
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='full')
-            prompt = dict(path=path, n_bar=n_bar, insert_key=key_aug)
+            prompt = dict(path=path, n_bar=n_bar, insert_key=key_aug, pitch_shift=pch_sft)
             mg(
                 mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt,
                 save=fnm, save_dir=sv_dir

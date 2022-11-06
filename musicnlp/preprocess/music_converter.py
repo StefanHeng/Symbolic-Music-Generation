@@ -49,18 +49,30 @@ class SongSplitOutput:
 class MusicConverter:
     error_prefix = 'MusicConvertor Song Input Format Check'
 
-    def __init__(self, mode: str = 'full', precision: int = 5, vocab: MusicVocabulary = None):
+    def __init__(
+            self, mode: str = 'full', precision: int = 5, vocab: MusicVocabulary = None,
+            augment_key: bool = False, vocab_step: MusicVocabulary = None, vocab_degree: MusicVocabulary = None
+    ):
         ca(extract_mode=mode)
         self.mode = mode
-        if vocab:
-            assert vocab.precision == precision
-            self.vocab = vocab
-        else:
-            self.vocab = MusicVocabulary(precision=precision, color=False)
 
+        self.augment_key = augment_key
+        if augment_key:
+            self.vocab = None
+            self.vocab_step = vocab_step or MusicVocabulary(pitch_kind='step')
+            self.vocab_degree = vocab_degree or MusicVocabulary(pitch_kind='degree')
+        else:
+            if vocab:
+                assert vocab.precision == precision
+                self.vocab = vocab
+            else:
+                self.vocab = MusicVocabulary(precision=precision, color=False)
+            self.vocab_step = self.vocab_degree = None
+
+        _vocab = self.vocab or self.vocab_step
         self._non_tup_spec = {
-            self.vocab.omitted_segment,
-            self.vocab.start_of_bar, self.vocab.end_of_song, self.vocab.start_of_melody, self.vocab.start_of_bass
+            _vocab.omitted_segment,
+            _vocab.start_of_bar, _vocab.end_of_song, _vocab.start_of_melody, _vocab.start_of_bass
         }
 
     def _bar2grouped_bar(self, bar: Measure) -> List[ExtNote]:
@@ -116,7 +128,12 @@ class MusicConverter:
             MusicConverter._input_format_error(len(tempos) == 1, f'Expect only 1 tempo ')
         time_sig, tempo = next(time_sigs, None), next(tempos, None)
         ts_tup = (time_sig.numerator, time_sig.denominator) if time_sig else None
-        tempo = tempo.number if tempo else None
+        if tempo:
+            tempo = tempo.number
+            assert tempo.is_integer()
+            tempo = int(tempo)
+        else:
+            tempo = None
 
         key = None
         if insert_key:
@@ -126,11 +143,13 @@ class MusicConverter:
             MusicConverter._input_format_error(n_bar > 0, f'{pl.i("n_bar")} should be positive integer')
             bars = bars[:min(n_bar, len(bars))]
         toks = []
+
+        vocab = self.vocab or self.vocab_step
         for i, bar in enumerate(bars):
             MusicConverter._input_format_error(
                 all(not isinstance(e, m21.stream.Voice) for e in bar), f'Expect no voice in bar#{pl.i(i)}')
             # as `vocab` converts each music element to a list
-            toks.append(sum([self.vocab(e) for e in self._bar2grouped_bar(bar)], start=[]))
+            toks.append(sum([vocab(e) for e in self._bar2grouped_bar(bar)], start=[]))
         return PartExtractOutput(time_sig=ts_tup, tempo=tempo, key=key, toks=toks)
 
     def mxl2str(
@@ -147,6 +166,8 @@ class MusicConverter:
             Otherwise, the entire song is converted and end of song token is appended
         :param insert_key: A key is inserted accordingly, intended for generation
         """
+        vocab = self.vocab_step if self.augment_key else self.vocab
+
         if isinstance(song, str):
             song = m21.converter.parse(song)
         song: Score
@@ -166,22 +187,22 @@ class MusicConverter:
             assert not out_b.time_sig or time_sig == out_b.time_sig
             assert not out_b.tempo or tempo == out_b.tempo
             assert not out_b.key or key == out_b.key
-        toks = [self.vocab(time_sig)[0], self.vocab(tempo)[0]]
+        toks = [vocab(time_sig)[0], vocab(tempo)[0]]
         if insert_key:
-            toks.append(self.vocab(key)[0])
+            toks.append(vocab(key)[0])
 
         if self.mode == 'melody':
             for ts in out_m.toks:
-                toks.append(self.vocab.start_of_bar)
+                toks.append(vocab.start_of_bar)
                 toks.extend(ts)
         else:  # 'full'
             for ts_m, ts_b in zip(out_m.toks, out_b.toks):
-                toks.extend([self.vocab.start_of_bar, self.vocab.start_of_melody])
+                toks.extend([vocab.start_of_bar, vocab.start_of_melody])
                 toks.extend(ts_m)
-                toks.append(self.vocab.start_of_bass)
+                toks.append(vocab.start_of_bass)
                 toks.extend(ts_b)
         for_gen = n_bar is not None
-        toks += [self.vocab.start_of_bar if for_gen else self.vocab.end_of_song]
+        toks += [vocab.start_of_bar if for_gen else vocab.end_of_song]
         return ' '.join(toks) if join else toks
 
     def str2tok_elms(self, text: Song) -> SongSplitOutput:
@@ -249,16 +270,9 @@ class MusicConverter:
         if isinstance(score, (list, tuple)) and isinstance(score[0], (list, tuple)):
             groups = score
         else:
-            # toks = score.split() if isinstance(score, str) else score
             out = self.str2tok_elms(score)
-            # mic(out)
-            # globs = [out.time_sig, out.tempo, out.key, out.omit]
-            # mic(globs)
-            # groups = [sum((g for g in globs if g is not None), start=[])]
             groups = [[g for g in [out.time_sig, out.tempo, out.key, out.omit] if g is not None]]
             groups += [sum(elms, start=[]) for elms in out.elms_by_bar]
-        # mic(groups)
-
         n_pad = len(str(len(groups)))
 
         def map_prefix(i_row):
@@ -273,8 +287,10 @@ class MusicConverter:
 
         Expects each music element to be in the correct format
         """
+        vocab = self.vocab_degree if self.augment_key else self.vocab
+
         def comp(x):  # syntactic sugar
-            return self.vocab.tok2meta(x, strict=strict)
+            return vocab.tok2meta(x, strict=strict)
 
         text = text if isinstance(text, list) else text.split()
         it = iter(text)
@@ -282,30 +298,31 @@ class MusicConverter:
         tok = next(it, None)
         lst_out = []
         while tok is not None:
-            typ = self.vocab.type(tok)
+            # mic(tok)
+            typ = vocab.type(tok)
             if typ == VocabType.special:
-                if tok == self.vocab.start_of_bar:
+                if tok == vocab.start_of_bar:
                     lst_out.append(MusicElement(type=ElmType.bar_start, meta=None))
-                elif tok == self.vocab.end_of_song:
+                elif tok == vocab.end_of_song:
                     lst_out.append(MusicElement(type=ElmType.song_end, meta=None))
-                elif tok == self.vocab.start_of_tuplet:
+                elif tok == vocab.start_of_tuplet:
                     tok = next(it, None)
                     toks_tup = []
-                    while tok != self.vocab.end_of_tuplet:
+                    while tok != vocab.end_of_tuplet:
                         toks_tup.append(tok)
                         tok = next(it, None)
                     assert len(toks_tup) >= 2
                     toks_p, tok_d = toks_tup[:-1], toks_tup[-1]
-                    assert all(self.vocab.type(tok) == VocabType.pitch for tok in toks_p)
-                    assert self.vocab.type(tok_d) == VocabType.duration
+                    assert all(vocab.type(tok) == VocabType.pitch for tok in toks_p)
+                    assert vocab.type(tok_d) == VocabType.duration
                     lst_out.append(MusicElement(
                         type=ElmType.tuplets, meta=(tuple([comp(tok) for tok in toks_p]), comp(tok_d))
                     ))
-                elif tok == self.vocab.start_of_melody:
+                elif tok == vocab.start_of_melody:
                     assert self.mode == 'full'
                     lst_out.append(MusicElement(type=ElmType.melody, meta=None))
                 else:
-                    assert tok == self.vocab.start_of_bass
+                    assert tok == vocab.start_of_bass
                     assert self.mode == 'full'
                     lst_out.append(MusicElement(type=ElmType.bass, meta=None))
             elif typ == VocabType.time_sig:
@@ -317,11 +334,8 @@ class MusicConverter:
             else:
                 assert typ == VocabType.pitch
                 tok_d = next(it, None)
-                assert tok_d is not None and self.vocab.type(tok_d) == VocabType.duration, \
+                assert tok_d is not None and vocab.type(tok_d) == VocabType.duration, \
                     f'Pitch token {pl.i(tok)} should be followed by a duration token but got {pl.i(tok_d)}'
-                # if not isinstance(comp(tok)[-1], int):
-                #     mic(tok, self.vocab.pitch_kind, comp(tok))
-                #     raise NotImplementedError
                 lst_out.append(MusicElement(type=ElmType.note, meta=(comp(tok), comp(tok_d))))
             tok = next(it, None)
 
@@ -345,7 +359,7 @@ class MusicConverter:
         return ElmParseOutput(elms=lst_out, time_sig=ts, tempo=tp, key=key, elms_by_bar=bar_lst)
 
     @staticmethod
-    def note_elm2m21(note: MusicElement) -> List[SNote]:
+    def mus_elm2m21_note(note: MusicElement) -> List[SNote]:
         """
         Convert a music element tuple into a music21 note or tuplet of notes
         """
@@ -353,6 +367,8 @@ class MusicConverter:
             f'Invalid note type: expect one of {pl.i([ElmType.note, ElmType.tuplets])}, got {pl.i(note.type)}'
 
         pitch, q_len = note.meta
+        if isinstance(pitch, tuple):  # 2nd element is step/scale degree, ignore; TODO: add to the rendered MXL?
+            pitch = pitch[0]
         dur = m21.duration.Duration(quarterLength=q_len)
         if note.type == ElmType.note:
             if pitch == MusicVocabulary.rest_pitch_code:
@@ -361,11 +377,13 @@ class MusicConverter:
                 return [Note(pitch=m21.pitch.Pitch(midi=pitch), duration=dur)]
         else:  # tuplet
             dur_ea = quarter_len2fraction(q_len) / len(pitch)
-            return sum([MusicConverter.note_elm2m21(MusicElement(ElmType.note, (p, dur_ea))) for p in pitch], start=[])
+            return sum(
+                [MusicConverter.mus_elm2m21_note(MusicElement(ElmType.note, (p, dur_ea))) for p in pitch], start=[]
+            )
 
     @staticmethod
     def bar2notes(notes: List[MusicElement]) -> List[SNote]:
-        return sum([MusicConverter.note_elm2m21(n) for n in notes], start=[])
+        return sum([MusicConverter.mus_elm2m21_note(n) for n in notes], start=[])
 
     @staticmethod
     def split_notes(notes: List[MusicElement]) -> Dict[str, List[MusicElement]]:
@@ -417,9 +435,9 @@ if __name__ == '__main__':
     from musicnlp._sample_score import sample_full_midi, gen_broken
 
     md = 'full'
-    mc = MusicConverter(mode=md)
 
     def check_map_elm():
+        mc = MusicConverter(mode=md)
         text = music_util.get_extracted_song_eg(k='平凡之路')
         mic(text)
         toks = mc.str2music_elms(text)
@@ -429,12 +447,14 @@ if __name__ == '__main__':
     # check_map_elm()
 
     def check_encode():
+        mc = MusicConverter(mode=md)
         scr = mc.str2score(sample_full_midi, omit_eos=True, title='Test')
         mic(scr)
         scr.show()
     # check_encode()
 
     def check_decode():
+        mc = MusicConverter(mode=md)
         # fnm = 'Shape of You'
         fnm = 'Merry Go Round'
         path = music_util.get_my_example_songs(k=fnm, extracted=True)
@@ -444,6 +464,7 @@ if __name__ == '__main__':
     # check_decode()
 
     def check_encode_decode():
+        mc = MusicConverter(mode=md)
         fnm = '平凡之路'
         path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='full')
         txt = mc.mxl2str(path, n_bar=None)
@@ -455,6 +476,7 @@ if __name__ == '__main__':
     # check_encode_decode()
 
     def check_broken_render():
+        mc = MusicConverter(mode=md, augment_key=True)
         scr = mc.str2score(gen_broken, omit_eos=True, title='Check Broken')
         mic(scr)
 

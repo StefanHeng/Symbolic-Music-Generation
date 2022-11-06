@@ -379,7 +379,10 @@ class WordPieceMusicTokenizer(MusicTokenizer):
             meta = json.load(f)
         init_args = meta['music_vocab'] | kwargs
         ret = cls(_tokenizer, s2c_args=meta['score2chars'], **init_args)
-        assert ret.vocab.tok2id == meta['tok2id']
+
+        t2i = meta.get('tok2id', None)   # backward compatibility
+        if t2i:
+            assert ret.vocab.tok2id == t2i
         return ret
 
     @property
@@ -445,6 +448,7 @@ def load_trained_tokenizer(  # has independent global token & bar split
 ) -> WordPieceMusicTokenizer:
     pitch_kind = pitch_kind or 'midi'
     if pitch_kind == 'midi':
+        # Obsolete for no [OMIT] token; TODO Re-run, maybe w/ a larger vocab size
         fnm = fnm or '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
     elif pitch_kind == 'step':
         fnm = fnm or '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=8192, n=2185, pch=s}'
