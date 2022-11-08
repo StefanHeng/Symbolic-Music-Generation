@@ -99,11 +99,11 @@ class MusicGenerator:
         else:
             self.tokenizer = MusicTokenizer(**tokenizer_args)
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id  # TODO: logging still shows
-        mic(len(self.tokenizer))
         self.vocab = vocab or self.tokenizer.vocab
-        self.converter = MusicConverter(
-            mode=mode, precision=self.tokenizer.precision, vocab=self.vocab, augment_key=augment_key
+        self.mc = MusicConverter(
+            mode=mode, precision=self.tokenizer.precision, vocab_midi=self.vocab, augment_key=augment_key
         )
+        self.augment_key = augment_key
 
         self.logger = get_logger('Music Generator')
         d_log = dict(model_max_length=self.max_len)
@@ -155,7 +155,7 @@ class MusicGenerator:
             prompt, path = prompt_args.get('prompt', None), prompt_args.get('path', None)
             assert prompt is not None or path is not None, f'Expect either {pl.i("prompt")} or {pl.i("path")}'
             if prompt is None:
-                prompt = self.converter.mxl2str(path, n_bar=prompt_args['n_bar'], insert_key=ins_key)
+                prompt = self.mc.mxl2str(path, n_bar=prompt_args['n_bar'], insert_key=ins_key)
             if pch_sft:
                 ps = transform.PitchShift()
                 prompt = ps(prompt)
@@ -197,9 +197,8 @@ class MusicGenerator:
             assert len(idxs_eob) > 0, f'No start of bar token found when {pl.i("truncate_to_sob")} enabled'
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
-        mic(decoded)
         title = f'{save}-generated' if save else None
-        score = self.converter.str2score(decoded, omit_eos=True, title=title)  # incase model can't finish generation
+        score = self.mc.str2score(decoded, omit_eos=True, title=title)
         if save:
             # `makeNotations` disabled any clean-up by music21, intended to remove `tie`s added
             str_args = MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args)
@@ -215,7 +214,8 @@ class MusicGenerator:
             try:
                 score.write(fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'), makeNotation=False)
             except Exception as e:
-                raise ValueError(f'Failed to render MXL from decoded output {self.colorize_song(decoded)}') from e
+                vocab = self.mc.vocabs.degree if self.augment_key else self.mc.vocabs.midi
+                raise ValueError(f'Failed to render MXL from decoded output {vocab.colorize_tokens(decoded)}') from e
         else:
             score.show()
 
@@ -231,9 +231,8 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    # md_k = 'reformer', 'P&M', '256-256ep'
-    # md_k = md_nm, ds_nm, ep_nm = 'transf-xl', 'All', 'x-128ep'
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128-128ep', 'deg-pch_eval-no-mixup'
+    # md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128-128ep', 'with-crop'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '256-256ep', 'with-crop_train-longer'
 
     pch_kd = 'degree'
     tk_args = dict(pitch_kind=pch_kd)
@@ -285,15 +284,17 @@ if __name__ == '__main__':
 
     def export_generated():
         pch_sft = True
-        fnms = ['Merry Go Round of Life', 'Canon piano', 'Shape of You', 'Merry Christmas', 'Piano Sonata']
+        fnms = ['Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life', 'Merry Christmas']
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
         # gen_args = dict(top_k=32, top_p=0.95)
         # gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
         # gen_args = dict(top_k=64, top_p=0.9)
-        gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
+        # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
+        # gen_args = dict(top_k=32, top_p=0.85)
+        gen_args = dict(top_k=32)
         n_bar = 4
         for fnm in fnms:
-            path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='full')
+            path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='{md=f}')
             prompt = dict(path=path, n_bar=n_bar, insert_key=key_aug, pitch_shift=pch_sft)
             mg(
                 mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt,

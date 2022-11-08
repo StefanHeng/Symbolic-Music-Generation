@@ -46,30 +46,33 @@ class SongSplitOutput:
     end_of_song: str = None
 
 
+@dataclass
+class MusicVocabs:
+    midi: MusicVocabulary = None
+    step: MusicVocabulary = None
+    degree: MusicVocabulary = None
+
+
 class MusicConverter:
     error_prefix = 'MusicConvertor Song Input Format Check'
 
     def __init__(
-            self, mode: str = 'full', precision: int = 5, vocab: MusicVocabulary = None,
-            augment_key: bool = False, vocab_step: MusicVocabulary = None, vocab_degree: MusicVocabulary = None
+            self, mode: str = 'full', precision: int = 5, vocab_midi: MusicVocabulary = None,
+            vocab_step: MusicVocabulary = None, vocab_degree: MusicVocabulary = None, augment_key: bool = False
     ):
         ca(extract_mode=mode)
         self.mode = mode
 
+        self.vocabs: MusicVocabs = MusicVocabs(
+            midi=vocab_midi or MusicVocabulary(pitch_kind='midi'),
+            step=vocab_step or MusicVocabulary(pitch_kind='step'),
+            degree=vocab_degree or MusicVocabulary(pitch_kind='degree')
+        )
+        for v in [self.vocabs.midi, self.vocabs.step, self.vocabs.degree]:
+            assert v.precision == precision
         self.augment_key = augment_key
-        if augment_key:
-            self.vocab = None
-            self.vocab_step = vocab_step or MusicVocabulary(pitch_kind='step')
-            self.vocab_degree = vocab_degree or MusicVocabulary(pitch_kind='degree')
-        else:
-            if vocab:
-                assert vocab.precision == precision
-                self.vocab = vocab
-            else:
-                self.vocab = MusicVocabulary(precision=precision, color=False)
-            self.vocab_step = self.vocab_degree = None
 
-        _vocab = self.vocab or self.vocab_step
+        _vocab = self.vocabs.midi  # doesn't matter which one
         self._non_tup_spec = {
             _vocab.omitted_segment,
             _vocab.start_of_bar, _vocab.end_of_song, _vocab.start_of_melody, _vocab.start_of_bass
@@ -144,7 +147,7 @@ class MusicConverter:
             bars = bars[:min(n_bar, len(bars))]
         toks = []
 
-        vocab = self.vocab or self.vocab_step
+        vocab = self.vocabs.step if self.augment_key else self.vocabs.midi
         for i, bar in enumerate(bars):
             MusicConverter._input_format_error(
                 all(not isinstance(e, m21.stream.Voice) for e in bar), f'Expect no voice in bar#{pl.i(i)}')
@@ -166,7 +169,7 @@ class MusicConverter:
             Otherwise, the entire song is converted and end of song token is appended
         :param insert_key: A key is inserted accordingly, intended for generation
         """
-        vocab = self.vocab_step if self.augment_key else self.vocab
+        vocab = self.vocabs.step if self.augment_key else self.vocabs.midi
 
         if isinstance(song, str):
             song = m21.converter.parse(song)
@@ -213,51 +216,53 @@ class MusicConverter:
         elms: List[MusicElm] = []
         it = iter(toks)
         tok = next(it, None)
+
+        vocab = self.vocabs.midi  # doesn't matter which one
         while tok is not None:
-            typ = self.vocab.type(tok)
+            typ = vocab.type(tok)
             if typ == VocabType.special:
                 if tok in self._non_tup_spec:
                     elms.append([tok])
                 else:
-                    assert tok == self.vocab.start_of_tuplet  # sanity check
+                    assert tok == vocab.start_of_tuplet  # sanity check
                     tok = next(it, None)
                     toks_tup = []
-                    while tok != self.vocab.end_of_tuplet:
+                    while tok != vocab.end_of_tuplet:
                         toks_tup.append(tok)
                         tok = next(it, None)  # in the end, consumes `end_of_tuplet` token
                     toks_p, tok_d = toks_tup[:-1], toks_tup[-1]
                     assert len(toks_tup) >= 3  # sanity check
-                    assert all(self.vocab.type(t) == VocabType.pitch for t in toks_p)
-                    assert self.vocab.type(tok_d) == VocabType.duration
-                    elms.append([self.vocab.start_of_tuplet, *toks_p, tok_d, self.vocab.end_of_tuplet])
+                    assert all(vocab.type(t) == VocabType.pitch for t in toks_p)
+                    assert vocab.type(tok_d) == VocabType.duration
+                    elms.append([vocab.start_of_tuplet, *toks_p, tok_d, vocab.end_of_tuplet])
             elif typ in [VocabType.time_sig, VocabType.tempo, VocabType.key]:
                 elms.append([tok])
             else:
                 assert typ == VocabType.pitch
                 tok_d = next(it, None)
-                assert self.vocab.type(tok_d) == VocabType.duration
+                assert vocab.type(tok_d) == VocabType.duration
                 elms.append([tok, tok_d])
             tok = next(it, None)
 
         ts, tp, key, omit, elms = elms[0], elms[1], None, None, elms[2:]
-        assert self.vocab.type(ts[0]) == VocabType.time_sig
-        assert self.vocab.type(tp[0]) == VocabType.tempo
+        assert vocab.type(ts[0]) == VocabType.time_sig
+        assert vocab.type(tp[0]) == VocabType.tempo
         ts, tp = ts[0], tp[0]
-        if self.vocab.type(elms[0][0]) == VocabType.key:
+        if vocab.type(elms[0][0]) == VocabType.key:
             key = elms[0][0]
             elms = elms[1:]
-        if elms[0][0] == self.vocab.omitted_segment:
+        if elms[0][0] == vocab.omitted_segment:
             omit = elms[0][0]
             elms = elms[1:]
 
-        idxs_bar = [i for i, es in enumerate(elms) if es == [self.vocab.start_of_bar]]
+        idxs_bar = [i for i, es in enumerate(elms) if es == [vocab.start_of_bar]]
         elms_by_bar = [elms[idx:idxs_bar[i+1]] for i, idx in enumerate(idxs_bar[:-1])] + [elms[idxs_bar[-1]:]]
         elms_by_bar = [es[1:] for es in elms_by_bar]  # skip the bar start token
 
         eos = None
-        if elms_by_bar[-1][-1] == [self.vocab.end_of_song]:
+        if elms_by_bar[-1][-1] == [vocab.end_of_song]:
             elms_by_bar[-1] = elms_by_bar[-1][:-1]
-            eos = self.vocab.end_of_song
+            eos = vocab.end_of_song
         return SongSplitOutput(
             elms=elms, time_sig=ts, tempo=tp, key=key, omit=omit, elms_by_bar=elms_by_bar, end_of_song=eos
         )
@@ -277,7 +282,8 @@ class MusicConverter:
 
         def map_prefix(i_row):
             return pl.s(f'{i_row:>{n_pad}}:', c='y')
-        return '\n'.join(f'{map_prefix(i)} {self.vocab.colorize_tokens(toks)}' for i, toks in enumerate(groups))
+        vocab = self.vocabs.degree if self.augment_key else self.vocabs.midi
+        return '\n'.join(f'{map_prefix(i)} {vocab.colorize_tokens(toks)}' for i, toks in enumerate(groups))
 
     def str2music_elms(
             self, text: Song, group: bool = True, omit_eos: bool = False, strict: bool = True
@@ -287,7 +293,7 @@ class MusicConverter:
 
         Expects each music element to be in the correct format
         """
-        vocab = self.vocab_degree if self.augment_key else self.vocab
+        vocab = self.vocabs.degree if self.augment_key else self.vocabs.midi
 
         def comp(x):  # syntactic sugar
             return vocab.tok2meta(x, strict=strict)
@@ -407,13 +413,14 @@ class MusicConverter:
 
     def str2score(
             self, decoded: Union[str, List[str]], omit_eos: bool = False,
-            title: str = None
+            title: str = None, check_duration_match: bool = True
     ) -> Score:
         """
         :param decoded: A string of list of tokens to convert to a music21 score
         :param omit_eos: If true, eos token at the end is not required for conversion
             All occurrences of eos in the sequence are ignored
         :param title: Title of the music
+        :param check_duration_match: See `make_score`
         """
         lst = self.str2music_elms(decoded, group=True, omit_eos=omit_eos)
         ts, tp, key, lst = lst.time_sig, lst.tempo, lst.key, lst.elms_by_bar
@@ -427,7 +434,10 @@ class MusicConverter:
                 d_notes['melody'].append(MusicConverter.bar2notes(d['melody']))
                 d_notes['bass'].append(MusicConverter.bar2notes(d['bass']))
         time_sig = f'{ts.meta[0]}/{ts.meta[1]}'
-        return make_score(title=title, mode=self.mode, time_sig=time_sig, tempo=tp.meta, d_notes=d_notes)
+        return make_score(
+            title=title, mode=self.mode, time_sig=time_sig, tempo=tp.meta, d_notes=d_notes,
+            check_duration_match=check_duration_match
+        )
 
 
 if __name__ == '__main__':

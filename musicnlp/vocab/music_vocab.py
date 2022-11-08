@@ -685,7 +685,8 @@ class MusicVocabulary:
         else:
             return self._colorize_token(tok)
 
-    def colorize_tokens(self, toks: List[str]) -> str:
+    def colorize_tokens(self, toks: Union[str, List[str]]) -> str:
+        toks = toks if isinstance(toks, list) else toks.split()
         return ' '.join(self.colorize_token(t) for t in toks)
 
     def __call__(

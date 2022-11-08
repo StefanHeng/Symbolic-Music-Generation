@@ -711,6 +711,8 @@ def make_score(
                             notes = notes[:idx_last]
                             msg = f'{msg}, {pl.i(n_ - idx_last)} notes dropped '
                         else:  # TODO: verify
+                            ori_qlen = get_end_qlen(notes[idx_last])
+
                             # Crop duration of the new last note
                             qlen = dur_bar - dur_prior
                             assert qlen > 0  # sanity check
@@ -718,7 +720,6 @@ def make_score(
                             notes = notes[:idx_last+1]
 
                             n_drop = n_ - idx_last - 1
-                            ori_qlen = get_end_qlen(notes[idx_last])
                             nt_str = 'notes' if n_drop > 1 else 'note'
                             msg = f'{msg}, {pl.i(n_drop)} {nt_str} dropped, last note duration cropped: ' \
                                   f'{pl.i(ori_qlen)} => {pl.i(qlen)}'

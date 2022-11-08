@@ -286,7 +286,7 @@ class ChannelMixer(Transform):
             self, precision: int = 5, vocab: MusicVocabulary = None, mode: str = 'full', **kwargs
     ):
         super().__init__(**kwargs)
-        self.mc = MusicConverter(mode='full', precision=precision, vocab=vocab)
+        self.mc = MusicConverter(mode='full', precision=precision, vocab_midi=vocab)
         self.vocab = self.mc.vocab
 
         ca(channel_mixup=mode)
@@ -578,7 +578,7 @@ if __name__ == '__main__':
         text, keys = out.score, out.keys
 
         vocab = MusicVocabulary(pitch_kind='degree')
-        mc = MusicConverter(mode='full', vocab=vocab)
+        mc = MusicConverter(mode='full', vocab_midi=vocab)
 
         print(f'Extracted: {mc.visualize_str(text)}')
         mic(keys)

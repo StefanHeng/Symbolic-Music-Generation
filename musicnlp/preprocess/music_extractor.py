@@ -1038,12 +1038,12 @@ if __name__ == '__main__':
     def toy_example():
         logger = WarnLog()
         # fnm = 'Faded'
-        fnm = 'Piano Sonata'
+        # fnm = 'Piano Sonata'
         # fnm = 'Merry Christmas'
         # fnm = 'Merry Go Round of Life'
         # fnm = 'Canon piano'
         # fnm = '易燃易爆炸'
-        # fnm = 'Shape of You'
+        fnm = 'Shape of You'
         # fnm = '平凡之路'
         # fnm = 'LMD eg'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
