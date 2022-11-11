@@ -597,8 +597,8 @@ if __name__ == '__main__':
 
     def train():
         # dnms = [pop]
-        # dnms = [pop, mst]
-        dnms = [pop, mst, lmd]
+        dnms = [pop, mst]
+        # dnms = [pop, mst, lmd]
 
         # pch_kd = 'midi'
         # pch_kd = 'step'
@@ -619,7 +619,8 @@ if __name__ == '__main__':
             if sv:
                 sv = 'WordPiece-Tokenizer_{dnm=POP909}'
         elif len(dnms) == 2:
-            vocab_size = 4096 * 2
+            # vocab_size = 4096 * 2
+            vocab_size = 4096 * 4
             if sv:
                 sv = 'WordPiece-Tokenizer_{dnm=POP&MST}'
         elif len(dnms) == 3:
@@ -719,18 +720,20 @@ if __name__ == '__main__':
         mic('Check trained tokenizer', pch_kd, aug_key)
 
         # fnm = '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=16384, n=2185, pch=d, aug-key=T}'
-        fnm = '22-10-26_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
+        # fnm = '22-10-26_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
+        fnm = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
         tokenizer = WordPieceMusicTokenizer.from_file(fnm, pitch_kind=pch_kd)
 
         check_recon = True  # encoding & decoding reconstructs original text
         # check_recon = False
 
-        sample = 3
+        sample = False
+        # sample = 3
         mic(check_recon, sample)
 
         # dnms = [pop]
-        # dnms = [pop, mst]
-        dnms = [pop, mst, lmd]
+        dnms = [pop, mst]
+        # dnms = [pop, mst, lmd]
         _songs: List[Dict] = dataset.load_songs(*dnms)
         if aug_key:
             out = dataset.iter_songs_n_key(_songs)

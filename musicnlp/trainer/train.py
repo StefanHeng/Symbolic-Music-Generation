@@ -30,7 +30,8 @@ def get_model_n_tokenizer(
 ) -> Tuple[MusicTokenizer, torch.nn.Module, OrderedDict]:
     ca.check_mismatch('Model Name', model_name, ['transf-xl', 'reformer'])
     if wordpiece_tokenize:
-        tokenizer: WordPieceMusicTokenizer = load_wordpiece_tokenizer(pitch_kind=pitch_kind)
+        fnm = wordpiece_tokenize if isinstance(wordpiece_tokenize, str) else None
+        tokenizer: WordPieceMusicTokenizer = load_wordpiece_tokenizer(fnm=fnm, pitch_kind=pitch_kind)
         assert tokenizer.precision == prec
     else:
         tokenizer: MusicTokenizer = MusicTokenizer(precision=prec, pitch_kind=pitch_kind)
@@ -373,7 +374,8 @@ if __name__ == '__main__':
     # md = 'melody'
     md = 'full'
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
-    dnms = [pop, mst, lmd]
+    dnms = [pop, mst]
+    # dnms = [pop, mst, lmd]
 
     def profile_transform_dataload():
         from tqdm.auto import tqdm, trange
@@ -485,7 +487,7 @@ if __name__ == '__main__':
         #     insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False, False
         # else:
         model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
-        rand_crop = 4
+        rand_crop = 8
         pch_kd = 'degree'
         insert_key = True
         pch_shift = True
@@ -494,8 +496,10 @@ if __name__ == '__main__':
         else:
             assert pch_kd != 'degree'
         channel_mixup = 'full'
-        wordpiece_tokenize = True
-        prop_mix = 1280
+        # wordpiece_tokenize = True
+        wordpiece_tokenize = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
+        prop_mix = False
+        # prop_mix = 1280
         mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, wordpiece_tokenize, prop_mix)
 
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)

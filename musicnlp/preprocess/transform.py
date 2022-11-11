@@ -287,7 +287,7 @@ class ChannelMixer(Transform):
     ):
         super().__init__(**kwargs)
         self.mc = MusicConverter(mode='full', precision=precision, vocab_midi=vocab)
-        self.vocab = self.mc.vocab
+        self.vocab = self.mc.vocabs.midi  # pitch kind doesn't matter
 
         ca(channel_mixup=mode)
         self.mix_mode = mode
