@@ -819,27 +819,14 @@ class MusicVocabulary:
             typ = self.type(tok)
             assert typ in self.likely_rare_types  # sanity check
             if typ == VocabType.pitch:
-                # if self.pitch_kind == 'midi':
-                #     mid = self.pitch_tok2midi_pitch_meta(tok)
-                #     mic(self.midi_pitch_meta2tok(mid).token, tok)
-                #     raise NotImplementedError
-                #     return self.midi_pitch_meta2tok(mid).token
-                if for_midi:  # to squeeze midi into range [0, 127]
-                    # when target pitch kind is midi, no need to sanitize since can be converted to midi pitch
-                    # mic(tok)
-                    # raise NotImplementedError
-                    # return tok
-                    # mid = self.pitch_tok2midi_pitch_meta(tok)
-                    # for rare tokens may fall outside [0-127] range
+                if for_midi:
+                    # to squeeze midi into range [0, 127] that will definitely be part of vocab,
+                    # see `transform.ToMidiPitch`
                     mid, step = self.tok2meta(tok, strict=False)
                     while mid < 0:
                         mid += 12
                     while mid > 127:
                         mid -= 12
-                        # mic(self.meta2tok(kind=VocabType.pitch, meta=(mid, step)))
-                        # raise NotImplementedError
-                        # mic(self.midi_pitch_meta2tok(mid).token, tok)
-                        # raise NotImplementedError
                     return self.meta2tok(kind=VocabType.pitch, meta=(mid, step))
                 else:
                     return MusicVocabulary.rare_pitch

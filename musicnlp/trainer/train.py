@@ -501,8 +501,8 @@ if __name__ == '__main__':
         # channel_mixup = 'full'
         channel_mixup = False
         wordpiece_tokenize = True
-        if pch_kd == 'midi':
-            wordpiece_tokenize = ''
+        # if pch_kd == 'midi':
+        #     wordpiece_tokenize = ''
         # wordpiece_tokenize = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
         # prop_mix = False
         prop_mix = 1280

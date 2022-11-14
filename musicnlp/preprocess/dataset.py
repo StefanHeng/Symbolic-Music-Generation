@@ -198,7 +198,8 @@ class AugmentedDataset:
             self.rc = transform.RandomCrop(vocab=vocab, crop_mult=cm, return_as_list=True)
 
         sr_vocab = vocab if vocab.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
-        self.sr = transform.SanitizeRare(vocab=sr_vocab, return_as_list=True)  # since input text will be in `step`
+        # since input text will be in `step`
+        self.sr = transform.SanitizeRare(vocab=sr_vocab, for_midi=pitch_kind == 'midi', return_as_list=True)
         self.ki, self.ps, self.cm = None, None, None
         self.insert_key, self.pitch_shift, self.channel_mixup = insert_key, pitch_shift, channel_mixup
         if insert_key:

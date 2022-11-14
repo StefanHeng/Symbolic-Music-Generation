@@ -456,7 +456,8 @@ def load_trained_tokenizer(  # has independent global token & bar split
     pitch_kind = pitch_kind or 'midi'
     if pitch_kind == 'midi':
         # Obsolete for no [OMIT] token; TODO Re-run, maybe w/ a larger vocab size
-        fnm = fnm or '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
+        # fnm = fnm or '22-10-03_WordPiece-Tokenizer_{dnm=all}_{vsz=16384, n=178825}'
+        fnm = fnm or '22-11-13_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=m}'
     elif pitch_kind == 'step':
         fnm = fnm or '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=8192, n=2185, pch=s}'
     else:
@@ -474,8 +475,12 @@ class _CheckTrainedSingle:
     ):
         self.tokenizer = tokenizer
         vocab = self.tokenizer.vocab
-        sr_vocab = vocab if vocab.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
-        self.sr = transform.SanitizeRare(vocab=sr_vocab, return_as_list=True)
+        self.pitch_kind = vocab.pitch_kind
+        sr_vocab = vocab if self.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
+        self.sr = transform.SanitizeRare(vocab=sr_vocab, for_midi=self.pitch_kind == 'midi', return_as_list=True)
+        self.tmp = None
+        if self.pitch_kind == 'midi':
+            self.tmp = transform.ToMidiPitch(vocab=sr_vocab, return_as_list=True)
 
         self.augment_key, self.ak = augment_key, None
         if augment_key:
@@ -494,9 +499,16 @@ class _CheckTrainedSingle:
             assert isinstance(text, str)
             text = self.sr(text)
 
-        # mic(text)
-        toks = text.split()
+        if self.pitch_kind == 'midi':
+            text = self.tmp(text)
+
+        toks = text if isinstance(text, list) else text.split()
+        # for t in toks:
+        #     if t not in self.tokenizer.vocab:
+        #         mic(t)
+        #         raise NotImplementedError
         assert all(t in self.tokenizer.vocab for t in toks)
+        text = ' '.join(toks)
         ids = self.tokenizer(text).input_ids
         toks = self.tokenizer.convert_ids_to_tokens(ids)
 
@@ -723,14 +735,16 @@ if __name__ == '__main__':
     def check_trained_tokenize_all():
         import random
 
+        pch_kd = 'midi'
         # pch_kd = 'step'
-        pch_kd = 'degree'
+        # pch_kd = 'degree'
         aug_key = pch_kd == 'degree'
         mic('Check trained tokenizer', pch_kd, aug_key)
 
         # fnm = '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=16384, n=2185, pch=d, aug-key=T}'
         # fnm = '22-10-26_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
-        fnm = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
+        # fnm = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
+        fnm = '22-11-13_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=m}'
         tokenizer = WordPieceMusicTokenizer.from_file(fnm, pitch_kind=pch_kd)
 
         check_recon = True  # encoding & decoding reconstructs original text
@@ -741,8 +755,8 @@ if __name__ == '__main__':
         mic(check_recon, sample)
 
         # dnms = [pop]
-        dnms = [pop, mst]
-        # dnms = [pop, mst, lmd]
+        # dnms = [pop, mst]
+        dnms = [pop, mst, lmd]
         _songs: List[Dict] = dataset.load_songs(*dnms)
         if aug_key:
             out = dataset.iter_songs_n_key(_songs)
@@ -761,8 +775,8 @@ if __name__ == '__main__':
         #                 yield s
         #     songs = gen()
 
-        concurrent = True
-        # concurrent = False
+        # concurrent = True
+        concurrent = False
         c = Counter()
         with_tqdm = dict(desc='Checking trained tokenizer', unit='song', total=n)
         mic('about to launch')
@@ -781,7 +795,7 @@ if __name__ == '__main__':
             c_[tok] = n
         with open(os_join(u.tokenizer_path, f'{fnm} distribution check.json'), 'w') as f:
             json.dump(dict(sample=sample, count=c_), f, indent=4)
-    # check_trained_tokenize_all()
+    check_trained_tokenize_all()
 
     def check_id2pch():
         tokenizer = MusicTokenizer()
