@@ -263,8 +263,9 @@ class WordPieceMusicTrainer:
 
         d_log = {'vocab-size': vocab_size, '#song': len(songs)}
 
+        # since input text will be in `step`
         sr_vocab = self.vocab if self.vocab.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
-        sr = transform.SanitizeRare(vocab=sr_vocab, return_as_list=True)  # since input text will be in `step`
+        sr = transform.SanitizeRare(vocab=sr_vocab, return_as_list=True, for_midi=self.pitch_kind == 'midi')
         if self.augment_key:
             assert self.pitch_kind == 'degree'
 
@@ -281,15 +282,6 @@ class WordPieceMusicTrainer:
                 it = conc_yield(fn=fn, args=it, mode='process', batch_size=bsz)
             else:
                 it = (fn(pair) for pair in it)
-
-            sanity_check = False
-            # sanity_check = True
-            if sanity_check:
-                for e in tqdm(it, total=n, desc='Sanity check s2c'):
-                    # mic(e[:200])
-                    # raise NotImplementedError
-                    self.s2c(e)
-                raise NotImplementedError
             d_log['concurrent'] = concurrent
             if concurrent:
                 d_log['batch_size'] = bsz
@@ -300,6 +292,21 @@ class WordPieceMusicTrainer:
                 mv = MusicVocabulary(pitch_kind='step', is_wordpiece=True)
                 tmp = transform.ToMidiPitch(vocab=mv, return_as_list=True)
                 it = (tmp(s) for s in it)
+        
+        sanity_check = False
+        # sanity_check = True
+        mic(sanity_check)
+        if sanity_check:
+            for e in tqdm(it, total=len(songs), desc='Sanity check s2c'):
+                # mic(e[:200])
+                # raise NotImplementedError
+                try:
+                    self.s2c(e)
+                except Exception as exp:
+                    mic(e)
+                    mic(exp)
+                    raise exp
+            raise NotImplementedError
 
         logger.info(f'Training WordPiece tokenization w/ {pl.i(d_log)}')
         gen = (self.s2c(s) for s in it)
@@ -597,18 +604,19 @@ if __name__ == '__main__':
 
     def train():
         # dnms = [pop]
-        dnms = [pop, mst]
-        # dnms = [pop, mst, lmd]
+        # dnms = [pop, mst]
+        dnms = [pop, mst, lmd]
+        mic(dnms)
 
-        # pch_kd = 'midi'
+        pch_kd = 'midi'
         # pch_kd = 'step'
-        pch_kd = 'degree'
+        # pch_kd = 'degree'
         aug_key = pch_kd == 'degree'
         mic(pch_kd, aug_key)
         mv = MusicVocabulary(pitch_kind=pch_kd, is_wordpiece=True)
 
-        # conc = 128 if len(dnms) == 3 else 32
-        conc = False
+        conc = 128 if len(dnms) == 3 else 32
+        # conc = False
         mic(conc)
 
         vocab_size, svs = None, None
@@ -624,11 +632,12 @@ if __name__ == '__main__':
             if sv:
                 sv = 'WordPiece-Tokenizer_{dnm=POP&MST}'
         elif len(dnms) == 3:
-            vocab_size = 4096 * 4
+            # vocab_size = 4096 * 4
+            vocab_size = 4096 * 8
             if sv:
                 sv = 'WordPiece-Tokenizer_{dnm=all}'
-        if aug_key:
-            vocab_size *= 2
+        # if aug_key:
+        #     vocab_size *= 2
         wmt = WordPieceMusicTrainer(
             vocab=mv, pitch_kind=pch_kd, augment_key=aug_key, independent_global_token=True, punctuate=True
         )
@@ -772,7 +781,7 @@ if __name__ == '__main__':
             c_[tok] = n
         with open(os_join(u.tokenizer_path, f'{fnm} distribution check.json'), 'w') as f:
             json.dump(dict(sample=sample, count=c_), f, indent=4)
-    check_trained_tokenize_all()
+    # check_trained_tokenize_all()
 
     def check_id2pch():
         tokenizer = MusicTokenizer()
@@ -786,3 +795,8 @@ if __name__ == '__main__':
         mic(len(ids), len(wp_pchs))
         assert wp_pchs == pchs
     # check_id2pch()
+
+    def check_save():  # TODO
+        tokenizer = load_trained_tokenizer(pitch_kind='degree')
+        tokenizer.save_pretrained(os_join(u.tokenizer_path, 'tokenizer'))
+    # check_save()

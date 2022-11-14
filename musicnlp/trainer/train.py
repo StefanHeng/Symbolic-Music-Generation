@@ -374,8 +374,8 @@ if __name__ == '__main__':
     # md = 'melody'
     md = 'full'
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
-    dnms = [pop, mst]
-    # dnms = [pop, mst, lmd]
+    # dnms = [pop, mst]
+    dnms = [pop, mst, lmd]
 
     def profile_transform_dataload():
         from tqdm.auto import tqdm, trange
@@ -419,7 +419,8 @@ if __name__ == '__main__':
         insert_key = True
         pch_shift = True
         wordpiece_tokenize = False
-        channel_mixup = 'full'
+        # channel_mixup = 'full'
+        channel_mixup = False
         prop_mix = 1280
         mic(insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix)
 
@@ -477,8 +478,8 @@ if __name__ == '__main__':
         n = None
         # n_ep = 4
         # n_ep = 64
-        # n_ep = 128
-        n_ep = 256
+        n_ep = 128
+        # n_ep = 256
         mic(n, n_ep)
 
         # model_config = dict(max_length=64)
@@ -488,18 +489,23 @@ if __name__ == '__main__':
         # else:
         model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
         rand_crop = 8
-        pch_kd = 'degree'
+        pch_kd = 'midi'
+        # pch_kd = 'degree'
         insert_key = True
-        pch_shift = True
+        pch_shift = False
+        # pch_shift = True
         if pch_shift:
             assert insert_key and pch_kd == 'degree'
         else:
             assert pch_kd != 'degree'
-        channel_mixup = 'full'
-        # wordpiece_tokenize = True
-        wordpiece_tokenize = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
-        prop_mix = False
-        # prop_mix = 1280
+        # channel_mixup = 'full'
+        channel_mixup = False
+        wordpiece_tokenize = True
+        if pch_kd == 'midi':
+            wordpiece_tokenize = ''
+        # wordpiece_tokenize = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
+        # prop_mix = False
+        prop_mix = 1280
         mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, wordpiece_tokenize, prop_mix)
 
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
@@ -536,4 +542,5 @@ if __name__ == '__main__':
         train_call_args = dict(ignore_keys_for_eval=ignore_keys_for_eval)
         trainer.train(**(train_call_args | kwargs))
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
+        # tokenizer.save_pretrained(os_join(trainer.args.output_dir, 'tokenizer'))  # TODO
     train_xl()

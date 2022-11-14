@@ -35,13 +35,22 @@ class Transform:
 
 class SanitizeRare(Transform):
     # See `MusicVocabulary.sanitize_rare_tokens`
-    def __init__(self, vocab: MusicVocabulary = None, **kwargs):
+    def __init__(self, vocab: MusicVocabulary = None, for_midi: bool = False, **kwargs):
         super().__init__(**kwargs)
         self.vocab = vocab
 
+        # self.for_midi = for_midi  # preserve the rare pitches as they can be converted to midi pitch later
+        self.for_midi = for_midi  # see `MusicVocabulary.sanitize_rare_tokens`
+
     def __call__(self, text: Song) -> Song:
         toks = text if isinstance(text, list) else text.split()
-        toks = [self.vocab.sanitize_rare_token(tok) for tok in toks]
+        # for tok in toks:
+        #     if self.vocab.sanitize_rare_token(tok, for_midi=self.for_midi) == self.vocab.rare_pitch:
+        #         mic(tok)
+        #         mic(' '.join(toks))
+        #         raise NotImplementedError
+        toks = [self.vocab.sanitize_rare_token(tok, for_midi=self.for_midi) for tok in toks]
+        # toks = [self.vocab.sanitize_rare_token(tok) for tok in toks]
         return toks if self.return_as_list else ' '.join(toks)
 
 
@@ -257,6 +266,14 @@ class ToMidiPitch(Transform):
 
     def __call__(self, text: Song) -> Song:
         toks = text if isinstance(text, list) else text.split()
+        _v = MusicVocabulary(pitch_kind='midi')
+        for tok in toks:
+            if nrp(tok):
+                try:
+                    assert self.vocab.pitch_tok2midi_pitch_tok(tok) in _v
+                except Exception as e:
+                    mic(tok)
+                    raise e
         toks = [(self.vocab.pitch_tok2midi_pitch_tok(tok) if nrp(tok) else tok) for tok in toks]
 
         sanity_check = False

@@ -327,9 +327,10 @@ class MusicVocabulary:
             MusicVocabulary.rare_duration: MusicVocabulary.rare_duration_meta
         }
         self.likely_rare_types = (VocabType.pitch, VocabType.duration, VocabType.time_sig, VocabType.tempo)
-        if self.pitch_kind != 'midi':
-            self.rare_tok2meta[MusicVocabulary.rare_pitch] = MusicVocabulary.rare_pitch_meta
-            self.likely_rare_types = tuple([*self.likely_rare_types, VocabType.pitch])
+        # if self.pitch_kind != 'midi':
+        # since midi value for some rare pitch falls outside [0-127] range
+        self.rare_tok2meta[MusicVocabulary.rare_pitch] = MusicVocabulary.rare_pitch_meta
+        self.likely_rare_types = tuple([*self.likely_rare_types, VocabType.pitch])
 
         def elm2str(elm):
             return self(elm, color=False, return_int=False)
@@ -378,11 +379,10 @@ class MusicVocabulary:
         return self._pitch_kind2pattern[self.pitch_kind]
 
     def _get_all_unique_pitches(self) -> List[str]:
-        ret = [self.rest]
+        ret = [self.rest, MusicVocabulary.rare_pitch]  # easier code for sanitize rare, TODO
         if self.pitch_kind == 'midi':
             ret += [self.note2pitch_str(Pitch(midi=i)) for i in range(128)]
         else:
-            ret.append(MusicVocabulary.rare_pitch)
             if self.pitch_kind == 'step':
                 pchs = []
                 for i in range(128):
@@ -632,9 +632,14 @@ class MusicVocabulary:
                 local_index=pch, octave=octave
             )
 
-    def pitch_tok2midi_pitch_tok(self, tok: str) -> str:
+    def pitch_tok2midi_pitch_tok(self, tok: str, strict: bool = True) -> str:
         assert self.type(tok) == VocabType.pitch
         mid, step = self.tok2meta(tok)
+        if strict:  # snap midi in range
+            while mid < 0:
+                mid += 12
+            while mid > 127:
+                mid -= 12
         return self.midi_pitch_meta2tok(mid).token
 
     def pitch_tok2midi_pitch_meta(self, tok: str) -> int:
@@ -807,14 +812,38 @@ class MusicVocabulary:
         else:  # `midi`
             raise ValueError(f'Step is not part of vocabulary for pitch kind {pl.i(self.pitch_kind)}')
 
-    def sanitize_rare_token(self, tok: str) -> str:
+    def sanitize_rare_token(self, tok: str, for_midi: bool = False) -> str:
         if tok in self.tok2id:
             return tok
         else:
             typ = self.type(tok)
             assert typ in self.likely_rare_types  # sanity check
             if typ == VocabType.pitch:
-                return MusicVocabulary.rare_pitch
+                # if self.pitch_kind == 'midi':
+                #     mid = self.pitch_tok2midi_pitch_meta(tok)
+                #     mic(self.midi_pitch_meta2tok(mid).token, tok)
+                #     raise NotImplementedError
+                #     return self.midi_pitch_meta2tok(mid).token
+                if for_midi:  # to squeeze midi into range [0, 127]
+                    # when target pitch kind is midi, no need to sanitize since can be converted to midi pitch
+                    # mic(tok)
+                    # raise NotImplementedError
+                    # return tok
+                    # mid = self.pitch_tok2midi_pitch_meta(tok)
+                    # for rare tokens may fall outside [0-127] range
+                    mid, step = self.tok2meta(tok, strict=False)
+                    while mid < 0:
+                        mid += 12
+                    while mid > 127:
+                        mid -= 12
+                        # mic(self.meta2tok(kind=VocabType.pitch, meta=(mid, step)))
+                        # raise NotImplementedError
+                        # mic(self.midi_pitch_meta2tok(mid).token, tok)
+                        # raise NotImplementedError
+                    return self.meta2tok(kind=VocabType.pitch, meta=(mid, step))
+                else:
+                    return MusicVocabulary.rare_pitch
+                # return MusicVocabulary.rare_pitch
             if typ == VocabType.duration:
                 return MusicVocabulary.rare_duration
             elif typ == VocabType.time_sig:
@@ -935,7 +964,7 @@ if __name__ == '__main__':
         for k, v in mv.toks.items():
             mic(k, len(v))
         mic(sum(len(v) for v in mv.toks.values()))
-    check_vocab_size()
+    # check_vocab_size()
 
     def check_pitch_meta():
         mv = MusicVocabulary()
@@ -957,6 +986,7 @@ if __name__ == '__main__':
 
         tok = 'p_12/9_4'
         mic(tok in mv)
+    check_pitch_set(kind='midi')
     # check_pitch_set(kind='step')
     # check_pitch_set(kind='degree')
 

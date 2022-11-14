@@ -233,6 +233,7 @@ if __name__ == '__main__':
 
     # md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128-128ep', 'with-crop'
     md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '256-256ep', 'with-crop_train-longer'
+    mic(md_nm, ds_nm, ep_nm, desc)
 
     pch_kd = 'degree'
     tk_args = dict(pitch_kind=pch_kd)
@@ -291,7 +292,8 @@ if __name__ == '__main__':
         # gen_args = dict(top_k=64, top_p=0.9)
         # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
         # gen_args = dict(top_k=32, top_p=0.85)
-        gen_args = dict(top_k=32)
+        # gen_args = dict(top_k=32)
+        gen_args = dict(top_k=64, temperature=2.0)
         n_bar = 4
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='{md=f}')
