@@ -492,7 +492,6 @@ class _CheckTrainedSingle:
         if self.augment_key:
             assert isinstance(text, tuple)
             text, key = text
-            # mic(text[:200])
             text = self.sr(text)
             text = self.ak((text, key))
         else:
@@ -503,10 +502,6 @@ class _CheckTrainedSingle:
             text = self.tmp(text)
 
         toks = text if isinstance(text, list) else text.split()
-        # for t in toks:
-        #     if t not in self.tokenizer.vocab:
-        #         mic(t)
-        #         raise NotImplementedError
         assert all(t in self.tokenizer.vocab for t in toks)
         text = ' '.join(toks)
         ids = self.tokenizer(text).input_ids

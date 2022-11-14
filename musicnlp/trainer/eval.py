@@ -46,6 +46,7 @@ def load_trained(
                 ('transf-xl', 'All', '256-256ep', 'with-crop_train-longer'): [
                     '2022-10-29_08-28-57_transf-xl', 'trained'],
 
+                ('transf-xl', 'All', '128ep', 'no-mixup'): ['2022-11-11_18-04-07_transf-xl', 'trained']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -65,7 +66,7 @@ def load_trained(
     model = cls.from_pretrained(path)
     logger.info(f'Loaded {pl.i(cls.__qualname__)} with config {pl.fmt(model.config.to_dict())}')
     if model_name == 'transf-xl':
-        model.pad_token_id = model.config.eos_token_id  # for open-end generation 
+        model.config.pad_token_id = model.config.eos_token_id  # for open-end generation
     return model
 
 
@@ -76,8 +77,9 @@ class MusicGenerator:
     key2key_path_out = OrderedDict(dict(
         top_p='topp',
         top_k='topk',
-        num_beams='#beam',
-        n_bar='#bar'
+        num_beams='#bm',
+        n_bar='#b',
+        repetition_penalty='rp'
     ))
 
     def __init__(
@@ -100,10 +102,17 @@ class MusicGenerator:
             self.tokenizer = MusicTokenizer(**tokenizer_args)
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id  # TODO: logging still shows
         self.vocab = vocab or self.tokenizer.vocab
+        self.pitch_kind = self.vocab.pitch_kind
         self.mc = MusicConverter(
             mode=mode, precision=self.tokenizer.precision, vocab_midi=self.vocab, augment_key=augment_key
         )
         self.augment_key = augment_key
+
+        sr_vocab = vocab if self.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
+        self.sr = transform.SanitizeRare(vocab=sr_vocab, for_midi=self.pitch_kind == 'midi', return_as_list=True)
+        self.tmp = None
+        if self.pitch_kind == 'midi':
+            self.tmp = transform.ToMidiPitch(vocab=sr_vocab, return_as_list=True)
 
         self.logger = get_logger('Music Generator')
         d_log = dict(model_max_length=self.max_len)
@@ -156,9 +165,16 @@ class MusicGenerator:
             assert prompt is not None or path is not None, f'Expect either {pl.i("prompt")} or {pl.i("path")}'
             if prompt is None:
                 prompt = self.mc.mxl2str(path, n_bar=prompt_args['n_bar'], insert_key=ins_key)
-            if pch_sft:
+
+            prompt = self.sr(prompt)
+
+            if self.pitch_kind == 'midi':
+                prompt = self.tmp(prompt)
+            elif pch_sft:
                 ps = transform.PitchShift()
                 prompt = ps(prompt)
+            if isinstance(prompt, list):
+                prompt = ' '.join(prompt)
         inputs = self.tokenizer(prompt, return_tensors='pt')
         # inputs['attention_mask'] = torch.ones_like(inputs['input_ids'])  # TODO: generation warning still shows
         args = dict(max_length=self.max_len)
@@ -169,7 +185,7 @@ class MusicGenerator:
             else:
                 generate_args['do_sample'] = False
         elif strategy == 'sample':
-            assert all(k in ['do_sample', 'top_k', 'top_p', 'temperature'] for k in generate_args)
+            assert all(k in ['do_sample', 'top_k', 'top_p', 'temperature', 'repetition_penalty'] for k in generate_args)
             if 'do_sample' in generate_args:
                 assert generate_args['do_sample'], f'{pl.i("do_sample")} must be True for sample generation'
             else:
@@ -231,10 +247,10 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    # md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128-128ep', 'with-crop'
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '256-256ep', 'with-crop_train-longer'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'no-mixup'
     mic(md_nm, ds_nm, ep_nm, desc)
 
+    # pch_kd = 'midi'
     pch_kd = 'degree'
     tk_args = dict(pitch_kind=pch_kd)
 
@@ -292,16 +308,24 @@ if __name__ == '__main__':
         # gen_args = dict(top_k=64, top_p=0.9)
         # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
         # gen_args = dict(top_k=32, top_p=0.85)
+
         # gen_args = dict(top_k=32)
-        gen_args = dict(top_k=64, temperature=2.0)
-        n_bar = 4
+        # gen_args = dict(top_k=64, temperature=2.0)
+
+        gen_args = dict(top_p=0.75)
+        # gen_args = dict(top_p=0.75, repetition_penalty=1.2)  # as in CTRL paper
+        # n_bar = 4
+        n_bar = 8
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='{md=f}')
             prompt = dict(path=path, n_bar=n_bar, insert_key=key_aug, pitch_shift=pch_sft)
-            mg(
-                mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt,
-                save=fnm, save_dir=sv_dir
-            )
+            try:
+                mg(
+                    mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt,
+                    save=fnm, save_dir=sv_dir
+                )
+            except Exception as e:
+                print(f'Failed to generate {pl.i(fnm)} due to {e}')
     export_generated()
 
     def eval_ikr():
