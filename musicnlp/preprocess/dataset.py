@@ -266,8 +266,8 @@ class AugmentedDataset:
         item = self.dset[idx]
         toks = item['score']
 
-        # if self.random_crop and self.dataset_split == 'train':  # TODO: Do this for eval too for consistency?
-        if self.random_crop:
+        if self.random_crop and self.dataset_split == 'train':  # TODO: Do this for eval too for consistency?
+        # if self.random_crop:
             toks = self.rc(toks)
 
         toks = self.sr(toks)

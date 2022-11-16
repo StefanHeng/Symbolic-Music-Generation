@@ -58,19 +58,19 @@ class MusicConverter:
 
     def __init__(
             self, mode: str = 'full', precision: int = 5, vocab_midi: MusicVocabulary = None,
-            vocab_step: MusicVocabulary = None, vocab_degree: MusicVocabulary = None, augment_key: bool = False
+            vocab_step: MusicVocabulary = None, vocab_degree: MusicVocabulary = None
     ):
         ca(extract_mode=mode)
         self.mode = mode
 
-        self.vocabs: MusicVocabs = MusicVocabs(
+        self.pk2v = dict(
             midi=vocab_midi or MusicVocabulary(pitch_kind='midi'),
             step=vocab_step or MusicVocabulary(pitch_kind='step'),
             degree=vocab_degree or MusicVocabulary(pitch_kind='degree')
         )
+        self.vocabs: MusicVocabs = MusicVocabs(**self.pk2v)
         for v in [self.vocabs.midi, self.vocabs.step, self.vocabs.degree]:
             assert v.precision == precision
-        self.augment_key = augment_key
 
         _vocab = self.vocabs.midi  # doesn't matter which one
         self._non_tup_spec = {
@@ -119,7 +119,7 @@ class MusicConverter:
 
     def _part2toks(
             self, part: Part, insert_key: str = None, n_bar: int = None, song: Union[str, Score] = None,
-            check_meta: bool = True
+            check_meta: bool = True, pitch_kind: str = 'step'
     ) -> PartExtractOutput:
         bars = list(part[Measure])
         MusicConverter._input_format_error(
@@ -147,7 +147,7 @@ class MusicConverter:
             bars = bars[:min(n_bar, len(bars))]
         toks = []
 
-        vocab = self.vocabs.step if self.augment_key else self.vocabs.midi
+        vocab = self.pk2v[pitch_kind]
         for i, bar in enumerate(bars):
             MusicConverter._input_format_error(
                 all(not isinstance(e, m21.stream.Voice) for e in bar), f'Expect no voice in bar#{pl.i(i)}')
@@ -156,7 +156,8 @@ class MusicConverter:
         return PartExtractOutput(time_sig=ts_tup, tempo=tempo, key=key, toks=toks)
 
     def mxl2str(
-            self, song: Union[str, Score], join: bool = True, n_bar: int = None, insert_key: Union[bool, str] = False
+            self, song: Union[str, Score], join: bool = True, n_bar: int = None, insert_key: Union[bool, str] = False,
+            pitch_kind: str = 'step'
     ) -> Union[str, List[str]]:
         """
         Convert a MusicExtractor output song into the music token representation
@@ -168,8 +169,9 @@ class MusicConverter:
                 Intended for conditional generation
             Otherwise, the entire song is converted and end of song token is appended
         :param insert_key: A key is inserted accordingly, intended for generation
+        :param pitch_kind: MusicVocabulary for generated str
         """
-        vocab = self.vocabs.step if self.augment_key else self.vocabs.midi
+        vocab = self.pk2v[pitch_kind]
 
         if isinstance(song, str):
             song = m21.converter.parse(song)
@@ -267,7 +269,7 @@ class MusicConverter:
             elms=elms, time_sig=ts, tempo=tp, key=key, omit=omit, elms_by_bar=elms_by_bar, end_of_song=eos
         )
 
-    def visualize_str(self, score: Union[str, List[str], List[List[str]]]):
+    def visualize_str(self, score: Union[str, List[str], List[List[str]]], pitch_kind: str = 'midi'):
         """
         Visualize a complete song in tokens, one bar per row
         """
@@ -282,20 +284,21 @@ class MusicConverter:
 
         def map_prefix(i_row):
             return pl.s(f'{i_row:>{n_pad}}:', c='y')
-        vocab = self.vocabs.degree if self.augment_key else self.vocabs.midi
+        vocab = self.pk2v[pitch_kind]
         return '\n'.join(f'{map_prefix(i)} {vocab.colorize_tokens(toks)}' for i, toks in enumerate(groups))
 
     def str2music_elms(
-            self, text: Song, group: bool = True, omit_eos: bool = False, strict: bool = True
+            self, text: Song, group: bool = True, omit_eos: bool = False, strict: bool = True, pitch_kind: str = 'midi'
     ) -> ElmParseOutput:
         """
         Convert token string or pre-tokenized tokens into a compact format of music element tuples
 
         Expects each music element to be in the correct format
         """
-        vocab = self.vocabs.degree if self.augment_key else self.vocabs.midi
+        vocab = self.pk2v[pitch_kind]
 
         def comp(x):  # syntactic sugar
+            mic(x)
             return vocab.tok2meta(x, strict=strict)
 
         text = text if isinstance(text, list) else text.split()
@@ -317,7 +320,7 @@ class MusicConverter:
                     while tok != vocab.end_of_tuplet:
                         toks_tup.append(tok)
                         tok = next(it, None)
-                    assert len(toks_tup) >= 2
+                    assert len(toks_tup) >= 3  # at least 2 pitches (if not 3) in a tuplet group
                     toks_p, tok_d = toks_tup[:-1], toks_tup[-1]
                     assert all(vocab.type(tok) == VocabType.pitch for tok in toks_p)
                     assert vocab.type(tok_d) == VocabType.duration
@@ -365,7 +368,7 @@ class MusicConverter:
         return ElmParseOutput(elms=lst_out, time_sig=ts, tempo=tp, key=key, elms_by_bar=bar_lst)
 
     @staticmethod
-    def mus_elm2m21_note(note: MusicElement) -> List[SNote]:
+    def mus_elm2m21_note(note: MusicElement, pitch_kind: str = 'midi') -> List[SNote]:
         """
         Convert a music element tuple into a music21 note or tuplet of notes
         """
@@ -373,7 +376,7 @@ class MusicConverter:
             f'Invalid note type: expect one of {pl.i([ElmType.note, ElmType.tuplets])}, got {pl.i(note.type)}'
 
         pitch, q_len = note.meta
-        if isinstance(pitch, tuple):  # 2nd element is step/scale degree, ignore; TODO: add to the rendered MXL?
+        if pitch_kind != 'midi':  # 2nd element is step/scale degree, ignore; TODO: add to the rendered MXL?
             pitch = pitch[0]
         dur = m21.duration.Duration(quarterLength=q_len)
         if note.type == ElmType.note:
@@ -382,14 +385,15 @@ class MusicConverter:
             else:
                 return [Note(pitch=m21.pitch.Pitch(midi=pitch), duration=dur)]
         else:  # tuplet
+            mic(note.type, pitch)
             dur_ea = quarter_len2fraction(q_len) / len(pitch)
             return sum(
                 [MusicConverter.mus_elm2m21_note(MusicElement(ElmType.note, (p, dur_ea))) for p in pitch], start=[]
             )
 
     @staticmethod
-    def bar2notes(notes: List[MusicElement]) -> List[SNote]:
-        return sum([MusicConverter.mus_elm2m21_note(n) for n in notes], start=[])
+    def bar2notes(notes: List[MusicElement], pitch_kind: str = 'midi') -> List[SNote]:
+        return sum([MusicConverter.mus_elm2m21_note(n, pitch_kind=pitch_kind) for n in notes], start=[])
 
     @staticmethod
     def split_notes(notes: List[MusicElement]) -> Dict[str, List[MusicElement]]:
@@ -413,7 +417,7 @@ class MusicConverter:
 
     def str2score(
             self, decoded: Union[str, List[str]], omit_eos: bool = False,
-            title: str = None, check_duration_match: bool = True
+            title: str = None, check_duration_match: bool = True, pitch_kind: str = 'midi'
     ) -> Score:
         """
         :param decoded: A string of list of tokens to convert to a music21 score
@@ -431,8 +435,8 @@ class MusicConverter:
             d_notes = dict(melody=[], bass=[])
             for notes in lst:
                 d = MusicConverter.split_notes(notes)
-                d_notes['melody'].append(MusicConverter.bar2notes(d['melody']))
-                d_notes['bass'].append(MusicConverter.bar2notes(d['bass']))
+                d_notes['melody'].append(MusicConverter.bar2notes(d['melody'], pitch_kind=pitch_kind))
+                d_notes['bass'].append(MusicConverter.bar2notes(d['bass'], pitch_kind=pitch_kind))
         time_sig = f'{ts.meta[0]}/{ts.meta[1]}'
         return make_score(
             title=title, mode=self.mode, time_sig=time_sig, tempo=tp.meta, d_notes=d_notes,
@@ -486,7 +490,7 @@ if __name__ == '__main__':
     # check_encode_decode()
 
     def check_broken_render():
-        mc = MusicConverter(mode=md, augment_key=True)
+        mc = MusicConverter(mode=md)
         scr = mc.str2score(gen_broken, omit_eos=True, title='Check Broken')
         mic(scr)
 

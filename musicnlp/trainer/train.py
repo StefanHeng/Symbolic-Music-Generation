@@ -374,8 +374,8 @@ if __name__ == '__main__':
     # md = 'melody'
     md = 'full'
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
-    # dnms = [pop, mst]
-    dnms = [pop, mst, lmd]
+    dnms = [pop, mst]
+    # dnms = [pop, mst, lmd]
 
     def profile_transform_dataload():
         from tqdm.auto import tqdm, trange
@@ -478,8 +478,8 @@ if __name__ == '__main__':
         n = None
         # n_ep = 4
         # n_ep = 64
-        n_ep = 128
-        # n_ep = 256
+        # n_ep = 128
+        n_ep = 256
         mic(n, n_ep)
 
         # model_config = dict(max_length=64)
@@ -504,8 +504,8 @@ if __name__ == '__main__':
         # if pch_kd == 'midi':
         #     wordpiece_tokenize = ''
         # wordpiece_tokenize = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
-        # prop_mix = False
-        prop_mix = 1280
+        prop_mix = False
+        # prop_mix = 1280
         mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, wordpiece_tokenize, prop_mix)
 
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)

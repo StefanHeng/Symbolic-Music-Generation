@@ -46,7 +46,8 @@ def load_trained(
                 ('transf-xl', 'All', '256-256ep', 'with-crop_train-longer'): [
                     '2022-10-29_08-28-57_transf-xl', 'trained'],
 
-                ('transf-xl', 'All', '128ep', 'no-mixup'): ['2022-11-11_18-04-07_transf-xl', 'trained']
+                ('transf-xl', 'All', '128ep', 'no-mixup'): ['2022-11-11_18-04-07_transf-xl', 'trained'],
+                ('transf-xl', 'All', '128ep', 'midi'): ['2022-11-14_13-04-30_transf-xl', 'trained']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -104,7 +105,7 @@ class MusicGenerator:
         self.vocab = vocab or self.tokenizer.vocab
         self.pitch_kind = self.vocab.pitch_kind
         self.mc = MusicConverter(
-            mode=mode, precision=self.tokenizer.precision, vocab_midi=self.vocab, augment_key=augment_key
+            mode=mode, precision=self.tokenizer.precision, vocab_midi=self.vocab
         )
         self.augment_key = augment_key
 
@@ -214,7 +215,7 @@ class MusicGenerator:
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
         title = f'{save}-generated' if save else None
-        score = self.mc.str2score(decoded, omit_eos=True, title=title)
+        score = self.mc.str2score(decoded, omit_eos=True, title=title, pitch_kind=self.pitch_kind)
         if save:
             # `makeNotations` disabled any clean-up by music21, intended to remove `tie`s added
             str_args = MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args)
@@ -247,11 +248,12 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'no-mixup'
+    # md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '256-256ep', 'with-crop_train-longer'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'midi'
     mic(md_nm, ds_nm, ep_nm, desc)
 
-    # pch_kd = 'midi'
-    pch_kd = 'degree'
+    pch_kd = 'midi'
+    # pch_kd = 'degree'
     tk_args = dict(pitch_kind=pch_kd)
 
     md = 'full'
@@ -299,9 +301,12 @@ if __name__ == '__main__':
                     mic(e, e.tie)
     # check_why_tie_in_output()
 
-    def export_generated():
+    def export_generated(batched: bool = True):
         pch_sft = True
-        fnms = ['Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life', 'Merry Christmas']
+        fnms = [
+            'Ode to Joy', 'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
+            'Merry Christmas'
+        ]
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
         # gen_args = dict(top_k=32, top_p=0.95)
         # gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
@@ -319,13 +324,19 @@ if __name__ == '__main__':
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='{md=f}')
             prompt = dict(path=path, n_bar=n_bar, insert_key=key_aug, pitch_shift=pch_sft)
-            try:
+
+            def call():
                 mg(
                     mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt,
                     save=fnm, save_dir=sv_dir
                 )
-            except Exception as e:
-                print(f'Failed to generate {pl.i(fnm)} due to {e}')
+            if batched:
+                try:
+                    call()
+                except Exception as e:
+                    print(f'Failed to generate {pl.i(fnm)} due to {e}')
+            else:
+                call()
     export_generated()
 
     def eval_ikr():
