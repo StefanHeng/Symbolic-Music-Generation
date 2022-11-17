@@ -524,7 +524,6 @@ class MusicVocabulary:
                     return mid if self.pitch_kind == 'midi' else (mid, None)
                 else:
                     m = self.pitch_pattern.match(token)
-                    # mic(token, m)
                     idx, octave = int(m.group('numer')), int(m.group('denom'))
                     if self.pitch_kind == 'step' and self.with_rare_step:
                         # edge case, see `_get_all_unique_pitches`,

@@ -1039,7 +1039,8 @@ if __name__ == '__main__':
         logger = WarnLog()
         # fnm = 'Faded'
         # fnm = 'Piano Sonata'
-        fnm = 'Ode to Joy'
+        # fnm = 'Ode to Joy'
+        fnm = 'Careless Whisper'
         # fnm = 'Merry Christmas'
         # fnm = 'Merry Go Round of Life'
         # fnm = 'Canon piano'

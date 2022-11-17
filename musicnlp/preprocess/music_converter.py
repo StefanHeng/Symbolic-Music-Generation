@@ -298,7 +298,6 @@ class MusicConverter:
         vocab = self.pk2v[pitch_kind]
 
         def comp(x):  # syntactic sugar
-            mic(x)
             return vocab.tok2meta(x, strict=strict)
 
         text = text if isinstance(text, list) else text.split()
@@ -385,7 +384,6 @@ class MusicConverter:
             else:
                 return [Note(pitch=m21.pitch.Pitch(midi=pitch), duration=dur)]
         else:  # tuplet
-            mic(note.type, pitch)
             dur_ea = quarter_len2fraction(q_len) / len(pitch)
             return sum(
                 [MusicConverter.mus_elm2m21_note(MusicElement(ElmType.note, (p, dur_ea))) for p in pitch], start=[]

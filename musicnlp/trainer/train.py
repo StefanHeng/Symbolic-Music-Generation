@@ -374,8 +374,8 @@ if __name__ == '__main__':
     # md = 'melody'
     md = 'full'
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
-    dnms = [pop, mst]
-    # dnms = [pop, mst, lmd]
+    # dnms = [pop, mst]
+    dnms = [pop, mst, lmd]
 
     def profile_transform_dataload():
         from tqdm.auto import tqdm, trange
@@ -419,8 +419,8 @@ if __name__ == '__main__':
         insert_key = True
         pch_shift = True
         wordpiece_tokenize = False
-        # channel_mixup = 'full'
-        channel_mixup = False
+        channel_mixup = 'full'
+        # channel_mixup = False
         prop_mix = 1280
         mic(insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix)
 
@@ -468,7 +468,8 @@ if __name__ == '__main__':
         # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        md_sz = 'base'
+        # md_sz = 'base'
+        md_sz = 'large'
         mic(md_nm, md_sz)
 
         # n = 8
@@ -478,8 +479,8 @@ if __name__ == '__main__':
         n = None
         # n_ep = 4
         # n_ep = 64
-        # n_ep = 128
-        n_ep = 256
+        n_ep = 128
+        # n_ep = 256
         mic(n, n_ep)
 
         # model_config = dict(max_length=64)
@@ -487,25 +488,27 @@ if __name__ == '__main__':
         #     model_config = dict(max_length=64)
         #     insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix = False, False, False, False, False
         # else:
+        # model_config = None
         model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
+        # model_config = dict(max_length=1024 + 512)   # increasing this consumes a lot of memory...
         rand_crop = 8
-        pch_kd = 'midi'
-        # pch_kd = 'degree'
+        # pch_kd = 'midi'
+        pch_kd = 'degree'
         insert_key = True
-        pch_shift = False
-        # pch_shift = True
+        # pch_shift = False
+        pch_shift = True
         if pch_shift:
             assert insert_key and pch_kd == 'degree'
         else:
             assert pch_kd != 'degree'
-        # channel_mixup = 'full'
-        channel_mixup = False
+        channel_mixup = 'full'
+        # channel_mixup = False
         wordpiece_tokenize = True
         # if pch_kd == 'midi':
         #     wordpiece_tokenize = ''
         # wordpiece_tokenize = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
-        prop_mix = False
-        # prop_mix = 1280
+        # prop_mix = False
+        prop_mix = 1280
         mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, wordpiece_tokenize, prop_mix)
 
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
@@ -525,10 +528,10 @@ if __name__ == '__main__':
             ))
         else:
             train_args.update(dict(
-                # dataloader_num_workers=8 if pch_shift else 4,  # TODO: torch recommends 4 always?
-                dataloader_num_workers=4,  # TODO: torch recommends 4 always?
-                per_device_train_batch_size=22,
-                per_device_eval_batch_size=22,
+                # learning_rate=1e-4,
+                dataloader_num_workers=4,
+                per_device_train_batch_size=11,
+                per_device_eval_batch_size=11,
             ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
