@@ -24,7 +24,7 @@ defusedxml==0.7.1
 dill==0.3.5.1
 entrypoints==0.4
 et-xmlfile==1.1.0
-evaluate==0.2.2
+evaluate==0.3.0
 executing==0.9.1
 fastjsonschema==2.16.1
 filelock==3.7.1
