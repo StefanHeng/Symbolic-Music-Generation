@@ -100,17 +100,21 @@ class MusicTokenizer(PreTrainedTokenizer):
     def _convert_id_to_token(self, index: int) -> str:
         return self.spec_toks_dec[index] if index in self.spec_toks_dec else self.vocab.i2t(index)
 
-    def ids2pitches(self, ids: Union[Iterable[int], Iterable[str]]) -> List[int]:
+    def ids2pitches(self, ids: Union[Iterable[int], Iterable[str]], include_rest_pitch: bool = True) -> List[int]:
         """
         :param ids: token ids for a score, or split tokens
+        :param include_rest_pitch: whether to include rest pitch, i.e. -1, see `MusicVocabulary.rest_pitch_midi`
         :return: compact representation of all pitch (midi, see `MusicVocabulary`) in the score
             Rest notes and rare pitches are ignored
         """
-        ret = [self.vocab.tok2meta(i) for i in ids if self.vocab.type(i) == VocabType.pitch]
-        ret = [i for i in ret if i != self.vocab.rare_pitch_meta]
+        meta = [self.vocab.tok2meta(i) for i in ids if self.vocab.type(i) == VocabType.pitch]
+        exclude = [self.vocab.rare_pitch_meta]
+        if not include_rest_pitch:
+            exclude.append(self.vocab.rest_pitch_meta)
+        meta = [i for i in meta if i not in exclude]
         if self.pitch_kind != 'midi':  # meta is a tuple
-            ret = [i[0] for i in ret]
-        return ret
+            meta = [i[0] for i in meta]
+        return meta
 
     def colorize(self, song: str) -> str:
         return ' '.join(self.vocab.colorize_token(tok) for tok in self.tokenize(song))

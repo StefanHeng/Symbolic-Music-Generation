@@ -18,6 +18,7 @@ requirements, 04.08.22.txt
 cache/
 tokenizers/
 auth/
+transformers/
 
 
 # Byte-compiled / optimized / DLL files

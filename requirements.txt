@@ -22,6 +22,7 @@ debugpy==1.6.2
 decorator==5.1.1
 defusedxml==0.7.1
 dill==0.3.5.1
+dropbox==11.34.0
 entrypoints==0.4
 et-xmlfile==1.1.0
 evaluate==0.3.0
@@ -35,7 +36,7 @@ gdown==4.5.1
 google-auth==2.9.1
 google-auth-oauthlib==0.4.6
 grpcio==1.47.0
-huggingface-hub==0.9.1
+huggingface-hub==0.11.0
 icecream==2.1.3
 idna==3.3
 ipykernel==6.15.1
@@ -79,6 +80,7 @@ pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==9.2.0
 pip==22.1.2
+ply==3.11
 prometheus-client==0.14.1
 prompt-toolkit==3.0.30
 protobuf==3.19.4
@@ -92,6 +94,7 @@ pycparser==2.21
 Pygments==2.12.0
 pyparsing==3.0.9
 pyrsistent==0.18.1
+PySocks==1.7.1
 python-dateutil==2.8.2
 pytz==2022.1
 PyYAML==6.0
@@ -112,6 +115,7 @@ six==1.16.0
 soupsieve==2.3.2.post1
 stack-data==0.3.0
 stefutils==0.20.1
+stone==3.3.1
 sty==1.0.4
 tensorboard==2.10.1
 tensorboard-data-server==0.6.1
@@ -126,7 +130,7 @@ torchvision==0.13.0
 tornado==6.2
 tqdm==4.64.0
 traitlets==5.3.0
-transformers==4.22.2
+transformers==4.24.0
 typing_extensions==4.3.0
 urllib3==1.26.11
 wcwidth==0.2.5

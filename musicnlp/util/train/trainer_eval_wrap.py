@@ -203,6 +203,7 @@ class MyEvalTrainer(MyTrainer):
 
         # if eval is called w/o train init deepspeed here
         if args.deepspeed and not self.deepspeed:
+
             # XXX: eval doesn't have `resume_from_checkpoint` arg but we should be able to do eval
             # from the checkpoint eventually
             deepspeed_engine, _, _ = deepspeed_init(

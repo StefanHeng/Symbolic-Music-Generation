@@ -238,14 +238,24 @@ class CombineKeys:
 
         self.sr = SanitizeRare(vocab=tokenizer.vocab)
 
-    def __call__(self, sample):
-        txt = self.sr(sample['score'])
+    def __call__(self, samples: Dict[str, List]):
+        """
+        Batched map as last step for training w/o augmentation
+        """
+        txt = [self.sr(t) for t in samples['score']]
         ret = self.tokenizer(txt, padding='max_length', truncation=True)
-        keys: List[Dict[str, Optional[float]]] = sample['keys']
+        keys: List[Dict[str, Optional[float]]] = samples['keys']
         # convert to a tensor format to eventually pass down to `compute_loss` and `compute_metrics`
         # -1 for metric computation to ignore
         ret['key_scores'] = [[(d[key_ordinal2str[i]] or -1) for i in range(CombineKeys.n_key)] for d in keys]
         return ret
+
+    @staticmethod
+    def get_key_scores(keys: Dict[str, Optional[float]]) -> List[float]:
+        """
+        Single call for augmented dataset
+        """
+        return [keys[key_ordinal2str[i]] or -1 for i in range(CombineKeys.n_key)]
 
 
 class ToMidiPitch(Transform):

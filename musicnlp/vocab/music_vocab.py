@@ -146,7 +146,7 @@ class MusicVocabulary:
         ElmType.bass: start_of_bass,
         ElmType.song_end: end_of_song
     }
-    rest_pitch_code = -1
+    rest_pitch_meta = -1
 
     SPEC_TOKS = dict(
         sep=sep,
@@ -520,7 +520,7 @@ class MusicVocabulary:
             tpl = self.tok_type2pattern[typ]
             if typ == VocabType.pitch:
                 if token == self.rest:
-                    mid = MusicVocabulary.rest_pitch_code
+                    mid = MusicVocabulary.rest_pitch_meta
                     return mid if self.pitch_kind == 'midi' else (mid, None)
                 else:
                     m = self.pitch_pattern.match(token)
@@ -593,7 +593,7 @@ class MusicVocabulary:
                     out = self.midi_pitch_meta2tok(mid)
                     tok, idx, otv = out.token, out.local_index, out.octave
                     if step is None:
-                        assert mid == MusicVocabulary.rest_pitch_code  # sanity check
+                        assert mid == MusicVocabulary.rest_pitch_meta  # sanity check
                         return tok
                     else:
                         if self.pitch_kind == 'degree':  # sanity check
@@ -623,7 +623,7 @@ class MusicVocabulary:
             return f'{self.cache["pref_key"]}{meta}'
 
     def midi_pitch_meta2tok(self, meta: int) -> MidiPitchMetaOut:
-        if meta == MusicVocabulary.rest_pitch_code:
+        if meta == MusicVocabulary.rest_pitch_meta:
             return MidiPitchMetaOut(token=self.rest)
         else:
             pch, octave = meta % 12 + 1, MusicVocabulary.pitch_midi2octave(midi=meta)
@@ -660,7 +660,7 @@ class MusicVocabulary:
 
     @staticmethod
     def pitch_midi2name(midi: int) -> str:
-        if midi == MusicVocabulary.rest_pitch_code:
+        if midi == MusicVocabulary.rest_pitch_meta:
             return 'rest'
         else:
             pch = m21.pitch.Pitch(midi=midi)

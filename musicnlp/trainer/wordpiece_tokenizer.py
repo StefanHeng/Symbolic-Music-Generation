@@ -370,12 +370,14 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         assert self._tokenizer.pad_token_id is None  # TODO: Unlike `MusicTokenizer`, not sure why not defined already
         self._tokenizer.pad_token_id = tokenizer.token_to_id(self.s2c.encode_single(self.pad_token))
 
-        self._id2pchs: Dict[int, List[int]] = dict()  # cache, from each id to pitch if it contains any
+        self._id2pchs_inc: Dict[int, List[int]] = dict()  # cache, from each id to pitch if it contains any
+        self._id2pchs_exc: Dict[int, List[int]] = dict()
         for i in range(self.vocab_size):
             # note the same token in vanilla tokenizer, may appear twice,
             #   once for being part of base vocab, another time as part of WordPiece continuation subword
             toks = self._convert_id_to_token(i).split()
-            self._id2pchs[i] = super().ids2pitches(toks)
+            self._id2pchs_inc[i] = super().ids2pitches(toks, include_rest_pitch=True)
+            self._id2pchs_exc[i] = super().ids2pitches(toks, include_rest_pitch=False)
 
     @classmethod
     def from_file(cls, fnm: str, output_path: str = u.tokenizer_path, **kwargs):
@@ -446,8 +448,9 @@ class WordPieceMusicTokenizer(MusicTokenizer):
     def _convert_id_to_token(self, index: int) -> str:
         return self.s2c.decode(self._tokenizer.decode(index).removeprefix(self.continuing_prefix))
 
-    def ids2pitches(self, ids: Iterable[int]) -> List[int]:
-        return sum([self._id2pchs[int(i)] for i in ids], start=[])
+    def ids2pitches(self, ids: Iterable[int], include_rest_pitch: bool = True) -> List[int]:
+        i2p = self._id2pchs_inc if include_rest_pitch else self._id2pchs_exc
+        return sum([i2p[int(i)] for i in ids], start=[])
 
 
 def load_trained_tokenizer(  # has independent global token & bar split

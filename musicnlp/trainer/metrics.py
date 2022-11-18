@@ -104,7 +104,7 @@ class IkrMetric:
             self, preds: List[int], key: Key,
             enable_heuristic: bool = False, heuristic_thres: int = 5
     ) -> float:
-        lst_pch = self.tokenizer.ids2pitches(preds)
+        lst_pch = self.tokenizer.ids2pitches(preds, include_rest_pitch=False)
         num_toks = len(lst_pch)
         if num_toks == 0:  # No pitch found, assume every pitch is off-note
             return 0
@@ -114,8 +114,12 @@ class IkrMetric:
         pitch_midi = np.array(lst_pch)
         key_offset = key_offset_dict[key_name]
         pred_offset = ((pitch_midi % 12) - key_offset) % 12
+
         in_key_lst = list(filterfalse(lambda x: x in OFFKEY_OFFSET[key_type], pred_offset))
         in_key_ratio = len(in_key_lst) / num_toks
+
+        ikr = sum(x not in OFFKEY_OFFSET[key_type] for x in pred_offset) / num_toks
+        assert ikr == in_key_ratio
         # Heuristics (Naive implementation)
         # The first pitch of the bar decides the key of the bar
         # TODO: change the processing procedure to speed up

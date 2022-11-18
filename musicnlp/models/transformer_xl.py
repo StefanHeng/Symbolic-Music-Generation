@@ -5,6 +5,7 @@ import torch
 from transformers import TransfoXLConfig, TransfoXLLMHeadModel
 from transformers.modeling_utils import ModelOutput
 
+from musicnlp.util.train import PT_LOSS_PAD
 from musicnlp.vocab import MusicTokenizer
 
 
@@ -57,8 +58,10 @@ class MyTransfoXLConfig(TransfoXLConfig):
                 config['cutoffs'] = [10000]
             elif vsz >= 16384:
                 config['cutoffs'] = [5000]
-            else:
+            elif vsz >= 1000:
                 config['cutoffs'] = [1000]
+            else:
+                config['cutoffs'] = []
         config.update(kwargs)
         super().__init__(**config)
         # still fix a cut-off for training memory cap
@@ -176,7 +179,7 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
                 # Sets an <EOS> token, just to prevent loss from being NaN
                 labels[0, 1] = self.config.eos_token_id
 
-        softmax_output = self.crit(pred_hid, labels)
+        softmax_output = self.crit(pred_hid, labels, padding_index=PT_LOSS_PAD)
         # ========================== Begin of modified ==========================
         # prediction_scores = softmax_output.view(bsz, tgt_len, -1) if labels is None else ()
         # To get logits and hence NTP ACC during eval

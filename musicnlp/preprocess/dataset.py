@@ -99,7 +99,7 @@ def get_dataset(
         dataset_names: Union[str, List[str]],
         map_func: Callable = None, remove_columns: Union[str, List[str]] = None,
         n_sample: int = None, shuffle_seed: int = None, fast=True, pbar: bool = False,
-        splits: Union[str, List[str]] = None
+        splits: Union[str, List[str]] = None, batched_map: bool = True
 ) -> Union[Dataset, DatasetDict]:
     """
     Get dataset preprocessed for training
@@ -144,7 +144,7 @@ def get_dataset(
             if not pbar:
                 datasets.disable_progress_bar()
 
-        dset = dset.map(map_func, batched=True, remove_columns=remove_columns, num_proc=n_cpu)
+        dset = dset.map(map_func, batched=batched_map, remove_columns=remove_columns, num_proc=n_cpu)
         datasets.enable_progress_bar()
     if shuffle_seed:
         logger.info(f'Shuffling with seed {pl.i(shuffle_seed)}... ')
@@ -171,6 +171,7 @@ class AugmentedDataset:
             channel_mixup: Union[bool, str] = False, dataset_split: str = None
     ):
         ca(extract_mode=mode)
+        assert dataset_split is not None
         ca.check_mismatch('Dataset Split', dataset_split, ['train', 'test'])
         if isinstance(dataset, str):
             self.dset = datasets.load_from_disk(os_join(music_util.get_processed_path(), 'processed', dataset))
@@ -250,7 +251,7 @@ class AugmentedDataset:
             return cls(dset, tokenizer, **kwargs)
         else:
             dset: DatasetDict
-            return {dnm: cls(ds, tokenizer, **kwargs) for dnm, ds in dset.items()}
+            return {dnm: cls(ds, tokenizer, dataset_split=dnm, **kwargs) for dnm, ds in dset.items()}
 
     @property
     def info(self) -> DatasetInfo:
@@ -291,7 +292,13 @@ class AugmentedDataset:
             ori, new = ori[:200], new[:200]
             mic(ori, new)
             raise NotImplementedError
-        return self.tokenizer(toks, padding='max_length', truncation=True)
+        ret = self.tokenizer(toks, padding='max_length', truncation=True)
+
+        if not self.insert_key:  # TODO: debugging
+        # if not self.insert_key and self.dataset_split == 'eval':  # for IKR eval
+        #     mic('added key scores')
+            ret['key_scores'] = transform.CombineKeys.get_key_scores(item['keys'])
+        return ret
 
 
 class ProportionMixingDataset:

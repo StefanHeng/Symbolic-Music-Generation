@@ -379,7 +379,7 @@ class MusicConverter:
             pitch = pitch[0]
         dur = m21.duration.Duration(quarterLength=q_len)
         if note.type == ElmType.note:
-            if pitch == MusicVocabulary.rest_pitch_code:
+            if pitch == MusicVocabulary.rest_pitch_meta:
                 return [Rest(duration=dur)]
             else:
                 return [Note(pitch=m21.pitch.Pitch(midi=pitch), duration=dur)]

@@ -30,11 +30,11 @@ def load_trained(
                 # pretty good generation
                 ('reformer', 'P&M', '256-256ep', 'mid-pch'): ['2022-10-03_11-58-11_reformer', 'trained'],
 
-                # not good generation
-                ('reformer', 'All', '8-8ep', 'mid-pch'): ['2022-10-06_04-32-51_reformer', 'trained'],
+                # channel mixup
                 ('reformer', 'All', '5-16ep', 'mid-pch_1e-4'): ['2022-10-09_01-36-18_reformer', 'checkpoint-6850'],
                 # w/ a loss slightly larger than the last one, generated not good
                 ('reformer', 'All', '16-16ep', 'mid-pch_1e-4'): ['2022-10-09_01-36-18_reformer', 'trained'],
+
                 # 1st try of proportional mixing, model w/ the best loss loaded in the end
                 ('reformer', 'All', 'x-128ep', '1st-prop-mix'): ['2022-10-15_22-44-10_reformer', 'trained'],
 
@@ -305,8 +305,8 @@ if __name__ == '__main__':
         pch_sft = True
         fnms = [
             'Ode to Joy', 'Careless Whisper',
-            # 'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
-            # 'Merry Christmas'
+            'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
+            'Merry Christmas'
         ]
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
         # gen_args = dict(top_k=32, top_p=0.95)
