@@ -100,58 +100,21 @@ class IkrMetric:
         mic(stats_pitch_cls_str)
         mic(stats_pitch_cls_int)
 
-    def get_in_key_ratio(
-            self, preds: List[int], key: Key,
-            enable_heuristic: bool = False, heuristic_thres: int = 5
-    ) -> float:
+    def get_in_key_ratio(self, preds: List[int], key: Key) -> float:
+        # Extract midi values for all available pitches
         lst_pch = self.tokenizer.ids2pitches(preds, include_rest_pitch=False)
         num_toks = len(lst_pch)
         if num_toks == 0:  # No pitch found, assume every pitch is off-note
             return 0
-        # Process the given key
-        key_type, key_name = key_enum2tuple[key]
-        # Extract midi values for all available pitches
-        pitch_midi = np.array(lst_pch)
-        key_offset = key_offset_dict[key_name]
-        pred_offset = ((pitch_midi % 12) - key_offset) % 12
+        else:
+            key_type, key_name = key_enum2tuple[key]  # Process the given key
 
-        in_key_lst = list(filterfalse(lambda x: x in OFFKEY_OFFSET[key_type], pred_offset))
-        in_key_ratio = len(in_key_lst) / num_toks
+            pitch_midi = np.array(lst_pch)
+            key_offset = key_offset_dict[key_name]
+            pred_offset = ((pitch_midi % 12) - key_offset) % 12
 
-        ikr = sum(x not in OFFKEY_OFFSET[key_type] for x in pred_offset) / num_toks
-        assert ikr == in_key_ratio
-        # Heuristics (Naive implementation)
-        # The first pitch of the bar decides the key of the bar
-        # TODO: change the processing procedure to speed up
-        # Heuristic Update Rule #1: Too many problems + low performance, discard for now
-        # pitch_bar_lst = list(filterfalse(
-        #     lambda x: self.vocab.type(x) != VocabType.pitch and x != self.tokenizer.sob_token_id, tok_lst))
-        # # mic(pitch_bar_lst)
-        # # mic(Counter(pitch_bar_lst))
-        # s_bar = [idx for idx, tok in enumerate(
-        #     pitch_bar_lst) if tok == self.tokenizer.sob_token_id]
-        # # mic(s_bar)
-        # e_bar, num_bars = s_bar[1:] + [len(pitch_bar_lst)], len(s_bar)
-        # mic([pitch_bar_lst[s_bar[i]+1:e_bar[i]]
-        #     for i in range(num_bars)])
-        # pitch_lst_per_bar = list(filterfalse(lambda x: len(x) <= 1, [pitch_bar_lst[s_bar[i]+1:e_bar[i]]
-        #                                                              for i in range(num_bars)]))
-
-        # Heuristic Update method 2: Discard for now
-        # for p in pitch_lst:
-        #     p_cls = music21.pitch.Pitch(midi=self.vocab.compact(p)).pitchClass
-        #     if p_cls != target_key:
-        #         num_off_key += 1
-        #         # TODO: add cross-bar detection
-        #         if prev_p_cls is not None and p_cls == prev_p_cls:
-        #             key_count += 1
-        #             if key_count >= key_thres:
-        #                 target_key = p_cls
-        #                 key_count = 0
-        #         prev_p_cls = p_cls
-        #     else:
-        #         prev_p_cls = None
-        return in_key_ratio
+            in_key_ratio = sum(x not in OFFKEY_OFFSET[key_type] for x in pred_offset) / num_toks
+            return in_key_ratio
 
 
 if __name__ == '__main__':

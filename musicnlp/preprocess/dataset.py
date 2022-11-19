@@ -248,10 +248,13 @@ class AugmentedDataset:
         """
         dset = get_dataset(dataset_names, **(get_dataset_args or dict()))
         if isinstance(dset, Dataset):
-            return cls(dset, tokenizer, **kwargs)
-        else:
+            return cls(dataset=dset, tokenizer=tokenizer, **kwargs)
+        else:  # DatasetDict
             dset: DatasetDict
-            return {dnm: cls(ds, tokenizer, dataset_split=dnm, **kwargs) for dnm, ds in dset.items()}
+            return {
+                dnm: cls(dataset=ds, tokenizer=tokenizer, **dict(dataset_split=dnm) | kwargs)
+                for dnm, ds in dset.items()
+            }
 
     @property
     def info(self) -> DatasetInfo:
@@ -294,9 +297,7 @@ class AugmentedDataset:
             raise NotImplementedError
         ret = self.tokenizer(toks, padding='max_length', truncation=True)
 
-        if not self.insert_key:  # TODO: debugging
-        # if not self.insert_key and self.dataset_split == 'eval':  # for IKR eval
-        #     mic('added key scores')
+        if not self.insert_key and self.dataset_split == 'eval':  # for IKR eval
             ret['key_scores'] = transform.CombineKeys.get_key_scores(item['keys'])
         return ret
 

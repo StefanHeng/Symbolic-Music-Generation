@@ -374,9 +374,9 @@ if __name__ == '__main__':
     # md = 'melody'
     md = 'full'
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
-    dnms = [pop]
+    # dnms = [pop]
     # dnms = [pop, mst]
-    # dnms = [pop, mst, lmd]
+    dnms = [pop, mst, lmd]
 
     def profile_transform_dataload():
         from tqdm.auto import tqdm, trange
@@ -467,27 +467,27 @@ if __name__ == '__main__':
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
         # md_sz = 'debug'
-        md_sz = 'debug-large'
+        # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        # md_sz = 'base'
+        md_sz = 'base'
         # md_sz = 'large'  # Seems to overfit given current amount of data
         mic(md_nm, md_sz)
 
-        # debug = 'debug' in md_sz
-        debug = True
+        debug = 'debug' in md_sz
+        # debug = True
 
         # n = 8
         # n = 16
-        n = 8
+        # n = 8
         # n = 64
         # n = 128
         # n = 1024
-        # n = None
+        n = None
         # n_ep = 4
         # n_ep = 64
-        # n_ep = 128
+        n_ep = 128
         # n_ep = 256
-        n_ep = 512
+        # n_ep = 512
         mic(n, n_ep)
 
         # model_config = dict(max_length=64)
@@ -559,7 +559,6 @@ if __name__ == '__main__':
             dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
             train_args=train_args, my_train_args=my_train_args, trainer_args=trainer_args
         )
-        trainer.eval_dataset = trainer.train_dataset  # TODO: debugging
 
         transformers.set_seed(seed)
         # ignore so that `None` don't get detached
