@@ -47,7 +47,9 @@ def load_trained(
                     '2022-10-29_08-28-57_transf-xl', 'trained'],
 
                 ('transf-xl', 'All', '128ep', 'no-mixup'): ['2022-11-11_18-04-07_transf-xl', 'trained'],
-                ('transf-xl', 'All', '128ep', 'midi'): ['2022-11-14_13-04-30_transf-xl', 'trained']
+                ('transf-xl', 'All', '128ep', 'midi'): ['2022-11-14_13-04-30_transf-xl', 'trained'],
+
+                ('transf-xl', 'All', '128ep', 'midi_no-wp'): ['2022-11-18_18-22-47_transf-xl', 'checkpoint-10863']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -86,7 +88,7 @@ class MusicGenerator:
     def __init__(
             self, model: Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel], mode: str = 'full',
             max_length: int = None, vocab: MusicVocabulary = None,
-            wordpiece_tokenizer: bool = True, tokenizer_args: Dict = None, augment_key: bool = False
+            wordpiece_tokenize: bool = True, tokenizer_args: Dict = None, augment_key: bool = False
     ):
         self.model = model
         if max_length:
@@ -97,7 +99,7 @@ class MusicGenerator:
             else:  # transf xl
                 self.max_len = model.config.max_length_
         tokenizer_args = dict(model_max_length=self.max_len) | tokenizer_args
-        if wordpiece_tokenizer:
+        if wordpiece_tokenize:
             self.tokenizer = load_wordpiece_tokenizer(omit_eos=True, **tokenizer_args)
         else:
             self.tokenizer = MusicTokenizer(**tokenizer_args)
@@ -229,7 +231,8 @@ class MusicGenerator:
                 d_log['prompt'] = prompt  # remove color
                 json.dump(dict(meta=d_log, generation_args=args, generated=decoded), f, indent=4)
             try:
-                score.write(fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'), makeNotation=False)
+                # TODO: `makeNotation` False always breaks on GL
+                score.write(fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'), makeNotation=True)
             except Exception as e:
                 vocab = self.mc.vocabs.degree if self.augment_key else self.mc.vocabs.midi
                 raise ValueError(f'Failed to render MXL from decoded output {vocab.colorize_tokens(decoded)}') from e
@@ -248,13 +251,15 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    # md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '256-256ep', 'with-crop_train-longer'
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'midi'
+    # md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'midi'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'midi_no-wp'
     mic(md_nm, ds_nm, ep_nm, desc)
 
     pch_kd = 'midi'
     # pch_kd = 'degree'
     tk_args = dict(pitch_kind=pch_kd)
+
+    wp = False
 
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
@@ -264,7 +269,7 @@ if __name__ == '__main__':
     # step vocab for `MusicConverter::mxl2str`
 
     key_aug = True
-    mg = MusicGenerator(model=mdl, mode=md, tokenizer_args=tk_args, augment_key=True)
+    mg = MusicGenerator(model=mdl, mode=md, tokenizer_args=tk_args, augment_key=True, wordpiece_tokenize=wp)
 
     def explore_generate_unconditional():
         # as in `CTRL` paper
@@ -313,13 +318,14 @@ if __name__ == '__main__':
         # gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
         # gen_args = dict(top_k=64, top_p=0.9)
         # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
-        # gen_args = dict(top_k=32, top_p=0.85)
+        gen_args = dict(top_k=32, top_p=0.85)
 
         # gen_args = dict(top_k=32)
         # gen_args = dict(top_k=64, temperature=2.0)
 
-        gen_args = dict(top_p=0.75)
-        # gen_args = dict(top_p=0.75, repetition_penalty=1.2)  # as in CTRL paper
+        # gen_args = dict(top_p=0.75)
+        # gen_args = dict(top_p=0.85)
+        # gen_args = dict(top_p=0.85, repetition_penalty=1.2)  # penalty as in CTRL paper
         # n_bar = 4
         n_bar = 8
         for fnm in fnms:
@@ -338,7 +344,7 @@ if __name__ == '__main__':
                     print(f'Failed to generate {pl.i(fnm)} due to {e}')
             else:
                 call()
-    export_generated()
+    export_generated(batched=False)
 
     def eval_ikr():
         md_sz = 'debug'

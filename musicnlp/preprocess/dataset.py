@@ -288,8 +288,8 @@ class AugmentedDataset:
         if isinstance(toks, list):
             toks = ' '.join(toks)
 
-        sanity_check = False
-        # sanity_check = True
+        # sanity_check = False
+        sanity_check = True
         if sanity_check:
             ori, new = item['score'], toks
             ori, new = ori[:200], new[:200]
