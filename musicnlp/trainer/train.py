@@ -466,15 +466,15 @@ if __name__ == '__main__':
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
-        md_sz = 'debug'
+        # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        # md_sz = 'base'
+        md_sz = 'base'
         # md_sz = 'large'  # Seems to overfit given current amount of data
         mic(md_nm, md_sz)
 
-        # debug = 'debug' in md_sz
-        debug = False
+        debug = 'debug' in md_sz
+        # debug = False
 
         # n = 8
         # n = 16
@@ -502,8 +502,8 @@ if __name__ == '__main__':
             )
         else:
             # model_config = None
-            # model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
-            model_config = dict(max_length=1024 + 512)   # increasing this consumes a lot of memory...
+            model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
+            # model_config = dict(max_length=1024 + 512)
             rand_crop = 4
             # pch_kd = 'midi'
             pch_kd = 'degree'
@@ -518,6 +518,8 @@ if __name__ == '__main__':
             # channel_mixup = False
             wordpiece_tokenize = False
             # wordpiece_tokenize = True
+            if not wordpiece_tokenize:
+                model_config['cutoffs'] = []
             # if pch_kd == 'midi':
             #     wordpiece_tokenize = ''
             # wordpiece_tokenize = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
@@ -546,8 +548,8 @@ if __name__ == '__main__':
                 per_device_eval_batch_size=64,
             ))
         else:
-            # bsz = 24
-            bsz = 12
+            bsz = 24
+            # bsz = 12
             train_args.update(dict(
                 # learning_rate=1e-4,
                 dataloader_num_workers=4,

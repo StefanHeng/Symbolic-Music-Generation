@@ -49,7 +49,10 @@ def load_trained(
                 ('transf-xl', 'All', '128ep', 'no-mixup'): ['2022-11-11_18-04-07_transf-xl', 'trained'],
                 ('transf-xl', 'All', '128ep', 'midi'): ['2022-11-14_13-04-30_transf-xl', 'trained'],
 
-                ('transf-xl', 'All', '128ep', 'midi_no-wp'): ['2022-11-18_18-22-47_transf-xl', 'checkpoint-10863']
+                ('transf-xl', 'All', '128ep', 'midi_no-wp'): ['2022-11-18_18-22-47_transf-xl', 'checkpoint-10863'],
+
+                ('transf-xl', 'All', '128ep', 'midi_longer-seq'): ['2022-11-21_21-22-24_transf-xl', 'checkpoint-30348'],
+                ('transf-xl', 'All', '128ep', 'degree_no-wp'): ['2022-11-24_01-18-17_transf-xl', 'checkpoint-7755']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -82,7 +85,8 @@ class MusicGenerator:
         top_k='topk',
         num_beams='#bm',
         n_bar='#b',
-        repetition_penalty='rp'
+        repetition_penalty='rp',
+        penalty_alpha='pa'
     ))
 
     def __init__(
@@ -188,7 +192,10 @@ class MusicGenerator:
             else:
                 generate_args['do_sample'] = False
         elif strategy == 'sample':
-            assert all(k in ['do_sample', 'top_k', 'top_p', 'temperature', 'repetition_penalty'] for k in generate_args)
+            assert all(
+                k in ['do_sample', 'top_k', 'top_p', 'temperature', 'repetition_penalty', 'penalty_alpha']
+                for k in generate_args
+            )
             if 'do_sample' in generate_args:
                 assert generate_args['do_sample'], f'{pl.i("do_sample")} must be True for sample generation'
             else:
@@ -252,11 +259,11 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     # md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'midi'
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'midi_no-wp'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'degree_no-wp'
     mic(md_nm, ds_nm, ep_nm, desc)
 
-    pch_kd = 'midi'
-    # pch_kd = 'degree'
+    # pch_kd = 'midi'
+    pch_kd = 'degree'
     tk_args = dict(pitch_kind=pch_kd)
 
     wp = False
@@ -309,7 +316,7 @@ if __name__ == '__main__':
     def export_generated(batched: bool = True):
         pch_sft = True
         fnms = [
-            'Ode to Joy', 'Careless Whisper',
+            'Careless Whisper',
             'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
             'Merry Christmas'
         ]
@@ -318,7 +325,7 @@ if __name__ == '__main__':
         # gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
         # gen_args = dict(top_k=64, top_p=0.9)
         # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
-        gen_args = dict(top_k=32, top_p=0.85)
+        # gen_args = dict(top_k=32, top_p=0.85)
 
         # gen_args = dict(top_k=32)
         # gen_args = dict(top_k=64, temperature=2.0)
@@ -326,6 +333,8 @@ if __name__ == '__main__':
         # gen_args = dict(top_p=0.75)
         # gen_args = dict(top_p=0.85)
         # gen_args = dict(top_p=0.85, repetition_penalty=1.2)  # penalty as in CTRL paper
+
+        gen_args = dict(top_k=32, penalty_alpha=0.3)
         # n_bar = 4
         n_bar = 8
         for fnm in fnms:

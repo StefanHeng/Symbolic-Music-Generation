@@ -1040,7 +1040,7 @@ if __name__ == '__main__':
         # fnm = 'Faded'
         # fnm = 'Piano Sonata'
         # fnm = 'Ode to Joy'
-        fnm = 'Careless Whisper'
+        fnm = 'Careless-Whisper, saxophone'
         # fnm = 'Merry Christmas'
         # fnm = 'Merry Go Round of Life'
         # fnm = 'Canon piano'
