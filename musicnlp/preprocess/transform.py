@@ -287,6 +287,18 @@ class BarChannelSplitOutput:
     bass: List[MusicElm] = None
 
 
+class _Sampler:
+    def __init__(self, numer: int = None, denom: int = None):
+        assert isinstance(numer, int) and isinstance(denom, int)
+        self.numer = numer
+        self.denom = denom
+
+        self.thresh = numer / denom
+
+    def __call__(self) -> bool:
+        return torch.rand(1).item() < self.thresh
+
+
 class ChannelMixer(Transform):
     """
     Reorder notes across channels while keeping the order within the channel
@@ -320,19 +332,23 @@ class ChannelMixer(Transform):
         toks += list(chain_its((self._mix_up_bar_toks(elms) for elms in out.elms_by_bar)))  # Faster
         toks.append(self.vocab.end_of_song)
 
-        # sanity_check = True
-        sanity_check = False
+        sanity_check = True
+        # sanity_check = False
         if sanity_check:  # Should be able to re-construct the text w/ default ordering
             _text = ' '.join(text)
             mic(_text)
+            mixed = ' '.join(toks)
+            mic(mixed)
             ori_out = self.mc.str2music_elms(' '.join(toks), group=True)
             ori_toks = self.vocab.music_elm2toks(ori_out.time_sig) + self.vocab.music_elm2toks(ori_out.tempo)
             if ori_out.key:
                 ori_toks += self.vocab.music_elm2toks(ori_out.key)
+            ori_toks += [self.vocab.omitted_segment]  # For random crop
             for bar in ori_out.elms_by_bar:
                 d_notes = self.mc.split_notes(bar)
                 notes = [ChannelMixer.e_m, *d_notes['melody'], ChannelMixer.e_b, *d_notes['bass']]
                 ori_toks += self._bar_music_elms2str(notes, mix=False)
+            ori_toks += [self.vocab.end_of_song]
             # ori_toks += [self.vocab.end_of_song]
             ori = ' '.join(ori_toks)
 
@@ -363,6 +379,9 @@ class ChannelMixer(Transform):
         elms_m, elms_b = out.melody, out.bass
 
         if self.mix_mode == 'full':
+            n_m, n_b = len(elms_m), len(elms_b)
+            sp = _Sampler(numer=n_m, denom=n_m + n_b)  # even out different number of elements in melody vs bass
+
             elms_m, elms_b = iter(elms_m), iter(elms_b)
             ret = []
 
@@ -370,7 +389,7 @@ class ChannelMixer(Transform):
             curr, prev = None, None
             add_to_melody = None
             while elm_m and elm_b:
-                add_to_melody = self._bin_sample()
+                add_to_melody = sp()
                 curr = [self.vocab.start_of_melody] if add_to_melody else [self.vocab.start_of_bass]
                 diff_channel = curr != prev
                 if diff_channel:

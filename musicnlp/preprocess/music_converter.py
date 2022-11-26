@@ -329,10 +329,11 @@ class MusicConverter:
                 elif tok == vocab.start_of_melody:
                     assert self.mode == 'full'
                     lst_out.append(MusicElement(type=ElmType.melody, meta=None))
-                else:
-                    assert tok == vocab.start_of_bass
+                elif tok == vocab.start_of_bass:
                     assert self.mode == 'full'
                     lst_out.append(MusicElement(type=ElmType.bass, meta=None))
+                else:
+                    assert tok == vocab.omitted_segment  # skip
             elif typ == VocabType.time_sig:
                 lst_out.append(MusicElement(type=ElmType.time_sig, meta=(comp(tok))))
             elif typ == VocabType.tempo:

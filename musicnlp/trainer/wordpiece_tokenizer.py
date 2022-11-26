@@ -652,7 +652,7 @@ if __name__ == '__main__':
         )
         songs = dataset.load_songs(*dnms)
         wmt(vocab_size=vocab_size, songs=songs, save=sv, concurrent=conc)
-    train()
+    # train()
 
     def check_trained_property():
         aug_key = True
@@ -732,23 +732,20 @@ if __name__ == '__main__':
     def check_trained_tokenize_all():
         import random
 
-        pch_kd = 'midi'
+        # pch_kd = 'midi'
         # pch_kd = 'step'
-        # pch_kd = 'degree'
+        pch_kd = 'degree'
         aug_key = pch_kd == 'degree'
         mic('Check trained tokenizer', pch_kd, aug_key)
 
-        # fnm = '22-10-25_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=16384, n=2185, pch=d, aug-key=T}'
-        # fnm = '22-10-26_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=d, aug-key=T}'
-        # fnm = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
-        fnm = '22-11-13_WordPiece-Tokenizer_{dnm=all}_{vsz=32768, n=178825, pch=m}'
+        fnm = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
         tokenizer = WordPieceMusicTokenizer.from_file(fnm, pitch_kind=pch_kd)
 
-        check_recon = True  # encoding & decoding reconstructs original text
-        # check_recon = False
+        # check_recon = True  # encoding & decoding reconstructs original text
+        check_recon = False
 
-        sample = False
-        # sample = 3
+        # sample = False
+        sample = 6
         mic(check_recon, sample)
 
         # dnms = [pop]
@@ -792,7 +789,7 @@ if __name__ == '__main__':
             c_[tok] = n
         with open(os_join(u.tokenizer_path, f'{fnm} distribution check.json'), 'w') as f:
             json.dump(dict(sample=sample, count=c_), f, indent=4)
-    # check_trained_tokenize_all()
+    check_trained_tokenize_all()
 
     def check_id2pch():
         tokenizer = MusicTokenizer()
