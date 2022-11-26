@@ -470,7 +470,7 @@ if __name__ == '__main__':
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         md_sz = 'base'
-        # md_sz = 'large'  # Seems to overfit given current amount of data
+        # md_sz = 'large'
         mic(md_nm, md_sz)
 
         debug = 'debug' in md_sz
@@ -502,7 +502,10 @@ if __name__ == '__main__':
             )
         else:
             # model_config = None
-            model_config = dict(max_length=1024)  # TODO: try a smaller model for memory consumption
+            model_config = dict(
+                max_length=1024,
+                mem_len=512,
+            )  # TODO: try a smaller model for memory consumption
             # model_config = dict(max_length=1024 + 512)
             rand_crop = 4
             # pch_kd = 'midi'
@@ -548,8 +551,9 @@ if __name__ == '__main__':
                 per_device_eval_batch_size=64,
             ))
         else:
-            bsz = 24
-            # bsz = 12
+            # bsz = 24
+            bsz = 21
+            # bsz = 11
             train_args.update(dict(
                 # learning_rate=1e-4,
                 dataloader_num_workers=4,

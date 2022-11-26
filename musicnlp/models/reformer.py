@@ -83,6 +83,7 @@ class MyReformerConfig(ReformerConfig):
             n_layer=len(self.attn_layers),
             hidden_size=self.hidden_size, ff_size=self.feed_forward_size,
             attention_shape=f'{self.num_attention_heads}x{self.attention_head_size}',
+            vocab_size=self.vocab_size
         )
 
 

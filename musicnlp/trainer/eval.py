@@ -52,7 +52,8 @@ def load_trained(
                 ('transf-xl', 'All', '128ep', 'midi_no-wp'): ['2022-11-18_18-22-47_transf-xl', 'checkpoint-10863'],
 
                 ('transf-xl', 'All', '128ep', 'midi_longer-seq'): ['2022-11-21_21-22-24_transf-xl', 'checkpoint-30348'],
-                ('transf-xl', 'All', '128ep', 'degree_no-wp'): ['2022-11-24_01-18-17_transf-xl', 'checkpoint-7755']
+                ('transf-xl', 'All', '128ep', 'degree_no-wp'): ['2022-11-24_01-18-17_transf-xl', 'checkpoint-7755'],
+                ('transf-xl', 'All', '128ep', 'degree_no-wp_2'): ['2022-11-24_16-29-59_transf-xl', 'trained']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -224,7 +225,10 @@ class MusicGenerator:
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
         title = f'{save}-generated' if save else None
-        score = self.mc.str2score(decoded, omit_eos=True, title=title, pitch_kind=self.pitch_kind)
+        score = self.mc.str2score(
+            decoded, omit_eos=True, title=title, pitch_kind=self.pitch_kind, 
+            check_duration_match=True
+        )
         if save:
             # `makeNotations` disabled any clean-up by music21, intended to remove `tie`s added
             str_args = MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args)
@@ -239,7 +243,7 @@ class MusicGenerator:
                 json.dump(dict(meta=d_log, generation_args=args, generated=decoded), f, indent=4)
             try:
                 # TODO: `makeNotation` False always breaks on GL
-                score.write(fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'), makeNotation=True)
+                score.write(fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'), makeNotation=False)
             except Exception as e:
                 vocab = self.mc.vocabs.degree if self.augment_key else self.mc.vocabs.midi
                 raise ValueError(f'Failed to render MXL from decoded output {vocab.colorize_tokens(decoded)}') from e
@@ -258,8 +262,7 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    # md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'midi'
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'degree_no-wp'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'degree_no-wp_2'
     mic(md_nm, ds_nm, ep_nm, desc)
 
     # pch_kd = 'midi'
@@ -316,7 +319,8 @@ if __name__ == '__main__':
     def export_generated(batched: bool = True):
         pch_sft = True
         fnms = [
-            'Careless Whisper',
+            'Careless Whisper, 4',
+            # 'Ode to Joy',
             'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
             'Merry Christmas'
         ]
@@ -334,7 +338,10 @@ if __name__ == '__main__':
         # gen_args = dict(top_p=0.85)
         # gen_args = dict(top_p=0.85, repetition_penalty=1.2)  # penalty as in CTRL paper
 
-        gen_args = dict(top_k=32, penalty_alpha=0.3)
+        # gen_args = dict(top_k=32, penalty_alpha=0.3)
+        # gen_args = dict(top_k=16, penalty_alpha=0.3)
+        gen_args = dict(top_k=8, penalty_alpha=0.5)
+
         # n_bar = 4
         n_bar = 8
         for fnm in fnms:
@@ -353,7 +360,7 @@ if __name__ == '__main__':
                     print(f'Failed to generate {pl.i(fnm)} due to {e}')
             else:
                 call()
-    export_generated(batched=False)
+    export_generated(batched=True)
 
     def eval_ikr():
         md_sz = 'debug'

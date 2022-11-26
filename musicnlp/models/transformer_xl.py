@@ -71,7 +71,7 @@ class MyTransfoXLConfig(TransfoXLConfig):
     def model_meta(self) -> Dict[str, Any]:
         return dict(
             n_layer=self.n_layer, hidden_size=self.d_embed, ff_size=self.d_inner,
-            seg_len=self.mem_len, max_len=self.max_length_
+            seg_len=self.mem_len, max_len=self.max_length_, vocab_size=self.vocab_size
         )
 
 

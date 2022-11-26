@@ -22,13 +22,16 @@ __all__ = [
 PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in huggingface for padding tokens
 
 
-def meta2fnm_meta(meta: Dict, subset: str = ('model name', 'max length', 'hidden_size', 'attention_shape')) -> Dict:
+def meta2fnm_meta(
+        meta: Dict, subset: str = ('model name', 'max length', 'hidden_size', 'attention_shape', 'vocab_size')
+) -> Dict:
     if not hasattr(meta2fnm_meta, 'd_key'):
         meta2fnm_meta.d_key = {
             'model name': 'nm', 'max length': 'l', 'axial_pos_shape': 'ax_pos_sp',
             'hidden_size': 'hd_sz', 'ff_size': 'ff_sz',
             'n_layer': 'n_l', 'attn_layers': 'attn', 'attention_shape': 'attn_sh',
-            'parameter_count': 'n_param', 'seg_len': 'seg_len', 'max_len': 'max_len'
+            'parameter_count': 'n_param', 'seg_len': 'seg_len', 'max_len': 'max_len',
+            'vocab_size': 'vsz'
         }
     if subset:
         meta = {k: v for k, v in meta.items() if k in subset}

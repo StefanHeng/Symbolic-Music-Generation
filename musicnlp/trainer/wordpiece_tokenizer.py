@@ -618,15 +618,15 @@ if __name__ == '__main__':
         dnms = [pop, mst, lmd]
         mic(dnms)
 
-        pch_kd = 'midi'
+        # pch_kd = 'midi'
         # pch_kd = 'step'
-        # pch_kd = 'degree'
+        pch_kd = 'degree'
         aug_key = pch_kd == 'degree'
         mic(pch_kd, aug_key)
         mv = MusicVocabulary(pitch_kind=pch_kd, is_wordpiece=True)
 
-        conc = 128 if len(dnms) == 3 else 32
-        # conc = False
+        # conc = 128 if len(dnms) == 3 else 32
+        conc = False
         mic(conc)
 
         vocab_size, svs = None, None
@@ -643,17 +643,16 @@ if __name__ == '__main__':
                 sv = 'WordPiece-Tokenizer_{dnm=POP&MST}'
         elif len(dnms) == 3:
             # vocab_size = 4096 * 4
-            vocab_size = 4096 * 8
+            # vocab_size = 4096 * 8
+            vocab_size = 4096 * 8 * 8
             if sv:
                 sv = 'WordPiece-Tokenizer_{dnm=all}'
-        # if aug_key:
-        #     vocab_size *= 2
         wmt = WordPieceMusicTrainer(
             vocab=mv, pitch_kind=pch_kd, augment_key=aug_key, independent_global_token=True, punctuate=True
         )
         songs = dataset.load_songs(*dnms)
         wmt(vocab_size=vocab_size, songs=songs, save=sv, concurrent=conc)
-    # train()
+    train()
 
     def check_trained_property():
         aug_key = True
@@ -793,7 +792,7 @@ if __name__ == '__main__':
             c_[tok] = n
         with open(os_join(u.tokenizer_path, f'{fnm} distribution check.json'), 'w') as f:
             json.dump(dict(sample=sample, count=c_), f, indent=4)
-    check_trained_tokenize_all()
+    # check_trained_tokenize_all()
 
     def check_id2pch():
         tokenizer = MusicTokenizer()
