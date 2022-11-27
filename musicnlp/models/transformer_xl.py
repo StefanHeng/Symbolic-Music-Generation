@@ -54,7 +54,9 @@ class MyTransfoXLConfig(TransfoXLConfig):
         config = MyTransfoXLConfig.presets[model_size]
         if tokenizer:  # same argument as in `reformer`
             vsz = config['vocab_size'] = tokenizer.vocab_size
-            if vsz >= 32768:
+            if vsz >= 32768 * 8:
+                config['cutoffs'] = [20000, 40000, 200000]  # default TransfXL cutoffs
+            elif vsz >= 32768:
                 config['cutoffs'] = [10000]
             elif vsz >= 16384:
                 config['cutoffs'] = [5000]
