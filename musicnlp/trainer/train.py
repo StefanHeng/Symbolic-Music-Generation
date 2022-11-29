@@ -405,28 +405,33 @@ if __name__ == '__main__':
         # not set seed if reformer for LSH attention,
         # see https://huggingface.co/docs/transformers/model_doc/reformer#transformers.ReformerConfig.hash_seed
         md_nm = 'reformer'
-        md_sz = 'debug'
+        # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
-        # md_sz = 'base'
+        md_sz = 'base'
         # md_sz = 'large'
         mic(md_nm, md_sz)
 
-        # TODO: smaller seq-len for now, until it shows longer dependency
         model_config = None
+        # TODO: smaller seq-len for now, until it shows longer dependency
         # model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
 
+        rand_crop = 4
+        pch_kd = 'degree'
         insert_key = True
         pch_shift = True
+        if pch_shift:
+            assert insert_key and pch_kd == 'degree'
+        else:
+            assert pch_kd != 'degree'
         wordpiece_tokenize = False
         channel_mixup = 'full'
-        # channel_mixup = False
         prop_mix = 1280
-        mic(insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix)
+        mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, wordpiece_tokenize, prop_mix)
 
-        n = 64
-        # n = None
+        # n = 64
+        n = None
         # n_ep = 8
         # n_ep = 16
         # n_ep = 32
@@ -436,19 +441,15 @@ if __name__ == '__main__':
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
             tqdm=True, logging_strategy='no',
-            mode=md, wordpiece_tokenize=wordpiece_tokenize, proportional_mixing=prop_mix,
-            insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup
+            mode=md,
+            random_crop=rand_crop,
+            pitch_kind=pch_kd, insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup,
+            wordpiece_tokenize=wordpiece_tokenize, proportional_mixing=prop_mix
         )
         trainer_args = dict(disable_train_metrics=True)
 
         if 'debug' not in md_sz:
-            # if any('LMD' in d for d in dnms):  # Data includes LMD, a much larger dataset; but doesn't seem to help
-            #     train_args['learning_rate'] = 3e-5
-            if md_sz == 'base':
-                bsz = 128 if on_great_lakes() else 64
-            else:
-                assert md_sz == 'large'
-                bsz = 48
+            bsz = 96
             train_args.update(dict(
                 dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
@@ -462,15 +463,15 @@ if __name__ == '__main__':
         )
         trainer.train(**kwargs)
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    # train_reformer()
+    train_reformer()
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
         # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        # md_sz = 'base'
-        md_sz = 'large'
+        md_sz = 'base'
+        # md_sz = 'large'
         mic(md_nm, md_sz)
 
         debug = 'debug' in md_sz
@@ -519,9 +520,9 @@ if __name__ == '__main__':
                 assert pch_kd != 'degree'
             channel_mixup = 'full'
             # channel_mixup = False
-            wordpiece_tokenize = False
+            # wordpiece_tokenize = False
             # wordpiece_tokenize = True
-            # wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
+            wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
             if not wordpiece_tokenize:
                 model_config['cutoffs'] = []
             # if pch_kd == 'midi':
@@ -538,7 +539,7 @@ if __name__ == '__main__':
             mode=md,
             random_crop=rand_crop,
             pitch_kind=pch_kd, insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup,
-            wordpiece_tokenize=wordpiece_tokenize, proportional_mixing=prop_mix,
+            wordpiece_tokenize=wordpiece_tokenize, proportional_mixing=prop_mix
         )
         trainer_args = dict(disable_train_metrics=True)
 
@@ -553,17 +554,17 @@ if __name__ == '__main__':
             ))
         else:
             # bsz = 24
-            # bsz = 21
-            bsz = 12
+            bsz = 19
+            # bsz = 12
             train_args.update(dict(
                 # learning_rate=1e-4,
                 dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
-                per_device_eval_batch_size=bsz,
+                per_device_eval_batch_size=12,
             ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
-            dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed),
+            dataset_names=dnms, dataset_args=dict(n_sample=n, shuffle_seed=seed, pbar=True),
             train_args=train_args, my_train_args=my_train_args, trainer_args=trainer_args
         )
 
@@ -574,4 +575,4 @@ if __name__ == '__main__':
         trainer.train(**(train_call_args | kwargs))
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
         # tokenizer.save_pretrained(os_join(trainer.args.output_dir, 'tokenizer'))  # TODO
-    train_xl()
+    # train_xl()

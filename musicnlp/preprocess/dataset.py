@@ -292,7 +292,7 @@ class AugmentedDataset:
         # sanity_check = True
         if sanity_check:
             ori, new = item['score'], toks
-            ori, new = ori[:200], new[:200]
+            ori, new = ori[:800], new[:800]
             mic(ori, new)
             raise NotImplementedError
         ret = self.tokenizer(toks, padding='max_length', truncation=True)

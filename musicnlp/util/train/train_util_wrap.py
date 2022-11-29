@@ -23,7 +23,7 @@ PT_LOSS_PAD = -100  # Pytorch indicator value for ignoring loss, used in hugging
 
 
 def meta2fnm_meta(
-        meta: Dict, subset: str = ('model name', 'max length', 'hidden_size', 'attention_shape', 'vocab_size')
+        meta: Dict, subset: str = ('model name', 'max length', 'hidden_size', 'vocab_size')
 ) -> Dict:
     if not hasattr(meta2fnm_meta, 'd_key'):
         meta2fnm_meta.d_key = {
