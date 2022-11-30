@@ -54,7 +54,7 @@ class RandomCrop(Transform):
 
     Since song sequences are typically longer than model max length, try to make use of them all
     """
-    def __init__(self, vocab: MusicVocabulary = None, min_seg_length: int = 8, crop_mult: int = 1, **kwargs):
+    def __init__(self, vocab: MusicVocabulary = None, min_seg_length: int = 16, crop_mult: int = 1, **kwargs):
         """
         :param start_of_bar: token for start of bar
         :param min_seg_length: minimum length of a cropped song segment

@@ -53,7 +53,9 @@ def load_trained(
 
                 ('transf-xl', 'All', '128ep', 'midi_longer-seq'): ['2022-11-21_21-22-24_transf-xl', 'checkpoint-30348'],
                 ('transf-xl', 'All', '128ep', 'degree_no-wp'): ['2022-11-24_01-18-17_transf-xl', 'checkpoint-7755'],
-                ('transf-xl', 'All', '128ep', 'degree_no-wp_2'): ['2022-11-24_16-29-59_transf-xl', 'trained']
+                ('transf-xl', 'All', '128ep', 'degree_no-wp_2'): ['2022-11-24_16-29-59_transf-xl', 'trained'],
+
+                ('transf-xl', 'All', '128ep', 'no-wp_seg-len-512'): ['2022-11-27_13-03-40_transf-xl', 'trained'],
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -82,10 +84,10 @@ class MusicGenerator:
     Wraps a model for music generation
     """
     key2key_path_out = OrderedDict(dict(
+        n_bar='#b',
         top_p='topp',
         top_k='topk',
         num_beams='#bm',
-        n_bar='#b',
         repetition_penalty='rp',
         penalty_alpha='pa'
     ))
@@ -262,7 +264,7 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'degree_no-wp_2'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'no-wp_seg-len-512'
     mic(md_nm, ds_nm, ep_nm, desc)
 
     # pch_kd = 'midi'
@@ -340,7 +342,10 @@ if __name__ == '__main__':
 
         # gen_args = dict(top_k=32, penalty_alpha=0.3)
         # gen_args = dict(top_k=16, penalty_alpha=0.3)
-        gen_args = dict(top_k=8, penalty_alpha=0.5)
+        # gen_args = dict(top_k=8, penalty_alpha=0.5)
+        # gen_args = dict(top_k=8, penalty_alpha=0.6)  # Pretty good
+        # gen_args = dict(top_k=16, penalty_alpha=0.6)
+        gen_args = dict(top_k=12, penalty_alpha=0.6)
 
         # n_bar = 4
         n_bar = 8

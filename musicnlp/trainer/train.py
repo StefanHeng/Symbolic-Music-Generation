@@ -6,7 +6,7 @@ Proposed method: on compact melody & bass representation for autoregressive musi
 import json
 import math
 from os.path import join as os_join
-from typing import List, Tuple, Dict, Union, Optional
+from typing import List, Tuple, Dict, Union
 from collections import OrderedDict
 
 import torch
@@ -379,7 +379,7 @@ if __name__ == '__main__':
     dnms = [pop, mst, lmd]
 
     def profile_transform_dataload():
-        from tqdm.auto import tqdm, trange
+        from tqdm.auto import trange
 
         transformers.set_seed(seed)
 
@@ -417,16 +417,20 @@ if __name__ == '__main__':
         # TODO: smaller seq-len for now, until it shows longer dependency
         # model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
 
-        rand_crop = 4
-        pch_kd = 'degree'
+        rand_crop = False
+        # rand_crop = 4
+        pch_kd = 'midi'
+        # pch_kd = 'degree'
         insert_key = True
-        pch_shift = True
+        # pch_shift = True
+        pch_shift = False
         if pch_shift:
             assert insert_key and pch_kd == 'degree'
         else:
             assert pch_kd != 'degree'
         wordpiece_tokenize = False
-        channel_mixup = 'full'
+        channel_mixup = False
+        # channel_mixup = 'full'
         prop_mix = 1280
         mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, wordpiece_tokenize, prop_mix)
 
@@ -434,9 +438,9 @@ if __name__ == '__main__':
         n = None
         # n_ep = 8
         # n_ep = 16
-        # n_ep = 32
+        n_ep = 32
         # n_ep = 64
-        n_ep = 128
+        # n_ep = 128
         # n_ep = 512
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
@@ -463,15 +467,15 @@ if __name__ == '__main__':
         )
         trainer.train(**kwargs)
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    train_reformer()
+    # train_reformer()
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
         # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        md_sz = 'base'
-        # md_sz = 'large'
+        # md_sz = 'base'
+        md_sz = 'large'
         mic(md_nm, md_sz)
 
         debug = 'debug' in md_sz
@@ -505,7 +509,7 @@ if __name__ == '__main__':
             # model_config = None
             model_config = dict(
                 max_length=1024,
-                # mem_len=512,
+                mem_len=512,
             )  # TODO: try a smaller model for memory consumption
             # model_config = dict(max_length=1024 + 512)
             rand_crop = 4
@@ -520,9 +524,9 @@ if __name__ == '__main__':
                 assert pch_kd != 'degree'
             channel_mixup = 'full'
             # channel_mixup = False
-            # wordpiece_tokenize = False
+            wordpiece_tokenize = False
             # wordpiece_tokenize = True
-            wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
+            # wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
             if not wordpiece_tokenize:
                 model_config['cutoffs'] = []
             # if pch_kd == 'midi':
@@ -554,10 +558,11 @@ if __name__ == '__main__':
             ))
         else:
             # bsz = 24
-            bsz = 19
-            # bsz = 12
+            # bsz = 19
+            bsz = 8
             train_args.update(dict(
                 # learning_rate=1e-4,
+                weight_decay=3e-2,
                 dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
                 per_device_eval_batch_size=12,
@@ -575,4 +580,4 @@ if __name__ == '__main__':
         trainer.train(**(train_call_args | kwargs))
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
         # tokenizer.save_pretrained(os_join(trainer.args.output_dir, 'tokenizer'))  # TODO
-    # train_xl()
+    train_xl()
