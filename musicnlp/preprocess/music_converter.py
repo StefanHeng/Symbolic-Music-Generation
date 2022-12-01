@@ -377,7 +377,15 @@ class MusicConverter:
 
         pitch, q_len = note.meta
         if pitch_kind != 'midi':  # 2nd element is step/scale degree, ignore; TODO: add to the rendered MXL?
-            pitch = pitch[0]
+            # Either a tuplet for a single pitches, or tuple of tuplets for a sequence of tuplet pitches
+            assert isinstance(pitch, tuple)
+            if note.type == ElmType.note:
+                assert isinstance(pitch[0], int)
+                pitch = pitch[0]
+            else:  # tuplet
+                assert isinstance(pitch[0], tuple)
+                pitch = tuple(p[0] for p in pitch)
+                mic(pitch)
         dur = m21.duration.Duration(quarterLength=q_len)
         if note.type == ElmType.note:
             if pitch == MusicVocabulary.rest_pitch_meta:
@@ -424,8 +432,9 @@ class MusicConverter:
             All occurrences of eos in the sequence are ignored
         :param title: Title of the music
         :param check_duration_match: See `make_score`
+        :param pitch_kind: See MusicVocabulary
         """
-        lst = self.str2music_elms(decoded, group=True, omit_eos=omit_eos)
+        lst = self.str2music_elms(decoded, group=True, omit_eos=omit_eos, pitch_kind=pitch_kind)
         ts, tp, key, lst = lst.time_sig, lst.tempo, lst.key, lst.elms_by_bar
 
         if self.mode == 'melody':
@@ -433,6 +442,7 @@ class MusicConverter:
         else:  # `full`
             d_notes = dict(melody=[], bass=[])
             for notes in lst:
+                mic(notes)
                 d = MusicConverter.split_notes(notes)
                 d_notes['melody'].append(MusicConverter.bar2notes(d['melody'], pitch_kind=pitch_kind))
                 d_notes['bass'].append(MusicConverter.bar2notes(d['bass'], pitch_kind=pitch_kind))
@@ -489,8 +499,9 @@ if __name__ == '__main__':
     # check_encode_decode()
 
     def check_broken_render():
+        pch_kd = 'degree'
         mc = MusicConverter(mode=md)
-        scr = mc.str2score(gen_broken, omit_eos=True, title='Check Broken')
+        scr = mc.str2score(gen_broken, omit_eos=True, title='Check Broken', pitch_kind=pch_kd)
         mic(scr)
 
         def check_notes():

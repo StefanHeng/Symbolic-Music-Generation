@@ -963,7 +963,7 @@ class MusicExtractor:
             # unroll tuplets
             d_notes = {k: [list(flatten_notes(notes)) for notes in lst_notes] for k, lst_notes in d_notes.items()}
             scr_out = make_score(
-                title=f'{title}, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo, d_notes=d_notes,
+                title=f'{title}\n, extracted', mode=self.mode, time_sig=ts_mode_str, tempo=mean_tempo, d_notes=d_notes,
                 check_duration_match=False  # already did it
             )
             dir_nm = sconfig(f'{DSET_DIR}.mxl-eg.dir_nm_extracted')
@@ -1040,7 +1040,7 @@ if __name__ == '__main__':
         # fnm = 'Faded'
         # fnm = 'Piano Sonata'
         # fnm = 'Ode to Joy'
-        fnm = 'Careless Whisper, 4'
+        # fnm = 'Careless Whisper, 4'
         # fnm = 'Merry Christmas'
         # fnm = 'Merry Go Round of Life'
         # fnm = 'Canon piano'
@@ -1048,11 +1048,38 @@ if __name__ == '__main__':
         # fnm = 'Shape of You'
         # fnm = '平凡之路'
         # fnm = 'LMD eg'
+
+        # fnm = 'Rolling in the Deep'
+        # fnm = "Stayin' Alive"
+        # fnm = 'Für Elise'
+        # fnm = 'Moonlight'
+        # fnm = 'Symphony No.5'
+        # fnm = 'Carmen'
+        # fnm = 'Señorita'
+        # fnm = 'My Heart Will Go On'
+        # fnm = 'Ave Maria'
+        # fnm = 'Flower Duet'
+        # fnm = 'Perfect'
+        # fnm = 'Hallelujah'
+        # fnm = 'Take Me Home Country Roads'
+        # fnm = 'Love Yourself'
+        # fnm = 'Despacito'
+        # fnm = 'Sugar'
+        # fnm = 'Beat It'
+        # fnm = 'The Marriage of Figaro'
+        # fnm = 'Serenade No. 13'
+        # fnm = 'KV 448'
+        # fnm = 'William Tell'
+        # fnm = 'Something Just Like This'
+        fnm = 'See You Again'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         mic(fnm)
         # mode = 'melody'
         mode = 'full'
-        me = MusicExtractor(warn_logger=logger, verbose=True, mode=mode, with_pitch_step=True)
+        me = MusicExtractor(
+            warn_logger=logger, verbose=True, mode=mode, with_pitch_step=True,
+            greedy_tuplet_pitch_threshold=16
+        )
 
         def check_mxl_out():
             me(fnm, exp='mxl')

@@ -56,6 +56,8 @@ def load_trained(
                 ('transf-xl', 'All', '128ep', 'degree_no-wp_2'): ['2022-11-24_16-29-59_transf-xl', 'trained'],
 
                 ('transf-xl', 'All', '128ep', 'no-wp_seg-len-512'): ['2022-11-27_13-03-40_transf-xl', 'trained'],
+
+                ('transf-xl', 'All', '128ep', 'large-wp'): ['2022-11-28_15-52-20_transf-xl', 'trained']
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -264,14 +266,15 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'no-wp_seg-len-512'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'large-wp'
     mic(md_nm, ds_nm, ep_nm, desc)
 
     # pch_kd = 'midi'
     pch_kd = 'degree'
     tk_args = dict(pitch_kind=pch_kd)
 
-    wp = False
+    wp = True
+    tk_args['fnm'] = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
 
     md = 'full'
     mdl = load_trained(model_key=md_k, mode=md)
@@ -321,11 +324,22 @@ if __name__ == '__main__':
     def export_generated(batched: bool = True):
         pch_sft = True
         fnms = [
-            'Careless Whisper, 4',
+            # 'Careless Whisper, 4',
             # 'Ode to Joy',
             'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
-            'Merry Christmas'
+            # 'Merry Christmas',
+
+            "Stayin' Alive", 'Señorita', 'Sugar', 'Something Just Like This', 'See You Again',
+
+            'Für Elise', 'Moonlight', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro', 'Serenade No. 13',
+            'KV 448', 'William Tell',
+
+            'My Heart Will Go On', 'Rolling in the Deep', 'Hallelujah'
         ]
+        fnm2bar = {
+            # 'Merry Go Round of Life': 4
+            'Moonlight': 4
+        }
         # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
         # gen_args = dict(top_k=32, top_p=0.95)
         # gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
@@ -343,15 +357,16 @@ if __name__ == '__main__':
         # gen_args = dict(top_k=32, penalty_alpha=0.3)
         # gen_args = dict(top_k=16, penalty_alpha=0.3)
         # gen_args = dict(top_k=8, penalty_alpha=0.5)
-        # gen_args = dict(top_k=8, penalty_alpha=0.6)  # Pretty good
+        gen_args = dict(top_k=8, penalty_alpha=0.6)  # Pretty good
         # gen_args = dict(top_k=16, penalty_alpha=0.6)
-        gen_args = dict(top_k=12, penalty_alpha=0.6)
+        # gen_args = dict(top_k=12, penalty_alpha=0.6)
 
         # n_bar = 4
         n_bar = 8
         for fnm in fnms:
+            mic(fnm)
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='{md=f}')
-            prompt = dict(path=path, n_bar=n_bar, insert_key=key_aug, pitch_shift=pch_sft)
+            prompt = dict(path=path, n_bar=fnm2bar.get(fnm, n_bar), insert_key=key_aug, pitch_shift=pch_sft)
 
             def call():
                 mg(

@@ -455,6 +455,7 @@ if __name__ == '__main__':
         if 'debug' not in md_sz:
             bsz = 96
             train_args.update(dict(
+                learning_rate=1e-4,
                 dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
                 per_device_eval_batch_size=bsz
@@ -529,9 +530,6 @@ if __name__ == '__main__':
             # wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
             if not wordpiece_tokenize:
                 model_config['cutoffs'] = []
-            # if pch_kd == 'midi':
-            #     wordpiece_tokenize = ''
-            # wordpiece_tokenize = '22-11-08_WordPiece-Tokenizer_{dnm=POP&MST}_{vsz=32768, n=2185, pch=d, aug-key=T}'
             # prop_mix = False
             prop_mix = 1280
         mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, wordpiece_tokenize, prop_mix)
@@ -561,11 +559,12 @@ if __name__ == '__main__':
             # bsz = 19
             bsz = 8
             train_args.update(dict(
-                # learning_rate=1e-4,
-                weight_decay=3e-2,
+                learning_rate=1e-4,
+                # weight_decay=3e-2,
+                weight_decay=1e-1,
                 dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
-                per_device_eval_batch_size=12,
+                per_device_eval_batch_size=12
             ))
         mdl, tokenizer, trainer = get_all_setup(
             model_name=md_nm, model_size=md_sz, model_config=model_config,
