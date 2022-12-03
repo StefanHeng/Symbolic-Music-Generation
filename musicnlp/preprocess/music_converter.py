@@ -385,7 +385,6 @@ class MusicConverter:
             else:  # tuplet
                 assert isinstance(pitch[0], tuple)
                 pitch = tuple(p[0] for p in pitch)
-                mic(pitch)
         dur = m21.duration.Duration(quarterLength=q_len)
         if note.type == ElmType.note:
             if pitch == MusicVocabulary.rest_pitch_meta:
@@ -442,7 +441,6 @@ class MusicConverter:
         else:  # `full`
             d_notes = dict(melody=[], bass=[])
             for notes in lst:
-                mic(notes)
                 d = MusicConverter.split_notes(notes)
                 d_notes['melody'].append(MusicConverter.bar2notes(d['melody'], pitch_kind=pitch_kind))
                 d_notes['bass'].append(MusicConverter.bar2notes(d['bass'], pitch_kind=pitch_kind))

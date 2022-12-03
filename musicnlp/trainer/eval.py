@@ -57,7 +57,8 @@ def load_trained(
 
                 ('transf-xl', 'All', '128ep', 'no-wp_seg-len-512'): ['2022-11-27_13-03-40_transf-xl', 'trained'],
 
-                ('transf-xl', 'All', '128ep', 'large-wp'): ['2022-11-28_15-52-20_transf-xl', 'trained']
+                ('transf-xl', 'All', '128ep', 'large-wp'): ['2022-11-28_15-52-20_transf-xl', 'trained'],
+                ('transf-xl', 'All', '128ep', 'no-ch-mix'): ['2022-11-30_20-00-10_transf-xl', 'trained'],
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -97,7 +98,8 @@ class MusicGenerator:
     def __init__(
             self, model: Union[MyReformerModelWithLMHead, MyTransfoXLLMHeadModel], mode: str = 'full',
             max_length: int = None, vocab: MusicVocabulary = None,
-            wordpiece_tokenize: bool = True, tokenizer_args: Dict = None, augment_key: bool = False
+            wordpiece_tokenize: bool = True, tokenizer_args: Dict = None, augment_key: bool = False,
+            pick_key: str = 'sample'
     ):
         self.model = model
         if max_length:
@@ -119,6 +121,9 @@ class MusicGenerator:
             mode=mode, precision=self.tokenizer.precision, vocab_midi=self.vocab
         )
         self.augment_key = augment_key
+
+        ca.check_mismatch('Select Key Scheme', pick_key, ['sample', 'max', 'first-2'])
+        self.pick_key = pick_key
 
         sr_vocab = vocab if self.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
         self.sr = transform.SanitizeRare(vocab=sr_vocab, for_midi=self.pitch_kind == 'midi', return_as_list=True)
@@ -166,7 +171,14 @@ class MusicGenerator:
             path = prompt_args.get('path', None)
             assert path, f'A path to a song must be provided to {pl.i("prompt_args")} to extract key ' \
                          f'when key is not already provided'
-            ins_key = pt_sample(KeyFinder(path)(return_type='dict'))  # just sample a key for generation, TODO?
+            keys: Dict[str, float] = KeyFinder(path)(return_type='dict')
+            if self.pick_key in ['sample', 'first-2']:
+                if self.pick_key == 'first-2':
+                    _keys = sorted(keys.keys(), key=keys.get)[:2]
+                    keys = {k: keys[k] for k in _keys}
+                ins_key = pt_sample(keys)
+            else:  # `max`
+                ins_key = max(keys, key=keys.get)
         if mode == 'unconditional':
             # TODO: sample the time signature and tempos?
             prompt = [self.vocab.meta2tok(VocabType.time_sig, (4, 4)), self.vocab.meta2tok(VocabType.tempo, 120)]
@@ -247,7 +259,10 @@ class MusicGenerator:
                 json.dump(dict(meta=d_log, generation_args=args, generated=decoded), f, indent=4)
             try:
                 # TODO: `makeNotation` False always breaks on GL
-                score.write(fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'), makeNotation=False)
+                score.write(
+                    fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'),
+                    # makeNotation=False
+                )
             except Exception as e:
                 vocab = self.mc.vocabs.degree if self.augment_key else self.mc.vocabs.midi
                 raise ValueError(f'Failed to render MXL from decoded output {vocab.colorize_tokens(decoded)}') from e
@@ -266,14 +281,15 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'large-wp'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'no-ch-mix'
     mic(md_nm, ds_nm, ep_nm, desc)
 
     # pch_kd = 'midi'
     pch_kd = 'degree'
     tk_args = dict(pitch_kind=pch_kd)
 
-    wp = True
+    # wp = True
+    wp = False
     tk_args['fnm'] = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
 
     md = 'full'
@@ -284,7 +300,9 @@ if __name__ == '__main__':
     # step vocab for `MusicConverter::mxl2str`
 
     key_aug = True
-    mg = MusicGenerator(model=mdl, mode=md, tokenizer_args=tk_args, augment_key=True, wordpiece_tokenize=wp)
+    mg = MusicGenerator(
+        model=mdl, mode=md, tokenizer_args=tk_args, augment_key=True, wordpiece_tokenize=wp, pick_key='first-2'
+    )
 
     def explore_generate_unconditional():
         # as in `CTRL` paper
@@ -334,7 +352,8 @@ if __name__ == '__main__':
             'Für Elise', 'Moonlight', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro', 'Serenade No. 13',
             'KV 448', 'William Tell',
 
-            'My Heart Will Go On', 'Rolling in the Deep', 'Hallelujah'
+            # 'My Heart Will Go On',
+            'Rolling in the Deep', 'Hallelujah'
         ]
         fnm2bar = {
             # 'Merry Go Round of Life': 4
@@ -350,21 +369,20 @@ if __name__ == '__main__':
         # gen_args = dict(top_k=32)
         # gen_args = dict(top_k=64, temperature=2.0)
 
-        # gen_args = dict(top_p=0.75)
+        gen_args = dict(top_p=0.75)
         # gen_args = dict(top_p=0.85)
         # gen_args = dict(top_p=0.85, repetition_penalty=1.2)  # penalty as in CTRL paper
 
         # gen_args = dict(top_k=32, penalty_alpha=0.3)
         # gen_args = dict(top_k=16, penalty_alpha=0.3)
         # gen_args = dict(top_k=8, penalty_alpha=0.5)
-        gen_args = dict(top_k=8, penalty_alpha=0.6)  # Pretty good
+        # gen_args = dict(top_k=8, penalty_alpha=0.6)  # Pretty good
         # gen_args = dict(top_k=16, penalty_alpha=0.6)
         # gen_args = dict(top_k=12, penalty_alpha=0.6)
 
         # n_bar = 4
         n_bar = 8
         for fnm in fnms:
-            mic(fnm)
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='{md=f}')
             prompt = dict(path=path, n_bar=fnm2bar.get(fnm, n_bar), insert_key=key_aug, pitch_shift=pch_sft)
 

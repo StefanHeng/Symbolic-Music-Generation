@@ -274,11 +274,13 @@ if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
     def check_get_key():
-        path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
+        # fnm = 'Merry Go Round of Life'
+        fnm = 'Symphony No.5'
+        path = music_util.get_my_example_songs(fnm, fmt='MXL')
         mic(path)
         kf = KeyFinder(path)
         mic(kf(return_type='enum'))
-    # check_get_key()
+    check_get_key()
 
     def check_deprecated_scale_deg():
         path = music_util.get_my_example_songs('Merry Go Round of Life', fmt='MXL')
@@ -345,4 +347,4 @@ if __name__ == '__main__':
         df = pd.DataFrame(rows)
         pd.set_option('display.max_rows', None)
         mic(df)
-    check_scale_degree_map()
+    # check_scale_degree_map()

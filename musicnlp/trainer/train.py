@@ -475,8 +475,8 @@ if __name__ == '__main__':
         # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        # md_sz = 'base'
-        md_sz = 'large'
+        md_sz = 'base'
+        # md_sz = 'large'
         mic(md_nm, md_sz)
 
         debug = 'debug' in md_sz
@@ -510,10 +510,10 @@ if __name__ == '__main__':
             # model_config = None
             model_config = dict(
                 max_length=1024,
-                mem_len=512,
+                mem_len=512,  # Helps improve performance
             )  # TODO: try a smaller model for memory consumption
             # model_config = dict(max_length=1024 + 512)
-            rand_crop = 4
+            rand_crop = 32
             # pch_kd = 'midi'
             pch_kd = 'degree'
             insert_key = True
@@ -523,11 +523,11 @@ if __name__ == '__main__':
                 assert insert_key and pch_kd == 'degree'
             else:
                 assert pch_kd != 'degree'
-            channel_mixup = 'full'
-            # channel_mixup = False
-            wordpiece_tokenize = False
+            # channel_mixup = 'full'
+            channel_mixup = False
+            # wordpiece_tokenize = False
             # wordpiece_tokenize = True
-            # wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
+            wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
             if not wordpiece_tokenize:
                 model_config['cutoffs'] = []
             # prop_mix = False
@@ -556,12 +556,12 @@ if __name__ == '__main__':
             ))
         else:
             # bsz = 24
-            # bsz = 19
-            bsz = 8
+            bsz = 16
+            # bsz = 8
             train_args.update(dict(
-                learning_rate=1e-4,
+                # learning_rate=1e-4,
                 # weight_decay=3e-2,
-                weight_decay=1e-1,
+                # weight_decay=1e-1,
                 dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
                 per_device_eval_batch_size=12

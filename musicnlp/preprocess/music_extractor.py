@@ -1071,7 +1071,8 @@ if __name__ == '__main__':
         # fnm = 'KV 448'
         # fnm = 'William Tell'
         # fnm = 'Something Just Like This'
-        fnm = 'See You Again'
+        # fnm = 'See You Again'
+        fnm = 'Overture from William Tell 2'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         mic(fnm)
         # mode = 'melody'
