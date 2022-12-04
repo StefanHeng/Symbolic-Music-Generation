@@ -240,10 +240,11 @@ class MusicGenerator:
             assert len(idxs_eob) > 0, f'No start of bar token found when {pl.i("truncate_to_sob")} enabled'
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
+        print(f'decoded {decoded}')
         title = f'{save}-generated' if save else None
         score = self.mc.str2score(
             decoded, omit_eos=True, title=title, pitch_kind=self.pitch_kind, 
-            check_duration_match=True
+            check_duration_match='each-other'
         )
         if save:
             # `makeNotations` disabled any clean-up by music21, intended to remove `tie`s added
@@ -261,7 +262,7 @@ class MusicGenerator:
                 # TODO: `makeNotation` False always breaks on GL
                 score.write(
                     fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'),
-                    # makeNotation=False
+                    makeNotation=False
                 )
             except Exception as e:
                 vocab = self.mc.vocabs.degree if self.augment_key else self.mc.vocabs.midi
@@ -342,19 +343,15 @@ if __name__ == '__main__':
     def export_generated(batched: bool = True):
         pch_sft = True
         fnms = [
-            # 'Careless Whisper, 4',
-            # 'Ode to Joy',
-            'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
-            # 'Merry Christmas',
+            # 'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
 
-            "Stayin' Alive", 'Señorita', 'Sugar', 'Something Just Like This', 'See You Again',
+            # "Stayin' Alive", 'Señorita', 'Sugar', 'Something Just Like This', 'See You Again',
 
-            'Für Elise', 'Moonlight', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro', 'Serenade No. 13',
-            'KV 448',
+            # 'Für Elise',
+            # 'Moonlight', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro', 'Serenade No. 13', 'KV 448',
             # 'William Tell',
             'William Tell 2',
 
-            # 'My Heart Will Go On',
             'Rolling in the Deep', 'Hallelujah',
             'Autumn Leaves (freemidi)'
         ]

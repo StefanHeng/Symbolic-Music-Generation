@@ -17,7 +17,7 @@ class MyTransfoXLConfig(TransfoXLConfig):
         'debug': dict(d_model=128, n_head=8, n_layer=4),
         'debug-large': dict(d_model=128, n_head=8, n_layer=4),
         'tiny': dict(d_model=256, n_head=8, n_layer=6),
-        'small': dict(d_model=512, n_head=8, n_layer=6),
+        'small': dict(d_model=512, n_head=8, n_layer=12),
         'base': dict(d_model=768, n_head=12, n_layer=12),
         'large': dict(d_model=1024, n_head=16, n_layer=18)
     }

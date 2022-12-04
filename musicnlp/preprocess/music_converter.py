@@ -423,7 +423,7 @@ class MusicConverter:
 
     def str2score(
             self, decoded: Union[str, List[str]], omit_eos: bool = False,
-            title: str = None, check_duration_match: bool = True, pitch_kind: str = 'midi'
+            title: str = None, check_duration_match: str = None, pitch_kind: str = 'midi'
     ) -> Score:
         """
         :param decoded: A string of list of tokens to convert to a music21 score
@@ -444,7 +444,10 @@ class MusicConverter:
                 d = MusicConverter.split_notes(notes)
                 d_notes['melody'].append(MusicConverter.bar2notes(d['melody'], pitch_kind=pitch_kind))
                 d_notes['bass'].append(MusicConverter.bar2notes(d['bass'], pitch_kind=pitch_kind))
-        time_sig = f'{ts.meta[0]}/{ts.meta[1]}'
+        if ts.meta == self.vocabs.midi.rare_time_sig_meta:  # A rare time sig
+            time_sig = None
+        else:
+            time_sig = f'{ts.meta[0]}/{ts.meta[1]}'
         return make_score(
             title=title, mode=self.mode, time_sig=time_sig, tempo=tp.meta, d_notes=d_notes,
             check_duration_match=check_duration_match
@@ -497,9 +500,14 @@ if __name__ == '__main__':
     # check_encode_decode()
 
     def check_broken_render():
+        import os
+        from musicnlp.util import u
+
         pch_kd = 'degree'
         mc = MusicConverter(mode=md)
-        scr = mc.str2score(gen_broken, omit_eos=True, title='Check Broken', pitch_kind=pch_kd)
+        scr = mc.str2score(
+            gen_broken, omit_eos=True, title='Check Broken', pitch_kind=pch_kd, check_duration_match='each-other',
+        )
         mic(scr)
 
         def check_notes():
@@ -522,5 +530,11 @@ if __name__ == '__main__':
                 d[part.partName] = [bar.offset for bar in part[Measure]]
             mic(d)
         # check_same_offset()
-        scr.show()
+        # scr.show()
+        path = os.path.join(u.proj_path, 'musicnlp', 'preprocess', 'check_broken')
+        os.makedirs(path, exist_ok=True)
+        scr.write(
+            fmt='mxl', fp=os.path.join(path, f'{now(for_path=True)}.mxl'),
+            makeNotation=False
+        )
     check_broken_render()

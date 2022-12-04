@@ -655,7 +655,7 @@ def insert_ts_n_tp_to_part(part: Part, time_sig: str, tempo: int) -> Part:
 def make_score(
         title: str = f'{PKG_NM} Song', composer: str = PKG_NM, mode: str = 'melody',
         time_sig: str = '4/4', tempo: int = 120, d_notes: Dict[str, List[List[SNote]]] = None,
-        check_duration_match: bool = True
+        check_duration_match: str = None
 ) -> Score:
     """
     :param title: Title of the score
@@ -673,12 +673,15 @@ def make_score(
     assert len(parts) <= 2  # sanity check, see `get_score_skeleton`
     part_melody = parts[0]
     assert 'Melody' in part_melody.partName
+    ca.check_mismatch('Check Bar Duration Scheme', check_duration_match, ['time-sig', 'each-other'])
 
     def get_bars(lst_notes: List[List[SNote]], is_bass: bool = False) -> List[Measure]:
         lst_bars = []
         for i, notes in enumerate(lst_notes):
-            if check_duration_match:
-                assert all(n.offset == 0 for n in notes)  # sanity check
+            assert all(n.offset == 0 for n in notes)  # sanity check
+
+            if check_duration_match == 'time-sig':
+                assert time_sig is not None and time_sig != 'TimeSig_rare'  # sanity check
                 dur_notes, dur_bar = get_notes_duration(notes), time_sig2bar_dur(time_sig)
                 diff = dur_notes-dur_bar
                 if abs(diff) > eps:
@@ -737,15 +740,37 @@ def make_score(
                 bar.insert(m21.clef.BassClef())
             lst_bars.append(bar)
         return lst_bars
-    part_melody.append(get_bars(d_notes['melody']))
+    lst_notes_melody = get_bars(d_notes['melody'])
+    lst_notes_bass = None
+    if mode == 'full':
+        lst_notes_bass = get_bars(d_notes['bass'], is_bass=True)
+        if check_duration_match == 'each-other':
+            for idx, (notes_m, notes_b) in enumerate(zip(lst_notes_melody, lst_notes_bass)):
+                dur_m, dur_b = get_notes_duration(notes_m), get_notes_duration(notes_b)
+                d = dict(melody=dur_m, bass=dur_b)
+
+                if abs(dur_m-dur_b) > eps:
+                    if dur_m > dur_b:
+                        gap = dur_m - dur_b
+                        notes_b.append(Rest(quarterLength=gap))
+                    else:
+                        gap = dur_b - dur_m
+                        notes_m.append(Rest(quarterLength=gap))
+                    mic(idx, dur_m, dur_b)
+                    logger.warning(f'Melody and bass notes duration don\'t match at bar {pl.i(idx+1)} '
+                                   f'w/ durations {pl.i(d)}')
+
+    part_melody.append(lst_notes_melody)
     bar0 = part_melody.measure(0)  # Insert metadata into 1st bar
     bar0.insert(MetronomeMark(number=tempo))
-    bar0.insert(TimeSignature(time_sig))
+    mic(time_sig)
+    if time_sig is not None and time_sig != 'TimeSig_rare':  # so that edge case runs...
+        bar0.insert(TimeSignature(time_sig))
 
     if mode == 'full':
         part_bass = parts[1]  # see `get_score_skeleton`
-        assert 'Bass' in part_bass.partName
-        part_bass.append(get_bars(d_notes['bass'], is_bass=True))
+        assert 'Bass' in part_bass.partName  # sanity check
+        part_bass.append(lst_notes_bass)
 
         # sanity check
         offsets_m = [bar.offset for bar in part_melody[Measure]]

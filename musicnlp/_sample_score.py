@@ -459,107 +459,66 @@ sample_full_step = 'TimeSig_1/4 Tempo_115 <bar> <melody> p_r d_1/2 p_2/5_C d_1/2
                    'p_6/2_F d_1 <bar> <melody> p_6/6_F d_1 <bass> p_6/2_F d_1 <bar> <melody> p_6/6_F d_1/2 p_r d_1/2 ' \
                    '<bass> p_6/2_F d_1/2 p_r d_1/2 </s>'
 
-gen_broken = 'TimeSig_2/2 Tempo_50 Key_EMajor <bar> <melody> <tup> p_9/3_4 p_2/4_7 p_5/4_1 d_1 </tup> <tup> p_9/3_4 ' \
-             'p_2/4_7 p_5/4_1 d_1 </tup> <tup> p_9/3_4 p_2/4_7 p_5/4_1 d_1 </tup> <tup> p_9/3_4 p_2/4_7 p_5/4_1 d_1 ' \
-             '</tup> <bass> p_2/2_7 d_4 <bar> <melody> <tup> p_9/3_4 p_2/4_7 p_5/4_1 d_1 </tup> <tup> p_9/3_4 p_2/4_7 ' \
-             'p_5/4_1 d_1 </tup> <tup> p_9/3_4 p_2/4_7 p_5/4_1 d_1 </tup> <tup> p_9/3_4 p_2/4_7 p_5/4_1 d_1 </tup> ' \
-             '<bass> p_12/2_6 d_4 <bar> <melody> <tup> p_10/3_4 p_2/4_7 p_5/4_1 d_1 </tup> <tup> p_10/3_4 p_2/4_7 ' \
-             'p_5/4_1 d_1 </tup> <tup> p_10/3_4 p_3/4_7 p_7/4_3 d_1 </tup> <tup> p_10/3_4 p_3/4_7 p_7/4_3 d_1 </tup> ' \
-             '<bass> p_10/1_4 d_2 p_7/1_3 d_2 <bar> <melody> <tup> p_9/3_4 p_1/4_6 p_7/4_3 d_1 </tup> <tup> p_9/3_4 ' \
-             'p_2/4_7 p_5/4_1 d_1 </tup> <tup> p_9/3_4 p_2/4_7 p_4/4_1 d_1 </tup> <tup> p_7/3_3 p_1/4_6 p_4/4_1 d_1 ' \
-             '</tup> <bass> p_9/1_4 d_2 p_9/1_4 d_2 <bar> <melody> <tup> p_5/3_1 p_9/3_4 p_2/4_7 d_1 </tup> <tup> ' \
-             'p_9/3_4 p_2/4_7 p_5/4_1 d_1 </tup> <tup> p_9/3_4 p_2/4_7 p_5/4_1 d_1 </tup> p_9/4_4 d_1 <bass> p_2/2_7 ' \
-             'd_4 <bar> <melody> <tup> p_9/4_4 p_9/4_4 p_9/4_4 d_1 </tup> p_9/4_4 d_2 p_9/4_4 d_1 <bass> p_1/2_6 d_4 ' \
-             '<bar> <melody> <tup> p_9/4_4 p_9/4_4 p_9/4_4 d_1 </tup> p_9/4_4 d_1 <tup> p_10/4_4 p_10/4_4 p_10/4_4 ' \
-             'd_1 </tup> p_10/4_4 d_1 <bass> p_2/2_7 d_2 p_7/1_3 d_2 <bar> <melody> <tup> p_9/4_4 p_9/4_4 p_9/4_4 d_1 ' \
-             '</tup> <tup> p_9/4_4 p_9/4_4 p_9/4_4 d_1 </tup> p_7/4_3 d_1 p_12/5_6 d_1 <bass> p_12/2_6 d_2 p_12/2_6 ' \
-             'd_2 <bar> <bass> <tup> p_1/4_6 p_1/4_6 p_1/4_6 d_1 </tup> <melody> <tup> p_6/4_2 p_6/4_2 p_6/4_2 d_1 ' \
-             '</tup> <tup> p_4/4_1 p_4/4_1 p_4/4_1 d_1 </tup> <tup> p_4/4_1 p_4/4_1 p_4/4_1 d_1 </tup> <bass> <tup> ' \
-             'p_4/4_1 p_4/4_1 p_4/4_1 d_1 </tup> <melody> <tup> p_4/4_1 p_4/4_1 p_4/4_1 d_1 </tup> <bass> <tup> ' \
-             'p_4/4_1 p_4/4_1 p_4/4_1 d_1 </tup> <tup> p_4/4_1 p_4/4_1 p_4/4_1 d_1 </tup> <bar> <bass> <tup> p_4/4_1 ' \
-             'p_4/4_1 p_4/4_1 d_1 </tup> <melody> <tup> p_7/4_3 p_7/4_3 p_9/4_4 d_1 </tup> p_9/4_4 d_1 <tup> p_10/4_4 ' \
-             'p_10/4_4 p_10/4_4 d_1 </tup> <bass> <tup> p_4/4_1 p_4/4_1 p_4/4_1 d_1 </tup> <melody> p_10/4_4 d_1 ' \
-             '<bass> <tup> p_4/4_1 p_4/4_1 p_4/4_1 d_1 </tup> <tup> p_4/4_1 p_4/4_1 p_4/4_1 d_1 </tup> <bar> <melody> ' \
-             '<tup> p_9/4_4 p_9/4_4 p_9/4_4 d_1 </tup> <tup> p_9/4_4 p_9/4_4 p_9/4_4 d_1 </tup> <bass> <tup> p_1/4_6 ' \
-             'p_1/4_6 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <tup> p_6/4_2 p_1/4_6 p_2/4_7 d_1 ' \
-             '</tup> <melody> <tup> p_10/4_5 p_10/4_5 p_10/4_5 d_1 </tup> <bass> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 ' \
-             '</tup> <melody> <tup> p_10/4_5 p_10/4_5 p_10/4_5 d_1 </tup> <bar> <melody> <tup> p_10/4_5 p_10/4_5 ' \
-             'p_10/4_5 d_1 </tup> <tup> p_9/4_3 p_9/4_3 p_9/4_3 d_1 </tup> <tup> p_10/4_5 p_10/4_5 p_10/4_5 d_1 ' \
-             '</tup> <tup> p_10/4_5 p_10/4_5 p_10/4_5 d_1 </tup> <bass> <tup> p_1/4_6 p_1/4_6 p_2/4_7 d_1 </tup> ' \
-             '<tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <tup> p_1/4_6 p_9/3_4 p_2/4_7 p_1/4_6 p_2/4_7 d_2 </tup> <bar> ' \
-             '<bass> <tup> p_1/4_6 p_1/4_6 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <tup> p_6/4_2 ' \
-             'p_1/4_6 p_2/4_7 d_1 </tup> <melody> <tup> p_10/4_5 p_10/4_5 p_10/4_5 d_1 </tup> <bass> <tup> p_1/4_6 ' \
-             'p_4/4_1 p_5/4_1 d_1 </tup> <melody> <tup> p_12/4_3 p_12/4_3 p_12/4_3 d_1 </tup> <tup> p_10/4_5 p_10/4_5 ' \
-             'p_10/4_5 d_1 </tup> <tup> p_10/4_5 p_10/4_5 p_10/4_5 d_1 </tup> <bar> <melody> p_9/4_4 d_1 <bass> <tup> ' \
-             'p_5/4_1 p_5/4_1 p_2/4_7 d_1 </tup> <melody> p_9/4_4 d_1 <bass> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> ' \
-             '<tup> p_6/4_2 p_1/4_6 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <melody> <tup> ' \
-             'p_5/4_1 p_5/4_1 p_5/4_1 d_1 </tup> <tup> p_5/4_1 p_5/4_1 p_5/4_1 d_1 </tup> <bar> <bass> <tup> p_4/4_1 ' \
-             'p_4/4_1 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <tup> p_6/4_2 p_1/4_6 p_2/4_7 d_1 ' \
-             '</tup> <tup> p_9/3_4 p_4/4_1 p_5/4_1 d_1 </tup> <melody> <tup> p_9/4_4 p_9/4_4 p_2/5_7 d_1 </tup> ' \
-             'p_4/5_1 d_1 <tup> p_5/5_2 p_5/5_2 p_5/5_2 d_1 </tup> p_6/5_2 d_1 <bar> <melody> <tup> p_6/5_2 p_6/5_2 ' \
-             'p_7/5_3 d_1 </tup> <bass> <tup> p_5/4_1 p_5/4_1 p_2/4_7 d_1 </tup> <melody> p_7/5_3 d_1 <bass> <tup> ' \
-             'p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <melody> <tup> p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> p_7/5_3 d_1 <bass> ' \
-             '<tup> p_1/4_6 p_9/3_4 p_2/4_7 d_1 </tup> <tup> p_4/4_1 p_1/4_6 p_2/4_7 d_1 </tup> <bar> <melody> <tup> ' \
-             'p_7/5_3 p_7/5_3 p_9/5_4 d_1 </tup> p_9/5_4 d_1 <bass> <tup> p_4/4_1 p_4/4_1 p_2/4_7 d_1 </tup> <melody> ' \
-             '<tup> p_9/5_4 p_9/5_4 p_7/5_3 d_1 </tup> <bass> <tup> p_9/3_4 p_4/4_1 p_5/4_1 d_1 </tup> <melody> ' \
-             'p_9/5_4 d_1 <bass> <tup> p_6/4_2 p_1/4_6 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> ' \
-             '<bar> <bass> <tup> p_6/4_2 p_6/4_2 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <tup> ' \
-             'p_9/3_4 p_6/3_2 p_2/4_7 d_1 </tup> <tup> p_9/3_4 p_1/4_6 p_5/4_1 d_1 </tup> <melody> <tup> p_6/5_2 p_r ' \
-             'p_7/5_3 d_1 </tup> p_7/5_3 d_1 <tup> p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> p_7/5_3 d_1 <bar> <bass> <tup> ' \
-             'p_6/4_2 p_6/4_2 p_2/4_7 d_1 </tup> <melody> <tup> p_7/5_3 p_7/5_3 p_6/5_2 d_1 </tup> <bass> <tup> ' \
-             'p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <tup> p_6/4_2 p_1/4_6 p_2/4_7 d_1 </tup> <tup> p_9/3_4 p_4/4_1 ' \
-             'p_5/4_1 d_1 </tup> <melody> p_5/5_1 d_1 <tup> p_1/5_6 p_1/5_6 p_2/5_7 d_1 </tup> p_2/5_7 d_1 <bar> ' \
-             '<bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <melody> <tup> p_4/5_1 p_4/5_1 p_7/5_3 d_1 </tup> ' \
-             'p_9/5_4 d_1 <bass> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <tup> p_6/4_2 p_1/4_6 p_2/4_7 d_1 </tup> ' \
-             '<tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <melody> <tup> p_5/5_2 p_5/5_2 p_5/5_2 d_1 </tup> p_6/5_2 d_1 ' \
-             '<bar> <melody> <tup> p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> p_7/5_3 d_1 <bass> <tup> p_6/4_2 p_6/4_2 ' \
-             'p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <melody> <tup> p_6/5_2 p_6/5_2 p_7/5_3 d_1 ' \
-             '</tup> p_7/5_3 d_1 <bass> <tup> p_6/4_2 p_1/4_6 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 ' \
-             '</tup> <bar> <bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> ' \
-             '<tup> p_1/4_6 p_9/3_4 p_2/4_7 d_1 </tup> <melody> <tup> p_7/5_3 p_7/5_3 p_6/5_2 d_1 </tup> p_5/5_1 d_1 ' \
-             '<tup> p_1/5_6 p_1/5_6 p_2/5_7 d_1 </tup> p_2/5_7 d_1 <bass> <tup> p_9/3_4 p_1/4_6 p_5/4_1 d_1 </tup> ' \
-             '<bar> <melody> <tup> p_4/5_1 p_4/5_1 p_7/5_3 d_1 </tup> <bass> <tup> p_4/4_1 p_2/4_7 p_1/4_6 d_1 </tup> ' \
-             '<melody> p_9/5_4 d_1 <tup> p_5/5_2 p_5/5_2 p_5/5_2 d_1 </tup> p_6/5_2 d_1 <bass> <tup> p_1/4_6 p_4/4_1 ' \
-             'p_5/4_1 d_1 </tup> <tup> p_1/4_6 p_9/3_4 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> ' \
-             '</s> <bass> <tup> p_6/4_2 p_6/4_2 p_2/4_7 d_1 </tup> <melody> <tup> p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> ' \
-             'p_7/5_3 d_1 <tup> p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> <bass> <tup> p_10/3_4 p_1/4_6 p_5/4_1 d_1 </tup> ' \
-             '<melody> p_7/5_3 d_1 <bass> <tup> p_6/4_2 p_1/4_6 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 ' \
-             '</tup> <bar> <bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <tup> p_8/3_3 p_1/4_6 p_5/4_1 d_1 </tup> ' \
-             '<tup> p_1/4_6 p_10/3_4 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <melody> <tup> ' \
-             'p_7/5_3 p_7/5_3 p_6/5_2 d_1 </tup> p_5/5_1 d_1 <tup> p_1/5_6 p_1/5_6 p_2/5_7 d_1 </tup> p_2/5_7 d_1 ' \
-             '<bar> <melody> <tup> p_4/5_1 p_4/5_1 p_7/5_3 d_1 </tup> p_9/5_4 d_1 <bass> <tup> p_7/4_3 p_7/4_3 ' \
-             'p_2/4_7 d_1 </tup> <melody> <tup> p_5/5_2 p_5/5_2 p_5/5_2 d_1 </tup> p_6/5_2 d_1 <bass> <tup> p_8/3_3 ' \
-             'p_1/4_6 p_5/4_1 d_1 </tup> <tup> p_1/4_6 p_10/3_4 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 ' \
-             '</tup> <bar> <melody> <tup> p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> p_7/5_3 d_1 <tup> p_6/5_2 p_6/5_2 ' \
-             'p_7/5_3 d_1 </tup> p_7/5_3 d_1 <bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <tup> p_1/3_6 p_8/3_3 ' \
-             'p_5/4_1 d_1 </tup> <tup> p_1/4_6 p_10/3_4 p_2/4_7 d_1 </tup> <tup> p_8/3_3 p_1/4_6 p_7/4_3 d_1 </tup> ' \
-             '<bar> <melody> <tup> p_7/5_3 p_7/5_3 p_6/5_2 d_1 </tup> <bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> ' \
-             '<melody> p_5/5_1 d_1 <tup> p_1/5_6 p_2/5_7 p_2/5_7 d_1 </tup> p_2/5_7 d_1 <bass> <tup> p_8/3_3 p_1/4_6 ' \
-             'p_5/4_1 d_1 </tup> <tup> p_1/4_6 p_10/3_4 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> ' \
-             '<bar> <melody> <tup> p_4/5_1 p_4/5_1 p_7/5_3 d_1 </tup> p_9/5_4 d_1 <tup> p_5/5_2 p_5/5_2 p_5/5_2 d_1 ' \
-             '</tup> p_6/5_2 d_1 <bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 ' \
-             '</tup> <tup> p_9/3_4 p_6/3_2 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <bar> <bass> ' \
-             '<tup> p_4/4_1 p_4/4_1 p_12/3_5 d_1 </tup> <melody> <tup> p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> p_8/5_3 d_1 ' \
-             '<bass> <tup> p_1/4_6 p_7/3_3 p_1/4_6 d_1 </tup> <tup> p_1/4_6 p_7/3_3 p_1/4_6 d_1 </tup> <melody> <tup> ' \
-             'p_1/5_6 p_1/5_6 p_2/5_7 d_1 </tup> p_2/5_7 d_1 <bass> <tup> p_2/4_7 p_4/3_1 p_1/4_6 d_1 </tup> <bar> ' \
-             '<melody> <tup> p_4/5_1 p_4/5_1 p_7/5_3 d_1 </tup> p_9/5_4 d_1 <tup> p_5/5_2 p_5/5_2 p_5/5_2 d_1 </tup> ' \
-             'p_6/5_2 d_1 <bass> <tup> p_4/4_1 p_4/4_1 p_12/3_5 d_1 </tup> <tup> p_1/4_6 p_7/3_3 p_1/4_6 d_1 </tup> ' \
-             '<tup> p_1/4_6 p_1/4_6 p_9/3_4 d_1 </tup> <tup> p_6/3_2 p_9/3_4 p_2/4_7 d_1 </tup> <bar> <melody> <tup> ' \
-             'p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> p_8/5_3 d_1 <tup> p_1/5_6 p_1/5_6 p_1/5_6 d_1 </tup> <bass> <tup> ' \
-             'p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <tup> p_8/3_3 p_1/4_6 p_5/4_1 d_1 </tup> <tup> p_1/4_6 p_10/3_4 ' \
-             'p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <melody> p_2/5_7 d_1 <bar> <melody> <tup> ' \
-             'p_4/5_1 p_4/5_1 p_7/5_3 d_1 </tup> p_9/5_4 d_1 <bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <melody> ' \
-             '<tup> p_5/5_2 p_5/5_2 p_5/5_2 d_1 </tup> p_6/5_2 d_1 <bass> <tup> p_8/3_3 p_1/4_6 p_5/4_1 d_1 </tup> ' \
-             '<tup> p_1/4_6 p_10/3_4 p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <bar> <melody> <tup> ' \
-             'p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> p_8/5_3 d_1 <tup> p_1/5_6 p_1/5_6 p_2/5_7 d_1 </tup> <bass> <tup> ' \
-             'p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <tup> p_8/3_3 p_1/4_6 p_5/4_1 d_1 </tup> <tup> p_1/4_6 p_10/3_4 ' \
-             'p_2/4_7 d_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> <melody> p_2/5_7 d_1 <bar> <melody> <tup> ' \
-             'p_4/5_1 p_4/5_1 p_7/5_3 d_1 </tup> <bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <tup> p_8/3_3 ' \
-             'p_1/4_6 p_5/4_1 d_1 </tup> <melody> p_9/5_4 d_1 <bass> <tup> p_1/4_6 p_10/3_4 p_2/4_7 d_1 </tup> <tup> ' \
-             'p_8/3_3 p_1/4_6 p_7/4_3 d_1 </tup> <melody> <tup> p_5/5_2 p_5/5_2 p_5/5_2 d_1 </tup> p_6/5_2 d_1 <bar> ' \
-             '<melody> <tup> p_6/5_2 p_6/5_2 p_7/5_3 d_1 </tup> p_8/5_3 d_1 <tup> p_9/4_4 p_9/4_4 p_9/4_4 d_1 </tup> ' \
-             '<bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 d_1 </tup> <tup> p_8/3_3 p_1/4_6 p_5/4_1 d_1 </tup> <tup> p_1/4_6 ' \
-             'p_10/3_4 p_2/4_7 d_1 </tup> p_9/3_4 d_1 <melody> p_9/4_4 d_1 <bar> <bass> <tup> p_7/4_3 p_7/4_3 p_2/4_7 ' \
-             'd_1 </tup> <tup> p_8/3_3 p_5/4_1 p_5/4_1 d_1 </tup> <melody> <tup> p_4/5_1 p_4/5_1 p_7/5_3 d_1 </tup> ' \
-             'p_9/5_4 d_1 <tup> p_5/5_2 p_5/5_2 p_5/5_2 d_1 </tup> p_6/5_2 d_1 <bass> <tup> p_1/4_6 p_10/3_4 p_2/4_7 ' \
-             'd_1 </tup> <tup> p_1/4_6 p_4/4_1 p_5/4_1 d_1 </tup> '
+gen_broken = 'TimeSig_4/4 Tempo_160 Key_DMajor <bar> <melody> p_3/4_1 d_3 p_3/4_1 d_1/2 p_3/4_1 d_1/2 <bass> p_r d_4 ' \
+             '<bar> <melody> p_3/4_1 d_3 p_3/4_1 d_1/2 p_3/4_1 d_1/2 <bass> p_r d_4 <bar> <melody> p_3/4_1 d_1 ' \
+             'p_12/3_6 d_1 p_8/3_4 d_1 p_12/3_6 d_1 <bass> p_r d_4 <bar> <melody> p_3/4_1 d_1 p_12/3_6 d_1 p_3/4_1 ' \
+             'd_1 p_8/4_4 d_1 <bass> p_r d_4 <bar> <melody> p_3/4_1 d_3 p_3/4_1 d_1/2 p_3/4_1 d_1/2 <bass> p_3/3_1 ' \
+             'd_3 p_3/3_1 d_1/2 p_3/3_1 d_1/2 <bar> <melody> p_3/4_1 d_3 p_3/4_1 d_1/2 p_3/4_1 d_1/2 <bass> p_3/3_1 ' \
+             'd_3 p_3/3_1 d_1/2 p_3/3_1 d_1/2 <bar> <melody> p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_3/2 p_3/4_1 d_1/2 p_3/4_1 d_1/2 <bass> p_3/3_1 d_1/2 p_3/3_1 ' \
+             'd_1/2 p_3/3_1 d_1/2 p_3/3_1 d_1/2 p_3/3_1 d_1/2 p_3/3_1 d_1/2 p_3/3_1 d_3/2 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 <bass> p_8/3_4 d_1 p_r ' \
+             'd_1 p_8/3_4 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1 p_3/4_1 d_1 p_8/4_4 d_1 <bass> p_8/3_4 ' \
+             'd_1 p_r d_1 p_8/3_4 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_3 p_3/4_1 d_1/2 p_3/4_1 d_1/2 <bass> p_8/3_4 ' \
+             'd_1 p_r d_1 p_8/3_4 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_3 p_3/4_1 d_1/2 p_3/4_1 d_1/2 <bass> p_3/3_1 ' \
+             'd_3 p_3/3_1 d_1/2 p_3/3_1 d_1/2 <bar> <melody> p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_3/2 p_3/4_1 d_1/2 <bass> p_3/3_1 d_1/2 p_3/3_1 d_1/2 p_3/3_1 ' \
+             'd_1/2 p_3/3_1 d_1/2 p_3/3_1 d_1/2 p_3/3_1 d_1/2 p_3/3_1 d_3/2 p_r d_1 <bar> <melody> p_3/4_1 d_1 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 <bass> p_8/3_4 d_1 p_r d_1 p_8/3_4 ' \
+             'd_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> ' \
+             'p_8/3_4 d_1 p_r d_1 p_8/3_4 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 ' \
+             'd_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_3 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 ' \
+             'p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 ' \
+             'd_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 ' \
+             'p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 ' \
+             'p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 ' \
+             'd_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 ' \
+             'p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 ' \
+             'p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 ' \
+             'd_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 ' \
+             'p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 ' \
+             'p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 ' \
+             'd_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 ' \
+             'p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 ' \
+             'p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 ' \
+             'd_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 ' \
+             'p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 ' \
+             'p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 ' \
+             'd_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 ' \
+             'p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 ' \
+             'p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 ' \
+             'd_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 ' \
+             'p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 ' \
+             'p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 ' \
+             'd_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 ' \
+             'p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> p_3/4_1 d_1 p_3/4_1 d_1/2 ' \
+             'p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 p_r d_1 <bar> <melody> ' \
+             'p_3/4_1 d_1 p_3/4_1 d_1/2 p_3/4_1 d_1/2 p_3/4_1 d_1 p_3/4_1 d_1 <bass> p_3/3_1 d_1 p_r d_1 p_3/3_1 d_1 ' \
+             'p_r d_1 '
