@@ -174,7 +174,7 @@ class MusicGenerator:
             keys: Dict[str, float] = KeyFinder(path)(return_type='dict')
             if self.pick_key in ['sample', 'first-2']:
                 if self.pick_key == 'first-2':
-                    _keys = sorted(keys.keys(), key=keys.get)[:2]
+                    _keys = sorted(keys.keys(), key=keys.get)[-2:]  # 2 highest-confidence keys
                     keys = {k: keys[k] for k in _keys}
                 ins_key = pt_sample(keys)
             else:  # `max`
@@ -350,10 +350,13 @@ if __name__ == '__main__':
             "Stayin' Alive", 'Señorita', 'Sugar', 'Something Just Like This', 'See You Again',
 
             'Für Elise', 'Moonlight', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro', 'Serenade No. 13',
-            'KV 448', 'William Tell',
+            'KV 448',
+            # 'William Tell',
+            'William Tell 2',
 
             # 'My Heart Will Go On',
-            'Rolling in the Deep', 'Hallelujah'
+            'Rolling in the Deep', 'Hallelujah',
+            'Autumn Leaves (freemidi)'
         ]
         fnm2bar = {
             # 'Merry Go Round of Life': 4
@@ -369,8 +372,8 @@ if __name__ == '__main__':
         # gen_args = dict(top_k=32)
         # gen_args = dict(top_k=64, temperature=2.0)
 
-        gen_args = dict(top_p=0.75)
-        # gen_args = dict(top_p=0.85)
+        # gen_args = dict(top_p=0.75)
+        gen_args = dict(top_p=0.85)
         # gen_args = dict(top_p=0.85, repetition_penalty=1.2)  # penalty as in CTRL paper
 
         # gen_args = dict(top_k=32, penalty_alpha=0.3)
@@ -398,7 +401,7 @@ if __name__ == '__main__':
                     print(f'Failed to generate {pl.i(fnm)} due to {e}')
             else:
                 call()
-    export_generated(batched=True)
+    export_generated(batched=False)
 
     def eval_ikr():
         md_sz = 'debug'
