@@ -110,7 +110,7 @@ config_dict: dict = {
         ),
         dict(
             display_name='Generation Strategy', attr_name='generation_strategy',
-            accepted_values=['greedy', 'sample', 'beam']
+            accepted_values=['greedy', 'sample', 'contrastive', 'beam']
         ),
         dict(
             display_name='Distribution Plot Type', attr_name='dist_plot_type',

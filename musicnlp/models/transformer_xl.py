@@ -218,3 +218,24 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
+
+    def prepare_inputs_for_generation(self, input_ids, past=None, **model_kwargs):
+        inputs = {}
+
+        # if past is defined in model kwargs then use it for faster decoding
+        if past:
+            # ========================== Begin of added ==========================
+            assert isinstance(past, list)  # sanity check
+            if isinstance(past[0], list):  # work with cosine sim generation
+                assert all(isinstance(p, list) for p in past)
+                for i, p in enumerate(past):
+                    assert all(isinstance(t, torch.Tensor) for t in p)
+                    past[i] = torch.stack(p, dim=0)
+            # ========================== End of added ==========================
+            inputs["mems"] = past
+            inputs["input_ids"] = input_ids[:, -1].unsqueeze(-1)
+        else:
+            inputs["input_ids"] = input_ids
+
+        return inputs
+

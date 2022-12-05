@@ -1,10 +1,12 @@
 """
 Generate from trained reformer, no seed per `hash_seed`
 """
+import glob
 import os
 import json
 import random
 import datetime
+import traceback
 from os.path import join as os_join
 from typing import Tuple, Dict, Iterable, Any, Union
 from collections import OrderedDict
@@ -138,7 +140,7 @@ class MusicGenerator:
 
     @staticmethod
     def args2fnm(args: dict):
-        out = args['strategy']
+        out = args['strategy'][:4]
         for k, k_out in MusicGenerator.key2key_path_out.items():
             if k in args:
                 out = f'{out}, {k_out}={args[k]}'
@@ -218,7 +220,7 @@ class MusicGenerator:
                 generate_args['do_sample'] = False
         elif strategy == 'sample':
             assert all(
-                k in ['do_sample', 'top_k', 'top_p', 'temperature', 'repetition_penalty', 'penalty_alpha']
+                k in ['do_sample', 'top_k', 'top_p', 'temperature', 'repetition_penalty']
                 for k in generate_args
             )
             if 'do_sample' in generate_args:
@@ -227,6 +229,13 @@ class MusicGenerator:
                 generate_args['do_sample'] = True
             assert 'top_k' in generate_args or 'top_p' in generate_args, \
                 f'Expect either {pl.i("top_k")} or {pl.i("top_p")} for sample generation'
+        elif strategy == 'contrastive':
+            assert all(k in ['do_sample', 'top_k', 'penalty_alpha'] for k in generate_args)
+
+            if 'do_sample' in generate_args:
+                assert not generate_args['do_sample'], f'{pl.i("do_sample")} must be False for contrastive search'
+            else:
+                generate_args['do_sample'] = False
         else:  # seems to repeat itself
             assert strategy == 'beam'
             generate_args = dict(num_beams=4, early_stopping=True) | generate_args
@@ -273,7 +282,9 @@ class MusicGenerator:
                 )
             except Exception as e:
                 vocab = self.mc.vocabs.degree if self.augment_key else self.mc.vocabs.midi
-                raise ValueError(f'Failed to render MXL from decoded output {vocab.colorize_tokens(decoded)}') from e
+                err_str = f'Failed to render MXL from decoded output {vocab.colorize_tokens(decoded)}'
+                exc = traceback.format_exc()
+                raise ValueError(f'{err_str} due to exception: \n{exc}') from e
         else:
             score.show()
 
@@ -357,11 +368,13 @@ if __name__ == '__main__':
         pch_sft = True
         fnms = [
             'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
+            '平凡之路', 'Merry Go Round of Life', # Re-run those with a different #bar in prompt, see `fnm2bar`
 
             "Stayin' Alive",
             'Señorita', 'Sugar', 'Something Just Like This', 'See You Again',
 
             'Für Elise', 'Moonlight', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro', 'Serenade No. 13',
+            'Serenade No. 13',
             'KV 448',
             'William Tell',
             # 'William Tell 2',
@@ -370,51 +383,79 @@ if __name__ == '__main__':
             # 'Autumn Leaves (freemidi)'
         ]
         fnm2bar = {
-            # 'Merry Go Round of Life': 4
-            'Moonlight': 4
+            'Merry Go Round of Life': 4,
+            '平凡之路': 4,
+            'Flower Duet': 4,
+            'Serenade No. 13': 4
         }
-        # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
-        # gen_args = dict(top_k=32, top_p=0.95)
-        # gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
-        # gen_args = dict(top_k=64, top_p=0.9)
-        # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
-        # gen_args = dict(top_k=32, top_p=0.85)
 
-        # gen_args = dict(top_k=32)
-        # gen_args = dict(top_k=64, temperature=2.0)
+        # strat = 'sample'
+        strat = 'contrastive'
+        if strat == 'sample':
+            # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
+            # gen_args = dict(top_k=32, top_p=0.95)
+            # gen_args = dict(top_k=32, top_p=0.9)  # Kinda good for `All`
+            # gen_args = dict(top_k=64, top_p=0.9)
+            # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
+            # gen_args = dict(top_k=32, top_p=0.85)
 
-        # gen_args = dict(top_p=0.75)
-        # gen_args = dict(top_p=0.85)  # Too much repetition if model trained well enough, e.g. NTP acc = 73
-        # gen_args = dict(top_p=0.85, repetition_penalty=1.2)  # penalty as in CTRL paper
-        # gen_args = dict(top_p=0.95)
+            # gen_args = dict(top_k=32)
+            # gen_args = dict(top_k=64, temperature=2.0)
 
-        # gen_args = dict(top_k=32, penalty_alpha=0.3)
-        # gen_args = dict(top_k=16, penalty_alpha=0.3)
-        # gen_args = dict(top_k=8, penalty_alpha=0.5)
-        gen_args = dict(top_k=8, penalty_alpha=0.6)  # Pretty good
-        # gen_args = dict(top_k=16, penalty_alpha=0.6)
-        # gen_args = dict(top_k=12, penalty_alpha=0.6)
+            # gen_args = dict(top_p=0.75)
+            # gen_args = dict(top_p=0.85)  # Too much repetition if model trained well enough, e.g. NTP acc = 73
+            # gen_args = dict(top_p=0.85, repetition_penalty=1.2)  # penalty as in CTRL paper
+            gen_args = dict(top_p=0.95)
+        elif strat == 'contrastive':
+            # gen_args = dict(top_k=32, penalty_alpha=0.3)
+            # gen_args = dict(top_k=16, penalty_alpha=0.3)
+            gen_args = dict(top_k=8, penalty_alpha=0.5)
+            # gen_args = dict(top_k=8, penalty_alpha=0.6)
+            # gen_args = dict(top_k=10, penalty_alpha=0.6)
+            # gen_args = dict(top_k=16, penalty_alpha=0.6)
+            # gen_args = dict(top_k=12, penalty_alpha=0.6)
 
         # n_bar = 4
         n_bar = 8
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='{md=f}')
-            prompt = dict(path=path, n_bar=fnm2bar.get(fnm, n_bar), insert_key=key_aug, pitch_shift=pch_sft)
+            prompt = dict(path=path, n_bar=fnm2bar.pop(fnm, n_bar), insert_key=key_aug, pitch_shift=pch_sft)
 
             def call():
                 mg(
-                    mode='conditional', strategy='sample', generate_args=gen_args, prompt_args=prompt,
+                    mode='conditional', strategy=strat, generate_args=gen_args, prompt_args=prompt,
                     save=fnm, save_dir=sv_dir
                 )
             if batched:
                 try:
                     call()
                 except Exception as e:
-                    print(f'Failed to generate {pl.i(fnm)} due to {e}')
+                    print(f'Failed to generate {pl.i(fnm)} due to exception: \n{e}')
             else:
                 call()
-    export_generated(batched=True)
+    export_generated(batched=False)
 
     def eval_ikr():
         md_sz = 'debug'
     # eval_ikr()
+
+    def fix_prior_fnm_not_contrastive():
+        import re
+        import shutil
+
+        dnm = 'transf-xl_All_128ep_no-ch-mix'
+        path = os_join(u.eval_path, dnm)
+        fls = sorted(glob.iglob(os_join(path, '*.json')))
+        mic(fls)
+
+        pa_pattern = re.compile(r'(?P<before>.*)(, pa=0\.6)(?P<after>.*)')
+        for fl in fls:
+            if 'pa' in fl:
+                m = pa_pattern.match(fl)
+                assert m is not None
+                # mic(m.group('before'), m.group('after'))
+
+                new_fnm = m.group('before') + m.group('after')
+                shutil.move(fl, new_fnm)
+                # raise NotImplementedError
+    # fix_prior_fnm_not_contrastive()

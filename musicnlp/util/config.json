@@ -79757,6 +79757,7 @@
             "accepted_values": [
                 "greedy",
                 "sample",
+                "contrastive",
                 "beam"
             ]
         },
