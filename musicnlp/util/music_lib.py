@@ -756,14 +756,12 @@ def make_score(
                     else:
                         gap = dur_b - dur_m
                         notes_m.append(Rest(quarterLength=gap))
-                    mic(idx, dur_m, dur_b)
                     logger.warning(f'Melody and bass notes duration don\'t match at bar {pl.i(idx+1)} '
                                    f'w/ durations {pl.i(d)}')
 
     part_melody.append(lst_notes_melody)
     bar0 = part_melody.measure(0)  # Insert metadata into 1st bar
     bar0.insert(MetronomeMark(number=tempo))
-    mic(time_sig)
     if time_sig is not None and time_sig != 'TimeSig_rare':  # so that edge case runs...
         bar0.insert(TimeSignature(time_sig))
 

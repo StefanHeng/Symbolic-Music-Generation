@@ -3,6 +3,7 @@ Generate from trained reformer, no seed per `hash_seed`
 """
 import os
 import json
+import random
 import datetime
 from os.path import join as os_join
 from typing import Tuple, Dict, Iterable, Any, Union
@@ -155,36 +156,43 @@ class MusicGenerator:
                 in `condition_args`
         :param strategy: One of [`greedy`, `sample`, `beam`]
             If `sample`, expect `topk`, `temperature`, `top_p` in `generate_args`
-        :param prompt_args: Specifies prompt construction for conditional generation
-            If 'insert_key', a key will be inserted into the prompt if needed
+        :param prompt_args: Specifies prompt construction for generation
+            For conditional generation, if 'insert_key', a key will be inserted into the prompt if needed
         :param truncate_to_sob: If True, truncate the generated tokens such that the generated ends in terms of bar
             Intended for converting to MXL
         :param save: If false, the score is shown
             Otherwise, should be a filename string, the generated score is saved to an MXL file
         """
         ca(generation_mode=mode, generation_strategy=strategy)
+        ca.check_mismatch('Generation Mode', mode, ['conditional', 'unconditional'])
 
         generate_args = (generate_args or dict())
         prompt_args: Dict[str, Any] = dict(n_bar=4, insert_key=False) | (prompt_args or dict())
         ins_key, pch_sft = (prompt_args.get(k, False) for k in ('insert_key', 'pitch_shift'))
-        if ins_key is True:
-            path = prompt_args.get('path', None)
-            assert path, f'A path to a song must be provided to {pl.i("prompt_args")} to extract key ' \
-                         f'when key is not already provided'
-            keys: Dict[str, float] = KeyFinder(path)(return_type='dict')
-            if self.pick_key in ['sample', 'first-2']:
-                if self.pick_key == 'first-2':
-                    _keys = sorted(keys.keys(), key=keys.get)[-2:]  # 2 highest-confidence keys
-                    keys = {k: keys[k] for k in _keys}
-                ins_key = pt_sample(keys)
-            else:  # `max`
-                ins_key = max(keys, key=keys.get)
         if mode == 'unconditional':
             # TODO: sample the time signature and tempos?
-            prompt = [self.vocab.meta2tok(VocabType.time_sig, (4, 4)), self.vocab.meta2tok(VocabType.tempo, 120)]
+            ts = prompt_args.get('time_signature', (4, 4))
+            tp = prompt_args.get('tempo', 120)
+            key = prompt_args.get('key', 'CMajor')
+            prompt = [self.vocab.meta2tok(VocabType.time_sig, ts), self.vocab.meta2tok(VocabType.tempo, tp)]
+            if ins_key:
+                prompt += self.vocab(key)
             # TODO: randomly sample a key?
             prompt = ' '.join([*prompt, self.vocab.start_of_bar])
         else:  # 'conditional'
+            if ins_key:
+                path = prompt_args.get('path', None)
+                assert path, f'A path to a song must be provided to {pl.i("prompt_args")} to extract key ' \
+                             f'when key is not already provided'
+                keys: Dict[str, float] = KeyFinder(path)(return_type='dict')
+                if self.pick_key in ['sample', 'first-2']:
+                    if self.pick_key == 'first-2':
+                        _keys = sorted(keys.keys(), key=keys.get)[-2:]  # 2 highest-confidence keys
+                        keys = {k: keys[k] for k in _keys}
+                    ins_key = pt_sample(keys)
+                else:  # `max`
+                    ins_key = max(keys, key=keys.get)
+
             prompt, path = prompt_args.get('prompt', None), prompt_args.get('path', None)
             assert prompt is not None or path is not None, f'Expect either {pl.i("prompt")} or {pl.i("path")}'
             if prompt is None:
@@ -240,7 +248,6 @@ class MusicGenerator:
             assert len(idxs_eob) > 0, f'No start of bar token found when {pl.i("truncate_to_sob")} enabled'
             output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
         decoded = self.tokenizer.decode(output, skip_special_tokens=False)
-        print(f'decoded {decoded}')
         title = f'{save}-generated' if save else None
         score = self.mc.str2score(
             decoded, omit_eos=True, title=title, pitch_kind=self.pitch_kind, 
@@ -302,17 +309,23 @@ if __name__ == '__main__':
 
     key_aug = True
     mg = MusicGenerator(
-        model=mdl, mode=md, tokenizer_args=tk_args, augment_key=True, wordpiece_tokenize=wp, pick_key='first-2'
+        model=mdl, mode=md, tokenizer_args=tk_args, augment_key=True, wordpiece_tokenize=wp,
+        # pick_key='first-2'
+        pick_key='sample'
     )
 
     def explore_generate_unconditional():
+        from musicnlp.vocab import key_str2enum
         # as in `CTRL` paper
         # still repeats itself, and notion of penalizing repetition with music generation?
         # gen_args = dict(repetition_penalty=1.2)
         # how to set hyperparameters?; smaller k for smaller vocab size
         # gen_args = dict(temperature=1, top_k=16)
-        gen_args = dict(top_k=32, top_p=0.9)
-        mg(mode='unconditional', strategy='sample', generate_args=gen_args)
+        # gen_args = dict(top_k=32, top_p=0.9)
+        gen_args = dict(top_k=8, penalty_alpha=0.6)
+        keys = list(key_str2enum.keys())
+        prompt = dict(insert_key=True, key=random.choice(keys))
+        mg(mode='unconditional', strategy='sample', generate_args=gen_args, prompt_args=prompt)
     # explore_generate_unconditional()
 
     def explore_generate_conditional():
@@ -343,17 +356,18 @@ if __name__ == '__main__':
     def export_generated(batched: bool = True):
         pch_sft = True
         fnms = [
-            # 'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
+            'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
 
-            # "Stayin' Alive", 'Señorita', 'Sugar', 'Something Just Like This', 'See You Again',
+            "Stayin' Alive",
+            'Señorita', 'Sugar', 'Something Just Like This', 'See You Again',
 
-            # 'Für Elise',
-            # 'Moonlight', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro', 'Serenade No. 13', 'KV 448',
-            # 'William Tell',
-            'William Tell 2',
+            'Für Elise', 'Moonlight', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro', 'Serenade No. 13',
+            'KV 448',
+            'William Tell',
+            # 'William Tell 2',
 
             'Rolling in the Deep', 'Hallelujah',
-            'Autumn Leaves (freemidi)'
+            # 'Autumn Leaves (freemidi)'
         ]
         fnm2bar = {
             # 'Merry Go Round of Life': 4
@@ -370,13 +384,14 @@ if __name__ == '__main__':
         # gen_args = dict(top_k=64, temperature=2.0)
 
         # gen_args = dict(top_p=0.75)
-        gen_args = dict(top_p=0.85)
+        # gen_args = dict(top_p=0.85)  # Too much repetition if model trained well enough, e.g. NTP acc = 73
         # gen_args = dict(top_p=0.85, repetition_penalty=1.2)  # penalty as in CTRL paper
+        # gen_args = dict(top_p=0.95)
 
         # gen_args = dict(top_k=32, penalty_alpha=0.3)
         # gen_args = dict(top_k=16, penalty_alpha=0.3)
         # gen_args = dict(top_k=8, penalty_alpha=0.5)
-        # gen_args = dict(top_k=8, penalty_alpha=0.6)  # Pretty good
+        gen_args = dict(top_k=8, penalty_alpha=0.6)  # Pretty good
         # gen_args = dict(top_k=16, penalty_alpha=0.6)
         # gen_args = dict(top_k=12, penalty_alpha=0.6)
 
@@ -398,7 +413,7 @@ if __name__ == '__main__':
                     print(f'Failed to generate {pl.i(fnm)} due to {e}')
             else:
                 call()
-    export_generated(batched=False)
+    export_generated(batched=True)
 
     def eval_ikr():
         md_sz = 'debug'

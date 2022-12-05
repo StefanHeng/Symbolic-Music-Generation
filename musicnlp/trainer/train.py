@@ -475,8 +475,8 @@ if __name__ == '__main__':
         # md_sz = 'debug'
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
-        md_sz = 'small'
-        # md_sz = 'base'
+        # md_sz = 'small'
+        md_sz = 'base'
         # md_sz = 'large'
         mic(md_nm, md_sz)
 
@@ -510,18 +510,18 @@ if __name__ == '__main__':
         else:
             # model_config = None
             model_config = dict(
-                # max_length=1024,
-                max_length=2048,
-                # mem_len=512,  # Helps improve performance
-                mem_len=1024
+                max_length=1024,
+                # max_length=2048,
+                mem_len=512,  # Helps improve performance
+                # mem_len=1024
             )  # TODO: try a smaller model for memory consumption
             # model_config = dict(max_length=1024 + 512)
             rand_crop = 32
-            # pch_kd = 'midi'
-            pch_kd = 'degree'
+            pch_kd = 'midi'
+            # pch_kd = 'degree'
             insert_key = True
-            # pch_shift = False
-            pch_shift = True
+            pch_shift = False
+            # pch_shift = True
             if pch_shift:
                 assert insert_key and pch_kd == 'degree'
             else:
@@ -548,22 +548,12 @@ if __name__ == '__main__':
         )
         trainer_args = dict(disable_train_metrics=True)
 
-        if debug:
-            train_args.update(dict(
-                learning_rate=1e-3,
-                weight_decay=0,
-                warmup_ratio=0,
-                lr_scheduler_type=SchedulerType.CONSTANT,
-                per_device_train_batch_size=64,
-                per_device_eval_batch_size=64,
-            ))
-        else:
-            # bsz = 24
+        if not debug:
+            bsz = 21
             # bsz = 16
-            bsz = 8
+            # bsz = 8
             train_args.update(dict(
                 # learning_rate=1e-4,
-                # weight_decay=3e-2,
                 # weight_decay=1e-1,
                 dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
