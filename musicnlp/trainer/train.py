@@ -409,21 +409,24 @@ if __name__ == '__main__':
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
-        md_sz = 'base'
-        # md_sz = 'large'
+        # md_sz = 'base'
+        md_sz = 'large'
         mic(md_nm, md_sz)
 
-        model_config = None
+        # model_config = None
         # TODO: smaller seq-len for now, until it shows longer dependency
-        # model_config = dict(max_position_embeddings=1024, axial_pos_shape=(32, 32))
+        model_config = dict(
+            # max_position_embeddings=1024, axial_pos_shape=(32, 32)
+            max_position_embeddings=4096, axial_pos_shape=(64, 64)
+        )
 
-        rand_crop = False
-        # rand_crop = 4
-        pch_kd = 'midi'
-        # pch_kd = 'degree'
+        # rand_crop = False
+        rand_crop = 128
+        # pch_kd = 'midi'
+        pch_kd = 'degree'
         insert_key = True
-        # pch_shift = True
-        pch_shift = False
+        pch_shift = True
+        # pch_shift = False
         if pch_shift:
             assert insert_key and pch_kd == 'degree'
         else:
@@ -438,8 +441,8 @@ if __name__ == '__main__':
         n = None
         # n_ep = 8
         # n_ep = 16
-        n_ep = 32
-        # n_ep = 64
+        # n_ep = 32
+        n_ep = 64
         # n_ep = 128
         # n_ep = 512
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
@@ -453,9 +456,10 @@ if __name__ == '__main__':
         trainer_args = dict(disable_train_metrics=True)
 
         if 'debug' not in md_sz:
-            bsz = 96
+            # bsz = 96
+            bsz = 48
             train_args.update(dict(
-                learning_rate=1e-4,
+                learning_rate=3e-4,
                 dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
                 per_device_eval_batch_size=bsz
@@ -476,8 +480,8 @@ if __name__ == '__main__':
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
-        md_sz = 'base'
-        # md_sz = 'large'
+        # md_sz = 'base'
+        md_sz = 'large'
         mic(md_nm, md_sz)
 
         debug = 'debug' in md_sz
@@ -497,44 +501,34 @@ if __name__ == '__main__':
         # n_ep = 512
         mic(n, n_ep)
 
-        # model_config = dict(max_length=64)
-        if debug:
-            model_config = dict(
-                max_length=1024 + 512,
-                # cutoffs=[100]
-            )
-            pch_kd = 'midi'
-            rand_crop, insert_key, pch_shift, wordpiece_tokenize, channel_mixup, prop_mix = (
-                False, False, False, False, False, False
-            )
+        # model_config = None
+        model_config = dict(
+            max_length=1024,
+            # max_length=2048,
+            mem_len=512,  # Helps improve performance
+            # mem_len=1024
+        )  # TODO: try a smaller model for memory consumption
+        # model_config = dict(max_length=1024 + 512)
+        rand_crop = 32
+        # rand_crop = 64
+        # pch_kd = 'midi'
+        pch_kd = 'degree'
+        insert_key = True
+        # pch_shift = False
+        pch_shift = True
+        if pch_shift:
+            assert insert_key and pch_kd == 'degree'
         else:
-            # model_config = None
-            model_config = dict(
-                max_length=1024,
-                # max_length=2048,
-                mem_len=512,  # Helps improve performance
-                # mem_len=1024
-            )  # TODO: try a smaller model for memory consumption
-            # model_config = dict(max_length=1024 + 512)
-            rand_crop = 32
-            pch_kd = 'midi'
-            # pch_kd = 'degree'
-            insert_key = True
-            pch_shift = False
-            # pch_shift = True
-            if pch_shift:
-                assert insert_key and pch_kd == 'degree'
-            else:
-                assert pch_kd != 'degree'
-            # channel_mixup = 'full'
-            channel_mixup = False
-            wordpiece_tokenize = False
-            # wordpiece_tokenize = True
-            # wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
-            if not wordpiece_tokenize:
-                model_config['cutoffs'] = []
-            # prop_mix = False
-            prop_mix = 1280
+            assert pch_kd != 'degree'
+        # channel_mixup = 'full'
+        channel_mixup = False
+        wordpiece_tokenize = False
+        # wordpiece_tokenize = True
+        # wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
+        if not wordpiece_tokenize:
+            model_config['cutoffs'] = []
+        # prop_mix = False
+        prop_mix = 1280
         mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, wordpiece_tokenize, prop_mix)
 
         # needed so that best model is loaded in the end
@@ -549,12 +543,12 @@ if __name__ == '__main__':
         trainer_args = dict(disable_train_metrics=True)
 
         if not debug:
-            bsz = 21
+            # bsz = 21
             # bsz = 16
-            # bsz = 8
+            bsz = 8
             train_args.update(dict(
                 # learning_rate=1e-4,
-                # weight_decay=1e-1,
+                weight_decay=1e-1,
                 dataloader_num_workers=4,
                 per_device_train_batch_size=bsz,
                 per_device_eval_batch_size=12

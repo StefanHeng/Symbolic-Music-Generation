@@ -67,11 +67,21 @@ Below we include some cherry-picked generation samples from model variants.
 
 
 
+<br>
+
+
+
 
 
 ### Reformer + key-aug, 22-04
 
 Just like the one below, except a possible key of each song is inserted with its key. 
+
+
+
+
+
+<br>
 
 
 
@@ -84,4 +94,6 @@ Reformer trained on POP909 and a subset of the cleaned version of Lakh Midi Data
 
 
 
+
+<br>
 

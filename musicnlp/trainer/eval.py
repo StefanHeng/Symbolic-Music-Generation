@@ -1,14 +1,16 @@
 """
 Generate from trained reformer, no seed per `hash_seed`
 """
-import glob
+
 import os
+import re
 import json
+import glob
 import random
 import datetime
 import traceback
 from os.path import join as os_join
-from typing import Tuple, Dict, Iterable, Any, Union
+from typing import List, Tuple, Dict, Iterable, Any, Union
 from collections import OrderedDict
 
 import torch
@@ -94,8 +96,11 @@ class MusicGenerator:
         top_p='topp',
         top_k='topk',
         num_beams='#bm',
+        diversity_penalty='dp',
         repetition_penalty='rp',
-        penalty_alpha='pa'
+        temperature='t',
+        penalty_alpha='pa',
+        typical_p='typp'
     ))
 
     def __init__(
@@ -146,10 +151,16 @@ class MusicGenerator:
                 out = f'{out}, {k_out}={args[k]}'
         return f'{{{out}}}'
 
+    def _truncate_last_bar(self, ids: torch.Tensor) -> List[int]:
+        assert ids.dim() == 1
+        idxs_eob = torch.nonzero(ids.eq(self.tokenizer.sob_token_id)).flatten().tolist()
+        assert len(idxs_eob) > 0, f'No start of bar token found when {pl.i("truncate_to_sob")} enabled'
+        return ids[:idxs_eob[-1]].tolist()
+
     def __call__(
             self, mode: str, strategy: str, to_score: bool = False,
             generate_args: dict = None, prompt_args: dict = None,
-            truncate_to_sob: bool = True, save: Union[bool, str] = False,
+            truncate_last_bar: bool = True, save: Union[bool, str] = False,
             save_dir: str = None
     ):
         """
@@ -160,7 +171,7 @@ class MusicGenerator:
             If `sample`, expect `topk`, `temperature`, `top_p` in `generate_args`
         :param prompt_args: Specifies prompt construction for generation
             For conditional generation, if 'insert_key', a key will be inserted into the prompt if needed
-        :param truncate_to_sob: If True, truncate the generated tokens such that the generated ends in terms of bar
+        :param truncate_last_bar: If True, truncate the generated tokens such that the generated ends in terms of bar
             Intended for converting to MXL
         :param save: If false, the score is shown
             Otherwise, should be a filename string, the generated score is saved to an MXL file
@@ -212,6 +223,8 @@ class MusicGenerator:
         inputs = self.tokenizer(prompt, return_tensors='pt')
         # inputs['attention_mask'] = torch.ones_like(inputs['input_ids'])  # TODO: generation warning still shows
         args = dict(max_length=self.max_len)
+
+        accepted_keys_sample = ['do_sample', 'top_k', 'top_p', 'typical_p', 'temperature', 'repetition_penalty']
         if strategy == 'greedy':
             assert (k in ['do_sample'] for k in generate_args)
             if 'do_sample' in generate_args:
@@ -219,10 +232,7 @@ class MusicGenerator:
             else:
                 generate_args['do_sample'] = False
         elif strategy == 'sample':
-            assert all(
-                k in ['do_sample', 'top_k', 'top_p', 'temperature', 'repetition_penalty']
-                for k in generate_args
-            )
+            assert all(k in accepted_keys_sample for k in generate_args)
             if 'do_sample' in generate_args:
                 assert generate_args['do_sample'], f'{pl.i("do_sample")} must be True for sample generation'
             else:
@@ -238,9 +248,30 @@ class MusicGenerator:
                 generate_args['do_sample'] = False
         else:  # seems to repeat itself
             assert strategy == 'beam'
-            generate_args = dict(num_beams=4, early_stopping=True) | generate_args
-            assert (k in ['do_sample', 'num_beams', 'num_beam_groups', 'early_stopping'] for k in generate_args)
+            generate_args = dict(num_beams=3) | generate_args
             assert generate_args['num_beams'] > 1, f'{pl.i("num_beams")} must >1 for beam-search generation'
+
+            accepted_keys = ['do_sample', 'num_beams', 'num_beam_groups']
+
+            if 'num_beam_groups' in generate_args:
+                accepted_keys.append('diversity_penalty')
+
+                assert generate_args['num_beam_groups'] != 1  # sanity check
+
+                if 'do_sample' in generate_args:
+                    assert not generate_args['do_sample'], f'{pl.i("do_sample")} must be False for diverse beam search '
+                else:
+                    generate_args['do_sample'] = False
+            else:
+                generate_args = dict(do_sample=True) | generate_args
+                if generate_args['do_sample']:
+                    accepted_keys += accepted_keys_sample
+            assert (k in accepted_keys for k in generate_args)
+
+        generate_args['early_stopping'] = True
+        if generate_args['do_sample']:
+            generate_args['renormalize_logits'] = True
+
         args |= generate_args
         prompt_colored = self.tokenizer.colorize(prompt)
         d_log = dict(mode=mode, strategy=strategy, args=generate_args | prompt_args, prompt=prompt_colored)
@@ -249,44 +280,60 @@ class MusicGenerator:
         self.model.eval()
         output = self.model.generate(**inputs, **args)  # for now, generate one at a time
         self.logger.info(f'Model generation finished in {pl.i(fmt_delta(datetime.datetime.now() - t))}')
-        assert len(output) == 1  # sanity check
-        output = output[0]
 
-        if truncate_to_sob:
-            idxs_eob = torch.nonzero(output.eq(self.tokenizer.sob_token_id)).flatten().tolist()
-            assert len(idxs_eob) > 0, f'No start of bar token found when {pl.i("truncate_to_sob")} enabled'
-            output = output[:idxs_eob[-1]]  # truncate also that `sob_token`
-        decoded = self.tokenizer.decode(output, skip_special_tokens=False)
-        title = f'{save}-generated' if save else None
-        score = self.mc.str2score(
-            decoded, omit_eos=True, title=title, pitch_kind=self.pitch_kind, 
-            check_duration_match='each-other'
-        )
-        if save:
-            # `makeNotations` disabled any clean-up by music21, intended to remove `tie`s added
-            str_args = MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args)
-            out_path = u.eval_path
-            if save_dir:
-                out_path = os_join(out_path, save_dir)
-                os.makedirs(out_path, exist_ok=True)
-            date = now(for_path=True)
-            fnm = f'{date}_{title}_{str_args}'
-            with open(os_join(out_path, f'{fnm}.json'), 'w') as f:
-                d_log['prompt'] = prompt  # remove color
-                json.dump(dict(meta=d_log, generation_args=args, generated=decoded), f, indent=4)
-            try:
-                # TODO: `makeNotation` False always breaks on GL
-                score.write(
-                    fmt='mxl', fp=os_join(out_path, f'{fnm}.mxl'),
-                    makeNotation=False
-                )
-            except Exception as e:
-                vocab = self.mc.vocabs.degree if self.augment_key else self.mc.vocabs.midi
-                err_str = f'Failed to render MXL from decoded output {vocab.colorize_tokens(decoded)}'
-                exc = traceback.format_exc()
-                raise ValueError(f'{err_str} due to exception: \n{pl.s(exc, c="r")}') from e
+        multiple_sequence = generate_args.get('num_return_sequences', 1) > 1
+        if multiple_sequence:
+            if truncate_last_bar:
+                output = [self._truncate_last_bar(o) for o in output]
+            decoded_ = self.tokenizer.batch_decode(output, skip_special_tokens=False)
         else:
-            score.show()
+            assert len(output) == 1  # sanity check
+            output = output[0]
+
+            if truncate_last_bar:
+                output = self._truncate_last_bar(output)
+            decoded_ = self.tokenizer.decode(output, skip_special_tokens=False)
+        title_ = f'{save}\ngenerated' if save else 'generated'
+        fnm_ = None
+        save_path_ = None
+        if save:
+            str_args = MusicGenerator.args2fnm(dict(strategy=strategy) | args | prompt_args)
+            save_path_ = u.eval_path
+            if save_dir:
+                save_path_ = os_join(save_path_, save_dir)
+                os.makedirs(save_path_, exist_ok=True)
+            fnm_ = title_.replace('\n', '_')
+            fnm_ = f'{now(for_path=True)}_{fnm_}_{str_args}'
+
+        def _single_post_gen(decoded: str = None, title: str = None, fnm: str = None, save_path: str = None):
+            score = self.mc.str2score(
+                decoded, omit_eos=True, title=title, pitch_kind=self.pitch_kind,
+                check_duration_match='each-other'
+            )
+            if save:
+
+                with open(os_join(save_path, f'{fnm}.json'), 'w') as f:
+                    d_log['prompt'] = prompt  # remove color
+                    json.dump(dict(meta=d_log, generation_args=args, generated=decoded), f, indent=4)
+                try:
+                    # TODO: `makeNotation` False always breaks on GL
+                    score.write(
+                        fmt='mxl', fp=os_join(save_path, f'{fnm}.mxl'),
+                        # `makeNotations` disabled any clean-up by music21, intended to remove `tie`s added
+                        makeNotation=False
+                    )
+                except Exception as e:
+                    vocab = self.mc.vocabs.degree if self.augment_key else self.mc.vocabs.midi
+                    err_str = f'Failed to render MXL from decoded output {vocab.colorize_tokens(decoded)}'
+                    exc = traceback.format_exc()
+                    raise ValueError(f'{err_str} due to exception: \n{pl.s(exc, c="r")}') from e
+            else:
+                score.show()
+        if multiple_sequence:
+            for i, dec in enumerate(decoded_, start=1):
+                _single_post_gen(decoded=dec, title=f'{title_}_{i}', fnm=f'{fnm_}_{i}', save_path=save_path_)
+        else:
+            _single_post_gen(decoded=decoded_, title=title_, fnm=fnm_, save_path=save_path_)
 
 
 def get_performance(model):
@@ -368,14 +415,14 @@ if __name__ == '__main__':
         pch_sft = True
         fnms = [
             'Canon piano', 'Piano Sonata', 'Für Elise', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro',
-            'Serenade No. 13', 'Serenade No. 13', 'KV 448', 'William Tell', 'William Tell 2', 'Ave Maria',
-            'Hallelujah',
+            'Serenade No. 13', 'Serenade No. 13', 'K. 448', 'William Tell', 'Ave Maria', 'Hallelujah',
 
             # Re-run those with a different #bar in prompt, see `fnm2bar`
             'Merry Go Round of Life', 'Merry Go Round of Life',
 
             'Shape of You', '平凡之路', '平凡之路', 'Faded', 'Señorita', 'Sugar', 'Something Just Like This',
             'See You Again', 'Rolling in the Deep', 'Despacito',
+            '走马', '告白气球', '演员', '飘向北方', '年少有为', '丑八怪', '李白', '挪威的森林',
 
             "Stayin' Alive", 'Careless Whisper', 'Take Me Home Country Roads'
         ]
@@ -387,7 +434,8 @@ if __name__ == '__main__':
         }
 
         # strat = 'sample'
-        strat = 'contrastive'
+        # strat = 'contrastive'
+        strat = 'beam'
         if strat == 'sample':
             # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
             # gen_args = dict(top_k=32, top_p=0.95)
@@ -396,26 +444,41 @@ if __name__ == '__main__':
             # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
             # gen_args = dict(top_k=32, top_p=0.85)
 
+            # gen_args = dict(top_k=16)
+            gen_args = dict(top_k=6, temperature=1.2)
             # gen_args = dict(top_k=32)
             # gen_args = dict(top_k=64, temperature=2.0)
 
             # gen_args = dict(top_p=0.75)
-            # gen_args = dict(top_p=0.85)  # Too much repetition if model trained well enough, e.g. NTP acc = 73
+            # gen_args = dict(top_p=0.85)
+            # gen_args = dict(top_p=0.95)  # Too much repetition if model trained well enough, e.g. NTP acc = 73
             # gen_args = dict(top_p=0.85, repetition_penalty=1.2)  # penalty as in CTRL paper
-            gen_args = dict(top_p=0.95)
-        elif strat == 'contrastive':
+        elif strat == 'contrastive':  # TODO: doesn't seem to work w/ TransformerXL
             # gen_args = dict(top_k=32, penalty_alpha=0.3)
-            # gen_args = dict(top_k=16, penalty_alpha=0.3)
-            gen_args = dict(top_k=8, penalty_alpha=0.5)
+            gen_args = dict(top_k=16, penalty_alpha=0.3)
+            # gen_args = dict(top_k=8, penalty_alpha=0.5)
             # gen_args = dict(top_k=8, penalty_alpha=0.6)
             # gen_args = dict(top_k=10, penalty_alpha=0.6)
             # gen_args = dict(top_k=16, penalty_alpha=0.6)
             # gen_args = dict(top_k=12, penalty_alpha=0.6)
+        else:
+            assert strat == 'beam'
+            # gen_args = dict(num_beams=3, do_sample=True, top_k=64)
+
+            gen_args = dict(num_beams=3, num_beam_groups=3, num_return_sequences=3, diversity_penalty=0.6)
+        mic(strat, gen_args)
 
         # n_bar = 4
         n_bar = 8
+
+        fnm_pattern = re.compile(r'^(?P<date>\d{2}-\d{2}-\d{2})_(?P<fnm>.*)_(?P<mode>{md=.})$')
+
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='{md=f}')
+            fnm = stem(path)
+            m = fnm_pattern.match(fnm)
+            assert m is not None
+            fnm = m.group('fnm')
             prompt = dict(path=path, n_bar=fnm2bar.pop(fnm, n_bar), insert_key=key_aug, pitch_shift=pch_sft)
 
             def call():

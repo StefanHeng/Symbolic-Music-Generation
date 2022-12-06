@@ -1077,12 +1077,22 @@ if __name__ == '__main__':
         # fnm = 'KV 448'
         # fnm = 'William Tell'
         # fnm = 'Something Just Like This'
-        fnm = 'Something Just Like This 2'
+        # fnm = 'Something Just Like This 2'
         # fnm = 'See You Again'
 
         # fnm = 'Overture from William Tell 2'
         # fnm = 'Autumn Leaves (freemidi)'
         # fnm = 'Autumn Leaves 3'
+
+        # fnm = '走马'
+        # fnm = '告白气球'
+        # fnm = '演员'
+        # fnm = '飘向北方'
+        # fnm = '年少有为'
+        # fnm = '倒数'
+        # fnm = '丑八怪'
+        # fnm = '李白'
+        fnm = '挪威的森林'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         mic(fnm)
         # mode = 'melody'
