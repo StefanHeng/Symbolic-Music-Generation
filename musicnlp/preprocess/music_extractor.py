@@ -1038,6 +1038,7 @@ if __name__ == '__main__':
     def toy_example():
         logger = WarnLog()
         # fnm = 'Faded'
+        # fnm = 'A Thousand Years'
         # fnm = 'Piano Sonata'
         # fnm = 'Ode to Joy'
         # fnm = 'Careless Whisper, 4'
@@ -1058,10 +1059,15 @@ if __name__ == '__main__':
         # fnm = 'Señorita'
         # fnm = 'My Heart Will Go On'
         # fnm = 'Ave Maria'
+        # fnm = 'Ave Maria (eremita.di.uminho.pt)'
         # fnm = 'Flower Duet'
         # fnm = 'Perfect'
+        # fnm = 'Perfect (freemidi)'
+        # fnm = 'Perfect (midifilesdownload)'
+        # fnm = 'Perfect (cprato)'
         # fnm = 'Hallelujah'
         # fnm = 'Take Me Home Country Roads'
+        # fnm = 'Take Me Home Country Roads (freemidi)'
         # fnm = 'Love Yourself'
         # fnm = 'Despacito'
         # fnm = 'Sugar'
@@ -1071,10 +1077,11 @@ if __name__ == '__main__':
         # fnm = 'KV 448'
         # fnm = 'William Tell'
         # fnm = 'Something Just Like This'
+        fnm = 'Something Just Like This 2'
         # fnm = 'See You Again'
 
         # fnm = 'Overture from William Tell 2'
-        fnm = 'Autumn Leaves (freemidi)'
+        # fnm = 'Autumn Leaves (freemidi)'
         # fnm = 'Autumn Leaves 3'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         mic(fnm)

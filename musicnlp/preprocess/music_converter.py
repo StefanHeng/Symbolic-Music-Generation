@@ -53,6 +53,9 @@ class MusicVocabs:
     degree: MusicVocabulary = None
 
 
+logger = get_logger('Music Converter')
+
+
 class MusicConverter:
     error_prefix = 'MusicConvertor Song Input Format Check'
 
@@ -530,11 +533,15 @@ if __name__ == '__main__':
                 d[part.partName] = [bar.offset for bar in part[Measure]]
             mic(d)
         # check_same_offset()
-        # scr.show()
-        path = os.path.join(u.proj_path, 'musicnlp', 'preprocess', 'check_broken')
-        os.makedirs(path, exist_ok=True)
-        scr.write(
-            fmt='mxl', fp=os.path.join(path, f'{now(for_path=True)}.mxl'),
-            makeNotation=False
-        )
+
+        show = True
+        if show:
+            scr.show()
+        else:
+            path = os.path.join(u.proj_path, 'musicnlp', 'preprocess', 'check_broken')
+            os.makedirs(path, exist_ok=True)
+            scr.write(
+                fmt='mxl', fp=os.path.join(path, f'{now(for_path=True)}.mxl'),
+                makeNotation=False
+            )
     check_broken_render()

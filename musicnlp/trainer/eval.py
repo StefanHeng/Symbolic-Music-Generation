@@ -284,7 +284,7 @@ class MusicGenerator:
                 vocab = self.mc.vocabs.degree if self.augment_key else self.mc.vocabs.midi
                 err_str = f'Failed to render MXL from decoded output {vocab.colorize_tokens(decoded)}'
                 exc = traceback.format_exc()
-                raise ValueError(f'{err_str} due to exception: \n{exc}') from e
+                raise ValueError(f'{err_str} due to exception: \n{pl.s(exc, c="r")}') from e
         else:
             score.show()
 
@@ -367,20 +367,17 @@ if __name__ == '__main__':
     def export_generated(batched: bool = True):
         pch_sft = True
         fnms = [
-            'Canon piano', 'Shape of You', 'Piano Sonata', '平凡之路', 'Merry Go Round of Life',
-            '平凡之路', 'Merry Go Round of Life', # Re-run those with a different #bar in prompt, see `fnm2bar`
+            'Canon piano', 'Piano Sonata', 'Für Elise', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro',
+            'Serenade No. 13', 'Serenade No. 13', 'KV 448', 'William Tell', 'William Tell 2', 'Ave Maria',
+            'Hallelujah',
 
-            "Stayin' Alive",
-            'Señorita', 'Sugar', 'Something Just Like This', 'See You Again',
+            # Re-run those with a different #bar in prompt, see `fnm2bar`
+            'Merry Go Round of Life', 'Merry Go Round of Life',
 
-            'Für Elise', 'Moonlight', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro', 'Serenade No. 13',
-            'Serenade No. 13',
-            'KV 448',
-            'William Tell',
-            # 'William Tell 2',
+            'Shape of You', '平凡之路', '平凡之路', 'Faded', 'Señorita', 'Sugar', 'Something Just Like This',
+            'See You Again', 'Rolling in the Deep', 'Despacito',
 
-            'Rolling in the Deep', 'Hallelujah',
-            # 'Autumn Leaves (freemidi)'
+            "Stayin' Alive", 'Careless Whisper', 'Take Me Home Country Roads'
         ]
         fnm2bar = {
             'Merry Go Round of Life': 4,

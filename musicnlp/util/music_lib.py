@@ -673,12 +673,25 @@ def make_score(
     assert len(parts) <= 2  # sanity check, see `get_score_skeleton`
     part_melody = parts[0]
     assert 'Melody' in part_melody.partName
-    ca.check_mismatch('Check Bar Duration Scheme', check_duration_match, ['time-sig', 'each-other'])
+    check_dur = check_duration_match is not None and check_duration_match is not False
+    if check_dur:
+        ca.check_mismatch('Check Bar Duration Scheme', check_duration_match, ['time-sig', 'each-other'])
 
     def get_bars(lst_notes: List[List[SNote]], is_bass: bool = False) -> List[Measure]:
         lst_bars = []
         for i, notes in enumerate(lst_notes):
-            assert all(n.offset == 0 for n in notes)  # sanity check
+            _notes = []
+            for n in notes:
+                q_len = n.duration.quarterLength
+                if q_len is not None and q_len > 0:
+                    _notes.append(n)
+                else:  # TODO: insert as rest somewhere in between?
+                    logger.warning(f'Invalid duration {pl.i(q_len)} found from note {pl.i(n)} at bar#{pl.i(i)}, '
+                                   f'skipping... ')
+            notes = _notes
+
+            if check_dur:
+                assert all(n.offset == 0 for n in notes)  # sanity check
 
             if check_duration_match == 'time-sig':
                 assert time_sig is not None and time_sig != 'TimeSig_rare'  # sanity check
@@ -729,13 +742,7 @@ def make_score(
                         assert abs(get_notes_duration(notes)-time_sig2bar_dur(time_sig)) < eps  # sanity check
                     logger.warning(msg)
             bar = Measure(number=i)  # Original bar number may not start from 0
-            try:
-                bar.append(notes)
-            except Exception as e:
-                mic(notes)
-                debug_pprint_lst_notes(notes)
-                print(e)
-                raise ValueError(e)
+            bar.append(notes)
             if is_bass and i == 0:
                 bar.insert(m21.clef.BassClef())
             lst_bars.append(bar)
