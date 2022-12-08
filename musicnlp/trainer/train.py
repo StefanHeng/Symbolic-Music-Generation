@@ -457,7 +457,7 @@ if __name__ == '__main__':
 
         if 'debug' not in md_sz:
             # bsz = 96
-            bsz = 48
+            bsz = 32
             train_args.update(dict(
                 learning_rate=3e-4,
                 dataloader_num_workers=4,
@@ -472,7 +472,7 @@ if __name__ == '__main__':
         )
         trainer.train(**kwargs)
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
-    # train_reformer()
+    train_reformer()
 
     def train_xl(**kwargs):  # TODO: support for disable NTP logging
         md_nm = 'transf-xl'
@@ -566,4 +566,4 @@ if __name__ == '__main__':
         trainer.train(**(train_call_args | kwargs))
         trainer.save_model(os_join(trainer.args.output_dir, 'trained'))
         # tokenizer.save_pretrained(os_join(trainer.args.output_dir, 'tokenizer'))  # TODO
-    train_xl()
+    # train_xl()

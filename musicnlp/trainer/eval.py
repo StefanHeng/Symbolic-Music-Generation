@@ -64,6 +64,8 @@ def load_trained(
 
                 ('transf-xl', 'All', '128ep', 'large-wp'): ['2022-11-28_15-52-20_transf-xl', 'trained'],
                 ('transf-xl', 'All', '128ep', 'no-ch-mix'): ['2022-11-30_20-00-10_transf-xl', 'trained'],
+
+                ('transf-xl', 'All', '128ep', 'small_long-seq'): ['2022-12-04_16-03-03_transf-xl', 'trained'],
             }
         )
     paths = [get_base_path(), u.model_dir]
@@ -221,8 +223,7 @@ class MusicGenerator:
             if isinstance(prompt, list):
                 prompt = ' '.join(prompt)
         inputs = self.tokenizer(prompt, return_tensors='pt')
-        # inputs['attention_mask'] = torch.ones_like(inputs['input_ids'])  # TODO: generation warning still shows
-        args = dict(max_length=self.max_len)
+        args = dict(max_length=self.max_len, early_stopping=True)
 
         accepted_keys_sample = ['do_sample', 'top_k', 'top_p', 'typical_p', 'temperature', 'repetition_penalty']
         if strategy == 'greedy':
@@ -268,11 +269,9 @@ class MusicGenerator:
                     accepted_keys += accepted_keys_sample
             assert (k in accepted_keys for k in generate_args)
 
-        generate_args['early_stopping'] = True
-        if generate_args['do_sample']:
-            generate_args['renormalize_logits'] = True
-
         args |= generate_args
+        if args['do_sample']:
+            args['renormalize_logits'] = True
         prompt_colored = self.tokenizer.colorize(prompt)
         d_log = dict(mode=mode, strategy=strategy, args=generate_args | prompt_args, prompt=prompt_colored)
         self.logger.info(f'Generating with {pl.i(d_log)}')
@@ -347,7 +346,7 @@ def get_performance(model):
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
 
-    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'no-ch-mix'
+    md_k = md_nm, ds_nm, ep_nm, desc = 'transf-xl', 'All', '128ep', 'small_long-seq'
     mic(md_nm, ds_nm, ep_nm, desc)
 
     # pch_kd = 'midi'
@@ -414,8 +413,8 @@ if __name__ == '__main__':
     def export_generated(batched: bool = True):
         pch_sft = True
         fnms = [
-            'Canon piano', 'Piano Sonata', 'Für Elise', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro',
-            'Serenade No. 13', 'Serenade No. 13', 'K. 448', 'William Tell', 'Ave Maria', 'Hallelujah',
+            # 'Canon piano', 'Piano Sonata', 'Für Elise', 'Symphony No.5', 'Flower Duet', 'The Marriage of Figaro',
+            # 'Serenade No. 13', 'Serenade No. 13', 'K. 448', 'William Tell', 'Ave Maria', 'Hallelujah',
 
             # Re-run those with a different #bar in prompt, see `fnm2bar`
             'Merry Go Round of Life', 'Merry Go Round of Life',
@@ -424,7 +423,7 @@ if __name__ == '__main__':
             'See You Again', 'Rolling in the Deep', 'Despacito',
             '走马', '告白气球', '演员', '飘向北方', '年少有为', '丑八怪', '李白', '挪威的森林',
 
-            "Stayin' Alive", 'Careless Whisper', 'Take Me Home Country Roads'
+            "Stayin' Alive", 'Careless Whisper', 'Take Me Home Country Roads', 'House of the Rising Sun'
         ]
         fnm2bar = {
             'Merry Go Round of Life': 4,
@@ -433,9 +432,9 @@ if __name__ == '__main__':
             'Serenade No. 13': 4
         }
 
-        # strat = 'sample'
+        strat = 'sample'
         # strat = 'contrastive'
-        strat = 'beam'
+        # strat = 'beam'
         if strat == 'sample':
             # gen_args = dict(top_k=16, top_p=0.75)  # this set up causes repetitions early on
             # gen_args = dict(top_k=32, top_p=0.95)
@@ -444,8 +443,9 @@ if __name__ == '__main__':
             # gen_args = dict(top_k=32, top_p=0.75)  # Good w/ `P&M`, and 5-16 All
             # gen_args = dict(top_k=32, top_p=0.85)
 
+            gen_args = dict(top_k=8)
             # gen_args = dict(top_k=16)
-            gen_args = dict(top_k=6, temperature=1.2)
+            # gen_args = dict(top_k=6, temperature=1.2)
             # gen_args = dict(top_k=32)
             # gen_args = dict(top_k=64, temperature=2.0)
 
@@ -463,9 +463,9 @@ if __name__ == '__main__':
             # gen_args = dict(top_k=12, penalty_alpha=0.6)
         else:
             assert strat == 'beam'
-            # gen_args = dict(num_beams=3, do_sample=True, top_k=64)
+            gen_args = dict(num_beams=3, do_sample=True, top_k=64)
 
-            gen_args = dict(num_beams=3, num_beam_groups=3, num_return_sequences=3, diversity_penalty=0.6)
+            # gen_args = dict(num_beams=3, num_beam_groups=3, num_return_sequences=3, diversity_penalty=0.6)
         mic(strat, gen_args)
 
         # n_bar = 4
@@ -493,7 +493,7 @@ if __name__ == '__main__':
                     print(f'Failed to generate {pl.i(fnm)} due to exception: \n{e}')
             else:
                 call()
-    export_generated(batched=False)
+    export_generated(batched=True)
 
     def eval_ikr():
         md_sz = 'debug'

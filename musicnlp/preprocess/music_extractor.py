@@ -1092,7 +1092,9 @@ if __name__ == '__main__':
         # fnm = '倒数'
         # fnm = '丑八怪'
         # fnm = '李白'
-        fnm = '挪威的森林'
+        # fnm = '挪威的森林'
+
+        fnm = 'House of the Rising Sun'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         mic(fnm)
         # mode = 'melody'
