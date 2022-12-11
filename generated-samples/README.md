@@ -83,18 +83,16 @@ You will find all the generated pieces (MXL files) in the remaining folders. You
 
 Just like the one below, except Transformer XL-small with sequence length 2048 and segment length 1024. 
 
+
+
+*Canon* 
+
+- <img
+       src="https://img.youtube.com/vi/4qi42k-YBVg/maxresdefault.jpg"
+       alt="Generated Sample from Canon by Johann Pachelbel"
+       width="50%" height="auto" style="min-width: 360px">
+
 <br>
-
-
-
-<img
-     src="https://img.youtube.com/vi/4qi42k-YBVg/maxresdefault.jpg"
-     alt="Generated Sample from Canon by Johann Pachelbel"
-     width="50%" height="auto" style="min-width: 360px">
-
-
-
-
 
 
 
