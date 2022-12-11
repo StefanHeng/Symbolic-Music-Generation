@@ -87,12 +87,12 @@ Just like the one below, except Transformer XL-small with sequence length 2048 a
 
 *Canon* 
 
-<div width="50%" height="auto" style="min-width: 360px">
+<div>
 	<a href="https://www.youtube.com/watch?v=4qi42k-YBVg">
         <img
              src="https://img.youtube.com/vi/4qi42k-YBVg/maxresdefault.jpg"
              alt="Generated Sample from Canon by Johann Pachelbel"
-             width="100%" height="auto">
+             width="50%" height="auto" style="min-width: 360px">
     </a>
 </div>
 
