@@ -1,5 +1,4 @@
 .DS_Store
-assets/
 .idea/
 .vscode/
 test-lang*
