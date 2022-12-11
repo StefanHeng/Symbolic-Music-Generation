@@ -19,6 +19,7 @@ cache/
 tokenizers/
 auth/
 transformers/
+*.mov
 
 
 # Byte-compiled / optimized / DLL files

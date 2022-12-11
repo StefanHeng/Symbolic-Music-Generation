@@ -79,7 +79,7 @@ You will find all the generated pieces (MXL files) in the remaining folders. You
 
 
 
-### Transformer XL, longer-seq, 22-12
+### 22-12_Transformer XL, longer-seq
 
 Just like the one below, except Transformer XL-small with sequence length 2048 and segment length 1024. 
 
@@ -87,7 +87,22 @@ Just like the one below, except Transformer XL-small with sequence length 2048 a
 
 
 
-### Transformer XL, degree-pitch, 22-11
+<div top="50%" left="50%">
+	<iframe 
+    	type="text/html"
+        width="640"
+        height="390"
+		src="https://www.youtube.com/embed/tgbNymZ7vqY"
+        frameborder="0"
+        webkitallowfullscreen mozallowfullscreen allowfullscreen>
+    </iframe>
+</div>
+
+
+
+
+
+### 22-11_Transformer XL, degree-pitch
 
 Sequence length 1024, segment length 512 Transformer XL-base trained on POP909, MAESTRO and the entire Lakh MIDI Datasets for 128 epochs, with examples-proportional mixing, key augmentation and degree pitch. 
 
@@ -95,7 +110,7 @@ Sequence length 1024, segment length 512 Transformer XL-base trained on POP909, 
 
 
 
-### Reformer + key-aug, 22-04
+### 22-04_Reformer + key-aug
 
 Just like the one below, except a possible key of each song is inserted with its key (key augmentation). 
 
@@ -105,7 +120,7 @@ Just like the one below, except a possible key of each song is inserted with its
 
 
 
-### Reformer, 22-04
+### 22-04_Reformer
 
 Sequence length 2048 Reformer-base trained on POP909 and a subset of the cleaned version of Lakh Midi Dataset for 8 epochs, with midi pitch 
 
