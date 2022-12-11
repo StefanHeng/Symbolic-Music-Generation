@@ -87,17 +87,23 @@ Just like the one below, except Transformer XL-small with sequence length 2048 a
 
 
 
-<div align="center">
-	<a href="https://www.youtube.com/watch?v=4qi42k-YBVg">
-        <div style="position: relative;">
-            <img src="assets/YouTube.svg" alt="YouTube Icon" style="position: absolute; top: 50%; left: 50%; width: 24"/>
-            <img 
-                src="https://img.youtube.com/vi/4qi42k-YBVg/maxresdefault.jpg" 
-                alt="Generated Sample from Canon by Johann Pachelbel" 
-                style="width: 100%;">
+<div style="width: 100%; display: flex; justify-content: center;">
+	<a href="https://www.youtube.com/watch?v=4qi42k-YBVg" style="display: block; width: 50%; ">
+        <div style="position: relative">
+            <img
+                src="https://img.youtube.com/vi/4qi42k-YBVg/maxresdefault.jpg"
+                alt="Generated Sample from Canon by Johann Pachelbel"
+                width="100%" height="auto">
+            <img src="/assets/YouTube.svg" alt="YouTube Icon" style="position:absolute; top:50%; left: 50%; transform: translate(-50%, -50%);"/>
         </div>
     </a>
 </div>
+
+
+
+![Test svg](/assets/YouTube.svg)
+
+
 
 
 
