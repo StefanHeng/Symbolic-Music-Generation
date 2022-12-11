@@ -79,7 +79,7 @@ You will find all the generated pieces (MXL files) in the remaining folders. You
 
 
 
-### 22-12_Transformer XL, longer-seq
+### [22-12_Transformer XL, longer-seq](https://github.com/StefanHeng/Symbolic-Music-Generation/tree/master/generated-samples/22-12_Transformer%20XL%2C%20longer-seq)
 
 Just like the one below, except Transformer XL-small with sequence length 2048 and segment length 1024. 
 
@@ -87,22 +87,25 @@ Just like the one below, except Transformer XL-small with sequence length 2048 a
 
 
 
-<div top="50%" left="50%">
-	<iframe 
-    	type="text/html"
-        width="640"
-        height="390"
-		src="https://www.youtube.com/embed/tgbNymZ7vqY"
-        frameborder="0"
-        webkitallowfullscreen mozallowfullscreen allowfullscreen>
-    </iframe>
+<div align="center">
+	<a href="https://www.youtube.com/watch?v=4qi42k-YBVg">
+        <div style="position: relative;">
+            <img src="assets/YouTube.svg" alt="YouTube Icon" style="position: absolute; top: 50%; left: 50%; width: 24"/>
+            <img 
+                src="https://img.youtube.com/vi/4qi42k-YBVg/maxresdefault.jpg" 
+                alt="Generated Sample from Canon by Johann Pachelbel" 
+                style="width: 100%;">
+        </div>
+    </a>
 </div>
 
 
 
 
 
-### 22-11_Transformer XL, degree-pitch
+
+
+### [22-11_Transformer XL, degree-pitch](https://github.com/StefanHeng/Symbolic-Music-Generation/tree/master/generated-samples/22-11_Transformer%20XL%2C%20degree-pitch)
 
 Sequence length 1024, segment length 512 Transformer XL-base trained on POP909, MAESTRO and the entire Lakh MIDI Datasets for 128 epochs, with examples-proportional mixing, key augmentation and degree pitch. 
 
@@ -110,7 +113,7 @@ Sequence length 1024, segment length 512 Transformer XL-base trained on POP909, 
 
 
 
-### 22-04_Reformer + key-aug
+### [22-04_Reformer + key-aug](https://github.com/StefanHeng/Symbolic-Music-Generation/tree/master/generated-samples/22-04_Reformer%20%2B%20key-aug)
 
 Just like the one below, except a possible key of each song is inserted with its key (key augmentation). 
 
@@ -120,7 +123,7 @@ Just like the one below, except a possible key of each song is inserted with its
 
 
 
-### 22-04_Reformer
+### [22-04_Reformer](https://github.com/StefanHeng/Symbolic-Music-Generation/tree/master/generated-samples/22-04_Reformer)
 
 Sequence length 2048 Reformer-base trained on POP909 and a subset of the cleaned version of Lakh Midi Dataset for 8 epochs, with midi pitch 
 
