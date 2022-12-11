@@ -419,11 +419,11 @@ if __name__ == '__main__':
             # Re-run those with a different #bar in prompt, see `fnm2bar`
             'Merry Go Round of Life', 'Merry Go Round of Life',
 
-            'Shape of You', '平凡之路', '平凡之路', 'Faded', 'Señorita', 'Sugar', 'Something Just Like This',
-            'See You Again', 'Rolling in the Deep', 'Despacito',
-            '走马', '告白气球', '演员', '飘向北方', '年少有为', '丑八怪', '李白', '挪威的森林',
+            # 'Shape of You', '平凡之路', '平凡之路', 'Faded', 'Señorita', 'Sugar', 'Something Just Like This',
+            # 'See You Again', 'Rolling in the Deep', 'Despacito',
+            # '走马', '告白气球', '演员', '飘向北方', '年少有为', '丑八怪', '李白', '挪威的森林',
 
-            "Stayin' Alive", 'Careless Whisper', 'Take Me Home Country Roads', 'House of the Rising Sun'
+            # "Stayin' Alive", 'Careless Whisper', 'Take Me Home Country Roads', 'House of the Rising Sun'
         ]
         fnm2bar = {
             'Merry Go Round of Life': 4,
@@ -476,10 +476,12 @@ if __name__ == '__main__':
         for fnm in fnms:
             path = music_util.get_my_example_songs(k=fnm, extracted=True, postfix='{md=f}')
             fnm = stem(path)
+            n_bar = fnm2bar.pop(fnm, n_bar)
             m = fnm_pattern.match(fnm)
             assert m is not None
             fnm = m.group('fnm')
-            prompt = dict(path=path, n_bar=fnm2bar.pop(fnm, n_bar), insert_key=key_aug, pitch_shift=pch_sft)
+            prompt = dict(path=path, n_bar=n_bar, insert_key=key_aug, pitch_shift=pch_sft)
+            mic(prompt)
 
             def call():
                 mg(

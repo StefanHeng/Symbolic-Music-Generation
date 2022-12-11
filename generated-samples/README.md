@@ -12,7 +12,16 @@ Pop
 - *Rolling in the Deep* by *Adele*, 2011
 - *Señorita* by *Camila Cabello*, 2019
 - *See You Again* by *Wiz Khalifa* Ft. *Charlie Puth*, 2015
+- *告白气球* by *周杰伦*, 2016 
+- *走马* by *陈粒*, 2015
+- *飘向北方* by *黄明志*, 2016 
+- *年少有为* by *李荣浩*, 2018 
+- *李白* by *李荣浩*, 2013 
 - *平凡之路* by *朴树*, 2014 
+- *丑八怪* by *薛之谦*, 2013 
+- *演员* by *薛之谦*, 2015 
+- *倒数* by *邓紫棋*, 2018 
+- *挪威的森林* by *伍佰*, 1996 
 - *Sugar* by *Maroon 5*, 2014
 - *Faded* by *Alan Walker*, 2015
 - *My Heart Will Go On* by *Celine Dion*, 1997
@@ -23,6 +32,7 @@ Pop
 - *Stayin’ Alive* by *Bee Gees*, 1977 
 - *Something Just Like This* by *The Chainsmokers* & *Coldplay*, 2018 
 - *Beat It* by *Michael Jackson*, 1982
+- *House of the Rising Sun* by *The Animals*, 1964 
 - *Autumn Leaves* by *Frank Sinatra*, 1955
 
 
@@ -57,15 +67,11 @@ We [extract music representation](https://github.com/StefanHeng/Symbolic-Music-G
 
 
 
-You will find all the generated pieces in the remaining folders. 
+Below we include some cherry-picked generation samples from model variants. We include a broader set of samples on YouTube. 
 
 
 
-Below we include some cherry-picked generation samples from model variants. 
-
-
-
-
+You will find all the generated pieces (MXL files) in the remaining folders. You can listen to them with your favorite synthesizer. I use [MuseScore](https://musescore.org). 
 
 <br>
 
@@ -73,13 +79,25 @@ Below we include some cherry-picked generation samples from model variants.
 
 
 
+### Transformer XL, longer-seq, 22-12
+
+Just like the one below, except Transformer XL-small with sequence length 2048 and segment length 1024. 
+
+<br>
+
+
+
+### Transformer XL, degree-pitch, 22-11
+
+Sequence length 1024, segment length 512 Transformer XL-base trained on POP909, MAESTRO and the entire Lakh MIDI Datasets for 128 epochs, with examples-proportional mixing, key augmentation and degree pitch. 
+
+<br>
+
+
+
 ### Reformer + key-aug, 22-04
 
-Just like the one below, except a possible key of each song is inserted with its key. 
-
-
-
-
+Just like the one below, except a possible key of each song is inserted with its key (key augmentation). 
 
 <br>
 
@@ -89,11 +107,7 @@ Just like the one below, except a possible key of each song is inserted with its
 
 ### Reformer, 22-04
 
-Reformer trained on POP909 and a subset of the cleaned version of Lakh Midi Dataset for 8 epochs, with midi pitch 
-
-
-
-
+Sequence length 2048 Reformer-base trained on POP909 and a subset of the cleaned version of Lakh Midi Dataset for 8 epochs, with midi pitch 
 
 <br>
 
