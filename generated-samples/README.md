@@ -85,9 +85,23 @@ Just like the one below, except Transformer XL-small with sequence length 2048 a
 
 
 
+[YouTube playlist](https://www.youtube.com/playlist?list=PL1-KLz0i9pBGDRH2zVjHqqBBn2PG2dK3H)
+
+**Top-K sampling with K = 8, given first 8 bars**
+
 *Canon* 
 
 - [![](https://markdown-videos.deta.dev/youtube/4qi42k-YBVg)](https://youtu.be/4qi42k-YBVg)
+
+*Merry Go Round of Life* 
+
+- [![](https://markdown-videos.deta.dev/youtube/2j5BH7k5Ytc)](https://youtu.be/4qi42k-YBVg)
+
+*平凡之路* 
+
+- [![](https://markdown-videos.deta.dev/youtube/DgyUOPebBoA)](https://youtu.be/4qi42k-YBVg)
+
+
 
 <br>
 

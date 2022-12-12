@@ -19,6 +19,7 @@ tokenizers/
 auth/
 transformers/
 *.mov
+assets/
 
 
 # Byte-compiled / optimized / DLL files
