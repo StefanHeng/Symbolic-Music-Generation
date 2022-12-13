@@ -113,6 +113,24 @@ Just like the one below, except Transformer XL-small with sequence length 2048 a
 
 Sequence length 1024, segment length 512 Transformer XL-base trained on POP909, MAESTRO and the entire Lakh MIDI Datasets for 128 epochs, with examples-proportional mixing, key augmentation and degree pitch. 
 
+
+
+[YouTube playlist](https://www.youtube.com/playlist?list=PL1-KLz0i9pBHOYSONfmgyyLkmrvdTfyZ4)
+
+**Top-K sampling given first 8 bars**
+
+*The Marriage of Figaro* with K = 10 
+
+- [![](https://markdown-videos.deta.dev/youtube/vS3sv37RO30)](https://youtu.be/vS3sv37RO30)
+
+*Shape of You* with K = 8
+
+- [![](https://markdown-videos.deta.dev/youtube/HLzb5I8oNpU)](https://youtu.be/HLzb5I8oNpU)
+
+*告白气球* with K = 16
+
+- [![](https://markdown-videos.deta.dev/youtube/2ACHwYMn-2g)](https://youtu.be/2ACHwYMn-2g)
+
 <br>
 
 
