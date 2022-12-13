@@ -6,7 +6,36 @@ This directory holds conditionally generated samples based on iconic pop songs/c
 
 We selected the following songs for generation, you’ll find the corresponding music files in the [`original`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/generated-samples/original) folder. 
 
-Pop 
+
+<details>
+  <summary>Click me</summary>
+  
+  ### Heading
+  1. Foo
+  2. Bar
+     * Baz
+     * Qux
+
+  ### Some Code
+  ```js
+  function logSomething(something) {
+    console.log('Something', something);
+  }
+  ```
+</details>
+
+
+<details>
+    <summary>Click me</summary>
+
+    - *Shape of You* by *Ed Sheeran*, 2017 
+    - *Rolling in the Deep* by *Adele*, 2011
+    - *Señorita* by *Camila Cabello*, 2019
+</details>
+
+ 
+
+**Pop** 
 
 - *Shape of You* by *Ed Sheeran*, 2017 
 - *Rolling in the Deep* by *Adele*, 2011
