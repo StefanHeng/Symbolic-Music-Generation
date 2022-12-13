@@ -83,6 +83,8 @@ You will find all the generated pieces (MXL files) in the remaining folders. You
 
 Just like the one below, except Transformer XL-small with sequence length 2048 and segment length 1024. 
 
+<br>
+
 
 
 [YouTube playlist](https://www.youtube.com/playlist?list=PL1-KLz0i9pBGDRH2zVjHqqBBn2PG2dK3H)
@@ -99,9 +101,11 @@ Just like the one below, except Transformer XL-small with sequence length 2048 a
 
 *平凡之路* 
 
-- [![](https://markdown-videos.deta.dev/youtube/DgyUOPebBoA)](https://youtu.be/DgyUOPebBoA)
+- [![](https://markdown-videos.deta.dev/youtube/2WqlsmRiQaE)](https://youtu.be/2WqlsmRiQaE)
 
+*年少有为* 
 
+- [![](https://markdown-videos.deta.dev/youtube/44-yVc_aFzc)](https://youtu.be/44-yVc_aFzc)
 
 <br>
 
@@ -112,6 +116,8 @@ Just like the one below, except Transformer XL-small with sequence length 2048 a
 ### [22-11_Transformer XL, degree-pitch](https://github.com/StefanHeng/Symbolic-Music-Generation/tree/master/generated-samples/22-11_Transformer%20XL%2C%20degree-pitch)
 
 Sequence length 1024, segment length 512 Transformer XL-base trained on POP909, MAESTRO and the entire Lakh MIDI Datasets for 128 epochs, with examples-proportional mixing, key augmentation and degree pitch. 
+
+<br>
 
 
 
@@ -126,6 +132,10 @@ Sequence length 1024, segment length 512 Transformer XL-base trained on POP909, 
 *Shape of You* with K = 8
 
 - [![](https://markdown-videos.deta.dev/youtube/HLzb5I8oNpU)](https://youtu.be/HLzb5I8oNpU)
+
+*Señorita* with K = 8
+
+- [![](https://markdown-videos.deta.dev/youtube/MB4FXnoLcIg)](https://youtu.be/MB4FXnoLcIg)
 
 *告白气球* with K = 16
 
