@@ -7,35 +7,9 @@ This directory holds conditionally generated samples based on iconic pop songs/c
 We selected the following songs for generation, you’ll find the corresponding music files in the [`original`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/generated-samples/original) folder. 
 
 
-<details>
-  <summary>Click me</summary>
-
-  ### Heading
-  1. Foo
-  2. Bar
-     * Baz
-     * Qux
-
-  ### Some Code
-  ```js
-  function logSomething(something) {
-    console.log('Something', something);
-  }
-  ```
-</details>
-
 
 <details>
     <summary><b>Pop</b></summary>
-
-- *Shape of You* by *Ed Sheeran*, 2017 
-- *Rolling in the Deep* by *Adele*, 2011
-- *Señorita* by *Camila Cabello*, 2019
-</details>
-
- 
-
-**Pop** 
 
 - *Shape of You* by *Ed Sheeran*, 2017 
 - *Rolling in the Deep* by *Adele*, 2011
@@ -63,17 +37,19 @@ We selected the following songs for generation, you’ll find the corresponding 
 - *Beat It* by *Michael Jackson*, 1982
 - *House of the Rising Sun* by *The Animals*, 1964 
 - *Autumn Leaves* by *Frank Sinatra*, 1955
+</details>
 
 
-
-Tunes 
+<details>
+    <summary><b>Tunes</b></summary>
 
 - *Merry Go Round of Life* by *Joe Hisaishi*, 2004  
 - *Merry Christmas Mr. Lawrence* by *Ryuichi Sakamoto*, 1983 
+</details>
 
 
-
-Classical 
+<details>
+    <summary><b>Classical</b></summary>
 
 - *Canon in D* by *Johann Pachelbel*, 1680   
 - *Piano Sonata No. 11* by *Mozart*, 1783 
@@ -89,6 +65,10 @@ Classical
 - *Ave Maria* by *Charles Gounod*, 1853 
 - *Ode to Joy* from *Symphony 9* by *Beethoven*, 1824
 - *Moonlight* from *Sonata No. 14 in C-sharp minor* by *Beethoven*, 1801
+</details>
+
+<br>
+
 
 
 
