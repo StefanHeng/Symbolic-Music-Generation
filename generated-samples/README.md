@@ -9,7 +9,7 @@ We selected the following songs for generation, you’ll find the corresponding 
 
 <details>
   <summary>Click me</summary>
-  
+
   ### Heading
   1. Foo
   2. Bar
@@ -28,9 +28,9 @@ We selected the following songs for generation, you’ll find the corresponding 
 <details>
     <summary><b>Pop</b></summary>
 
-    * *Shape of You* by *Ed Sheeran*, 2017 
-    * *Rolling in the Deep* by *Adele*, 2011
-    * *Señorita* by *Camila Cabello*, 2019
+- *Shape of You* by *Ed Sheeran*, 2017 
+- *Rolling in the Deep* by *Adele*, 2011
+- *Señorita* by *Camila Cabello*, 2019
 </details>
 
  
