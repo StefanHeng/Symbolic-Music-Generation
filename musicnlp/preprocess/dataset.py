@@ -17,7 +17,7 @@ from musicnlp.preprocess import transform
 
 __all__ = [
     'get_dataset_dir_name', 'DATASET_NAME2MODE2FILENAME',
-    'load_songs', 'iter_songs_n_key',
+    'load_songs', 'iter_song', 'LoadSongMap',
     'get_dataset', 'AugmentedDataset', 'ProportionMixingDataset'
 ]
 
@@ -74,13 +74,42 @@ def load_songs(*dnms, as_dict: bool = True, as_iter: bool = False) -> Union[List
         return sum((_load_single(dnm_) for dnm_ in dnms), start=[])
 
 
+class LoadSongMap:
+    """
+    Syntactic sugar for common song preprocessing for e.g. tokenizer
+
+    Combines many transforms into one
+    """
+    def __init__(self, pitch_kind: str = 'step', vocab_step: MusicVocabulary = None):
+        self.pitch_kind = pitch_kind
+        self.vocab_step = vocab_step
+
+        self.sr = transform.SanitizeRare(for_midi=pitch_kind == 'midi', return_as_list=True)
+        self.tmp, self.ki, self.ps = None, None, None
+        if pitch_kind == 'midi':
+            self.tmp = transform.ToMidiPitch()
+        elif pitch_kind == 'degree':  # key always needed for degree pitch shift
+            self.ki = transform.KeyInsert(vocab=self.sr.vocab, return_as_list=True)  # pitch kind doesn't matter
+            self.ps = transform.PitchShift(return_as_list=True)
+
+    def __call__(self, text: str = None, key: str = None) -> str:
+        toks = self.sr(text)
+
+        if self.pitch_kind == 'midi':
+            toks = self.tmp(toks)
+        elif self.pitch_kind == 'degree':
+            toks = self.ki(toks, key)
+            toks = self.ps(toks)
+        return ' '.join(toks)
+
+
 @dataclass
 class IterSongOutput:
     generator: Iterable[Tuple[str, str]] = None
     total: int = None
 
 
-def iter_songs_n_key(songs: Iterable[Dict[str, Any]]) -> IterSongOutput:
+def iter_song(songs: Iterable[Dict[str, Any]]) -> IterSongOutput:
     """
     :param songs: songs, each containing `score` and possible `key`s, per music extraction API
     :return: songs, each with each of its possible key
