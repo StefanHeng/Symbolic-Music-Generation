@@ -17,8 +17,7 @@ from tokenizers import pre_tokenizers, models, decoders
 
 from stefutil import *
 from musicnlp.util import *
-from musicnlp.vocab.music_vocab import MusicVocabulary, VocabType, WORDPIECE_CONTINUING_PREFIX
-from musicnlp.vocab.music_tokenizer import MusicTokenizer
+from musicnlp.vocab import MusicVocabulary, VocabType, WORDPIECE_CONTINUING_PREFIX, MusicTokenizer
 from musicnlp.preprocess import transform, dataset
 
 
