@@ -693,7 +693,7 @@ sample_full_degree = 'TimeSig_rare Tempo_120 Key_GMajor <bar> <melody> p_1/5_4 d
                      'd_1/4 p_7/4_7 d_1/8 p_10/4_2 d_3/8 <bass> p_3/2_5 d_1 <bar> <melody> p_3/5_5 d_1/4 p_10/2_2 ' \
                      'd_1/4 p_5/5_6 d_1/4 p_10/2_2 d_1/4 <bass> p_3/2_5 d_1 <bar> <melody> p_7/5_7 d_1/4 p_10/2_2 ' \
                      'd_3/4 <bass> p_3/2_5 d_1 <bar> <melody> p_10/5_2 d_1/4 p_3/6_5 d_3/4 <bass> p_3/2_5 d_1 <bar> ' \
-                     '<melody> p_3/2_5 d_1/2 p_r d_1/2 <bass> p_r d_1 </s> '
+                     '<melody> p_3/2_5 d_1/2 p_r d_1/2 <bass> p_r d_1 </s>'
 
 gen_broken = 'TimeSig_4/4 Tempo_104 Key_BbMinor <bar> <melody> p_6/4_5 d_1/2 p_1/5_2 d_1/2 p_11/4_1 d_1/2 p_9/4_7 ' \
              'd_1/2 p_9/4_7 d_3/2 p_9/4_7 d_1/4 p_9/3_7 d_1/8 p_r d_1/8 <bass> p_4/3_4 d_1/4 p_6/3_5 d_1/2 p_9/3_7 ' \

@@ -46,14 +46,8 @@ class MusicTokenizer(PreTrainedTokenizer):
             self.vocab = MusicVocabulary(**init_args)
         self.pitch_kind = pitch_kind
 
-        self.spec_toks_enc, self.spec_toks_dec = dict(), dict()
-        # if add_pad:
-        #     self._add_pad_token()
         self.pad_token = self.vocab.pad  # override
         self.eos_token = self.vocab.end_of_song
-        # self.add_special_tokens(dict(pad_token=self.vocab.pad, eos_token=self.vocab.end_of_song))
-        # from stefutil import mic
-        # mic(self.pad_token, self.eos_token)
 
         self.sob_token = self.vocab.start_of_bar
         self.rare_time_sig_token = self.vocab.rare_time_sig
@@ -72,12 +66,6 @@ class MusicTokenizer(PreTrainedTokenizer):
             self.rare_pitch_token = self.vocab.rare_pitch
             self.rare_pitch_token_id = self._convert_token_to_id(self.rare_pitch_token)
 
-    def _add_special_token(self, tok):
-        assert tok not in self.spec_toks_enc
-        id_ = self.vocab_size
-        self.spec_toks_enc[tok] = id_  # Assign the next coming value; vocab size automatically increments
-        self.spec_toks_dec[id_] = tok
-
     def _add_tokens(self, new_tokens: Union[List[str], List[AddedToken]], special_tokens: bool = False) -> int:
         raise ValueError('In LMTTokenizer._add_tokens')
 
@@ -92,13 +80,13 @@ class MusicTokenizer(PreTrainedTokenizer):
 
     @property
     def vocab_size(self) -> int:
-        return len(self.vocab) + len(self.spec_toks_enc)
+        return len(self.vocab)
 
     def _convert_token_to_id(self, token):
-        return self.spec_toks_enc[token] if token in self.spec_toks_enc else self.vocab.t2i(token)
+        return self.vocab.t2i(token)
 
     def _convert_id_to_token(self, index: int) -> str:
-        return self.spec_toks_dec[index] if index in self.spec_toks_dec else self.vocab.i2t(index)
+        return self.vocab.i2t(index)
 
     def ids2pitches(self, ids: Union[Iterable[int], Iterable[str]], include_rest_pitch: bool = True) -> List[int]:
         """
@@ -108,12 +96,11 @@ class MusicTokenizer(PreTrainedTokenizer):
             Rest notes and rare pitches are ignored
         """
         meta = [self.vocab.tok2meta(i) for i in ids if self.vocab.type(i) == VocabType.pitch]
-        exclude = [self.vocab.rare_pitch_meta]
-        if not include_rest_pitch:
-            exclude.append(self.vocab.rest_pitch_meta)
-        meta = [i for i in meta if i not in exclude]
+        meta = [m for m in meta if m != self.vocab.rare_pitch_meta]
         if self.pitch_kind != 'midi':  # meta is a tuple
             meta = [i[0] for i in meta]
+        if not include_rest_pitch:
+            meta = [m for m in meta if m != self.vocab.rest_pitch_meta]
         return meta
 
     def colorize(self, song: str) -> str:
