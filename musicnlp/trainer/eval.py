@@ -20,7 +20,7 @@ from musicnlp.util import *
 from musicnlp.vocab import VocabType, MusicVocabulary, MusicTokenizer
 from musicnlp.preprocess import KeyFinder, MusicConverter, transform
 from musicnlp.models import MyReformerModelWithLMHead, MyTransfoXLLMHeadModel
-from musicnlp.trainer.wordpiece_tokenizer import load_trained_tokenizer as load_wordpiece_tokenizer
+from musicnlp.trainer.wordpiece_tokenizer import load_wordpiece_tokenizer
 
 
 def load_trained(

@@ -22,7 +22,7 @@ from musicnlp.vocab import MusicVocabulary, MusicTokenizer
 from musicnlp.preprocess import MusicConverter, dataset
 
 
-__all__ = ['PairMergeTokenizerTrainer', 'PairMergeTokenizer', 'load_trained_tokenizer']
+__all__ = ['PairMergeTokenizerTrainer', 'PairMergeTokenizer', 'load_pairmerge_tokenizer']
 
 
 logger = get_logger('Pair-Merge Tokenizer')
@@ -40,14 +40,15 @@ class PairMergeTokenizerTrainer:
 
     def __call__(
             self, dataset_names: List[str] = None, vocab_size: int = 8192, coverage_ratio: float = None,
-            save: Union[bool, str] = None, plot: bool = None
+            save: Union[bool, str] = None, plot_meta: bool = None, concurrent: Union[bool, Dict] = False
     ):
         """
         :param dataset_names: List of dataset of songs to train on
         :param save: File to save trained tokenizer
         :param vocab_size: Total vocabulary size, initial vocab size + added merged tokens
         :param coverage_ratio: Merged tokens are added until the coverage ratio is reached
-        :param plot: Metadata on coverage ratio is plotted
+        :param plot_meta: Metadata on coverage ratio is plotted
+        :param concurrent: If true, song tokens are added concurrently
 
         .. note:: Only one of `vocab_size` and `coverage_ratio` should be specified
         """
@@ -69,14 +70,23 @@ class PairMergeTokenizerTrainer:
         else:
             n, songs = len(_songs), (s['score'] for s in _songs)
 
+        if self.aug_key:
+            def gen():
+                for s in songs:
+                    s, key = s
+                    yield self.lsm(text=s, key=key)
+        else:
+            gen = (s['score'] for s in _songs)
+
         c = Counter()  # TODO: weigh by dataset size?
-        for song in tqdm(songs, total=n, desc='Counting music elements'):
-            if self.aug_key:
-                song, key = song
-                song = self.lsm(text=song, key=key)
-            else:  # TODO: midi pitch
-                song = song['score']
-            c.update(self._song2uniq_elms(song))
+        with_tqdm = dict(total=n, desc='Counting music elements')
+        if concurrent:
+            args = concurrent if isinstance(concurrent, dict) else dict()
+            for elms in conc_yield(self._song2uniq_elms, gen(), **args, with_tqdm=with_tqdm):
+                c.update(elms)
+        else:
+            for song in tqdm(gen(), **with_tqdm):
+                c.update(self._song2uniq_elms(song))
         n_uniq = len(c)
         logger.info(f'# unique music elements: {pl.i(n_uniq)}')
 
@@ -99,8 +109,8 @@ class PairMergeTokenizerTrainer:
 
         save_meta = None
         if save:  # as whole percentage
-            save_meta = dict(vsz=vocab_size, r=round(coverage_ratio, 2) * 100, n=n, pch=self.pitch_kind[0])
-        if plot:
+            save_meta = dict(vsz=vocab_size, r=round(coverage_ratio * 100), n=n, pch=self.pitch_kind[0])
+        if plot_meta:
             self._plot(counter=c, counts=counts, ratio=ratio, save=save)
 
         if save:
@@ -224,24 +234,24 @@ class PairMergeTokenizer(MusicTokenizer, PreTrainedTokenizer):
     def vocab_size(self) -> int:
         return self.original_vocab_size + self.added_vocab_size
 
-    def __call__(self, text, **kwargs):
-        if isinstance(text, str):
-            out = self.mc.str2tok_elms(text)
-            ret = [self._convert_token_to_id(out.time_sig), self._convert_token_to_id(out.tempo)]
-            if out.key:
-                ret.append(self._convert_token_to_id(out.key))
-            if out.omit:
-                ret.append(self._convert_token_to_id(out.omit))
-
-            ret += chain_its(self._encode_bar_elms(elms) for elms in out.elms_by_bar)
-
-            if out.end_of_song:
-                ret.append(self._convert_token_to_id(out.end_of_song))
-
-            return BatchEncoding(dict(input_ids=ret))
-        else:
-            assert isinstance(text, (list, tuple)) and isinstance(text[0], str)
-            raise NotImplementedError
+    # def __call__(self, text, **kwargs):
+    #     if isinstance(text, str):
+    #         out = self.mc.str2tok_elms(text)
+    #         ret = [self._convert_token_to_id(out.time_sig), self._convert_token_to_id(out.tempo)]
+    #         if out.key:
+    #             ret.append(self._convert_token_to_id(out.key))
+    #         if out.omit:
+    #             ret.append(self._convert_token_to_id(out.omit))
+    #
+    #         ret += chain_its(self._encode_bar_elms(elms) for elms in out.elms_by_bar)
+    #
+    #         if out.end_of_song:
+    #             ret.append(self._convert_token_to_id(out.end_of_song))
+    #
+    #         return BatchEncoding(dict(input_ids=ret))
+    #     else:
+    #         assert isinstance(text, (list, tuple)) and isinstance(text[0], str)
+    #         raise NotImplementedError
 
     def _encode_bar_elms(self, elms: List[List[str]]) -> Iterable[int]:
         """
@@ -256,17 +266,32 @@ class PairMergeTokenizer(MusicTokenizer, PreTrainedTokenizer):
                 for tok in me:
                     yield self.vocab.t2i(tok)
 
-    def tokenize(self, text, entire_score: bool = True, **kwargs):
+    def _tokenize(self, text, **kwargs):
+        out = self.mc.str2tok_elms(text)
+        ret = [out.time_sig, out.tempo]
+        if out.key:
+            ret.append(out.key)
+        if out.omit:
+            ret.append(out.omit)
+
+        ret += chain_its(self._tokenize_bar_elms(elms) for elms in out.elms_by_bar)
+
+        if out.end_of_song:
+            ret.append(out.end_of_song)
+        return ret
+
+    def _tokenize_bar_elms(self, elms: List[List[str]]) -> Iterable[str]:
         """
-        :param text: Music score
-        :param entire_score: If true, enforce check for entire score passed in
-            Otherwise, the tokens are not split at all
-                For this reason, **use with caution**, Intended for debugging, see `check_trained_has_single_token`
+        Encode music elements in a bar
         """
-        if isinstance(text, str):
-            raise NotImplementedError
-        else:
-            raise NotImplementedError('Not implemented for iterable input')
+        yield self.sob_token
+        for me in elms:
+            tok_merge = ' '.join(me)
+            if tok_merge in self.added_tok2id:
+                yield tok_merge
+            else:
+                for tok in me:
+                    yield tok
 
     def encode(self, text, entire_score: bool = True, **kwargs):
         if isinstance(text, str):
@@ -292,7 +317,7 @@ class PairMergeTokenizer(MusicTokenizer, PreTrainedTokenizer):
         return sum([i2p[int(i)] for i in ids], start=[])
 
 
-def load_trained_tokenizer(
+def load_pairmerge_tokenizer(
         fnm: str = None, pitch_kind: str = 'step', **kwargs
 ) -> PairMergeTokenizer:
     if pitch_kind == 'midi':
@@ -301,7 +326,7 @@ def load_trained_tokenizer(
         raise NotImplementedError
     else:
         assert pitch_kind == 'degree'
-        fnm = fnm or '22-12-18_PairMerge-Tokenizer_{dnm=POP&MST}_{vsz=4716, r= 0.95, n=8234, pch=d}'
+        fnm = fnm or '22-12-18_PairMerge-Tokenizer_{dnm=POP&MST}_{vsz=4716, r=95, n=8234, pch=d}'
     return PairMergeTokenizer.from_file(fnm, pitch_kind=pitch_kind, **kwargs)
 
 
@@ -353,11 +378,13 @@ if __name__ == '__main__':
         pmtt = PairMergeTokenizerTrainer(pitch_kind=pch_kd, mode=md)
         # vsz_arg = dict(vocab_size=8192)
         vsz_arg = dict(vocab_size=None, coverage_ratio=0.95)
-        pmtt(dataset_names=dnms, **vsz_arg, save=sv, plot=True)
-    check_high_occur()
+        conc = False
+        # conc = dict(mode='process')
+        pmtt(dataset_names=dnms, **vsz_arg, save=sv, plot_meta=True, concurrent=conc)
+    # check_high_occur()
 
     def check_single_tokenize():
-        fnm = '22-12-18_PairMerge-Tokenizer_{dnm=POP909}_{vsz=2657, r= 0.95, n=3711, pch=d}'
+        fnm = '22-12-18_PairMerge-Tokenizer_{dnm=POP&MST}_{vsz=4716, r=95, n=8234, pch=d}'
         tokenizer = PairMergeTokenizer.from_file(fnm)
         inputs = tokenizer(sample_full_degree)
         # mic(inputs.keys())
@@ -373,7 +400,7 @@ if __name__ == '__main__':
         aug_key = True
         pch_kd = 'degree' if aug_key else 'step'
 
-        fnm = '22-12-18_PairMerge-Tokenizer_{dnm=POP909}_{vsz=2657, r= 0.95, n=3711, pch=d}'
+        fnm = '22-12-18_PairMerge-Tokenizer_{dnm=POP&MST}_{vsz=4716, r=95, n=8234, pch=d}'
         tokenizer = PairMergeTokenizer.from_file(fnm)
         check = _CheckTrainedSingle(tokenizer=tokenizer)
 
@@ -387,4 +414,4 @@ if __name__ == '__main__':
 
         for song in tqdm(songs, total=n, desc='Checking reconstruction'):
             check(song)
-    # check_tokenize_all()
+    check_tokenize_all()

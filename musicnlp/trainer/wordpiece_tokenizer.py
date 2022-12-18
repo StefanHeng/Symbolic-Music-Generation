@@ -21,7 +21,7 @@ from musicnlp.vocab import MusicVocabulary, VocabType, WORDPIECE_CONTINUING_PREF
 from musicnlp.preprocess import transform, dataset
 
 
-__all__ = ['WordPieceMusicTrainer', 'WordPieceMusicTokenizer', 'load_trained_tokenizer']
+__all__ = ['WordPieceMusicTrainer', 'WordPieceMusicTokenizer', 'load_wordpiece_tokenizer']
 
 
 logger = get_logger('WordPiece Tokenizer')
@@ -452,7 +452,7 @@ class WordPieceMusicTokenizer(MusicTokenizer):
         return sum([i2p[int(i)] for i in ids], start=[])
 
 
-def load_trained_tokenizer(  # has independent global token & bar split
+def load_wordpiece_tokenizer(  # has independent global token & bar split
         fnm: str = None, pitch_kind: str = None, **kwargs
 ) -> WordPieceMusicTokenizer:
     pitch_kind = pitch_kind or 'midi'

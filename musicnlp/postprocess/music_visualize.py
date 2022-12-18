@@ -24,7 +24,7 @@ from musicnlp.vocab import (
     MusicVocabulary, MusicTokenizer, key_str2enum
 )
 from musicnlp.preprocess import WarnLog
-from musicnlp.trainer import load_trained_tokenizer as load_wordpiece_tokenizer
+from musicnlp.trainer import load_wordpiece_tokenizer
 from musicnlp.postprocess.music_stats import MusicStats
 
 
