@@ -30,7 +30,8 @@ COMMON_TIME_SIGS: List[TsTup] = sorted(  # Sort first by denominator
     [(4, 4), (2, 4), (2, 2), (3, 4), (6, 8), (5, 4), (12, 8)],
     key=lambda tup_: tuple(reversed(tup_))
 )
-COMMON_TEMPOS: List[int] = list(range(40, 241))  # [40-240]
+TEMPO_LOW_EDGE, TEMPO_HIGH_EDGE = 40, 240  # inclusive
+COMMON_TEMPOS: List[int] = list(range(TEMPO_LOW_EDGE, TEMPO_HIGH_EDGE+1))  # [40-240]
 
 
 def is_common_time_sig(ts: Union[TimeSignature, TsTup]):
@@ -134,8 +135,8 @@ class MusicVocabulary:
     rare_pitch = f'{pitch_pref}{sep}rare'  # relevant only for non-midi pitch kind, see `_rarest_index_n_names`
     rare_duration = f'{dur_pref}{sep}rare'  # has to be too long, assuming durations are quantized
     rare_time_sig_meta = (None, None)  # TODO: check, may break things?
-    low_tempo_meta = 40 - 1  # See `COMMON_TEMPOS`
-    high_tempo_meta = 240 + 1
+    low_tempo_meta = TEMPO_LOW_EDGE - 1  # See `COMMON_TEMPOS`
+    high_tempo_meta = TEMPO_HIGH_EDGE + 1
     rare_pitch_meta = None
     rare_duration_meta = None
 
@@ -290,6 +291,11 @@ class MusicVocabulary:
         ca.check_mismatch('Unique Pitch Kind', pitch_kind, ['midi', 'step', 'degree'])
         self.pitch_kind = pitch_kind
         self.with_rare_step = with_rare_step
+        if tempo_bin:
+            self.tempo_bin: int = 5 if tempo_bin is True else tempo_bin
+        else:
+            self.tempo_bin = None
+        self.tempo_bin_map = None
 
         specs = MusicVocabulary.SPEC_TOKS  # Syntactic sugar
         sep = specs['sep']
@@ -309,6 +315,10 @@ class MusicVocabulary:
             step=re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[A-G])$'),
             degree=re.compile(rf'^{self.cache["pref_pch"]}{MusicVocabulary.RE2}_(?P<step>[1-7])$')
         )
+        self._tempo_bin2pattern: Dict[bool, re.Pattern] = {
+            True: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE2}$'),  # See `_get_all_unique_tempos`
+            False: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE1}$')  # No tempo bin, default pattern
+        }
         self.tok_type2pattern = {
             VocabType.duration: dict(
                 int=re.compile(rf'^{self.cache["pref_dur"]}{MusicVocabulary.RE1}$'),
@@ -316,7 +326,7 @@ class MusicVocabulary:
             ),
             VocabType.pitch: self.pitch_pattern,
             VocabType.time_sig: re.compile(rf'^{self.cache["pref_time_sig"]}{MusicVocabulary.RE2}$'),
-            VocabType.tempo: re.compile(rf'^{self.cache["pref_tempo"]}{MusicVocabulary.RE1}$'),
+            VocabType.tempo: self.tempo_pattern,
             VocabType.key: re.compile(rf'^{self.cache["pref_key"]}(?P<key>.*)$'),
         }
 
@@ -334,7 +344,7 @@ class MusicVocabulary:
         self.likely_rare_types = tuple([*self.likely_rare_types, VocabType.pitch])
 
         def elm2str(elm):
-            return self(elm, color=False, return_int=False)
+            return self(elm, color=False)
 
         def rev(time_sig):
             return tuple(reversed(time_sig))  # Syntactic sugar
@@ -351,7 +361,7 @@ class MusicVocabulary:
         self.toks: Dict[str, List[str]] = OrderedDict(dict(
             special=special,
             time_sig=[MusicVocabulary.rare_time_sig, *tss],
-            tempo=[MusicVocabulary.rare_low_tempo, *tempos, MusicVocabulary.rare_high_tempo],
+            tempo=[MusicVocabulary.rare_low_tempo, *self._get_all_unique_tempos(), MusicVocabulary.rare_high_tempo],
             key=keys,
             pitch=self._get_all_unique_pitches(),
             duration=[MusicVocabulary.rare_duration, *self.get_durations(exp='str')]
@@ -374,6 +384,39 @@ class MusicVocabulary:
 
     def __contains__(self, item: str):
         return item in self.tok2id
+
+    @property
+    def tempo_pattern(self) -> re.Pattern:
+        return self._tempo_bin2pattern[bool(self.tempo_bin)]
+
+    def _get_all_unique_tempos(self) -> List[str]:
+        if self.tempo_bin:
+            assert (TEMPO_HIGH_EDGE - TEMPO_LOW_EDGE) % self.tempo_bin == 0
+            # in such case, there would be one edge case, last group will have 1 more element
+            self.tempo_bin_map: Dict[Tuple[int], Tuple[str, int]] = dict()
+            bin_strt = TEMPO_LOW_EDGE
+            while bin_strt + self.tempo_bin <= TEMPO_HIGH_EDGE:
+                bin_end = bin_strt + self.tempo_bin  # exclusive end
+                if bin_strt + self.tempo_bin * 2 > TEMPO_HIGH_EDGE:  # last group
+                    assert bin_end == TEMPO_HIGH_EDGE  # by construction, for mod is 0
+                    bin_end += 1
+                key = tuple(range(bin_strt, bin_end))
+                # inclusive start & end, separate w/ slash to conform to same format as other tokens
+                tok = f'{self.cache["pref_tempo"]}{bin_strt}/{bin_end-1}'
+                meta = MusicVocabulary._tempo_bin2meta(start=bin_strt, end=bin_end-1)
+                self.tempo_bin_map[key] = (tok, meta)
+                bin_strt = bin_end
+            return [tok for tok, _ in self.tempo_bin_map.values()]
+        else:
+            return [self(tp, color=False)[0] for tp in COMMON_TEMPOS]
+
+    @staticmethod
+    def _tempo_bin2meta(start: int = None, end: int = None):
+        """
+        Inclusive edges
+        """
+        n = end - start + 1
+        return round(sum(range(start, end+1)) / n)  # can't use `tempo_bin` cos last group has 1 more element
 
     @property
     def pitch_pattern(self) -> re.Pattern:
@@ -560,7 +603,11 @@ class MusicVocabulary:
             elif typ == VocabType.time_sig:
                 return MusicVocabulary._get_group2(token, tpl)
             elif typ == VocabType.tempo:
-                return MusicVocabulary._get_group1(token, tpl)
+                if self.tempo_bin:
+                    bin_strt, bin_end = MusicVocabulary._get_group2(token, tpl)  # inclusive
+                    return MusicVocabulary._tempo_bin2meta(bin_strt, bin_end)
+                else:
+                    return MusicVocabulary._get_group1(token, tpl)
             else:
                 assert typ == VocabType.key
                 return key_str2enum[tpl.match(token)['key']]
@@ -697,15 +744,13 @@ class MusicVocabulary:
 
     def __call__(
             self, elm: Union[ExtNote, Union[TimeSignature, TsTup], Union[MetronomeMark, int], Union[str, Key]],
-            color: bool = None,
-            return_int: bool = False  # TODO
+            color: bool = None
     ) -> Union[List[str], List[int]]:  # TODO: Support chords?
         """
         Convert music21 element to string or int
 
         :param elm: A relevant token in melody extraction
         :param color: If given, overrides coloring for current call
-        :param return_int: If true, integer ids are returned
         :return List of strings of the converted tokens
         """
         c = self.color if color is None else color
@@ -974,7 +1019,7 @@ if __name__ == '__main__':
 
         tok = 'p_12/9_4'
         mic(tok in mv)
-    check_pitch_set(kind='midi')
+    # check_pitch_set(kind='midi')
     # check_pitch_set(kind='step')
     # check_pitch_set(kind='degree')
 
@@ -1119,3 +1164,14 @@ if __name__ == '__main__':
                     added = True
         mic(_count, _count_per_song)
     # check_all_step_pitches_covered()
+
+    def check_tempo_bin():
+        # pch_kd = 'step'
+        pch_kd = 'degree'
+        mv = MusicVocabulary(pitch_kind=pch_kd, tempo_bin=5)
+        mic(len(mv))
+        mic(mv.tok2id, mv.id2meta)
+        for tok in mv.toks['tempo']:
+            b = mv.tok2meta(tok)
+            mic(tok, b)
+    check_tempo_bin()

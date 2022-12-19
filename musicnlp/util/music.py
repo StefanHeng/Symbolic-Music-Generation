@@ -245,31 +245,6 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
         # sanity check no name collision
         assert n_uniq_midi == len(list(i for i in glob.iglob(os_join(path_exp, '**/*.mid'))))
 
-        # mic(len(set_dup_fnm))
-        # mic(n_uniq_midi)
-        # raise NotImplementedError
-        # # mic(paths[:20])
-        # set_fnms = set(stem(p) for p in paths)
-        # mic(len(set_fnms))
-        # # assert len(set_fnms) == n_uniq_midi
-        #
-        # set_2nd_fnms = set()
-        # n_char_root = len(path_ori)
-        # for p in paths:
-        #     fnm = stem(p)
-        #     # mic(p, fnm)
-        #     # All relative parents inside the dataset directory, if available
-        #     parents = p[n_char_root + len(os.sep):].split(os.sep)[:-1]
-        #     # mic(parents)
-        #     # raise NotImplementedError
-        #     new_fnm = f'{fnm}.mid'
-        #     if len(parents) > 0:
-        #         prefix = '__'.join(parents[-2:])
-        #         new_fnm = f'{prefix}__{new_fnm}'
-        #     set_2nd_fnms.add(new_fnm)
-        # mic(len(set_2nd_fnms))
-        # assert len(set_2nd_fnms) == n_uniq_midi
-
 
 def get_lmd_cleaned_subset_fnms() -> List[str]:
     """
