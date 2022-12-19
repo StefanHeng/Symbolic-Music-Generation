@@ -195,7 +195,7 @@ class AugmentedDataset:
     """
     def __init__(
             self, dataset: Union[str, Dataset], tokenizer: MusicTokenizer = None,  mode: str = None,
-            random_crop: Union[bool, int] = False,
+            random_crop: Union[bool, int] = False, group_tempo: Union[bool, int] = None,
             pitch_kind: str = None, insert_key: bool = False, pitch_shift: bool = False,
             channel_mixup: Union[bool, str] = False, dataset_split: str = None
     ):
@@ -226,6 +226,11 @@ class AugmentedDataset:
         if random_crop:
             cm = random_crop if isinstance(random_crop, int) else 1
             self.rc = transform.RandomCrop(vocab=vocab, crop_mult=cm, return_as_list=True)
+
+        self.group_tempo, self.tg = group_tempo, None
+        if group_tempo:
+            assert vocab.tempo_bin == group_tempo or bool(vocab.tempo_bin) == group_tempo  # sanity check
+            self.tg = transform.TempoGroup(vocab_group=vocab, return_as_list=True)
 
         sr_vocab = vocab if vocab.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step')
         # since input text will be in `step`
@@ -258,6 +263,8 @@ class AugmentedDataset:
         d = dict()
         if self.random_crop:
             d['crop'] = self.random_crop
+        if self.group_tempo:
+            d['tp-grp'] = self.tokenizer.vocab.tempo_bin
         d['pch'] = self.pitch_kind[0]
         if self.insert_key:
             d['ins-key'] = 'T'
@@ -304,6 +311,9 @@ class AugmentedDataset:
             toks = self.rc(toks)
 
         toks = self.sr(toks)
+        if self.group_tempo:
+            toks = self.tg(toks)
+
         if self.pitch_kind == 'midi':
             toks = self.tmp(toks)
 

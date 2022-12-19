@@ -30,16 +30,19 @@ from musicnlp.trainer import (
 
 def get_model_n_tokenizer(
         model_name: str, model_size: str, prec: int = 5,
-        tokenize_scheme: str = 'vanilla', tokenizer_filename: Optional[str] = None, pitch_kind: str = None,
+        tokenize_scheme: str = 'vanilla', tokenizer_filename: Optional[str] = None,
+        pitch_kind: str = None, tempo_bin: Union[bool, int] = None,
         model_config: Dict = None
 ) -> Tuple[MusicTokenizer, torch.nn.Module, OrderedDict]:
     ca.check_mismatch('Model Name', model_name, ['transf-xl', 'reformer'])
+
+    tk_args = dict(precision=prec, pitch_kind=pitch_kind, tempo_bin=tempo_bin)
     if tokenize_scheme == 'vanilla':
-        tokenizer: MusicTokenizer = MusicTokenizer(precision=prec, pitch_kind=pitch_kind)
+        tokenizer: MusicTokenizer = MusicTokenizer(**tk_args)
     elif tokenize_scheme == 'wordpiece':
-        tokenizer: WordPieceMusicTokenizer = load_wordpiece_tokenizer(fnm=tokenizer_filename, pitch_kind=pitch_kind)
+        tokenizer: WordPieceMusicTokenizer = load_wordpiece_tokenizer(fnm=tokenizer_filename, **tk_args)
     else:  # `pairmerge`
-        tokenizer: PairMergeTokenizer = load_pairmerge_tokenizer(fnm=tokenizer_filename, pitch_kind=pitch_kind)
+        tokenizer: PairMergeTokenizer = load_pairmerge_tokenizer(fnm=tokenizer_filename, **tk_args)
     assert tokenizer.precision == prec
 
     if not hasattr(get_model_n_tokenizer, 'd_nm2cls'):
@@ -295,14 +298,16 @@ def get_all_setup(
     logger.info(f'Initializing training with {pl.fmt(d_log)}... ')
     my_train_args = my_train_args or dict()
     keys = [
-        'random_crop', 'pitch_kind', 'insert_key', 'pitch_shift', 'channel_mixup',
+        'random_crop', 'group_tempo', 'pitch_kind', 'insert_key', 'pitch_shift', 'channel_mixup',
         'tokenize_scheme', 'tokenize_fnm', 'proportional_mixing'
     ]
-    rand_crop, pch_kd, ins_key, pch_shift, mix_up, tok, tok_fnm, prop_mix = (my_train_args.get(k, False) for k in keys)
+    rand_crop, grp_tp, pch_kd, ins_key, pch_shift, mix_up, tok, tok_fnm, prop_mix = (
+        my_train_args.get(k, False) for k in keys)
     ca.check_mismatch('Tokenization Scheme', tok, ['vanilla', 'wordpiece', 'pairmerge'])
     logger.info(f'Loading model & tokenizer... ')
     tokenizer, model, meta = get_model_n_tokenizer(
-        model_name, model_size, prec=prec, tokenize_scheme=tok, tokenizer_filename=tok_fnm, pitch_kind=pch_kd,
+        model_name, model_size, prec=prec, tokenize_scheme=tok, tokenizer_filename=tok_fnm,
+        pitch_kind=pch_kd, tempo_bin=grp_tp,
         model_config=model_config
     )
 
@@ -314,7 +319,7 @@ def get_all_setup(
         if rand_crop or pch_kd != 'step' or ins_key or pch_shift or mix_up:
             dset_args_ = dict(
                 get_dataset_args=dset_args | get_dset_args, mode=my_train_args['mode'],
-                random_crop=rand_crop,
+                random_crop=rand_crop, group_tempo=grp_tp,
                 pitch_kind=pch_kd, insert_key=ins_key, channel_mixup=mix_up, pitch_shift=pch_shift
             ) | (dict(dataset_split=split) if split else dict())
             logger.info(f'Loading {pl.i("Augmented")} dataset w/ {pl.i(dict(dataset_names=dset_nms) | dset_args_)}... ')
@@ -383,8 +388,8 @@ if __name__ == '__main__':
     md = 'full'
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
     # dnms = [pop]
-    dnms = [pop, mst]
-    # dnms = [pop, mst, lmd]
+    # dnms = [pop, mst]
+    dnms = [pop, mst, lmd]
 
     def profile_transform_dataload():
         from tqdm.auto import trange
@@ -417,8 +422,8 @@ if __name__ == '__main__':
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
-        # md_sz = 'base'
-        md_sz = 'large'
+        md_sz = 'base'
+        # md_sz = 'large'
         mic(md_nm, md_sz)
 
         # model_config = None
@@ -522,6 +527,7 @@ if __name__ == '__main__':
         # model_config = dict(max_length=1024 + 512)
         rand_crop = 32
         # rand_crop = 64
+        grp_tp = 5
         # pch_kd = 'midi'
         pch_kd = 'degree'
         insert_key = True
@@ -534,23 +540,24 @@ if __name__ == '__main__':
         # channel_mixup = 'full'
         channel_mixup = False
 
+        tok = 'vanilla'
         # tok = 'wordpiece'
-        tok = 'pairmerge'
+        # tok = 'pairmerge'
         tok_fnm = None
         # wordpiece_tokenize = True
         # wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
         if tok == 'vanilla':
             model_config['cutoffs'] = []
-        prop_mix = False
-        # prop_mix = 1280
-        mic(rand_crop, pch_kd, insert_key, pch_shift, channel_mixup, tok, tok_fnm, prop_mix)
+        # prop_mix = False
+        prop_mix = 1280
+        mic(rand_crop, grp_tp, pch_kd, insert_key, pch_shift, channel_mixup, tok, tok_fnm, prop_mix)
 
         # needed so that best model is loaded in the end
         train_args = dict(save_strategy='epoch', num_train_epochs=n_ep)
         my_train_args = dict(
             tqdm=True, logging_strategy='no',
             mode=md,
-            random_crop=rand_crop,
+            random_crop=rand_crop, group_tempo=grp_tp,
             pitch_kind=pch_kd, insert_key=insert_key, pitch_shift=pch_shift, channel_mixup=channel_mixup,
             tokenize_scheme=tok, tokenizer_filename=tok_fnm, proportional_mixing=prop_mix
         )

@@ -24,7 +24,7 @@ class MusicTokenizer(PreTrainedTokenizer):
 
     def __init__(
             self, precision: int = 5, is_wordpiece: bool = False, pitch_kind: str = 'midi',
-            vocab: MusicVocabulary = None, **kwargs
+            tempo_bin: Union[bool, int] = None, vocab: MusicVocabulary = None, **kwargs
     ):
         """
         :param precision: See musicnlp.preprocess.music_extractor
@@ -40,9 +40,12 @@ class MusicTokenizer(PreTrainedTokenizer):
             assert vocab.precision == precision
             assert vocab.is_wordpiece == is_wordpiece
             assert vocab.pitch_kind == pitch_kind
+            assert vocab.tempo_bin == tempo_bin
             self.vocab = vocab
         else:
-            init_args = dict(precision=precision, color=False, is_wordpiece=is_wordpiece, pitch_kind=pitch_kind)
+            init_args = dict(
+                precision=precision, color=False, is_wordpiece=is_wordpiece, pitch_kind=pitch_kind, tempo_bin=tempo_bin
+            )
             self.vocab = MusicVocabulary(**init_args)
         self.pitch_kind = pitch_kind
 

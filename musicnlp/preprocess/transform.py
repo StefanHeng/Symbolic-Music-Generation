@@ -106,6 +106,27 @@ class RandomCrop(Transform):
         return global_toks + [self.vocab.omitted_segment] + list(chain_its(bar_list[idx:]))  # faster
 
 
+class TempoGroup(Transform):
+    def __init__(self, vocab_none: MusicVocabulary = None, vocab_group: MusicVocabulary = None, **kwargs):
+        super().__init__(**kwargs)
+        self.vocab_none = vocab_none or MusicVocabulary(tempo_bin=False)
+        self.vocab_group = vocab_group
+
+    def __call__(self, text: Song) -> Song:
+        toks = text if isinstance(text, list) else text.split()
+        tp = toks[1]
+        assert self.vocab_group.type(tp) == VocabType.tempo  # sanity check
+        meta = self.vocab_none.tok2meta(tp)
+        meta = self.vocab_group.tempo_meta_map[meta]
+        toks[1] = self.vocab_group.meta2tok(kind=VocabType.tempo, meta=meta)
+
+        sanity_check = False
+        if sanity_check:
+            mic(tp, toks[:10])
+            raise NotImplementedError
+        return toks if self.return_as_list else ' '.join(toks)
+
+
 class KeyInsert(Transform):
     def __init__(self, vocab: MusicVocabulary = None, **kwargs):
         super().__init__(**kwargs)

@@ -295,7 +295,7 @@ class MusicVocabulary:
             self.tempo_bin: int = 5 if tempo_bin is True else tempo_bin
         else:
             self.tempo_bin = None
-        self.tempo_bin_map = None
+        self.tempo_bin_map, self.tempo_meta2tok, self.tempo_meta_map = None, None, None
 
         specs = MusicVocabulary.SPEC_TOKS  # Syntactic sugar
         sep = specs['sep']
@@ -350,7 +350,6 @@ class MusicVocabulary:
             return tuple(reversed(time_sig))  # Syntactic sugar
         tss = [elm2str(rev(ts))[0] for ts in sorted(rev(ts) for ts in COMMON_TIME_SIGS)]
         # See music_visualize.py for distribution
-        tempos = [elm2str(tp)[0] for tp in COMMON_TEMPOS]
         keys = [elm2str(k)[0] for k in sorted(key_str2enum.keys())]
 
         special = [specs[k] for k in (
@@ -394,6 +393,9 @@ class MusicVocabulary:
             assert (TEMPO_HIGH_EDGE - TEMPO_LOW_EDGE) % self.tempo_bin == 0
             # in such case, there would be one edge case, last group will have 1 more element
             self.tempo_bin_map: Dict[Tuple[int], Tuple[str, int]] = dict()
+            self.tempo_meta_map: Dict[int, int] = dict()  # See `transform.TempoGroup`
+            self.tempo_meta2tok: Dict[int, str] = dict()
+
             bin_strt = TEMPO_LOW_EDGE
             while bin_strt + self.tempo_bin <= TEMPO_HIGH_EDGE:
                 bin_end = bin_strt + self.tempo_bin  # exclusive end
@@ -405,7 +407,15 @@ class MusicVocabulary:
                 tok = f'{self.cache["pref_tempo"]}{bin_strt}/{bin_end-1}'
                 meta = MusicVocabulary._tempo_bin2meta(start=bin_strt, end=bin_end-1)
                 self.tempo_bin_map[key] = (tok, meta)
+                self.tempo_meta2tok[meta] = tok
+
+                for tp in key:
+                    self.tempo_meta_map[tp] = meta
                 bin_strt = bin_end
+
+            # edge meta values stay unchanged
+            self.tempo_meta_map[MusicVocabulary.low_tempo_meta] = MusicVocabulary.low_tempo_meta
+            self.tempo_meta_map[MusicVocabulary.high_tempo_meta] = MusicVocabulary.high_tempo_meta
             return [tok for tok, _ in self.tempo_bin_map.values()]
         else:
             return [self(tp, color=False)[0] for tp in COMMON_TEMPOS]
@@ -663,7 +673,10 @@ class MusicVocabulary:
                 return MusicVocabulary.rare_high_tempo
             else:
                 assert isinstance(meta, int)
-                return f'{self.cache["pref_tempo"]}{meta}'
+                if self.tempo_bin:
+                    return self.tempo_meta2tok[meta]
+                else:
+                    return f'{self.cache["pref_tempo"]}{meta}'
         else:
             assert kind == VocabType.key
             if isinstance(meta, Key):
