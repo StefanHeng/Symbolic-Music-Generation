@@ -268,7 +268,7 @@ class MusicVocabulary:
     # TODO: remove, original training was without key support
     def __init__(
             self, precision: int = 5, color: bool = False, is_wordpiece: bool = False, pitch_kind: str = 'midi',
-            with_rare_step: bool = True
+            with_rare_step: bool = True, tempo_bin: Union[bool, int] = None
     ):
         """
         :param precision: See `musicnlp.preprocess.music_extractor`
@@ -282,6 +282,7 @@ class MusicVocabulary:
                 intended for training with scale degree annotation
         :param with_rare_step: If True, rare pitch steps are kept in the vocabulary
             Relevant only when `pitch_kind` is `step`
+        :param tempo_bin: If True, tempo is split into groups at regular intervals
         """
         self.precision = precision
         self.color = color

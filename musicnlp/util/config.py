@@ -67,6 +67,14 @@ config_dict: dict = {
                 dir_nm='converted/POP909'
             )
         ),
+        'LMCI': dict(
+            # See https://www.reddit.com/r/datasets/comments/3akhxy/the_largest_midi_collection_on_the_internet/
+            nm='Largest MIDI Collection on the Internet',
+            original=dict(
+                dir_nm='original/MIDI_Archive_15-06-19',
+                song_fmt_mid=['**/*.mid', '**/*.midi']
+            )
+        ),
         'midi-eg': dict(
             nm='Some hand-selected MIDI samples',
             dir_nm='MIDI-eg',
@@ -174,7 +182,8 @@ def get_dataset_meta(dataset_name: str):
                     return dict(artist=artist, title=title)
             songs = [path2song(p_) for p_ in glob.glob(os_join(path_ori, d_dset['song_fmt_mid']))]
         songs = sorted(songs, key=lambda s: (s['artist'], s['title']))  # sort by artist, then title
-        return dict(songs=songs) | get_stats(songs)
+        # return dict(songs=songs) | get_stats(songs)
+        return get_stats(songs)
 
 
 for dnm in ['POP909', 'LMD-cleaned', 'LMD']:

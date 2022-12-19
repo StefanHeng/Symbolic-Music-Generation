@@ -39,7 +39,7 @@ class PairMergeTokenizerTrainer:
         self.mc = MusicConverter(mode=mode)
 
     def __call__(
-            self, dataset_names: List[str] = None, vocab_size: int = 8192, coverage_ratio: float = None,
+            self, dataset_names: List[str] = None, vocab_size: int = None, coverage_ratio: float = None,
             save: Union[bool, str] = None, plot_meta: bool = None, concurrent: Union[bool, Dict] = False
     ):
         """
@@ -234,38 +234,6 @@ class PairMergeTokenizer(MusicTokenizer, PreTrainedTokenizer):
     def vocab_size(self) -> int:
         return self.original_vocab_size + self.added_vocab_size
 
-    # def __call__(self, text, **kwargs):
-    #     if isinstance(text, str):
-    #         out = self.mc.str2tok_elms(text)
-    #         ret = [self._convert_token_to_id(out.time_sig), self._convert_token_to_id(out.tempo)]
-    #         if out.key:
-    #             ret.append(self._convert_token_to_id(out.key))
-    #         if out.omit:
-    #             ret.append(self._convert_token_to_id(out.omit))
-    #
-    #         ret += chain_its(self._encode_bar_elms(elms) for elms in out.elms_by_bar)
-    #
-    #         if out.end_of_song:
-    #             ret.append(self._convert_token_to_id(out.end_of_song))
-    #
-    #         return BatchEncoding(dict(input_ids=ret))
-    #     else:
-    #         assert isinstance(text, (list, tuple)) and isinstance(text[0], str)
-    #         raise NotImplementedError
-
-    def _encode_bar_elms(self, elms: List[List[str]]) -> Iterable[int]:
-        """
-        Encode music elements in a bar
-        """
-        yield self.sob_token_id
-        for me in elms:
-            tok_merge = ' '.join(me)
-            if tok_merge in self.added_tok2id:
-                yield self.added_tok2id[tok_merge]
-            else:
-                for tok in me:
-                    yield self.vocab.t2i(tok)
-
     def _tokenize(self, text, **kwargs):
         out = self.mc.str2tok_elms(text)
         ret = [out.time_sig, out.tempo]
@@ -313,7 +281,6 @@ class PairMergeTokenizer(MusicTokenizer, PreTrainedTokenizer):
 
     def ids2pitches(self, ids: Iterable[int], include_rest_pitch: bool = True) -> List[int]:
         i2p = self._id2pchs_inc if include_rest_pitch else self._id2pchs_exc
-        mic('in ids2pitches', sum([i2p[int(i)] for i in ids], start=[]))
         return sum([i2p[int(i)] for i in ids], start=[])
 
 
@@ -360,13 +327,13 @@ if __name__ == '__main__':
     md = 'full'
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
 
-    def check_high_occur():
+    def train():
         aug_key = True
         pch_kd = 'degree' if aug_key else 'step'
 
         # dnms = [pop]
-        dnms = [pop, mst]
-        # dnms = [pop, mst, lmd]
+        # dnms = [pop, mst]
+        dnms = [pop, mst, lmd]
         sv = True
         if len(dnms) == 1:
             sv = 'PairMerge-Tokenizer_{dnm=POP909}'
@@ -381,7 +348,7 @@ if __name__ == '__main__':
         conc = False
         # conc = dict(mode='process')
         pmtt(dataset_names=dnms, **vsz_arg, save=sv, plot_meta=True, concurrent=conc)
-    # check_high_occur()
+    train()
 
     def check_single_tokenize():
         fnm = '22-12-18_PairMerge-Tokenizer_{dnm=POP&MST}_{vsz=4716, r=95, n=8234, pch=d}'
@@ -414,4 +381,5 @@ if __name__ == '__main__':
 
         for song in tqdm(songs, total=n, desc='Checking reconstruction'):
             check(song)
-    check_tokenize_all()
+    # check_tokenize_all()
+    # profile_runtime(check_tokenize_all)

@@ -14,6 +14,9 @@ from stefutil import *
 from musicnlp.util.util import *
 
 
+logger = get_logger('Music File')
+
+
 def get_processed_path():
     return os_join(get_base_path(), u.dset_dir, sconfig('datasets.my.dir_nm'))
 
@@ -132,7 +135,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
             fnm = f'{rec["artist"]} - {rec["name"]}.mid'
             copyfile(p, os_join(path_exp, fnm))
     elif dataset_name == 'LMD-cleaned':
-        d_dset = sconfig(f'datasets.{dataset_name}')
+        d_dset = sconfig(f'datasets.{dataset_name}.original')
         path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid'])))
 
@@ -172,7 +175,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
             fnms_written.add(fnm)
             copyfile(p, os_join(path_exp, fnm))
         assert len(fnms_written) == len(paths)
-        print(f'{pl.i(path2fnm.count_too_long)} files were truncated to {pl.i(os_lim)} characters')
+        print(f'{pl.i(path2fnm.count_too_long)} files were truncated to {pl.i(my_lim)} characters')
     elif dataset_name == 'LMD':
         d_dset = sconfig(f'datasets.{dataset_name}.original')
         path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
@@ -206,6 +209,66 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
             if count > 0:
                 fnm = f'{fnm}, v{count}'
             copyfile(fnm_ori, os_join(path_exp, f'{fnm}.mid'))
+    elif dataset_name == 'LMCI':
+        d_dset = sconfig(f'datasets.{dataset_name}.original')
+        path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
+
+        exts = ('.mid', '.midi')  # some are in upper case
+        paths = sorted(p for p in glob.iglob(os_join(path_ori, '**/*'), recursive=True) if p.lower().endswith(exts))
+        n_uniq_midi = len(paths)
+        logger.info(f'Found {pl.i(n_uniq_midi)} unique MIDI files')
+
+        set_fnm, set_dup_fnm = set(), set()
+        for p in tqdm(paths, desc='Checking for duplicate file names'):
+            fnm = stem(p)  # with extension
+            if fnm in set_fnm:
+                set_dup_fnm.add(fnm)
+            else:
+                set_fnm.add(fnm)
+        dup_fnm2ver = defaultdict(int)
+        logger.info(f'Found {pl.i(len(set_dup_fnm))} duplicate file names')
+
+        o2f = Ordinal2Fnm(total=len(paths), group_size=int(1e4))
+        it = tqdm(paths, desc='Copying with new name')
+        for i, p in enumerate(it):
+            pref, dir_nm = o2f(i, return_parts=True)
+            fnm = stem(p)
+            if fnm in set_dup_fnm:
+                fnm = f'{fnm}_v{dup_fnm2ver[fnm]}'
+                dup_fnm2ver[fnm] += 1
+            fnm = f'{pref}_{fnm}.mid'
+            it.set_postfix(fnm=f'{dir_nm}/{fnm}')
+
+            path = os_join(path_exp, dir_nm)
+            os.makedirs(path, exist_ok=True)
+            copyfile(p, os_join(path, fnm))
+        # sanity check no name collision
+        assert n_uniq_midi == len(list(i for i in glob.iglob(os_join(path_exp, '**/*.mid'))))
+
+        # mic(len(set_dup_fnm))
+        # mic(n_uniq_midi)
+        # raise NotImplementedError
+        # # mic(paths[:20])
+        # set_fnms = set(stem(p) for p in paths)
+        # mic(len(set_fnms))
+        # # assert len(set_fnms) == n_uniq_midi
+        #
+        # set_2nd_fnms = set()
+        # n_char_root = len(path_ori)
+        # for p in paths:
+        #     fnm = stem(p)
+        #     # mic(p, fnm)
+        #     # All relative parents inside the dataset directory, if available
+        #     parents = p[n_char_root + len(os.sep):].split(os.sep)[:-1]
+        #     # mic(parents)
+        #     # raise NotImplementedError
+        #     new_fnm = f'{fnm}.mid'
+        #     if len(parents) > 0:
+        #         prefix = '__'.join(parents[-2:])
+        #         new_fnm = f'{prefix}__{new_fnm}'
+        #     set_2nd_fnms.add(new_fnm)
+        # mic(len(set_2nd_fnms))
+        # assert len(set_2nd_fnms) == n_uniq_midi
 
 
 def get_lmd_cleaned_subset_fnms() -> List[str]:
@@ -339,7 +402,7 @@ if __name__ == '__main__':
 
     def check_processed_path():
         mic(get_processed_path())
-    check_processed_path()
+    # check_processed_path()
 
     def check_fl_nms():
         # dnm = 'POP909'
@@ -353,6 +416,7 @@ if __name__ == '__main__':
     # clean_dataset_paths('LMD-cleaned')
     # clean_dataset_paths('LMD')
     # clean_dataset_paths('MAESTRO')
+    clean_dataset_paths('LMCI')
 
     # import music21 as m21
     # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
@@ -392,8 +456,8 @@ if __name__ == '__main__':
     # fix_match_mxl_names_with_new_mid()
 
     def get_lmd_subset():
-        # fnms = get_lmd_cleaned_subset_fnms()
-        fnms = get_converted_song_paths('LMD-cleaned-subset')
+        fnms = get_lmd_cleaned_subset_fnms()
+        # fnms = get_converted_song_paths('LMD-cleaned-subset')
         mic(len(fnms), fnms[:20])
     # get_lmd_subset()
 
