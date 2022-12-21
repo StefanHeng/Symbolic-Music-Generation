@@ -527,7 +527,8 @@ if __name__ == '__main__':
         # model_config = dict(max_length=1024 + 512)
         rand_crop = 32
         # rand_crop = 64
-        grp_tp = 5
+        grp_tp = None
+        # grp_tp = 5
         # pch_kd = 'midi'
         pch_kd = 'degree'
         insert_key = True
@@ -540,9 +541,9 @@ if __name__ == '__main__':
         # channel_mixup = 'full'
         channel_mixup = False
 
-        tok = 'vanilla'
+        # tok = 'vanilla'
         # tok = 'wordpiece'
-        # tok = 'pairmerge'
+        tok = 'pairmerge'
         tok_fnm = None
         # wordpiece_tokenize = True
         # wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'

@@ -391,7 +391,7 @@ if __name__ == '__main__':
     # clean_dataset_paths('LMD-cleaned')
     # clean_dataset_paths('LMD')
     # clean_dataset_paths('MAESTRO')
-    clean_dataset_paths('LMCI')
+    # clean_dataset_paths('LMCI')
 
     # import music21 as m21
     # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
@@ -448,12 +448,12 @@ if __name__ == '__main__':
         After batch-convert terminates, check for the files processed in last session
         """
         import shutil
-        logger = get_logger('Move Converted Files')
         # dnm = 'LMD-cleaned_broken'
         # dnm = 'POP909, LP'
         # dnm = 'MAESTRO'
         # dnm = 'LMD, MS/040000-050000'
-        dnm = 'LMD, LP/170000-178561'
+        # dnm = 'LMD, LP/170000-178561'
+        dnm = 'LMD-cleaned, MS'
         path_processed = os_join(u.dset_path, 'converted', dnm)
         """
         Among group of 10k files in a folder for conversion, MS in Mac produces ~100 broken songs, 
@@ -468,20 +468,20 @@ if __name__ == '__main__':
         path_mids = sorted(glob.iglob(os_join(path_to_process, '*.mid')))
         logger.info(f'{pl.i(len(path_mids))} MIDI files should have been converted')
         count = 0
-        output_format = 'xml'
-        # output_format = 'mxl'
-        for path in path_mids:
+        # output_format = 'xml'
+        output_format = 'mxl'
+        for path in tqdm(path_mids):
             path_xml = path.replace('.mid', f'.{output_format}')
             if os.path.exists(path_xml):
                 fnm = stem(path)
-                logger.info(f'{pl.i(fnm)} converted, moved to processed folder')
+                # logger.info(f'{pl.i(fnm)} converted, moved to processed folder')
                 shutil.move(path, os_join(path_processed, f'{fnm}.mid'))  # move to processed folder
                 shutil.move(path_xml, os_join(path_processed, f'{fnm}.{output_format}'))
                 count += 1
         logger.info(f'{pl.i(count)} MIDIs converted in the last session')
         count = 0
         path_xmls = sorted(glob.iglob(os_join(path_to_process, f'*.{output_format}')))
-        for path in path_xmls:
+        for path in tqdm(path_xmls):
             path_mid = path.replace(f'.{output_format}', '.mid')
             if not os.path.exists(path_mid):
                 fnm = stem(path)
@@ -489,7 +489,7 @@ if __name__ == '__main__':
                 logger.info(f'Original MIDI for {pl.i(fnm)} not found, removed')
                 count += 1
         logger.info(f'{pl.i(count)} converted xml with unknown origin in the last session removed')
-    # mv_backend_not_processed()
+    mv_backend_not_processed()
 
     def get_convert_df():
         df = get_lmd_conversion_meta()

@@ -162,22 +162,25 @@ class PairMergeTokenizerTrainer:
                 idx_1st_tup = i
         s1 = np.where(ratio > 0.68)[0][0]  # std 1 sigma
         s2 = np.where(ratio > 0.95)[0][0]
+        s25 = np.where(ratio > 0.986)[0][0]
         s3 = np.where(ratio > 0.997)[0][0]
         d_log = {
             'ordinal of 1st tuplet': idx_1st_tup,
-            'ordinal covering 1 sigma': s1, 'ordinal covering 2 sigma': s2, 'ordinal covering 3 sigma': s3
+            'ordinal covering 1 sigma': s1, 'ordinal covering 2 sigma': s2,
+            'ordinal covering 2.5 sigma': s25, 'ordinal covering 3 sigma': s3
         }
         logger.info(pl.i(d_log))
 
         fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2)
-        cs = sns.color_palette(palette='husl', n_colors=7)
-        ax1.plot(counts, **LN_KWARGS, c=cs[3])
+        cs = sns.color_palette(palette='husl', n_colors=8)
+        ax1.plot(counts, **LN_KWARGS, c=cs[4])
 
-        ax2.plot(ratio, **LN_KWARGS, c=cs[5])
+        ax2.plot(ratio, **LN_KWARGS, c=cs[6])
         ax2.vlines(x=s1, ymin=0, ymax=1, lw=0.4, color=cs[0], label=f'68% at vsz={s1}')
         ax2.vlines(x=s2, ymin=0, ymax=1, lw=0.4, color=cs[1], label=f'95% at vsz={s2}')
-        ax2.vlines(x=s3, ymin=0, ymax=1, lw=0.4, color=cs[2], label=f'99.7% at vsz={s3}')
-        ax2.vlines(x=idx_1st_tup, ymin=0, ymax=1, lw=0.4, color=cs[6], label=f'1st tuplet at vsz={idx_1st_tup}')
+        ax2.vlines(x=s25, ymin=0, ymax=1, lw=0.4, color=cs[2], label=f'98.6% at vsz={s25}')
+        ax2.vlines(x=s3, ymin=0, ymax=1, lw=0.4, color=cs[3], label=f'99.7% at vsz={s3}')
+        ax2.vlines(x=idx_1st_tup, ymin=0, ymax=1, lw=0.4, color=cs[7], label=f'1st tuplet at vsz={idx_1st_tup}')
 
         ax1.set_title('incremental')
         ax2.set_title('cumulative')
@@ -293,7 +296,8 @@ def load_pairmerge_tokenizer(
         raise NotImplementedError
     else:
         assert pitch_kind == 'degree'
-        fnm = fnm or '22-12-18_PairMerge-Tokenizer_{dnm=POP&MST}_{vsz=4716, r=95, n=8234, pch=d}'
+        # fnm = fnm or '22-12-18_PairMerge-Tokenizer_{dnm=POP&MST}_{vsz=4716, r=95, n=8234, pch=d}'
+        fnm = fnm or '22-12-18_PairMerge-Tokenizer_{dnm=all}_{vsz=4642, r=95, n=715891, pch=d}'
     return PairMergeTokenizer.from_file(fnm, pitch_kind=pitch_kind, **kwargs)
 
 
