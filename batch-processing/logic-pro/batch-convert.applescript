@@ -1,11 +1,12 @@
 # Batch processing a folder of midi files
 # intended for a folder containing midi files only
-# set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken, test/"
+# set dir_process to "/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/converted/LMD-cleaned, LP, todo/"
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/POP909, LP, todo/"
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/MAESTRO, todo/"
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD/00000, todo/"
 # set dir_process to "/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken, todo/"
-set dir_process to "/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/converted/LMD, LP/140000-150000, todo"
+# set dir_process to "/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/converted/LMD, LP/140000-150000, todo"
+set dir_process to "/Users/stefanhg/Documents/UMich/Research/Music with NLP/datasets/converted/LMCI, LP/010000-020000, todo/"
 
 
 # taken from https://stackoverflow.com/a/12535220/10732321

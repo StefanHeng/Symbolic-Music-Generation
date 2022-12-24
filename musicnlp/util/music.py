@@ -453,7 +453,8 @@ if __name__ == '__main__':
         # dnm = 'MAESTRO'
         # dnm = 'LMD, MS/040000-050000'
         # dnm = 'LMD, LP/170000-178561'
-        dnm = 'LMD-cleaned, MS'
+        # dnm = 'LMD-cleaned, LP'
+        dnm = 'LMCI, MS/020000-030000'
         path_processed = os_join(u.dset_path, 'converted', dnm)
         """
         Among group of 10k files in a folder for conversion, MS in Mac produces ~100 broken songs, 
@@ -484,7 +485,7 @@ if __name__ == '__main__':
         for path in tqdm(path_xmls):
             path_mid = path.replace(f'.{output_format}', '.mid')
             if not os.path.exists(path_mid):
-                fnm = stem(path)
+
                 os.remove(path)
                 logger.info(f'Original MIDI for {pl.i(fnm)} not found, removed')
                 count += 1

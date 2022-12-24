@@ -495,8 +495,8 @@ if __name__ == '__main__':
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
-        md_sz = 'base'
-        # md_sz = 'large'
+        # md_sz = 'base'
+        md_sz = 'large'
         mic(md_nm, md_sz)
 
         debug = 'debug' in md_sz
@@ -565,9 +565,9 @@ if __name__ == '__main__':
         trainer_args = dict(disable_train_metrics=True)
 
         if not debug:
-            bsz = 21
+            # bsz = 21
             # bsz = 16
-            # bsz = 8
+            bsz = 8
             train_args.update(dict(
                 # learning_rate=1e-4,
                 weight_decay=1e-1,

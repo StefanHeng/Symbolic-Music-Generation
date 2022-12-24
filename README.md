@@ -12,7 +12,7 @@ supported by [Prof. Rada Mihalcea](https://web.eecs.umich.edu/~mihalcea/) at [LI
 
 ## Run the Scripts
 
-Python version `3.10.4`. 
+Python version `3.10.8`. 
 
 Modify the `DIR_DSET` variable in file [`data_path.py`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/musicnlp/util/data_path.py) 
 as instructed.
