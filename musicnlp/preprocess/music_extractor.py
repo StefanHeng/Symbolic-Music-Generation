@@ -25,6 +25,9 @@ from musicnlp.preprocess.warning_logger import WarnLog
 from musicnlp.preprocess.key_finder import KeyFinder
 
 
+__all__ = ['MusicExtractorOutput', 'MusicExtractor']
+
+
 @dataclass
 class BarInfo:
     bars: Union[Tuple[Measure], List[Measure]]

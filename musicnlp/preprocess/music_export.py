@@ -6,6 +6,7 @@ import logging
 import datetime
 from os.path import join as os_join
 from typing import List, Tuple, Dict, Optional, Iterable, Union
+from dataclasses import asdict
 
 import pandas as pd
 import datasets
@@ -14,7 +15,7 @@ from tqdm import tqdm
 from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.music as music_util
-from music_extractor import MusicExtractor
+from music_extractor import MusicExtractorOutput, MusicExtractor
 
 
 class SingleExport:
@@ -50,7 +51,8 @@ class SingleExport:
                     self.logger.info(f'{pl.i(self.processed_count)}:{pl.i(fnm_)} already processed, skipping...')
                 return
             else:
-                ret = self.extractor(fl_nm, exp=self.exp, return_meta=True, return_key=True)
+                ret_: MusicExtractorOutput = self.extractor(fl_nm, exp=self.exp, return_meta=True, return_key=True)
+                ret = asdict(ret_)
                 if self.log2console:
                     self.logger.info(f'{pl.i(self.processed_count)}:{pl.i(fnm_)} processing finished ')
                 if self.save_each:
@@ -95,7 +97,7 @@ class MusicExport:
 
     def __call__(
             self,
-            filenames: Union[List[str], str],
+            filenames: Union[List[str], str], dataset_name2songs_args: Optional[Dict] = None,
             output_filename=f'{PKG_NM} music extraction', path_out=music_util.get_processed_path(),
             extractor_args: Dict = None, exp='str_join',
             save_each: bool = False, with_tqdm: Union[bool, Dict] = False,
@@ -106,6 +108,7 @@ class MusicExport:
 
         :param filenames: List of MXL file paths to extract, without `.json` extension;
             or dataset name, see `config.datasets`
+        :param dataset_name2songs_args: args to `get_converted_song_paths`
         :param output_filename: Export file name
         :param exp: Music extraction output mode, see `MusicTokenizer`
         :param parallel: Whether to parallelize extraction
@@ -132,7 +135,8 @@ class MusicExport:
         dnm_ = None
         if isinstance(filenames, str):  # Dataset name provided
             dnm_ = filenames
-            filenames = music_util.get_converted_song_paths(filenames, fmt='mxl')
+            args = dict(fmt='mxl') | (dataset_name2songs_args or dict())
+            filenames = music_util.get_converted_song_paths(filenames, **args)
             # filenames = filenames[:16]  # TODO: Debugging
         d_log = dict(save_each=save_each, with_tqdm=with_tqdm, parallel=parallel, parallel_mode=parallel_mode)
         n_song = len(filenames)
@@ -340,9 +344,10 @@ if __name__ == '__main__':
 
     def export2json():
         # dnm = 'POP909'
-        dnm = 'MAESTRO'
+        # dnm = 'MAESTRO'
         # dnm = 'LMD, MS'
         # dnm = 'LMD, LP'
+        dnm = 'LMD-cleaned-subset'
 
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
@@ -354,14 +359,14 @@ if __name__ == '__main__':
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1, with_pitch_step=True),
             save_each=True,
             with_tqdm=True,
-            # parallel=False,
-            parallel=16,
+            parallel=False,
+            # parallel=16,
             parallel_mode=pl_md,
             # n_worker=1
         )
         dset_path = os_join(get_base_path(), u.dset_dir)
 
-        if 'LMD' in dnm:
+        if 'LMD, ' in dnm:
             # grp_nm = 'many'
             grp_nm = 'many, lp'
             # grp_nm = '090000-100000'
@@ -410,6 +415,8 @@ if __name__ == '__main__':
             args['filenames'] = paths
         else:
             args['filenames'] = dnm
+            if 'LMD-cleaned' in dnm:
+                args['dataset_name2songs_args'] = dict(backend='all')
 
             resume = False
             # resume = True
@@ -425,7 +432,7 @@ if __name__ == '__main__':
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    # export2json()
+    export2json()
 
     def is_folder_path(path: str) -> bool:
         return os.path.isdir(path) and not path.endswith('.zip')
@@ -498,7 +505,7 @@ if __name__ == '__main__':
         tr_samples['score'] = [s[:100] for s in tr_samples['score']]
         ts_samples['score'] = [s[:100] for s in ts_samples['score']]
         mic(tr_samples, ts_samples)
-    json2dset_with_split()
+    # json2dset_with_split()
 
     def fix_insert_key():
         """

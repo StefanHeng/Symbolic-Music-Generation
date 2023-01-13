@@ -43,7 +43,15 @@ config_dict: dict = {
                 dir_nm='original/Lakh-MIDI-Dataset/LMD-Cleaned',
                 song_fmt_mid='**/*.mid',
             ),
-            converted=dict(song_fmt_mid='**.mid', song_fmt_mxl='*.mxl')
+            converted=dict(song_fmt_mid='*.mid', song_fmt_mxl='*.mxl')
+        ),
+        'LMD-cleaned-subset': dict(
+            nm='Single-Song-Version Subset of LMD-Cleaned',
+            converted=dict(
+                song_fmt_mid='*.mid',
+                song_fmt_mxl='*.mxl',
+                dir_nm='converted/LMD-cleaned-subset'
+            )
         ),
         'MAESTRO': dict(
             nm='The MAESTRO Dataset v3.0.0',

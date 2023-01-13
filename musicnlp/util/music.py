@@ -249,18 +249,21 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
 def get_lmd_cleaned_subset_fnms() -> List[str]:
     """
     My subset of LMD-cleaned dataset
-        MIDI files that can't be converted to MXL via MuseScore are excluded
+        MIDI files are converted to MXL via MuseScore, and fallback Logic Pro
         Only one unique artist-song is picked among the many versions
             Resolve by just taking the first one
 
-    Expects `clean_dataset_paths` called first
+    Filenames respect those produced from `clean_dataset_paths`, expect it to be called first
     """
     # this folder contains all MIDI files that can be converted to MXL, on my machine
-    path = os_join(get_base_path(), u.dset_dir, 'LMD-cleaned_valid')
     # <artist> - <title>(.<version>)?.mid
     pattern = re.compile(r'^(?P<artist>.*) - (?P<title>.*)(\.(?P<version>[1-9]\d*))?\.mid$')
     d_song2fnms: Dict[Tuple[str, str], Dict[int, str]] = defaultdict(dict)
-    fnms = sorted(glob.iglob(os_join(path, '*.mid')))
+
+    path_ms = os_join(get_base_path(), u.dset_dir, 'converted', 'LMD-cleaned, MS')
+    path_lp = os_join(get_base_path(), u.dset_dir, 'converted', 'LMD-cleaned, LP')
+    it_ms, it_lp = glob.iglob(os_join(path_ms, '*.mid')), glob.iglob(os_join(path_lp, '*.mid'))
+    fnms = sorted(chain_its([it_ms, it_lp]))
     for fnm in tqdm(fnms, desc='Getting LMD-cleaned subset', unit='song'):
         fnm = stem(fnm, keep_ext=True)
         m = pattern.match(fnm)
@@ -291,30 +294,17 @@ def get_converted_song_paths(dataset_name: str = None, fmt='mxl', backend: str =
     ca(dataset_name=dataset_name, fmt=fmt)
     ca.check_mismatch('Conversion Backend', backend, ['MS', 'LP', 'all'])
 
-    dset_path = os_join(get_base_path(), u.dset_dir)
-
-    if dataset_name == 'LMD-cleaned-subset':
-        fnms = get_lmd_cleaned_subset_fnms()
-        dir_nm = 'LMD-cleaned_valid'
-
-        if fmt == 'mid':
-            def map_fnm(fnm: str) -> str:
-                return os_join(dset_path, dir_nm, fnm)
-        else:  # 'mxl'
-            def map_fnm(fnm: str) -> str:
-                return os_join(dset_path, dir_nm, f'{stem(fnm)}.{fmt}')
-        return [map_fnm(fnm) for fnm in fnms]
+    d_dset = sconfig(f'datasets.{dataset_name}.converted')
+    dir_nm = d_dset['dir_nm']
+    if backend == 'all':
+        fls_ms = get_converted_song_paths(dataset_name, fmt=fmt, backend='MS')
+        fls_lp = get_converted_song_paths(dataset_name, fmt=fmt, backend='LP')
+        return sorted(fls_ms + fls_lp, key=lambda f: stem(f))
     else:
-        d_dset = sconfig(f'datasets.{dataset_name}.converted')
-        dir_nm = d_dset['dir_nm']
-        if backend == 'all':
-            fls_ms = get_converted_song_paths(dataset_name, fmt=fmt, backend='MS')
-            fls_lp = get_converted_song_paths(dataset_name, fmt=fmt, backend='LP')
-            return sorted(fls_ms + fls_lp, key=lambda f: stem(f))
-        else:
-            dir_nm = f'{dir_nm}, {backend}'
-            path = os_join(dset_path, dir_nm, d_dset[f'song_fmt_{fmt}'])
-            return sorted(glob.iglob(path, recursive=True))
+        dset_path = os_join(get_base_path(), u.dset_dir)
+        dir_nm = f'{dir_nm}, {backend}'
+        path = os_join(dset_path, dir_nm, d_dset[f'song_fmt_{fmt}'])
+        return sorted(glob.iglob(path, recursive=True))
 
 
 def get_lmd_conversion_meta():
@@ -436,6 +426,32 @@ if __name__ == '__main__':
         mic(len(fnms), fnms[:20])
     # get_lmd_subset()
 
+    def lmd_cleaned_subset_to_files():
+        """
+        Construct the subset & move them to separate folders for easier later processing
+        """
+        # fd_ori = 'LMD-cleaned, MS'
+        # fd_sub = 'LMD-cleaned-subset, MS'
+        fd_ori = 'LMD-cleaned, LP'
+        fd_sub = 'LMD-cleaned-subset, LP'
+        path_base = os_join(u.dset_path, 'converted')
+        os.makedirs(os_join(path_base, fd_sub), exist_ok=True)
+        fnms_keep = get_lmd_cleaned_subset_fnms()
+        mic(len(fnms_keep))
+
+        fnms = sorted(glob.iglob(os_join(path_base, fd_ori, '*.mid')))
+        for f in tqdm(fnms, desc='Copying subset songs'):
+            # mic(f)
+            # mic(stem(f, keep_ext=True))
+            if stem(f, keep_ext=True) in fnms_keep:
+                stm = stem(f)
+                for f_ in [f'{stm}.mid', f'{stm}.mxl', f'{stm}.xml']:
+                    f__ = os_join(path_base, fd_ori, f_)
+                    f_out = os_join(path_base, fd_sub, f_)
+                    if os.path.exists(f__):
+                        copyfile(f__, f_out)
+    lmd_cleaned_subset_to_files()
+
     def mv_backend_not_processed():
         """
         Some files are not processed properly, e.g. missing xml, incorrect file name
@@ -443,7 +459,7 @@ if __name__ == '__main__':
 
         See `batch-processing`
 
-        Files to process are in `todo`, move the processed ones back to default folder
+        Files to process are in `todo`, move the processed ones back to default
 
         After batch-convert terminates, check for the files processed in last session
         """
@@ -454,7 +470,7 @@ if __name__ == '__main__':
         # dnm = 'LMD, MS/040000-050000'
         # dnm = 'LMD, LP/170000-178561'
         # dnm = 'LMD-cleaned, LP'
-        dnm = 'LMCI, MS/020000-030000'
+        dnm = 'LMCI, MS/060000-070000'
         path_processed = os_join(u.dset_path, 'converted', dnm)
         """
         Among group of 10k files in a folder for conversion, MS in Mac produces ~100 broken songs, 
@@ -466,13 +482,15 @@ if __name__ == '__main__':
         path_to_process = f'{path_processed}, todo'
         mic(path_processed)
         os.makedirs(path_processed, exist_ok=True)
-        path_mids = sorted(glob.iglob(os_join(path_to_process, '*.mid')))
+        path_mids = sorted(glob.iglob(os_join(path_to_process, '**.mid')))
         logger.info(f'{pl.i(len(path_mids))} MIDI files should have been converted')
         count = 0
         # output_format = 'xml'
         output_format = 'mxl'
         for path in tqdm(path_mids):
-            path_xml = path.replace('.mid', f'.{output_format}')
+            path_xml = path[:-len('.mid')]
+            path_xml = f'{path_xml}.{output_format}'
+            # path_xml = path.replace('.mid', f'.{output_format}')
             if os.path.exists(path_xml):
                 fnm = stem(path)
                 # logger.info(f'{pl.i(fnm)} converted, moved to processed folder')
@@ -490,7 +508,7 @@ if __name__ == '__main__':
                 logger.info(f'Original MIDI for {pl.i(fnm)} not found, removed')
                 count += 1
         logger.info(f'{pl.i(count)} converted xml with unknown origin in the last session removed')
-    mv_backend_not_processed()
+    # mv_backend_not_processed()
 
     def get_convert_df():
         df = get_lmd_conversion_meta()

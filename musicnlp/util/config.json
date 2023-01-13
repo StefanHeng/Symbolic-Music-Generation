@@ -34,13 +34,21 @@
                 "song_fmt_mid": "**/*.mid"
             },
             "converted": {
-                "song_fmt_mid": "**.mid",
+                "song_fmt_mid": "*.mid",
                 "song_fmt_mxl": "*.mxl"
             },
             "meta": {
                 "n_file": 17243,
                 "n_artist": 2196,
                 "n_song": 10291
+            }
+        },
+        "LMD-cleaned-subset": {
+            "nm": "Single-Song-Version Subset of LMD-Cleaned",
+            "converted": {
+                "song_fmt_mid": "*.mid",
+                "song_fmt_mxl": "*.mxl",
+                "dir_nm": "converted/LMD-cleaned-subset"
             }
         },
         "MAESTRO": {
@@ -76,7 +84,10 @@
             "nm": "Largest MIDI Collection on the Internet",
             "original": {
                 "dir_nm": "original/MIDI_Archive_15-06-19",
-                "song_fmt_mid": "**/*.midi"
+                "song_fmt_mid": [
+                    "**/*.mid",
+                    "**/*.midi"
+                ]
             }
         },
         "midi-eg": {
@@ -200,6 +211,7 @@
                 "LMD-matched",
                 "LMD-aligned",
                 "LMD-cleaned",
+                "LMD-cleaned-subset",
                 "MAESTRO",
                 "POP909",
                 "LMCI",

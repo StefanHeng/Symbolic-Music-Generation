@@ -13,6 +13,7 @@ contourpy==1.0.6
 cycler==0.11.0
 datasets==2.8.0
 dill==0.3.6
+et-xmlfile==1.1.0
 evaluate==0.4.0
 executing==1.2.0
 filelock==3.8.2
@@ -37,6 +38,7 @@ multiprocess==0.70.14
 music21==8.1.0
 numpy==1.24.0
 oauthlib==3.2.2
+openpyxl==3.0.10
 packaging==22.0
 pandas==1.5.2
 Pillow==9.3.0
