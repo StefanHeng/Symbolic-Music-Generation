@@ -88,6 +88,14 @@
                     "**/*.mid",
                     "**/*.midi"
                 ]
+            },
+            "converted": {
+                "dir_nm": "converted/LMCI",
+                "song_fmt_mid": "**/*.mid",
+                "song_fmt_mxl": "**/*.mxl"
+            },
+            "meta": {
+                "n_song": 128478
             }
         },
         "midi-eg": {

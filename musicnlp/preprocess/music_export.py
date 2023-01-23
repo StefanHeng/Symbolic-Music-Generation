@@ -359,8 +359,8 @@ if __name__ == '__main__':
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1, with_pitch_step=True),
             save_each=True,
             with_tqdm=True,
-            parallel=False,
-            # parallel=16,
+            # parallel=False,
+            parallel=16,
             parallel_mode=pl_md,
             # n_worker=1
         )

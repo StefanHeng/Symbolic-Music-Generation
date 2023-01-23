@@ -81,6 +81,11 @@ config_dict: dict = {
             original=dict(
                 dir_nm='original/MIDI_Archive_15-06-19',
                 song_fmt_mid=['**/*.mid', '**/*.midi']
+            ),
+            converted=dict(
+                dir_nm='converted/LMCI',
+                song_fmt_mid='**/*.mid',
+                song_fmt_mxl='**/*.mxl'
             )
         ),
         'midi-eg': dict(
@@ -152,11 +157,17 @@ def get_stats(songs: List[Dict]):
 
 
 def get_dataset_meta(dataset_name: str):
-    ca.check_mismatch('Dataset Name', dataset_name, ['POP909', 'LMD-cleaned', 'LMD'])
-    if dataset_name == 'LMD':
+    ca.check_mismatch('Dataset Name', dataset_name, ['POP909', 'LMD-cleaned', 'LMD', 'LMCI'])
+    if dataset_name in ['LMD', 'LMCI']:
         d_dset = get(config_dict, f'datasets.{dataset_name}.original')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
-        return dict(n_song=len(set(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))))
+
+        if dataset_name == 'LMCI':
+            exts = ('.mid', '.midi')  # some are in upper case
+            n = len(set(p for p in glob.iglob(os_join(path_ori, '**/*'), recursive=True) if p.lower().endswith(exts)))
+        else:  # `LMD`
+            n = len(set(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True)))
+        return dict(n_song=n)
     else:
         if dataset_name == 'POP909':
             path = os_join(BASE_PATH, DSET_DIR, 'original/POP909-Dataset', dataset_name)  # the original path
@@ -194,7 +205,7 @@ def get_dataset_meta(dataset_name: str):
         return get_stats(songs)
 
 
-for dnm in ['POP909', 'LMD-cleaned', 'LMD']:
+for dnm in ['POP909', 'LMD-cleaned', 'LMD', 'LMCI']:
     set_(config_dict, f'datasets.{dnm}.meta', get_dataset_meta(dnm))
 
 

@@ -242,6 +242,9 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
             path = os_join(path_exp, dir_nm)
             os.makedirs(path, exist_ok=True)
             copyfile(p, os_join(path, fnm))
+            if i == 17760:
+                mic(p, fnm, path, os_join(path, fnm))
+                raise NotImplementedError
         # sanity check no name collision
         assert n_uniq_midi == len(list(i for i in glob.iglob(os_join(path_exp, '**/*.mid'))))
 
@@ -307,39 +310,92 @@ def get_converted_song_paths(dataset_name: str = None, fmt='mxl', backend: str =
         return sorted(glob.iglob(path, recursive=True))
 
 
-def get_lmd_conversion_meta():
+def get_conversion_meta(dataset_name: str = 'LMD'):
     """
     Converting POP909 and MAESTRO all terminated without error in MuseScore
 
     But many broken files in LMD that can't be read by MuseScore, those files fall back to Logic Pro conversion
-        We don't start with Logic Pro conversion for lack of batch processing support
+        We don't start with Logic Pro conversion for lack of efficient batch processing support
     Still, a subset of files can't be converted with Logic Pro
     """
-    dnm = 'LMD'
-    n_song = sconfig(f'datasets.{dnm}.meta.n_song')
-    dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
-    set_converted = get_converted_song_paths(dataset_name=dnm, fmt='mxl', backend='all')
+    ca.check_mismatch('Dataset Name', dataset_name, ['LMD', 'LMCI'])
+
+    n_song = sconfig(f'datasets.{dataset_name}.meta.n_song')
+    dir_nm = sconfig(f'datasets.{dataset_name}.converted.dir_nm')
+    conv_paths = get_converted_song_paths(dataset_name=dataset_name, fmt='mxl', backend='all')
+    set_converted = set(conv_paths)
     lst_meta = []
     o2f = Ordinal2Fnm(total=n_song, group_size=int(1e4), ext='mxl')
 
     def get_original_fnms():  # see `clean_dataset_paths`
-        d_dset = sconfig(f'datasets.{dnm}.original')
+        d_dset = sconfig(f'datasets.{dataset_name}.original')
         path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
-        return sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
-    ori_dir_nm = sconfig(f'datasets.{dnm}.original.dir_nm')
+
+        if dataset_name == 'LMCI':
+            exts = ('.mid', '.midi')
+            # can't iterate original file names cos I made too much changes, e.g. adding version postfix
+            return sorted(p for p in glob.iglob(os_join(path_ori, '**/*'), recursive=True) if p.lower().endswith(exts))
+            # return sorted(conv_paths)
+        else:  # `LMD`
+            return sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
+    ori_dir_nm = sconfig(f'datasets.{dataset_name}.original.dir_nm')
 
     def original_abs2rel(path: str) -> str:
         return path[path.index(ori_dir_nm)+len(ori_dir_nm)+1:]
     original_fnms = get_original_fnms()
     assert len(original_fnms) == n_song  # sanity check
     it = tqdm(enumerate(original_fnms), desc='Scanning converted files', unit='fl', total=n_song)
+
+    map_paths = None
+    if dataset_name == 'LMCI':
+        brk_base = os_join(get_base_path(), u.dset_dir, f'{dir_nm}, broken')
+        brk_paths = list(glob.iglob(os_join(brk_base, '**/*.mid'), recursive=True))
+        assert len(brk_paths) + len(conv_paths) == n_song
+
+        ds = dir_nm.split(os.sep)
+        assert len(ds) == 2  # sanity check
+        d1, d2 = ds
+
+        def full2rel(path: str) -> str:
+            dirs = path.split(os.sep)
+            for i_, d in enumerate(dirs):
+                if d == d1 and dirs[i_+1].startswith(d2):
+                    return os_join(*dirs[i_+2:])
+            raise ValueError(f'Path {path} does not contain {dir_nm}')
+        map_paths = sorted(conv_paths + brk_paths, key=full2rel)
+        for i, mp in enumerate(map_paths):
+            if i != int(stem(mp)[:6]):
+                mic(i, int(stem(mp)[:6]), mp, full2rel(mp))
+            assert i == int(stem(mp)[:6])  # sanity check
     for i, ori_fnm in it:  # ensure go through every file
-        fnm = o2f(i)
+        if dataset_name == 'LMCI':
+            _fnm, _dir_nm = o2f(i, return_parts=True)
+            mf = stem(map_paths[i])
+            if _fnm[:6] != mf[:6]:
+                mic(_fnm, mf, ori_fnm)
+            assert _fnm[:6] == mf[:6]  # sanity check sorting results in one-to-one mapping
+            of = stem(ori_fnm)
+            # sanity check only thing added should be version postfix: drop ordinal, up until original file name
+            if mf[7:][:len(of)] != of:
+                mic(mf, of, ori_fnm)
+
+            # for edge cases, e.g. `Biogra11.mid.mid`, `brighton.midi.mid`
+            of = of.removesuffix('.mid').removesuffix('.midi')
+            assert mf[7:][:len(of)] == of
+            fnm = os_join(_dir_nm, f'{mf}.mxl')
+            # mic(fnm)
+        else:
+            fnm = o2f(i)
+        # raise NotImplementedError
         it.set_postfix(fnm=stem(fnm))
         # default conversion store location
         path_ms, path_lp = os_join(u.dset_dir, f'{dir_nm}, MS', fnm), os_join(u.dset_path, f'{dir_nm}, LP', fnm)
         _path_ms, _path_lp = os_join(u.base_path, path_ms), os_join(u.base_path, path_lp)
+        # mic(_path_ms, _path_lp)
+        # raise NotImplementedError
         d_out = dict(file_name=fnm, original_filename=original_abs2rel(ori_fnm))
+        # mic(d_out)
+        # raise NotImplementedError
         if os.path.exists(_path_ms):
             d_out.update(dict(backend='MS', path=path_ms, status='converted'))
             set_converted.remove(_path_ms)
@@ -348,16 +404,17 @@ def get_lmd_conversion_meta():
             set_converted.remove(_path_lp)
         else:
             # the original `mid` file should still be there to mark error
-            path_broken = _path_lp.replace(f'{dnm}, LP', f'{dnm}, broken').replace('.mxl', '.mid')
+            path_broken = _path_lp.replace(f'{dataset_name}, LP', f'{dataset_name}, broken').replace('.mxl', '.mid')
             if not os.path.exists(path_broken):  # TODO: debugging
-                mic(path_broken)
+                raise FileNotFoundError(f'Broken file not found: {pl.i(path_broken)}')
             assert os.path.exists(path_broken)
             # note all drums is also considered empty
             d_out.update(dict(backend='NA', path='NA', status='error/empty'))
         lst_meta.append(d_out)
     assert len(set_converted) == 0  # sanity check no converted file is missed
     df = pd.DataFrame(lst_meta)
-    path_out = os_join(u.dset_path, 'converted', f'{now(for_path=True)}, {dnm} conversion meta.csv')
+    date = now(fmt='short-date')
+    path_out = os_join(u.dset_path, 'converted', f'{date}, {dataset_name} conversion meta.csv')
     df.to_csv(path_out)
     return df
 
@@ -450,7 +507,7 @@ if __name__ == '__main__':
                     f_out = os_join(path_base, fd_sub, f_)
                     if os.path.exists(f__):
                         copyfile(f__, f_out)
-    lmd_cleaned_subset_to_files()
+    # lmd_cleaned_subset_to_files()
 
     def mv_backend_not_processed():
         """
@@ -470,7 +527,9 @@ if __name__ == '__main__':
         # dnm = 'LMD, MS/040000-050000'
         # dnm = 'LMD, LP/170000-178561'
         # dnm = 'LMD-cleaned, LP'
-        dnm = 'LMCI, MS/060000-070000'
+        # dnm = 'LMCI, MS/110000-120000'
+        # dnm = 'LMCI, MS/120000-128478'
+        dnm = 'LMCI, LP/110000-120000'
         path_processed = os_join(u.dset_path, 'converted', dnm)
         """
         Among group of 10k files in a folder for conversion, MS in Mac produces ~100 broken songs, 
@@ -485,8 +544,9 @@ if __name__ == '__main__':
         path_mids = sorted(glob.iglob(os_join(path_to_process, '**.mid')))
         logger.info(f'{pl.i(len(path_mids))} MIDI files should have been converted')
         count = 0
-        # output_format = 'xml'
-        output_format = 'mxl'
+        output_format = 'xml'
+        # output_format = 'mxl'
+        fnm = None
         for path in tqdm(path_mids):
             path_xml = path[:-len('.mid')]
             path_xml = f'{path_xml}.{output_format}'
@@ -503,7 +563,6 @@ if __name__ == '__main__':
         for path in tqdm(path_xmls):
             path_mid = path.replace(f'.{output_format}', '.mid')
             if not os.path.exists(path_mid):
-
                 os.remove(path)
                 logger.info(f'Original MIDI for {pl.i(fnm)} not found, removed')
                 count += 1
@@ -511,9 +570,11 @@ if __name__ == '__main__':
     # mv_backend_not_processed()
 
     def get_convert_df():
-        df = get_lmd_conversion_meta()
+        # dnm = 'LMD'
+        dnm = 'LMCI'
+        df = get_conversion_meta(dataset_name=dnm)
         mic(df)
-    # get_convert_df()
+    get_convert_df()
 
     # def chore_convert_xml2mxl():
     #     """

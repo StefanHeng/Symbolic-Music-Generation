@@ -495,8 +495,8 @@ if __name__ == '__main__':
         # md_sz = 'debug-large'
         # md_sz = 'tiny'
         # md_sz = 'small'
-        # md_sz = 'base'
-        md_sz = 'large'
+        md_sz = 'base'
+        # md_sz = 'large'
         mic(md_nm, md_sz)
 
         debug = 'debug' in md_sz
@@ -510,8 +510,9 @@ if __name__ == '__main__':
         # n = 1024
         n = None
         # n_ep = 4
+        n_ep = 24
         # n_ep = 64
-        n_ep = 128
+        # n_ep = 128
         # n_ep = 256
         # n_ep = 512
         mic(n, n_ep)
@@ -541,16 +542,17 @@ if __name__ == '__main__':
         # channel_mixup = 'full'
         channel_mixup = False
 
-        # tok = 'vanilla'
+        tok = 'vanilla'
         # tok = 'wordpiece'
-        tok = 'pairmerge'
+        # tok = 'pairmerge'
         tok_fnm = None
         # wordpiece_tokenize = True
         # wordpiece_tokenize = '22-11-26_WordPiece-Tokenizer_{dnm=all}_{vsz=262144, n=178825, pch=d, aug-key=T}'
         if tok == 'vanilla':
             model_config['cutoffs'] = []
         # prop_mix = False
-        prop_mix = 1280
+        # prop_mix = 1280
+        prop_mix = 32768
         mic(rand_crop, grp_tp, pch_kd, insert_key, pch_shift, channel_mixup, tok, tok_fnm, prop_mix)
 
         # needed so that best model is loaded in the end
@@ -565,9 +567,9 @@ if __name__ == '__main__':
         trainer_args = dict(disable_train_metrics=True)
 
         if not debug:
-            # bsz = 21
+            bsz = 21
             # bsz = 16
-            bsz = 8
+            # bsz = 8
             train_args.update(dict(
                 # learning_rate=1e-4,
                 weight_decay=1e-1,
