@@ -418,14 +418,17 @@ if __name__ == '__main__':
             if 'LMD-cleaned' in dnm:
                 args['dataset_name2songs_args'] = dict(backend='all')
 
-            resume = False
-            # resume = True
+            # resume = False
+            resume = True
             if resume:
                 if dnm == 'POP909':
-                    dir_nm_ = f'22-10-20_POP909_{{md={mode[0]}}}'
+                    date = '22-10-20'
+                elif dnm == 'MAESTRO':
+                    date = '22-10-20'
                 else:
-                    assert dnm == 'MAESTRO'
-                    dir_nm_ = f'22-10-20_MAESTRO_{{md={mode[0]}}}'
+                    assert dnm == 'LMD-cleaned-subset'
+                    date = '23-01-17'
+                dir_nm_ = f'{date}_{dnm}_{{md={mode[0]}}}'
             else:
                 date = now(fmt='short-date')
                 dir_nm_ = f'{date}_{dnm}_{{md={mode[0]}}}'

@@ -230,7 +230,7 @@ class PitchShift(Transform):
 
 
 class AugmentKey:
-    def __init__(self, vocab: MusicVocabulary, return_as_list: bool = False):
+    def __init__(self, vocab: MusicVocabulary = None, return_as_list: bool = False):
         if vocab:
             assert vocab.pitch_kind == 'degree'
             self.vocab = vocab

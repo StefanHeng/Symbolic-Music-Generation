@@ -242,9 +242,6 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
             path = os_join(path_exp, dir_nm)
             os.makedirs(path, exist_ok=True)
             copyfile(p, os_join(path, fnm))
-            if i == 17760:
-                mic(p, fnm, path, os_join(path, fnm))
-                raise NotImplementedError
         # sanity check no name collision
         assert n_uniq_midi == len(list(i for i in glob.iglob(os_join(path_exp, '**/*.mid'))))
 
@@ -335,7 +332,6 @@ def get_conversion_meta(dataset_name: str = 'LMD'):
             exts = ('.mid', '.midi')
             # can't iterate original file names cos I made too much changes, e.g. adding version postfix
             return sorted(p for p in glob.iglob(os_join(path_ori, '**/*'), recursive=True) if p.lower().endswith(exts))
-            # return sorted(conv_paths)
         else:  # `LMD`
             return sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
     ori_dir_nm = sconfig(f'datasets.{dataset_name}.original.dir_nm')
@@ -364,38 +360,24 @@ def get_conversion_meta(dataset_name: str = 'LMD'):
             raise ValueError(f'Path {path} does not contain {dir_nm}')
         map_paths = sorted(conv_paths + brk_paths, key=full2rel)
         for i, mp in enumerate(map_paths):
-            if i != int(stem(mp)[:6]):
-                mic(i, int(stem(mp)[:6]), mp, full2rel(mp))
             assert i == int(stem(mp)[:6])  # sanity check
     for i, ori_fnm in it:  # ensure go through every file
         if dataset_name == 'LMCI':
             _fnm, _dir_nm = o2f(i, return_parts=True)
             mf = stem(map_paths[i])
-            if _fnm[:6] != mf[:6]:
-                mic(_fnm, mf, ori_fnm)
             assert _fnm[:6] == mf[:6]  # sanity check sorting results in one-to-one mapping
-            of = stem(ori_fnm)
+            # for edge cases: `Biogra11.mid.mid`, `brighton.midi.mid`
+            of = stem(ori_fnm).removesuffix('.mid').removesuffix('.midi')
             # sanity check only thing added should be version postfix: drop ordinal, up until original file name
-            if mf[7:][:len(of)] != of:
-                mic(mf, of, ori_fnm)
-
-            # for edge cases, e.g. `Biogra11.mid.mid`, `brighton.midi.mid`
-            of = of.removesuffix('.mid').removesuffix('.midi')
             assert mf[7:][:len(of)] == of
             fnm = os_join(_dir_nm, f'{mf}.mxl')
-            # mic(fnm)
         else:
             fnm = o2f(i)
-        # raise NotImplementedError
         it.set_postfix(fnm=stem(fnm))
         # default conversion store location
         path_ms, path_lp = os_join(u.dset_dir, f'{dir_nm}, MS', fnm), os_join(u.dset_path, f'{dir_nm}, LP', fnm)
         _path_ms, _path_lp = os_join(u.base_path, path_ms), os_join(u.base_path, path_lp)
-        # mic(_path_ms, _path_lp)
-        # raise NotImplementedError
         d_out = dict(file_name=fnm, original_filename=original_abs2rel(ori_fnm))
-        # mic(d_out)
-        # raise NotImplementedError
         if os.path.exists(_path_ms):
             d_out.update(dict(backend='MS', path=path_ms, status='converted'))
             set_converted.remove(_path_ms)

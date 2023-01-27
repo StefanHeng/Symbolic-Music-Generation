@@ -1046,7 +1046,7 @@ if __name__ == '__main__':
         # fnm = 'Ode to Joy'
         # fnm = 'Careless Whisper, 4'
         # fnm = 'Merry Christmas'
-        # fnm = 'Merry Go Round of Life'
+        fnm = 'Merry Go Round of Life'
         # fnm = 'Canon piano'
         # fnm = '易燃易爆炸'
         # fnm = 'Shape of You'
@@ -1097,7 +1097,7 @@ if __name__ == '__main__':
         # fnm = '李白'
         # fnm = '挪威的森林'
 
-        fnm = 'House of the Rising Sun'
+        # fnm = 'House of the Rising Sun'
         fnm = music_util.get_my_example_songs(fnm, fmt='MXL')
         mic(fnm)
         # mode = 'melody'
@@ -1122,9 +1122,9 @@ if __name__ == '__main__':
         def check_return_meta_n_key():
             d_out = me(fnm, exp='str_join', return_meta=True, return_key=True)
             mic(d_out)
-        check_mxl_out()
+        # check_mxl_out()
         # check_str()
-        # check_visualize()
+        check_visualize()
         # check_return_meta_n_key()
     toy_example()
 
