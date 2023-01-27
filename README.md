@@ -12,9 +12,11 @@ supported by [Prof. Rada Mihalcea](https://web.eecs.umich.edu/~mihalcea/) at [LI
 
 ## Run the Scripts
 
+### Getting Started 
+
 Python version `3.10.8`. 
 
-Modify the `DIR_DSET` variable in file [`data_path.py`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/musicnlp/util/data_path.py) 
+Modify the `DIR_DSET` variable in file [`project_paths.py`](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/musicnlp/util/project_paths.py) 
 as instructed.
 
 
@@ -41,9 +43,9 @@ See [`generated-samples`](https://github.com/StefanHeng/Symbolic-Music-Generatio
 
 
 
-## Resources 
+## Dataset
 
-Datasets linked [here](https://drive.google.com/drive/folders/1T4TDRjj4nwQWRoytBYNg5VlqHCivTjyP?usp=sharing). 
+Datasets linked [here](https://drive.google.com/drive/folders/1T4TDRjj4nwQWRoytBYNg5VlqHCivTjyP?usp=sharing). Dataset visualizations [here](https://github.com/StefanHeng/Symbolic-Music-Generation/blob/master/notebook/visualize/dataset_stats.ipynb). 
 
-Some visualizations and training log [here](https://drive.google.com/drive/folders/1hbnX2WkrikgoL7gVM-bMF29tjlJfllu0?usp=sharing). 
+
 
