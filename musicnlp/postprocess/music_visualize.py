@@ -23,8 +23,8 @@ from musicnlp.vocab import (
     COMMON_TEMPOS, COMMON_TIME_SIGS, get_common_time_sig_duration_bound,
     MusicVocabulary, MusicTokenizer, key_str2enum
 )
-from musicnlp.preprocess import WarnLog
-from musicnlp.trainer import load_wordpiece_tokenizer
+from musicnlp.preprocess import WarnLog, transform
+from musicnlp.trainer import load_wordpiece_tokenizer, load_pairmerge_tokenizer
 from musicnlp.postprocess.music_stats import MusicStats
 
 
@@ -41,7 +41,7 @@ class MusicVisualize:
     def __init__(
             self, filename: Union[str, List[str]], dataset_name: Union[str, List[str]] = None,
             color_palette: str = 'husl', hue_by_dataset: bool = True, cache: str = None,
-            subset: Union[float, bool] = None, subset_bound: int = 4096
+            subset: Union[float, bool] = None, subset_bound: int = 4096, pitch_kind: str = 'degree'
     ):
         """
         :param filename: Path to a json dataset, or a list of paths, in which case datasets are concatenated
@@ -52,7 +52,11 @@ class MusicVisualize:
             datasets with #song above `subset_bound`
         """
         self.dset: Dict
-        self._prec, self.tokenizer, self.wp_tokenizer, self.vocab, self.states = None, None, None, None, None
+        self._prec, self.tokenizer, self.wp_tokenizer, self.pm_tokenizer = None, None, None, None
+        self.vocab, self.states = None, None
+        self.sr, self.ak = None, None
+        self.pitch_kind = pitch_kind
+
         self._df = None
         self.cache = cache
         self.logger = get_logger('Music Visualizer')
@@ -61,7 +65,9 @@ class MusicVisualize:
         self.logger.info('Getting global stats... ')
         if cache:
             fnm = f'{self.cache}.pkl'
-            path = os_join(u.plot_path, 'cache', fnm)
+            path = os_join(u.plot_path, 'cache')
+            os.makedirs(path, exist_ok=True)
+            path = os_join(path, fnm)
             if os.path.exists(path):
                 self.logger.info(f'Loading cached stats from {pl.i(path)}... ')
                 with open(path, 'rb') as f:
@@ -132,21 +138,33 @@ class MusicVisualize:
         return self._prec
 
     def _set_meta(self):
-        self.tokenizer = MusicTokenizer(precision=self.prec)
-        self.wp_tokenizer = load_wordpiece_tokenizer()
+        self.tokenizer = MusicTokenizer(precision=self.prec, pitch_kind=self.pitch_kind)
+        self.wp_tokenizer = load_wordpiece_tokenizer(pitch_kind=self.pitch_kind, precision=self.prec)
+        self.pm_tokenizer = load_pairmerge_tokenizer(pitch_kind=self.pitch_kind, precision=self.prec)
+
         assert self.wp_tokenizer.precision == self.prec
         self.vocab: MusicVocabulary = self.tokenizer.vocab
-        self.stats = MusicStats(prec=self.prec)
+        self.stats = MusicStats(prec=self.prec, pitch_kind=self.pitch_kind)
+        sr_vocab = self.vocab if self.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step', precision=self.prec)
+        self.sr = transform.SanitizeRare(vocab=sr_vocab)
+        self.ak = transform.AugmentKey(vocab=self.vocab)
 
     def _extract_song_info(self, d: Dict, it=None) -> Dict:
         d = deepcopy(d)
         scr = d.pop('score')
-        toks = self.tokenizer.tokenize(scr)
-        d['n_token'] = len(toks)
-        wp_toks = self.wp_tokenizer.tokenize(scr, mode='char')  # just need len, efficient
-        d['n_wp_token'] = len(wp_toks)
+
+        scr_ = self.sr(scr)
+        keys = d['keys']
+        # Needed for tokenization, just pick the most-confident key for simplicity
+        scr_ = self.ak((scr_, max(keys, key=keys.get)))
+
+        toks = self.tokenizer.tokenize(scr_)
+        wp_toks = self.wp_tokenizer.tokenize(scr_, mode='char')  # just need len, efficient
+        pm_toks = self.pm_tokenizer.tokenize(scr_)
+        d['n_token'], d['n_wp_token'] = len(toks), len(wp_toks)
         if it:
-            it.set_postfix(dict(n_token=pl.i(d['n_token']), n_wp_token=pl.i(d['n_wp_token'])))
+            d_log = dict(n_token=pl.i(d['n_token']), n_wp_token=pl.i(d['n_wp_token']), n_pm_token=pl.i(len(pm_toks)))
+            it.set_postfix(d_log)
         counter_toks = Counter(toks)
         d['n_bar'] = counter_toks[self.vocab.start_of_bar]
         d['n_tup'] = counter_toks[self.vocab.start_of_tuplet]
@@ -156,7 +174,7 @@ class MusicVisualize:
         d['tempo'] = list(ttc['tempo'].keys())[0]
         d['time_sig'] = (numer, denom) = list(ttc['time_sig'].keys())[0]
         d['time_sig_str'] = f'{numer}/{denom}'
-        d['keys_unweighted'] = {k: 1 for k in d['keys']}  # to fit into `_count_by_dataset`
+        d['keys_unweighted'] = {k: 1 for k in keys}  # to fit into `_count_by_dataset`
 
         d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
         d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
@@ -181,7 +199,7 @@ class MusicVisualize:
             self, data: pd.DataFrame = None, col_name: str = None,
             title: str = None, xlabel: str = None, ylabel: str = None, yscale: str = None,
             callback: Callable = None, show=True, save: bool = False,
-            upper_percentile: float = None,
+            upper_percentile: float = None, show_title: bool = True,
             **kwargs
     ):
         self.logger.info('Plotting... ')
@@ -195,7 +213,7 @@ class MusicVisualize:
             plt.gca().get_legend().set_title(legend_title)
         plt.xlabel(xlabel)
         ylab_default = 'count'
-        if title is not None:
+        if show_title and title is not None:
             plt.title(title)
         if upper_percentile:
             vs = self.df[col_name]
@@ -357,7 +375,10 @@ class MusicVisualize:
         df = self._count_by_dataset(k)
         df.rename(columns={k: 'pitch'}, inplace=True)
         ma, mi = df.pitch.max(), df.pitch.min()
-        assert mi == self.vocab.tok2meta(self.vocab.rest)
+        mr = self.vocab.tok2meta(self.vocab.rest)
+        if self.pitch_kind != 'midi':
+            mr = mr[0]
+        assert mi == mr  # sanity check
 
         def callback(ax):
             plt.gcf().canvas.draw()
@@ -532,25 +553,30 @@ class MusicVisualize:
 
 if __name__ == '__main__':
     import musicnlp.util.music as music_util
-    from musicnlp.preprocess import DATASET_NAME2MODE2FILENAME
+    from musicnlp.preprocess.dataset import DATASET_NAME2MODE2FILENAME
 
     # md = 'melody'
     md = 'full'
+    pch_kd = 'degree'
+
     # dnms = ['POP909']
     # dnms = ['POP909', 'MAESTRO']
     dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['LMD']
     fnms = [get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{md}') for dnm in dnms]
     fnms = [os_join(music_util.get_processed_path(), f'{fnm}.json') for fnm in fnms]
     if dnms == ['POP909']:
-        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
+        cnm = f'22-01-31_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
-        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
+        cnm = f'22-01-31_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = f'10-03-22_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
+        cnm = f'22-01-31_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
     else:
         cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
-    mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm, subset=subset_)
+    mv = MusicVisualize(
+        filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm, subset=subset_, pitch_kind=pch_kd
+    )
     # mic(mv.df)
 
     def check_warn():
@@ -573,17 +599,18 @@ if __name__ == '__main__':
 
     def plots():
         args = dict(stat='percent', upper_percentile=97.7)  # ~2std
+        args.update(dict(save=True, show_title=False))
         # mv.token_length_dist(**args)
         # mv.token_length_dist(wordpiece_tokenize=True, **args)
         # mv.bar_count_dist(**args)
-        # mv.tuplet_count_dist(**args)
+        mv.tuplet_count_dist(**args)
         # mv.song_duration_dist(**args)
         # mv.time_sig_dist(yscale='linear', stat='percent')
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
         # mv.note_duration_dist(stat='percent')
-        mv.warning_type_dist()
+        # mv.warning_type_dist()
     plots()
 
     fig_sz = (9, 5)

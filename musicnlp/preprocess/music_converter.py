@@ -298,7 +298,7 @@ class MusicConverter:
 
         Expects each music element to be in the correct format
         """
-        vocab = self.pk2v[pitch_kind]
+        vocab: MusicVocabulary = self.pk2v[pitch_kind]
 
         def comp(x):  # syntactic sugar
             return vocab.tok2meta(x, strict=strict)
