@@ -21,9 +21,9 @@ from musicnlp.util import *
 from musicnlp.util.music_lib import Dur
 from musicnlp.vocab import (
     COMMON_TEMPOS, COMMON_TIME_SIGS, get_common_time_sig_duration_bound,
-    MusicVocabulary, MusicTokenizer, key_str2enum
+    MusicVocabulary, MusicTokenizer, key_str2enum, ElmType
 )
-from musicnlp.preprocess import WarnLog, transform
+from musicnlp.preprocess import WarnLog, transform, MusicConverter
 from musicnlp.trainer import load_wordpiece_tokenizer, load_pairmerge_tokenizer
 from musicnlp.postprocess.music_stats import MusicStats
 
@@ -53,7 +53,7 @@ class MusicVisualize:
         """
         self.dset: Dict
         self._prec, self.tokenizer, self.wp_tokenizer, self.pm_tokenizer = None, None, None, None
-        self.vocab, self.states = None, None
+        self.vocab, self.states, self.mc = None, None, None
         self.sr, self.ak = None, None
         self.pitch_kind = pitch_kind
 
@@ -145,6 +145,7 @@ class MusicVisualize:
         assert self.wp_tokenizer.precision == self.prec
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec, pitch_kind=self.pitch_kind)
+        self.mc: MusicConverter = self.stats.converter
         sr_vocab = self.vocab if self.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step', precision=self.prec)
         self.sr = transform.SanitizeRare(vocab=sr_vocab)
         self.ak = transform.AugmentKey(vocab=self.vocab)
@@ -161,7 +162,17 @@ class MusicVisualize:
         toks = self.tokenizer.tokenize(scr_)
         wp_toks = self.wp_tokenizer.tokenize(scr_, mode='char')  # just need len, efficient
         pm_toks = self.pm_tokenizer.tokenize(scr_)
-        d['n_token'], d['n_wp_token'] = len(toks), len(wp_toks)
+        d['n_token'], d['n_wp_token'], d['n_pm_token'] = len(toks), len(wp_toks), len(pm_toks)
+
+        elms = self.mc.str2music_elms(scr_, group=False, pitch_kind=self.pitch_kind).elms
+        tups_ns = [len(e.meta[0]) for e in elms if e.type == ElmType.tuplets]  # number of pitch token
+        # mic(tups_ns)
+        c_tup_n_note = Counter(tups_ns)
+        # if len(c_tup_n_note):
+        #     mic(c_tup_n_note, tups_ns)
+        #     raise NotImplementedError
+        d['n_tuplet_note'] = dict(c_tup_n_note)
+
         if it:
             d_log = dict(n_token=pl.i(d['n_token']), n_wp_token=pl.i(d['n_wp_token']), n_pm_token=pl.i(len(pm_toks)))
             it.set_postfix(d_log)
@@ -216,7 +227,7 @@ class MusicVisualize:
         if show_title and title is not None:
             plt.title(title)
         if upper_percentile:
-            vs = self.df[col_name]
+            vs = data[col_name]
             q = upper_percentile if isinstance(upper_percentile, float) else 99.7  # ~3std
             mi, ma = vs.min(), np.percentile(vs, q=q)
             ax.set_xlim([mi, ma])
@@ -237,11 +248,14 @@ class MusicVisualize:
             plt.show()
         return ax
 
-    def token_length_dist(self, wordpiece_tokenize: bool = False, **kwargs):
+    def token_length_dist(self, tokenize_scheme: str = 'vanilla', **kwargs):
         col_nm, title = 'n_token', 'Distribution of token length'
-        if wordpiece_tokenize:
+        if tokenize_scheme == 'wordpiece':
             col_nm = 'n_wp_token'
             title = f'{title} w/ WordPiece tokenization'
+        elif tokenize_scheme == 'pairmerge':
+            col_nm = 'n_pm_token'
+            title = f'{title} w/ PairMerge tokenization'
         args = dict(col_name=col_nm, title=title, xlabel='#token')
         if kwargs is not None:
             args.update(kwargs)
@@ -254,6 +268,20 @@ class MusicVisualize:
         title = 'Distribution of #tuplets'
         args = dict(col_name='n_tup', title=title, xlabel='#tuplet', upper_percentile=True) | (kwargs or dict())
         self.hist_wrapper(**args)
+
+    def tuplet_n_note_dist(self, **kwargs):
+        self.logger.info('Getting stats... ')
+        k = 'n_tuplet_note'
+        df = self._count_by_dataset(k)
+
+        def callback(ax):
+            ma, mi = df[k].max(), df[k].min()
+            ax.set_xlim([mi, ma])
+        title = 'Distribution of #notes in tuplets'
+        return self.hist_wrapper(
+            data=df, col_name='n_tuplet_note', weights='count', title=title, xlabel='#note in tuplets',
+            discrete=True, kde=False, callback=callback, **kwargs
+        )
 
     def song_duration_dist(self, **kwargs):
         def callback(ax):
@@ -516,11 +544,11 @@ class MusicVisualize:
         else:
             return df
 
-    def warning_type_dist(self, average=True, title: str = None, **kwargs):
+    def warning_type_dist(self, average=True, title: str = None, show_title: bool = True, save: bool = False, **kwargs):
         self.logger.info('Getting stats... ')
         df = self.warn_info(per_dataset=True)
         df_col2cat_col(df, 'type', WarnLog.types)
-        typ = 'per song' if average else 'in total'
+        typ = 'per piece' if average else 'in total'
 
         def callback(ax):
             severities = [WarnLog.type2severity[t] for t in WarnLog.types]
@@ -535,17 +563,19 @@ class MusicVisualize:
                 t.set_color(t2c[txt])
             ax.set_yticks(ax.get_yticks())  # disables warning
             ax.set_yticklabels([t.get_text() for t in ytick_lbs])  # Hack
-        if title is None:
-            title = 'Distribution of Warnings during Music Extraction'
-        elif title == 'none':
-            title = None
+        title_ = 'Distribution of Warnings during Music Extraction'
+        if title is None and show_title:
+            title = title_
         self.logger.info('Plotting... ')
-        barplot(
+        ax_ = barplot(
             data=df, x='type', y='average_count', title=title,
-            xlabel='Warning Type (color coded by severity)', ylabel=f'count {typ}',
+            xlabel='Warnings (color coded by severity)', ylabel=f'count {typ}',
             width=None, callback=callback, yscale='log', orient='h',
-            hue=self.key_dnm if self.hue_by_dataset else None, **kwargs
+            hue=self.key_dnm if self.hue_by_dataset else None, show=not save, **kwargs
         )
+        if save:
+            save_fig(title_)
+        return ax_
         # TODO: set left to log scale and right to linear scale?
         # https://stackoverflow.com/questions/21746491/combining-a-log-and-linear-scale-in-matplotlib/21870368
         # solution here is real complicated
@@ -573,6 +603,7 @@ if __name__ == '__main__':
         cnm = f'22-01-31_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
     else:
         cnm = None
+    cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
     mv = MusicVisualize(
         filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm, subset=subset_, pitch_kind=pch_kd
@@ -598,19 +629,23 @@ if __name__ == '__main__':
     # check_rare_time_sigs()
 
     def plots():
+        # plt.figure(figsize=(9, 4))
         args = dict(stat='percent', upper_percentile=97.7)  # ~2std
-        args.update(dict(save=True, show_title=False))
+        _args = dict(save=True, show_title=False)
+        args.update(_args)
         # mv.token_length_dist(**args)
-        # mv.token_length_dist(wordpiece_tokenize=True, **args)
+        # mv.token_length_dist(token_length_dist='wordpiece', **args)
+        # mv.token_length_dist(token_length_dist='pairmerge', **args)
         # mv.bar_count_dist(**args)
-        mv.tuplet_count_dist(**args)
+        # mv.tuplet_count_dist(**args)
+        # mv.tuplet_n_note_dist(**args)
         # mv.song_duration_dist(**args)
         # mv.time_sig_dist(yscale='linear', stat='percent')
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
         # mv.note_duration_dist(stat='percent')
-        # mv.warning_type_dist()
+        mv.warning_type_dist(**_args)
     plots()
 
     fig_sz = (9, 5)

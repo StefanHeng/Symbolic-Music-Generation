@@ -300,6 +300,7 @@ class MusicExtractor:
 
                     for tup in lst[idx_tup_strt:]:
                         ln = len(tup)
+                        assert ln != 2 and ln != 4  # sanity check
                         if ln != n_tup:
                             self.log_warn(warn_name=WarnLog.InvTupSz, bar_num=number, n_expect=n_tup, n_got=ln)
 
