@@ -35,16 +35,24 @@ class Transform:
 
 class SanitizeRare(Transform):
     # See `MusicVocabulary.sanitize_rare_tokens`
-    def __init__(self, vocab: MusicVocabulary = None, for_midi: bool = False, **kwargs):
+    def __init__(self, vocab: MusicVocabulary = None, for_midi: bool = False, rare_pitch_only: bool = False, **kwargs):
+        """
+        :param vocab: a MusicVocabulary for sanitizing rare tokens
+        :param for_midi: whether to preserve the rare pitches as they can be converted to midi pitch later
+        :param rate_pitch_only: whether to only sanitize rare pitches
+            Intended for MusicVisualizer
+        """
         super().__init__(**kwargs)
         self.vocab = vocab or MusicVocabulary(pitch_kind='step')
-
-        # self.for_midi = for_midi  # preserve the rare pitches as they can be converted to midi pitch later
         self.for_midi = for_midi  # see `MusicVocabulary.sanitize_rare_tokens`
+        self.rare_pitch_only = rare_pitch_only
 
     def __call__(self, text: Song) -> Song:
         toks = text if isinstance(text, list) else text.split()
-        toks = [self.vocab.sanitize_rare_token(tok, for_midi=self.for_midi) for tok in toks]
+        toks = [
+            self.vocab.sanitize_rare_token(tok, for_midi=self.for_midi, rare_pitch_only=self.rare_pitch_only)
+            for tok in toks
+        ]
         return toks if self.return_as_list else ' '.join(toks)
 
 
@@ -551,7 +559,7 @@ if __name__ == '__main__':
 
         if aug_key:
             songs = dataset.load_songs(pop, as_dict=False)
-            out = dataset.iter_song(songs)
+            out = dataset.iter_song_w_all_keys(songs)
             it, n = out.generator, out.total
         else:
             it = dataset.load_songs(pop)
@@ -605,7 +613,7 @@ if __name__ == '__main__':
         sr = SanitizeRare(vocab=MusicVocabulary(pitch_kind='step'), return_as_list=True)
         ak = AugmentKey(vocab=vocab, return_as_list=True)
 
-        out = dataset.iter_song(songs)
+        out = dataset.iter_song_w_all_keys(songs)
         it, n = out.generator, out.total
 
         for txt, key in tqdm(it, desc='Checking toks in degree vocab', total=n):

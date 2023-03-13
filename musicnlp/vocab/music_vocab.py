@@ -871,7 +871,10 @@ class MusicVocabulary:
         else:  # `midi`
             raise ValueError(f'Step is not part of vocabulary for pitch kind {pl.i(self.pitch_kind)}')
 
-    def sanitize_rare_token(self, tok: str, for_midi: bool = False) -> str:
+    def sanitize_rare_token(self, tok: str, for_midi: bool = False, rare_pitch_only: bool = False) -> str:
+        """
+        See `musicnlp.preprocess.transform::SanitizeRare`
+        """
         if tok in self.tok2id:
             return tok
         else:
@@ -890,14 +893,17 @@ class MusicVocabulary:
                 else:
                     return MusicVocabulary.rare_pitch
                 # return MusicVocabulary.rare_pitch
-            if typ == VocabType.duration:
-                return MusicVocabulary.rare_duration
-            elif typ == VocabType.time_sig:
-                return MusicVocabulary.rare_time_sig
+            elif rare_pitch_only:
+                return tok
             else:
-                assert typ == VocabType.tempo
-                tp = self.tok2meta(tok)  # get the actual BPM
-                return MusicVocabulary.rare_low_tempo if tp < 40 else MusicVocabulary.rare_high_tempo
+                if typ == VocabType.duration:
+                    return MusicVocabulary.rare_duration
+                elif typ == VocabType.time_sig:
+                    return MusicVocabulary.rare_time_sig
+                else:
+                    assert typ == VocabType.tempo
+                    tp = self.tok2meta(tok)  # get the actual BPM
+                    return MusicVocabulary.rare_low_tempo if tp < 40 else MusicVocabulary.rare_high_tempo
 
     def sanitize_rare_tokens(self, s: str, return_as_list: bool = False) -> str:
         """
@@ -938,10 +944,15 @@ class MusicVocabulary:
 
 class IsNonRestValidPitch:
     def __init__(self, vocab: MusicVocabulary = None):
-        if vocab:
-            self.vocab = vocab  # any pitch kind will do
-        else:
-            self.vocab = MusicVocabulary()
+        self._vocab = None
+        if vocab is not None:
+            self._vocab = vocab  # any pitch kind will do
+
+    @property
+    def vocab(self) -> MusicVocabulary:
+        if self._vocab is None:  # Lazy loading
+            self._vocab = MusicVocabulary()
+        return self._vocab
 
     def __call__(self, tok: str) -> bool:
         return self.vocab.type(tok) == VocabType.pitch and tok != self.vocab.rest and tok != self.vocab.rare_pitch

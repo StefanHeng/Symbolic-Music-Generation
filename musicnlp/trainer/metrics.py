@@ -1,4 +1,4 @@
-from typing import List, Union, Optional
+from typing import List, Union, Dict, Optional
 from itertools import filterfalse
 from collections import Counter
 
@@ -148,9 +148,9 @@ if __name__ == '__main__':
         # mic(kf.find_scale_degrees(keys))
     # get_eg_song_key(song_nm)
 
-    im = IkrMetric(MusicTokenizer(), n_init_bars=2)
-
     def check_key_metric():
+        im = IkrMetric(MusicTokenizer(), n_init_bars=2)
+
         # text = music_util.get_extracted_song_eg(
         # k='平凡之路')  # this one has tuplets
         with open(os_join(music_util.get_processed_path(), f'{song_nm}.json'), 'r') as f:
@@ -171,17 +171,12 @@ if __name__ == '__main__':
         """
         Pass through all songs in the dataset, make sure no errors raised during training
         """
-        from musicnlp.preprocess import get_dataset, AugmentedDataset
+        from musicnlp.preprocess import dataset
 
-        # dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
-        #           'meta={mode=melody, prec=5, th=1}, 2022-04-10_12-51-01'
-        # dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, ' \
-        #           'n=10269, meta={mode=melody, prec=5, th=1}, 2022-04-10_19-49-52'
-        dnm_909 = 'musicnlp music extraction, dnm=POP909, n=909, ' \
-                  'meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
-        dnm_lmd = 'musicnlp music extraction, dnm=LMD-cleaned-subset, n=10269, ' \
-                  'meta={mode=melody, prec=5, th=1}, 2022-04-17_11-52-15'
-        dnms = [dnm_909, dnm_lmd]
+        pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
+        dnms = [pop, mst, lmd]
+
+        im = IkrMetric(MusicTokenizer(), n_init_bars=2)
 
         n_sample = None
         tokenizer = MusicTokenizer(precision=5, model_max_length=2048)  # TODO: hard-code for now
@@ -191,7 +186,7 @@ if __name__ == '__main__':
         #         x['score'], padding='max_length', truncation=True),
         #     remove_columns=['title', 'score', 'duration'], n_sample=n_sample, shuffle_seed=seed
         # )
-        dset = AugmentedDataset.from_hf(dnms, tokenizer=tokenizer, get_dataset_args=dict(n_sample=n_sample))
+        dset = dataset.AugmentedDataset.from_hf(dnms, tokenizer=tokenizer, get_dataset_args=dict(n_sample=n_sample))
         # effectively get the fist tokens of model size, simulating training data-loading
         for split, ds in dset.items():
             strt, end = 4900, len(ds)
@@ -207,4 +202,47 @@ if __name__ == '__main__':
                 im(ids, ids)
                 # exit(1)
     # check_init_key_no_error()
-    profile_runtime(check_init_key_no_error)
+    # profile_runtime(check_init_key_no_error)
+
+    def check_ground_truth_ikr():
+        """
+        Sanity check if IKR is a good metric
+            The value for actual songs should be pretty high
+        """
+        from musicnlp.vocab import key_str2enum
+        from musicnlp.preprocess import dataset
+
+        pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
+        dnms = [pop]
+        # dnms = [pop, mst]
+
+        tokenizer = MusicTokenizer(pitch_kind='step')
+        im = IkrMetric(tokenizer=tokenizer)
+        mic(tokenizer.vocab_size)
+
+        songs: List[Dict] = dataset.load_songs(*dnms)
+        it = tqdm(songs, desc='Computing IKR on ground truth', unit='song')
+
+        reduce_kind = 'most-confident-key'  # use the IKR from the most-confident key
+        mic(reduce_kind)
+        # reduce_kind = 'highest-ikr'  # a cheating upper bound, when the key stays unchanged throughout the song
+
+        ikrs = []
+        for s in it:
+            it.set_postfix(title=s['title'])
+            scr = s['score']
+            input_ids = tokenizer(scr)['input_ids']   # Tokenize the entire sequence, no padding & truncation
+            ks = {key_str2enum[k]: c for k, c in s['keys'].items()}
+            d_ikrs = {k: im.get_in_key_ratio(preds=input_ids, key=k) for k in ks.keys()}
+            # mic(s['keys'], d_ikrs)
+
+            if reduce_kind == 'most-confident-key':  # ~0.95 for POP909
+                k_conf = max(ks, key=ks.get)
+                # Does highest-confidence key always have highest IKR value? --- No
+                # assert d_ikrs[k_conf] == max(d_ikrs.values())  # for ties
+                ikrs.append(d_ikrs[k_conf])
+            elif reduce_kind == 'highest-ikr':  # ~0.97 for POP909
+                ikrs.append(max(d_ikrs.values()))
+            # raise NotImplementedError
+        mic(np.mean(ikrs))
+    check_ground_truth_ikr()

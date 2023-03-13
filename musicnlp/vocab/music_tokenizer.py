@@ -96,7 +96,7 @@ class MusicTokenizer(PreTrainedTokenizer):
         :param ids: token ids for a score, or split tokens
         :param include_rest_pitch: whether to include rest pitch, i.e. -1, see `MusicVocabulary.rest_pitch_midi`
         :return: compact representation of all pitch (midi, see `MusicVocabulary`) in the score
-            Rest notes and rare pitches are ignored
+            Rare pitches are always ignored
         """
         meta = [self.vocab.tok2meta(i) for i in ids if self.vocab.type(i) == VocabType.pitch]
         meta = [m for m in meta if m != self.vocab.rare_pitch_meta]

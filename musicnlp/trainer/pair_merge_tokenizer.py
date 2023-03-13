@@ -65,7 +65,7 @@ class PairMergeTokenizerTrainer:
 
         _songs: List[Dict] = dataset.load_songs(*dataset_names)
         if self.aug_key:
-            out = dataset.iter_song(_songs)
+            out = dataset.iter_song_w_all_keys(_songs)
             n, songs = out.total, out.generator
         else:
             n, songs = len(_songs), (s['score'] for s in _songs)
@@ -176,11 +176,12 @@ class PairMergeTokenizerTrainer:
         ax1.plot(counts, **LN_KWARGS, c=cs[4])
 
         ax2.plot(ratio, **LN_KWARGS, c=cs[6])
-        ax2.vlines(x=s1, ymin=0, ymax=1, lw=0.4, color=cs[0], label=f'68% at vsz={s1}')
-        ax2.vlines(x=s2, ymin=0, ymax=1, lw=0.4, color=cs[1], label=f'95% at vsz={s2}')
-        ax2.vlines(x=s25, ymin=0, ymax=1, lw=0.4, color=cs[2], label=f'98.6% at vsz={s25}')
-        ax2.vlines(x=s3, ymin=0, ymax=1, lw=0.4, color=cs[3], label=f'99.7% at vsz={s3}')
-        ax2.vlines(x=idx_1st_tup, ymin=0, ymax=1, lw=0.4, color=cs[7], label=f'1st tuplet at vsz={idx_1st_tup}')
+        args = dict(ymin=0, ymax=1, lw=0.4)
+        ax2.vlines(x=s1, **args, color=cs[0], label=f'68% at vsz={s1}')
+        ax2.vlines(x=s2, **args, color=cs[1], label=f'95% at vsz={s2}')
+        ax2.vlines(x=s25, **args, color=cs[2], label=f'98.6% at vsz={s25}')
+        ax2.vlines(x=s3, **args, color=cs[3], label=f'99.7% at vsz={s3}')
+        ax2.vlines(x=idx_1st_tup, **args, color=cs[7], label=f'1st tuplet at vsz={idx_1st_tup}')
 
         ax1.set_title('incremental')
         ax2.set_title('cumulative')
@@ -378,7 +379,7 @@ if __name__ == '__main__':
         dnms = [pop]
         _songs: List[Dict] = dataset.load_songs(*dnms)
         if aug_key:
-            out = dataset.iter_song(_songs)
+            out = dataset.iter_song_w_all_keys(_songs)
             n, songs = out.total, out.generator
         else:
             n, songs = len(_songs), (s['score'] for s in _songs)

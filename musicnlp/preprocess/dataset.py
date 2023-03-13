@@ -17,7 +17,7 @@ from musicnlp.preprocess import transform
 
 __all__ = [
     'get_dataset_dir_name', 'DATASET_NAME2MODE2FILENAME',
-    'load_songs', 'iter_song', 'LoadSongMap',
+    'load_songs', 'iter_song_w_all_keys', 'LoadSongMap',
     'get_dataset', 'AugmentedDataset', 'ProportionMixingDataset'
 ]
 
@@ -42,10 +42,13 @@ DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {  # Are in pitch_kind `
 }
 
 
-def get_dataset_dir_name(*dnms, mode='full') -> Union[str, List[str]]:
+def get_dataset_dir_name(*dnms, mode='full', as_full_path: bool = False) -> Union[str, List[str]]:
     def _get_single(dnm: str) -> str:
         ca.check_mismatch('Dataset Name', dnm, DATASET_NAME2MODE2FILENAME.keys())
-        return get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{mode}')
+        pa = get(DATASET_NAME2MODE2FILENAME, f'{dnm}.{mode}')
+        if as_full_path:
+            pa = os_join(music_util.get_processed_path(), f'{pa}.json')
+        return pa
     if len(dnms) == 1:
         return _get_single(dnms[0])
     else:
@@ -55,23 +58,34 @@ def get_dataset_dir_name(*dnms, mode='full') -> Union[str, List[str]]:
 _Song = Union[str, Dict[str, Any]]
 
 
-def load_songs(*dnms, as_dict: bool = True, as_iter: bool = False) -> Union[List[_Song], Iterable[_Song]]:
+def load_songs(
+        *dnms, as_dict: bool = True, as_iter: bool = False, split: str = None
+) -> Union[List[_Song], Iterable[_Song]]:
     """
     Get individual song `score`s from a JSON `music_export` output
     """
-    def _load_single(dnm_):
+    def _load_single_ds(dnm_):
         logger.info(f'Loading songs from JSON dataset {pl.i(dnm_)}... ')
-        with open(os.path.join(music_util.get_processed_path(), f'{dnm_}.json'), 'r') as f:
-            dset = json.load(f)
+        if split is None:
+            with open(os.path.join(music_util.get_processed_path(), f'{dnm_}.json'), 'r') as f:
+                dset = json.load(f)['music']
+        else:  # Load the split from HF dataset
+            # See `musicnlp.preprocess.music_export`
+            dset = datasets.load_from_disk(os_join(music_util.get_processed_path(), 'hf', dnm_))[split]
+            # mic(dset)
+            # for i in dset:
+            #     mic(i)
+            #     raise NotImplementedError
 
         def gen():
-            for s in dset['music']:
+            for s in dset:
                 yield s if as_dict else s['score']
+
         return gen() if as_iter else list(gen())
     if as_iter:
-        return chain_its(_load_single(dnm) for dnm in dnms)
+        return chain_its(_load_single_ds(dnm) for dnm in dnms)
     else:
-        return sum((_load_single(dnm_) for dnm_ in dnms), start=[])
+        return sum((_load_single_ds(dnm_) for dnm_ in dnms), start=[])
 
 
 class LoadSongMap:
@@ -109,7 +123,7 @@ class IterSongOutput:
     total: int = None
 
 
-def iter_song(songs: Iterable[Dict[str, Any]]) -> IterSongOutput:
+def iter_song_w_all_keys(songs: Iterable[Dict[str, Any]]) -> IterSongOutput:
     """
     :param songs: songs, each containing `score` and possible `key`s, per music extraction API
     :return: songs, each with each of its possible key

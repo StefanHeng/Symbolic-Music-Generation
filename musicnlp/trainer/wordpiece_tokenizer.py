@@ -268,7 +268,7 @@ class WordPieceMusicTrainer:
         if self.augment_key:
             assert self.pitch_kind == 'degree'
 
-            out = dataset.iter_song(songs)
+            out = dataset.iter_song_w_all_keys(songs)
             it, n = out.generator, out.total
             d_log['#key-augmented-song'] = out.total
 
@@ -752,7 +752,7 @@ if __name__ == '__main__':
         dnms = [pop, mst, lmd]
         _songs: List[Dict] = dataset.load_songs(*dnms)
         if aug_key:
-            out = dataset.iter_song(_songs)
+            out = dataset.iter_song_w_all_keys(_songs)
             n, songs = out.total, out.generator
             if sample:  # total will be wrong...
                 songs = (s for s in songs if random.randint(0, sample-1) == 0)
