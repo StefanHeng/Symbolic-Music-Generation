@@ -18,7 +18,8 @@ __all__ = [
 ]
 
 
-sconfig = StefConfig(config_file=os_join(BASE_PATH, PROJ_DIR, PKG_NM, 'util', 'config.json')).__call__
+sconfig = StefConfig(config_file=os_join(
+    BASE_PATH, PROJ_DIR, PKG_NM, 'util', 'config.json')).__call__
 u = StefUtil(
     base_path=BASE_PATH, project_dir=PROJ_DIR, package_name=PKG_NM, dataset_dir=DSET_DIR, model_dir=MODEL_DIR
 )
@@ -38,9 +39,10 @@ def get_base_path(gl_account_name: str = 'mihalcea'):
     # For remote machines, save heavy-duty data somewhere else to save `/home` disk space
     if on_great_lakes():  # Great Lakes, see https://arc.umich.edu/greatlakes/user-guide/
         # `0` picked arbitrarily among [`0`, `1`]
-        pa = os_join('/scratch', f'{gl_account_name}_root', f'{gl_account_name}0', 'stefanhg', stem(BASE_PATH))
-        os.makedirs(pa, exist_ok=True)
-        return pa
+        # path = os_join('/scratch', f'{gl_account_name}_root', f'{gl_account_name}0', 'stefanhg', stem(BASE_PATH))
+        # os.makedirs(pa, exist_ok=True)
+        path = "/home/xysong"
+        return path
     else:
         return BASE_PATH
 
