@@ -18,11 +18,8 @@ __all__ = [
 ]
 
 
-sconfig = StefConfig(config_file=os_join(
-    BASE_PATH, PROJ_DIR, PKG_NM, 'util', 'config.json')).__call__
-u = StefUtil(
-    base_path=BASE_PATH, project_dir=PROJ_DIR, package_name=PKG_NM, dataset_dir=DSET_DIR, model_dir=MODEL_DIR
-)
+sconfig = StefConfig(config_file=os_join(BASE_PATH, PROJ_DIR, PKG_NM, 'util', 'config.json')).__call__
+u = StefUtil(base_path=BASE_PATH, project_dir=PROJ_DIR, package_name=PKG_NM, dataset_dir=DSET_DIR, model_dir=MODEL_DIR)
 u.tokenizer_path = os_join(u.base_path, u.proj_dir, 'tokenizers')
 os.makedirs(u.tokenizer_path, exist_ok=True)
 save_fig = u.save_fig
@@ -35,14 +32,13 @@ def on_great_lakes():
     return 'arc-ts' in get_hostname()
 
 
-def get_base_path(gl_account_name: str = 'mihalcea'):
+def get_base_path(use_great_lakes_scratch: bool = True, gl_account_name: str = 'mihalcea'):
     # For remote machines, save heavy-duty data somewhere else to save `/home` disk space
-    if on_great_lakes():  # Great Lakes, see https://arc.umich.edu/greatlakes/user-guide/
+    if on_great_lakes() and use_great_lakes_scratch:  # Great Lakes, see https://arc.umich.edu/greatlakes/user-guide/
         # `0` picked arbitrarily among [`0`, `1`]
-        # path = os_join('/scratch', f'{gl_account_name}_root', f'{gl_account_name}0', 'stefanhg', stem(BASE_PATH))
-        # os.makedirs(pa, exist_ok=True)
-        path = "/home/xysong"
-        return path
+        pa = os_join('/scratch', f'{gl_account_name}_root', f'{gl_account_name}0', 'stefanhg', stem(BASE_PATH))
+        os.makedirs(pa, exist_ok=True)
+        return pa
     else:
         return BASE_PATH
 

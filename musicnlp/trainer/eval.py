@@ -620,7 +620,7 @@ if __name__ == '__main__':
         dnms = [pop]
         songs = dataset.load_songs(*dnms, split='test')  # Get the testing split
 
-        # songs = songs[:2]  # TODO: debugging
+        songs = songs[:2]  # TODO: debugging
         title = 'POP909-test'
 
         mg.verbose = False

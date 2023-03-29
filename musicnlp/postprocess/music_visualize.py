@@ -476,8 +476,12 @@ class MusicVisualize:
                         t.set_text(txt)
                     if val > bound:
                         t.set_color(self.color_rare)
-                ax.set_xticks(ax.get_xticks())  # disables warning
+                x_ticks = ax.get_xticks()
+                ax.set_xticks(x_ticks)  # disables warning
                 ax.set_xticklabels([t.get_text() for t in xtick_lbs])  # Hack
+
+                mi, ma = min(x_ticks), max(x_ticks)
+                ax.set_xlim([mi-0.5, ma+0.5])  # Reduce the white space on both sides
             return self.hist_wrapper(
                 data=df, col_name='duration', weights='count', discrete=True, kde=False,
                 title=title, xlabel=xlab,
@@ -655,13 +659,13 @@ if __name__ == '__main__':
         # mv.token_length_dist(tokenize_scheme='pairmerge', **args)
         # mv.bar_count_dist(**args)
         # mv.tuplet_count_dist(**args)
-        mv.tuplet_n_note_dist(**args)
+        # mv.tuplet_n_note_dist(**args)
         # mv.song_duration_dist(**args)
         # mv.time_sig_dist(yscale='linear', stat='percent')
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
-        # mv.note_duration_dist(stat='percent')
+        mv.note_duration_dist(stat='percent')
         # mv.warning_type_dist(**_args)
     plots()
 
