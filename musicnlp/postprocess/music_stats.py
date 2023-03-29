@@ -57,10 +57,6 @@ class MusicStats:
                 m_d = Fraction(m_d, len(ms_p))
                 return [(m_p, m_d) for m_p in ms_p]
 
-        # for elm in notes:
-        #     if elm2notes(elm) is None:
-        #         mic(elm, elm2notes(elm))
-        #         raise NotImplementedError
         pch_n_dur = sum((elm2notes(elm) for elm in notes), start=[])
         # Filter out rare pitch & durations
         pch_n_dur = [

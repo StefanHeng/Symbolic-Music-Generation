@@ -137,6 +137,10 @@ class MusicVisualize:
             assert self.prec >= 2
         return self._prec
 
+    @property
+    def n_song(self) -> int:
+        return len(self.dset['music'])
+
     def _set_meta(self):
         self.tokenizer = MusicTokenizer(precision=self.prec, pitch_kind=self.pitch_kind)
         self.wp_tokenizer = load_wordpiece_tokenizer(pitch_kind=self.pitch_kind, precision=self.prec)
@@ -145,6 +149,7 @@ class MusicVisualize:
         assert self.wp_tokenizer.precision == self.prec
         self.vocab: MusicVocabulary = self.tokenizer.vocab
         self.stats = MusicStats(prec=self.prec, pitch_kind=self.pitch_kind)
+        self.converter = self.stats.converter
         self.mc: MusicConverter = self.stats.converter
         sr_vocab = self.vocab if self.pitch_kind == 'step' else MusicVocabulary(pitch_kind='step', precision=self.prec)
         self.sr = transform.SanitizeRare(vocab=sr_vocab)
@@ -166,13 +171,38 @@ class MusicVisualize:
         pm_toks = self.pm_tokenizer.tokenize(scr_)
         d['n_token'], d['n_wp_token'], d['n_pm_token'] = len(toks), len(wp_toks), len(pm_toks)
 
+        # Count #bars with no melody and no bass
+        lst_elms = self.converter.str2music_elms(scr_, pitch_kind=self.pitch_kind).elms_by_bar
+        n_empty_channel = dict(melody=0, bass=0)
+        for elms in lst_elms:
+            notes = self.converter.split_notes(elms)
+            n_non_rest_notes = dict(melody=0, bass=0)
+            for channel in n_non_rest_notes.keys():
+                for n in notes[channel]:
+                    if n.type == ElmType.tuplets:
+                        n_non_rest_notes[channel] += 1  # Assume tuplets must contain at least one rest note
+                    elif n.type == ElmType.note:
+                        if n.meta[0] != self.vocab.rest_pitch_meta:  # pitch meta is not rest
+                            n_non_rest_notes[channel] += 1
+            for channel, n_non in n_non_rest_notes.items():
+                if n_non == 0:  # all notes are rest notes
+                    n_empty_channel[channel] += 1
+            if n_non_rest_notes['melody'] == 0:
+                assert n_non_rest_notes['bass'] == 0  # sanity check melody precedes bass during extraction
+            # notes_by_type = {ElmType.melody: [], ElmType.bass: []}
+            # curr_type = None
+            # for e in elms:
+            #     if e.type in [ElmType.melody, ElmType.bass]:
+            #         curr_type = e.type
+            #     elif e.type in [ElmType.note, ElmType.tuplets]:
+            #         notes_by_type[curr_type].append(e)
+            # mic(notes_by_type)
+        d['n_empty_channel_by_bar'] = n_empty_channel
+        d['n_empty_channel_by_song'] = {k: 1 if v > 0 else 0 for k, v in n_empty_channel.items()}
+
         elms = self.mc.str2music_elms(scr_, group=False, pitch_kind=self.pitch_kind).elms
         tups_ns = [len(e.meta[0]) for e in elms if e.type == ElmType.tuplets]  # number of pitch token
-        # mic(tups_ns)
         c_tup_n_note = Counter(tups_ns)
-        # if len(c_tup_n_note):
-        #     mic(c_tup_n_note, tups_ns)
-        #     raise NotImplementedError
         d['n_tuplet_note'] = dict(c_tup_n_note)
 
         if it:
@@ -196,6 +226,11 @@ class MusicVisualize:
 
         d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
         d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
+
+        # if any(v > 0 for v in n_empty_channel.values()):
+        # # if any(v > 0 for v in n_empty_channel.values()) or d['pitch_count'][self.vocab.rest_pitch_meta] > 0:
+        #     mic(n_empty_channel)
+        #     raise NotImplementedError
         return d
 
     def _get_song_info(self):
@@ -519,9 +554,34 @@ class MusicVisualize:
             y = [counts[d] for d in durs_str]
             return barplot(x=durs_str, y=y, palette=cs, xlabel=xlab, ylabel='count', yscale='log', title=title)
 
-    @property
-    def n_song(self) -> int:
-        return len(self.dset['music'])
+    def empty_channel_ratio(self):
+        """
+        Plots the ratio of empty melody and bass channels by measure and by song
+        """
+        df_b = self._count_by_dataset('n_empty_channel_by_bar')
+        df_s = self._count_by_dataset('n_empty_channel_by_song')
+        # divide by total number of bar and song respectively, for each dataset, to get ratio
+        n_bar_by_dataset = self.df.groupby(self.key_dnm).n_bar.sum()
+        n_song_by_dataset = self.df.groupby(self.key_dnm).size()
+        # divide count by the corresponding dataset
+        df_b['percent'] = df_b.apply(lambda x: x['count'] / n_bar_by_dataset[x[self.key_dnm]], axis=1)
+        df_s['percent'] = df_s.apply(lambda x: x['count'] / n_song_by_dataset[x[self.key_dnm]], axis=1)
+        df_b['percent'] *= 100
+        df_s['percent'] *= 100
+
+        # rename melody & bass, bar & song into a single column to merge into single dataframe
+        k = 'ratio'
+        df_b.rename(columns={'n_empty_channel_by_bar': k}, inplace=True)
+        df_s.rename(columns={'n_empty_channel_by_song': k}, inplace=True)
+        df_b[k] = df_b[k].apply(lambda x: f'Empty {x} bars')
+        df_s[k] = df_s[k].apply(lambda x: f'Song w/ Empty {x}')
+        df = pd.concat([df_b, df_s]).reset_index(drop=True)
+
+        title = 'Ratio of Empty Notes by Channels and by Measure/Song'
+        return barplot(  # bar plot grouped by dataset
+            x=self.key_dnm, y='percent', hue=k, data=df,
+            xlabel='dataset', ylabel='percent (%)', title=title
+        )
 
     def warn_info(self, per_dataset: bool = False, as_counts=True) -> pd.DataFrame:
         """
@@ -608,16 +668,17 @@ if __name__ == '__main__':
     md = 'full'
     pch_kd = 'degree'
 
-    # dnms = ['POP909']
+    dnms = ['POP909']
     # dnms = ['POP909', 'MAESTRO']
-    dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['POP909', 'MAESTRO', 'LMD']
     # dnms = ['LMD']
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD', as_full_path=True)
-    # fnms = [pop]
+    fnms = [pop]
     # fnms = [pop, mst]
-    fnms = [pop, mst, lmd]
+    # fnms = [pop, mst, lmd]
     if dnms == ['POP909']:
-        cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
+        # cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
+        cnm = f'22-03-29_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
         cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
@@ -665,14 +726,13 @@ if __name__ == '__main__':
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
-        mv.note_duration_dist(stat='percent')
+        # mv.note_duration_dist(stat='percent')
+        mv.empty_channel_ratio()
         # mv.warning_type_dist(**_args)
     plots()
 
-    fig_sz = (9, 5)
-
     def save_plots_for_report():
-        plt.figure(figsize=fig_sz)
+        plt.figure(figsize=(9, 5))
         ax = plt.gca()
         args = dict(new_figure=True, ax=ax, title=None)
 
@@ -690,13 +750,10 @@ if __name__ == '__main__':
     # save_plots_for_report()
 
     def save_for_report_warn():
-        # plt.figure(figsize=(9, 5))
-        mv.warning_type_dist(title='None', show=False, bar_kwargs=dict(figure=plt.figure(figsize=fig_sz)))
+        mv.warning_type_dist(title='None', show=False, bar_kwargs=dict(figure=plt.figure(figsize=(9, 5))))
         title = 'Average #Warnings for each song'
         save_fig(f'{title}, {now(for_path=True)}')
     # save_for_report_warn()
-
-    fig_sz = (9, 9)
 
     def plots_for_presentation():
         # Colors from One Dark theme
@@ -714,7 +771,7 @@ if __name__ == '__main__':
             'axes.linewidth': 0.5,
         })
 
-        plt.figure(figsize=fig_sz)
+        plt.figure(figsize=(9, 9))
         ax = plt.gca()
         args = dict(new_figure=False, ax=ax, title=None)
 

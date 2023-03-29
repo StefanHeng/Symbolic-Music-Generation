@@ -147,7 +147,11 @@ class MusicVocabulary:
         ElmType.bass: start_of_bass,
         ElmType.song_end: end_of_song
     }
-    rest_pitch_meta = -1
+    midi_rest_pitch_meta = _rest_pitch_meta = -1
+    _pitch_kind2rest_pitch_meta = dict(
+        midi=_rest_pitch_meta, step=(_rest_pitch_meta, None), degree=(_rest_pitch_meta, None)
+    )
+
 
     SPEC_TOKS = dict(
         sep=sep,
@@ -429,6 +433,10 @@ class MusicVocabulary:
         return round(sum(range(start, end+1)) / n)  # can't use `tempo_bin` cos last group has 1 more element
 
     @property
+    def rest_pitch_meta(self) -> Union[int, Tuple[int, None]]:
+        return MusicVocabulary._pitch_kind2rest_pitch_meta[self.pitch_kind]
+
+    @property
     def pitch_pattern(self) -> re.Pattern:
         return self._pitch_kind2pattern[self.pitch_kind]
 
@@ -551,7 +559,7 @@ class MusicVocabulary:
 
         Raise error is special tokens passed
 
-        Inverse of `meta2tok`
+        Inverse of `MusicVocabulary.meta2tok`
 
         :param token: token to compress
         :param strict: If true, enforce that the token must be in the vocabulary
@@ -574,8 +582,7 @@ class MusicVocabulary:
             tpl = self.tok_type2pattern[typ]
             if typ == VocabType.pitch:
                 if token == self.rest:
-                    mid = MusicVocabulary.rest_pitch_meta
-                    return mid if self.pitch_kind == 'midi' else (mid, None)
+                    return self.rest_pitch_meta
                 else:
                     m = self.pitch_pattern.match(token)
                     idx, octave = int(m.group('numer')), int(m.group('denom'))
@@ -651,7 +658,7 @@ class MusicVocabulary:
                     out = self.midi_pitch_meta2tok(mid)
                     tok, idx, otv = out.token, out.local_index, out.octave
                     if step is None:
-                        assert mid == MusicVocabulary.rest_pitch_meta  # sanity check
+                        assert mid == MusicVocabulary.midi_rest_pitch_meta  # sanity check
                         return tok
                     else:
                         if self.pitch_kind == 'degree':  # sanity check
@@ -684,7 +691,7 @@ class MusicVocabulary:
             return f'{self.cache["pref_key"]}{meta}'
 
     def midi_pitch_meta2tok(self, meta: int) -> MidiPitchMetaOut:
-        if meta == MusicVocabulary.rest_pitch_meta:
+        if meta == MusicVocabulary.midi_rest_pitch_meta:
             return MidiPitchMetaOut(token=self.rest)
         else:
             pch, octave = meta % 12 + 1, MusicVocabulary.pitch_midi2octave(midi=meta)
@@ -721,7 +728,7 @@ class MusicVocabulary:
 
     @staticmethod
     def pitch_midi2name(midi: int) -> str:
-        if midi == MusicVocabulary.rest_pitch_meta:
+        if midi == MusicVocabulary.midi_rest_pitch_meta:
             return 'rest'
         else:
             pch = m21.pitch.Pitch(midi=midi)
