@@ -13,7 +13,7 @@ set dir_process to "/Users/stefanhg/Documents/UMich/Research/Music with NLP/data
 # taken from https://stackoverflow.com/a/12535220/10732321
 on remove_extension(this_name)
 	if this_name contains "." then
-		set this_name to ï¿½
+		set this_name to Â
 			(the reverse of every character of this_name) as string
 		set x to the offset of "." in this_name
 		set this_name to (text (x + 1) thru -1 of this_name)
@@ -43,7 +43,7 @@ repeat with f in songs
 		click menu item "Open Score Editor" of menu 1 of menu bar item "Window" of menu bar 1
 		delay 0.2
 		
-		click menu item "Score as MusicXMLï¿½" of menu 1 of menu item "Export" of menu 1 of menu bar item "File" of menu bar 1
+		click menu item "Score as MusicXMLÉ" of menu 1 of menu item "Export" of menu 1 of menu bar item "File" of menu bar 1
 		delay 0.5 # sometimes the dialog takes longer to load
 		
 		tell window "Save MusicXML File as:"
@@ -85,7 +85,7 @@ repeat with f in songs
 		
 		click menu item "Close Project" of menu 1 of menu bar item "File" of menu bar 1 # close current file		
 		delay 0.2
-		click button "Donï¿½t Save" of window 1
+		click button "DonÕt Save" of window 1
 		# keystroke space
 	end tell
 end repeat

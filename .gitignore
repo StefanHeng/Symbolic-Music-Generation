@@ -20,6 +20,7 @@ auth/
 transformers/
 *.mov
 assets/
+batch-processing/logic-pro/batch-convert, broken.applescript
 
 
 # Byte-compiled / optimized / DLL files
