@@ -21,7 +21,8 @@ class MyTransfoXLConfig(TransfoXLConfig):
         'base': dict(d_model=768, n_head=12, n_layer=12),
         'large': dict(d_model=1024, n_head=16, n_layer=18)
     }
-    size2max_length = {'debug': 64, 'debug-large': 128, 'tiny': 512, 'small': 1024, 'base': 2048, 'large': 2048}
+    size2max_length = {'debug': 64, 'debug-large': 128,
+                       'tiny': 512, 'small': 1024, 'base': 2048, 'large': 2048}
 
     for k, d_config in presets.items():
         hd_sz, n_head = d_config['d_model'], d_config['n_head']
@@ -55,7 +56,8 @@ class MyTransfoXLConfig(TransfoXLConfig):
         if tokenizer:  # same argument as in `reformer`
             vsz = config['vocab_size'] = tokenizer.vocab_size
             if vsz >= 32768 * 8:
-                config['cutoffs'] = [20000, 40000, 200000]  # default TransfXL cutoffs
+                # default TransfXL cutoffs
+                config['cutoffs'] = [20000, 40000, 200000]
             elif vsz >= 32768:
                 config['cutoffs'] = [10000]
             elif vsz >= 16384:
@@ -158,7 +160,8 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
         elif inputs_embeds is not None:
             bsz, tgt_len = inputs_embeds.size(0), inputs_embeds.size(1)
         else:
-            raise ValueError("You have to specify either input_ids or inputs_embeds")
+            raise ValueError(
+                "You have to specify either input_ids or inputs_embeds")
 
         transformer_outputs = self.transformer(
             input_ids,
@@ -176,12 +179,14 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
         if labels is not None:
             # Prevents all labels being -100 and throwing an error
             # when backwarding the loss
-            miss_valid_label = labels[0, 1:].sum() == (labels.size(1) - 1) * -100
+            miss_valid_label = labels[0, 1:].sum() == (
+                labels.size(1) - 1) * -100
             if miss_valid_label:
                 # Sets an <EOS> token, just to prevent loss from being NaN
                 labels[0, 1] = self.config.eos_token_id
 
-        softmax_output = self.crit(pred_hid, labels, padding_index=PT_LOSS_PAD)
+        # softmax_output = self.crit(pred_hid, labels, padding_index=PT_LOSS_PAD)
+        softmax_output = self.crit(pred_hid, labels)
         # ========================== Begin of modified ==========================
         # prediction_scores = softmax_output.view(bsz, tgt_len, -1) if labels is None else ()
         # To get logits and hence NTP ACC during eval
@@ -190,7 +195,8 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
         if in_eval:
             if labels is not None:  # re-run attention to get vocab-length logits and hence token prediction for metrics
                 _softmax_output = self.crit(pred_hid, None)
-        prediction_scores = _softmax_output.view(bsz, tgt_len, -1) if (labels is None or in_eval) else ()
+        prediction_scores = _softmax_output.view(
+            bsz, tgt_len, -1) if (labels is None or in_eval) else ()
         # ========================== Begin of modified ==========================
 
         if labels is not None:
@@ -202,7 +208,8 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
 
         if not return_dict:
             if self.trainer_compatible:
-                output = (prediction_scores, losses) if losses is not None else (prediction_scores,)
+                output = (prediction_scores, losses) if losses is not None else (
+                    prediction_scores,)
                 output += transformer_outputs[1:]
                 return ((loss,) + output) if loss is not None else output
             else:
@@ -238,4 +245,3 @@ class MyTransfoXLLMHeadModel(TransfoXLLMHeadModel):
             inputs["input_ids"] = input_ids
 
         return inputs
-
