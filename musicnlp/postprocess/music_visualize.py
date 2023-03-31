@@ -105,7 +105,7 @@ class MusicVisualize:
             if dnm:
                 songs = ds['music']
                 if subset_bound and len(songs) > subset_bound:
-                    # random.seed(77)
+                    # random.seed(77)  # TODO: remove after fixed error
                     songs = random.sample(songs, round(len(songs) * subset))
                 for s in songs:
                     s['dataset_name'] = dnm
@@ -184,20 +184,16 @@ class MusicVisualize:
                     if n.type == ElmType.tuplets:
                         n_non_rest_notes[channel] += 1  # Assume tuplets must contain at least one rest note
                     elif n.type == ElmType.note:
-                        if n.metar[0] != self.vocab.rest_pitch_meta:  # pitch meta is not rest
+                        if n.meta[0] != self.vocab.rest_pitch_meta:  # pitch meta is not rest
                             n_non_rest_notes[channel] += 1
             for channel, n_non in n_non_rest_notes.items():
                 if n_non == 0:  # all notes are rest notes
                     n_empty_channel[channel] += 1
             if n_non_rest_notes['melody'] == 0:
                 if n_non_rest_notes['bass'] != 0:
-                    # _d = {k: v for k, v in d.items() if k != 'warnings'}
-                    # mic(scr, _d, i)
-                    # raise NotImplementedError('Why Bass when no melody??')
                     # Should be rare, see `MusicExtractor::extract_notes`
-                    self.logger.warning(f'Bass has non-rest notes when melody is empty at bar {pl.i(i)}: '
-                                        f'Piece {pl.i(title)} is likely in low quality ')
-                # assert n_non_rest_notes['bass'] == 0  # sanity check melody precedes bass during extraction
+                    self.logger.warning(f'Bass has non-rest notes when melody is empty at bar {pl.i(i)} '
+                                        f'with {pl.i(notes)}: Piece {pl.i(title)} is likely in low quality ')
         d['n_empty_channel_by_bar'] = n_empty_channel
         d['n_empty_channel_by_song'] = {k: 1 if v > 0 else 0 for k, v in n_empty_channel.items()}
 
@@ -209,7 +205,7 @@ class MusicVisualize:
         if it:
             d_log = dict(
                 n_token=pl.i(d['n_token']), n_wp_token=pl.i(d['n_wp_token']), n_pm_token=pl.i(len(pm_toks)),
-                title=pl.s(title)
+                title=pl.i(title)
             )
             it.set_postfix(d_log)
         counter_toks = Counter(toks)
@@ -241,7 +237,6 @@ class MusicVisualize:
             tqdm_args = dict(desc='Extracting song info', unit='song', chunksize=128)
             ds = conc_map(self._extract_song_info, entries, with_tqdm=tqdm_args, mode='process', n_worker=6)
         else:
-            entries = entries[8000:]  # TODO: debugging LMD only bass notes
             it = tqdm(entries, desc='Extracting song info', unit='song')
             ds = []
             for song in it:
@@ -558,6 +553,7 @@ class MusicVisualize:
         """
         Plots the ratio of empty melody and bass channels by measure and by song
         """
+        mic(self.df[self.key_dnm].unique())
         df_b = self._count_by_dataset('n_empty_channel_by_bar')
         df_s = self._count_by_dataset('n_empty_channel_by_song')
         # divide by total number of bar and song respectively, for each dataset, to get ratio
@@ -576,6 +572,7 @@ class MusicVisualize:
         df_b[k] = df_b[k].apply(lambda x: f'Empty {x} bars')
         df_s[k] = df_s[k].apply(lambda x: f'Song w/ Empty {x}')
         df = pd.concat([df_b, df_s]).reset_index(drop=True)
+        mic(df)
 
         title = 'Ratio of Empty Notes by Channels and by Measure/Song'
         return barplot(  # bar plot grouped by dataset

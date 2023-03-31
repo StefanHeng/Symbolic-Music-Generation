@@ -48,6 +48,7 @@ __all__ = [
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
     'is_drum_track', 'is_empty_bars', 'is_rest',
     'it_m21_elm', 'group_triplets', 'flatten_notes', 'unpack_notes', 'pack_notes', 'unroll_notes', 'fill_with_rest',
+    'join_consecutive_rest_notes',
     'get_offset', 'get_end_qlen', 'debug_pprint_lst_notes',
     'PrecisionChecker',
     'notes_have_gap', 'notes_overlapping', 'non_tuplet_notes_overlapping',
@@ -66,8 +67,8 @@ logger = get_logger('Music Util')
 
 
 # Note entity/group as far as music extraction is concerned
-ExtNote = Union[Note, Rest, Chord, Tuple[Union[Note, Rest]]]
 SNote = Union[Note, Rest, Chord]  # Single note
+ExtNote = Union[Note, Rest, Chord, Tuple[SNote]]  # TODO: no Chords for now
 Dur = Union[float, Fraction]
 TsTup = Tuple[int, int]
 eps = 1e-8  # for music21 duration equality comparison
@@ -528,6 +529,30 @@ def fill_with_rest(
                     end_ = serialize_frac(end_)
                 meta.insert(0, (0, end_))
         return lst, meta
+
+
+def join_consecutive_rest_notes(notes: Iterable[SNote]):
+    """
+    Join consecutive rests into one rest, intended for saving tokens in representation during training
+
+    Intended for
+        1. flattening notes after skyline extraction in 'MusicExtractor:get_notes_out'
+        2. flattening notes in tuplet groups in `MusicExtractor:clean_quantized_tuplets`
+    """
+    # assert all(not isinstance(n, tuple) for n in notes)
+    ret = []
+    for n in notes:
+        if isinstance(n, Rest):
+            nt_last = ret[-1] if ret else None
+            if nt_last and isinstance(nt_last, Rest):
+                qlen = nt_last.duration.quarterLength + n.duration.quarterLength
+                ret[-1] = Rest(duration=Duration(quarterLength=qlen))
+                ret[-1].offset = nt_last.offset  # Assigning `offset` at instantiation doesn't work
+            else:
+                ret.append(n)
+        else:
+            ret.append(n)
+    return ret
 
 
 def notes_have_gap(notes: Iterable[ExtNote], enforce_no_overlap: bool = True, duration: Dur = None) -> bool:

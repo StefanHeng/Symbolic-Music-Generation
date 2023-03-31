@@ -300,7 +300,11 @@ class MusicExtractor:
 
                     for tup in lst[idx_tup_strt:]:
                         ln = len(tup)
-                        # assert ln != 2 and ln != 4  # sanity check TODO: include
+                        # Tuplet sizes may be in powers of 2, e.g. 2, 4, 8, see `clean_quantized_tuplets`
+                        # if not (ln != 2 and ln != 4):
+                        #     mic(number, tup, ln)
+                        #     raise NotImplementedError
+                        # assert ln != 2 and ln != 4  # sanity check
                         if ln != n_tup:
                             self.log_warn(warn_name=WarnLog.InvTupSz, bar_num=number, n_expect=n_tup, n_got=ln)
 
@@ -456,17 +460,13 @@ class MusicExtractor:
             groups_melody: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in all_notes:
                 groups_melody[get_offset(n)].append(n)
-            # if number == 0:
+            MusicExtractor.sort_groups(groups_melody, reverse=False)
+            # if number == 74:
             #     mic(groups_melody)
             #     for offset, notes in groups_melody.items():
             #         mic(offset)
             #         debug_pprint_lst_notes(notes)
-                # raise NotImplementedError
-            # In rare occasions, extracted melody notes are empty, while bass notes are not
-            #   e.g. 0-th bar of `LMD::068052`, where a tuplet group is dropped,
-            #       due to a note w/ higher pitch & tiny duration occurring during the tuplet group
-            #       which is then removed during quantization
-            MusicExtractor.sort_groups(groups_melody, reverse=False)
+            #     # raise NotImplementedError
             groups_melody = self._fix_edge_case(groups_melody, number, time_sig)
             groups_bass = None
             if self.mode == 'full':
@@ -476,7 +476,7 @@ class MusicExtractor:
                     k: [MusicExtractor._deep_copy_note(n) for n in v if not is_rest(n)]
                     for k, v in groups_melody.items()
                 }
-                # if number == 674:
+                # if number == 24:
                 #     mic(groups_bass)
                 #     for offset, notes in groups_bass.items():
                 #         mic(offset)
@@ -487,16 +487,21 @@ class MusicExtractor:
             def _local_post_process(notes_):
                 self.warn_notes_duration(notes_, time_sig, number)
                 self.warn_notes_overlap(notes_, number)
-                return [note2note_cleaned(nt) for nt in notes_]
+                return [note2note_cleaned(nt) for nt in join_consecutive_rest_notes(notes_)]
 
             def _get_notes(groups_, keep: str = 'high'):
                 with RecurseLimit(2 ** 14):
                     return self.get_notes_out(groups_, number, keep=keep)
+            # In rare occasions, extracted melody notes are empty, while bass notes are not
+            #   e.g. 0-th bar of `LMD::068052`, where a tuplet group is dropped,
+            #       due to a note w/ higher pitch & tiny duration occurring during the tuplet group
+            #       which is then removed during quantization
             notes_melody = _get_notes(groups_melody, 'high')
-            # if number == 0:
+            # if number == 74:
             #     mic(notes_melody)
             #     debug_pprint_lst_notes(notes_melody)
-            #     raise NotImplementedError
+            #     # raise NotImplementedError
+            lst_melody.append(_local_post_process(notes_melody))
             if self.mode == 'full':
                 _notes_bass = _get_notes(groups_bass, 'low')
 
@@ -508,13 +513,14 @@ class MusicExtractor:
                         removed = True
                     elif self.verbose:
                         self.logger.info(
-                            f'Skipping {pl.i("bass")} note at bar#{number}: {pl.i(nb)} for already in melody')
+                            f'Skipping {pl.i("bass")} note at bar#{pl.i(number)}: {pl.i(nb)} for already in melody')
                 if removed:
                     # skip unfilled range
                     notes_bass = fill_with_rest(notes_bass, duration=time_sig2bar_dur(time_sig), fill_start=True)[0]
-                # if number == 674:
+                # if number == 24:
                 #     mic(notes_bass)
                 #     debug_pprint_lst_notes(notes_bass)
+                #     # raise NotImplementedError
                 lst_bass.append(_local_post_process(notes_bass))
             # For poor transcription quality, postpone `is_valid_bar_notes` *assertion* until after quantization,
             # since empirically observe notes don't sum to bar duration,
@@ -523,7 +529,6 @@ class MusicExtractor:
             #     n.fullName: 'Inexpressible Rest'
             #     n.offset: 2.0
             #     n.duration.quarterLength: Fraction(1, 480)
-            lst_melody.append(_local_post_process(notes_melody))
         d = dict(melody=self._post_process(lst_melody, time_sigs))
         if self.mode == 'full':
             d['bass'] = self._post_process(lst_bass, time_sigs)
@@ -891,12 +896,14 @@ class MusicExtractor:
             # If triplet notes turned out quantized, i.e. durations are in powers of 2, turn to normal notes
             if isinstance(nt, tuple) and any(self.pc.note_within_prec(n) for n in nt):
                 assert all(self.pc.note_within_prec(n) for n in nt)  # Should be equivalent
+                nt = join_consecutive_rest_notes(nt)
                 lst.extend(nt)
                 offsets_, durs_ = notes2offset_duration(notes)
                 self.log_warn(warn_name=WarnLog.TupNoteQuant, bar_num=num_bar, offsets=offsets_, durations=durs_)
             else:
                 lst.append(nt)
-        return lst
+        # For edge case, merging rest notes inside and outside the original tuplet edges
+        return join_consecutive_rest_notes(lst)
 
     def __call__(
             self, song: Union[str, Score], exp='mxl', return_meta: bool = False, return_key: bool = False
@@ -1028,9 +1035,14 @@ class MusicExtractor:
             if exp == 'visualize':
                 n_pad = len(str(len(groups_)))
 
-                def idx2str(i):
-                    return pl.s(f'{i:>{n_pad}}:', c='y')
-                scr_out = '\n'.join(f'{idx2str(i)} {" ".join(toks)}' for i, toks in enumerate(groups_))
+                def idx2str(i):  # None case for the 1st global metadata group and for aligning bar numbers
+                    if i is None:
+                        return ' ' * (n_pad+1)
+                    else:
+                        return pl.s(f'{i:>{n_pad}}:', c='y')
+                scr_out = '\n'.join(
+                    f'{idx2str(None if i == 0 else i-1)} {" ".join(toks)}' for i, toks in enumerate(groups_)
+                )
             else:
                 toks = sum(groups_, start=[])
                 if exp in ['str', 'id']:
@@ -1060,7 +1072,7 @@ if __name__ == '__main__':
     import re
     import json
 
-    mic.output_width = 512
+    mic.output_width = 128
 
     import musicnlp.util.music as music_util
 
@@ -1201,9 +1213,9 @@ if __name__ == '__main__':
     # fix_find_song_with_error()
 
     def check_edge_case_batched():
-        # dnm = 'POP909'
+        dnm = 'POP909'
         # dnm = 'MAESTRO'
-        dnm = 'LMD'
+        # dnm = 'LMD'
         if 'LMD' in dnm:
             dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
             dir_nm = f'{dir_nm}, MS'
@@ -1261,15 +1273,20 @@ if __name__ == '__main__':
                 'Frédéric Chopin - Variations And Fugue In E-flat Major, Op. 35, "eroica".mxl'
             ]
             dir_nm = 'converted/MAESTRO, MS'
-        else:  # POP909
+        else:
+            assert dnm == 'POP909'
             broken_files = [
                 # '许绍洋 - 幸福的瞬间.mxl'
-                '五月天 - 天使.mxl',
-                '万芳 - 新不了情.mxl',
-                '刘德华 - 忘情水.mxl',
-                '任贤齐 - 还有我.mxl',
-                '孙子涵 - 唐人.mxl',
-                '孙子涵 - 回忆那么伤.mxl'
+                # '五月天 - 天使.mxl',
+                # '万芳 - 新不了情.mxl',
+                # '刘德华 - 忘情水.mxl',
+                # '任贤齐 - 还有我.mxl',
+                # '孙子涵 - 唐人.mxl',
+                # '孙子涵 - 回忆那么伤.mxl'
+                # 'Ai Mini - 遇.mxl'
+                # 'F.I.R - 月牙湾.mxl'
+                # 'F4 - 流星雨.mxl'
+                '刘德华 - 谢谢你的爱.mxl'
             ]
             dir_nm = 'converted/POP909, MS'
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1, mode='full')
@@ -1346,9 +1363,14 @@ if __name__ == '__main__':
         mic(fnms)
     # get_broken_fnms_from_log()
 
-    def sanity_check_no_consecutive_rests():
+    def sanity_check_extraction_property():
         """
-        By representation, any consecutive Rest pitches should be merged into a single one
+        By representation
+
+        1. There should be no consecutive rests. Any consecutive Rest pitches should be merged into a single one
+        2. Tuplet notes should not be all rests
+        3. Look for specific edge cases of tuple sizes of 2, 4,
+            and make sure each note inside has duration smaller than quantization
         """
         from tqdm.auto import tqdm
         from musicnlp.vocab import ElmType
@@ -1357,14 +1379,18 @@ if __name__ == '__main__':
         mc = MusicConverter(mode='full')
 
         pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
-        # dnms = [pop]
-        dnms = [pop, mst]
+        dnms = [pop]
+        # dnms = [pop, mst]
         songs = dataset.load_songs(*dnms)
         rest_meta = MusicVocabulary.step_rest_pitch_meta
 
-        check_implementation = False
-        # check_implementation = True
-        if check_implementation:
+        check_no_rest = True
+        check_tuplet_not_all_rest = False
+        check_tuplet_size_n_dur = False
+
+        check_no_rest_implement = False
+        # check_no_rest_implement = True
+        if check_no_rest_implement:
             _fnm_broken = os_join(
                 u.dset_path, 'processed', 'intermediate',
                 '22-10-22_LMD_{md=f}', '060000-070000', 'Music Export - 068052.json'
@@ -1374,15 +1400,17 @@ if __name__ == '__main__':
                 # mic(_txt_broken)
         for song in tqdm(songs, unit='song', desc='Sanity check no consecutive rests'):
             txt = song['score']
-            if check_implementation:
+            if check_no_rest_implement:
                 txt = _txt_broken
             lst_elms = mc.str2music_elms(txt, pitch_kind='step').elms_by_bar
             for i_bar, elms in enumerate(lst_elms):
-                for i, elm in enumerate(elms[:-1]):
-                    curr_note_is_rest = elm.type == ElmType.note and elm.meta[0] == rest_meta  # meta for pitch
-                    next_note_is_rest = elms[i+1].type == ElmType.note and elms[i+1].meta[0] == rest_meta
-                    if curr_note_is_rest and next_note_is_rest:
-                        d_log = dict(title=song['title'], bar=i_bar, txt=txt, elm_pair=(elm, elms[i+1]))
-                        raise ValueError(f'Consecutive rests found at {pl.i(d_log)}')
-                # raise NotImplementedError
-    sanity_check_no_consecutive_rests()
+                if check_no_rest:
+                    for i, elm in enumerate(elms[:-1]):
+                        curr_note_is_rest = elm.type == ElmType.note and elm.meta[0] == rest_meta  # meta for pitch
+                        next_note_is_rest = elms[i+1].type == ElmType.note and elms[i+1].meta[0] == rest_meta
+                        if curr_note_is_rest and next_note_is_rest:
+                            d_log = dict(title=song['title'], bar=i_bar, txt=txt, elm_pair=(elm, elms[i+1]))
+                            raise ValueError(f'Consecutive rests found at {pl.i(d_log)}')
+                            # mic('found', d_log['title'])
+                raise NotImplementedError
+    sanity_check_extraction_property()

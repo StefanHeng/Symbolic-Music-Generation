@@ -343,11 +343,11 @@ if __name__ == '__main__':
     # check_export_json_error()
 
     def export2json():
-        # dnm = 'POP909'
+        dnm = 'POP909'
         # dnm = 'MAESTRO'
         # dnm = 'LMD, MS'
         # dnm = 'LMD, LP'
-        dnm = 'LMD-cleaned-subset'
+        # dnm = 'LMD-cleaned-subset'
 
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
@@ -362,7 +362,7 @@ if __name__ == '__main__':
             # parallel=False,
             parallel=16,
             parallel_mode=pl_md,
-            # n_worker=1
+            n_worker=14
         )
         dset_path = os_join(get_base_path(), u.dset_dir)
 
@@ -422,9 +422,9 @@ if __name__ == '__main__':
             resume = True
             if resume:
                 if dnm == 'POP909':
-                    date = '22-10-20'
+                    date = '23-03-31'
                 elif dnm == 'MAESTRO':
-                    date = '22-10-20'
+                    date = '23-03-31'
                 else:
                     assert dnm == 'LMD-cleaned-subset'
                     date = '23-01-17'
@@ -435,24 +435,24 @@ if __name__ == '__main__':
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    export2json()
-
-    def is_folder_path(path: str) -> bool:
-        return os.path.isdir(path) and not path.endswith('.zip')
-
-    def _folder2count(path: str) -> int:
-        # mic(path)
-        # mic(os.listdir(path))
-        _, _, fls = next(os.walk(path))
-        return len(fls)
-
-    def _folder2file_counts(root_path: str) -> Dict[str, int]:
-        return {
-            d: _folder2count(os_join(root_path, d)) for d in sorted(os.listdir(root_path))
-            if is_folder_path(os_join(root_path, d))
-        }
+    # export2json()
 
     def check_extract_progress():
+        def is_folder_path(path_: str) -> bool:
+            return os.path.isdir(path_) and not path_.endswith('.zip')
+
+        def _folder2count(path_: str) -> int:
+            # mic(path)
+            # mic(os.listdir(path))
+            _, _, fls = next(os.walk(path_))
+            return len(fls)
+
+        def _folder2file_counts(root_path: str) -> Dict[str, int]:
+            return {
+                d: _folder2count(os_join(root_path, d)) for d in sorted(os.listdir(root_path))
+                if is_folder_path(os_join(root_path, d))
+            }
+
         # check number of files that finished extraction
         path = os_join(music_util.get_processed_path(), 'intermediate')
         counts = dict()
@@ -463,17 +463,18 @@ if __name__ == '__main__':
         print(pl.fmt(dict(counts=counts)))
     # check_extract_progress()
 
-    def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
-        fl_pattern = '*.json'
-        if 'LMD' in dataset_name:
-            fl_pattern = f'**/{fl_pattern}'
-        fnms = sorted(glob.iglob(os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, fl_pattern)))
-        mic(len(fnms))
-        # fnms = fnms[:1024]  # TODO: debugging
-        songs = me.combine_saved_songs(filenames=fnms, output_filename=f'Extracted-{dataset_name}')
-        mic(songs.keys(), len(songs['music']))
-
     def combine():
+        def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
+            fl_pattern = '*.json'
+            if 'LMD' in dataset_name:
+                fl_pattern = f'**/{fl_pattern}'
+            path = os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, fl_pattern)
+            fnms = sorted(glob.iglob(path))
+            mic(len(fnms))
+            # fnms = fnms[:1024]  # TODO: debugging
+            songs = me.combine_saved_songs(filenames=fnms, output_filename=f'Extracted-{dataset_name}')
+            mic(songs.keys(), len(songs['music']))
+
         # md = 'melody'
         md = 'full'
         if md == 'melody':
@@ -481,10 +482,10 @@ if __name__ == '__main__':
             combine_single_json_songs(singe_song_dir='22-10-02_MAESTRO_{md=m}', dataset_name='MAESTRO')
             # combine_single_json_songs(singe_song_dir='', dataset_name='LMD')
         else:
-            # combine_single_json_songs(singe_song_dir='22-10-22_POP909_{md=f}', dataset_name='POP909')
+            combine_single_json_songs(singe_song_dir='23-03-31_POP909_{md=f}', dataset_name='POP909')
             # combine_single_json_songs(singe_song_dir='22-10-22_MAESTRO_{md=f}', dataset_name='MAESTRO')
-            combine_single_json_songs(singe_song_dir='22-10-22_LMD_{md=f}', dataset_name='LMD')
-    # combine()
+            # combine_single_json_songs(singe_song_dir='22-10-22_LMD_{md=f}', dataset_name='LMD')
+    combine()
 
     def json2dset_with_split():
         """
