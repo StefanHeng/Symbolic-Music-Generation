@@ -300,7 +300,7 @@ class MusicExtractor:
 
                     for tup in lst[idx_tup_strt:]:
                         ln = len(tup)
-                        assert ln != 2 and ln != 4  # sanity check
+                        # assert ln != 2 and ln != 4  # sanity check TODO: include
                         if ln != n_tup:
                             self.log_warn(warn_name=WarnLog.InvTupSz, bar_num=number, n_expect=n_tup, n_got=ln)
 
@@ -456,13 +456,17 @@ class MusicExtractor:
             groups_melody: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in all_notes:
                 groups_melody[get_offset(n)].append(n)
-            # if number == 674:
+            # if number == 0:
             #     mic(groups_melody)
             #     for offset, notes in groups_melody.items():
             #         mic(offset)
             #         debug_pprint_lst_notes(notes)
-                # exit(1)
-            MusicExtractor.sort_groups(groups_melody)
+                # raise NotImplementedError
+            # In rare occasions, extracted melody notes are empty, while bass notes are not
+            #   e.g. 0-th bar of `LMD::068052`, where a tuplet group is dropped,
+            #       due to a note w/ higher pitch & tiny duration occurring during the tuplet group
+            #       which is then removed during quantization
+            MusicExtractor.sort_groups(groups_melody, reverse=False)
             groups_melody = self._fix_edge_case(groups_melody, number, time_sig)
             groups_bass = None
             if self.mode == 'full':
@@ -489,6 +493,10 @@ class MusicExtractor:
                 with RecurseLimit(2 ** 14):
                     return self.get_notes_out(groups_, number, keep=keep)
             notes_melody = _get_notes(groups_melody, 'high')
+            # if number == 0:
+            #     mic(notes_melody)
+            #     debug_pprint_lst_notes(notes_melody)
+            #     raise NotImplementedError
             if self.mode == 'full':
                 _notes_bass = _get_notes(groups_bass, 'low')
 
@@ -499,7 +507,8 @@ class MusicExtractor:
                         notes_bass.append(nb)
                         removed = True
                     elif self.verbose:
-                        self.logger.info(f'Skipping {pl.i("bass")} note at bar#{number}: {pl.i(nb)}')
+                        self.logger.info(
+                            f'Skipping {pl.i("bass")} note at bar#{number}: {pl.i(nb)} for already in melody')
                 if removed:
                     # skip unfilled range
                     notes_bass = fill_with_rest(notes_bass, duration=time_sig2bar_dur(time_sig), fill_start=True)[0]
@@ -646,15 +655,27 @@ class MusicExtractor:
                     offsets, durs = notes2offset_duration(tup)
                     self.log_warn(warn_name=WarnLog.TupNoteOvlOut, bar_num=number, offsets=offsets, durations=durs)
 
-    def get_notes_out(self, groups: Dict[float, List[ExtNote]], number: int, keep: str = 'high') -> List[ExtNote]:
+    def get_notes_out(
+            self, groups: Dict[float, List[ExtNote]], number: int, keep: str = 'high', pre_sort: bool = False
+    ) -> List[ExtNote]:
         """
         :param groups: Notes grouped by offset, see `__call__`
         :param number: current bar # in processing
         :param keep: Which note pitch extreme to keep
             If `high`, keep notes with the highest pitch
             If `low`, keep notes with the lowest pitch
+        :param pre_sort: If true, notes are sorted before extraction
+            Intended for internal recursion when note durations are truncated
         """
+        # if number == 0:
+        #     mic('in new get notes out', groups, keep)
+        #     for offset, notes in groups.items():
+        #         mic(offset)
+        #         debug_pprint_lst_notes(notes)
         is_high = keep == 'high'
+        if pre_sort:
+            MusicExtractor.sort_groups(groups, reverse=not is_high)
+        pre_sort = False
         ns_out = []
         last_end = 0  # Last added note, end time in quarter length
         for offset in sorted(groups.keys()):  # Pass through notes in order
@@ -663,6 +684,8 @@ class MusicExtractor:
                 del groups[offset]
                 continue
             nt = notes_[-1]  # Note with the highest pitch if `high`, the lowest if `low`
+            # if number == 0:
+            #     mic(offset, ns_out, nt)
             nt_end = get_end_qlen(nt)
             if last_end - offset > self.eps:
                 # Current note starts before the last added note ends
@@ -675,13 +698,15 @@ class MusicExtractor:
                         # The triplet must've been the last note added, and it's joint offset is known
                         del groups[get_offset(note_last)][-1]
                         self.log_warn(warn_name=WarnLog.HighPchOvlTup, bar_num=number)
-                        return self.get_notes_out(groups, number, keep=keep)
+                        return self.get_notes_out(groups, number, keep=keep, pre_sort=pre_sort)
                     else:
                         self.log_warn(warn_name=WarnLog.HighPchOvl, bar_num=number)
 
                         nt_ = nt[0] if isinstance(nt, tuple) else nt
                         # Resulting duration usually non-0, for offset grouping
                         note_last.duration = dur_last = Duration(quarterLength=nt_.offset - note_last.offset)
+                        # Need notes sorting if ever start from scratch, cos shorter duration
+                        pre_sort = True
                         assert dur_last.quarterLength >= 0
                         # If it's 0, it's cos a **truncated** note was appended, as makeup
                         if dur_last.quarterLength == 0:  # TODO: verify
@@ -712,7 +737,7 @@ class MusicExtractor:
                             groups[last_end] = [nt_]
                         MusicExtractor.sort_groups(groups, reverse=not is_high)  # sort in reverse for bass
                         self.log_warn(warn_name=WarnLog.LowPchMakeup, bar_num=number)
-                        return self.get_notes_out(groups, number, keep=keep)
+                        return self.get_notes_out(groups, number, keep=keep, pre_sort=pre_sort)
                     # Skip adding tuplets, this potentially leads to gaps in extraction output
                 # Otherwise, skip if later note is lower in pitch and is covered by the prior note duration
             else:
@@ -1127,7 +1152,7 @@ if __name__ == '__main__':
         # check_str()
         check_visualize()
         # check_return_meta_n_key()
-    toy_example()
+    # toy_example()
 
     def encode_a_few():
         dnm = 'POP909'
@@ -1181,8 +1206,8 @@ if __name__ == '__main__':
         dnm = 'LMD'
         if 'LMD' in dnm:
             dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
-            # dir_nm = f'{dir_nm}, MS'
-            dir_nm = f'{dir_nm}, LP'
+            dir_nm = f'{dir_nm}, MS'
+            # dir_nm = f'{dir_nm}, LP'
 
             # from _test_broken_files import broken_files
             broken_files = [
@@ -1202,7 +1227,8 @@ if __name__ == '__main__':
                 # '096500.mxl',
                 # '098334.mxl',
                 # '107205.mxl',
-                '014187.mxl',
+                # '014187.mxl',
+                '068052.mxl',
             ]
 
             o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
@@ -1319,3 +1345,44 @@ if __name__ == '__main__':
         fnms = sorted(set([f'{fnm}.mxl' for fnm in fnms if fnm]))
         mic(fnms)
     # get_broken_fnms_from_log()
+
+    def sanity_check_no_consecutive_rests():
+        """
+        By representation, any consecutive Rest pitches should be merged into a single one
+        """
+        from tqdm.auto import tqdm
+        from musicnlp.vocab import ElmType
+        from musicnlp.preprocess import MusicConverter, dataset
+
+        mc = MusicConverter(mode='full')
+
+        pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
+        # dnms = [pop]
+        dnms = [pop, mst]
+        songs = dataset.load_songs(*dnms)
+        rest_meta = MusicVocabulary.step_rest_pitch_meta
+
+        check_implementation = False
+        # check_implementation = True
+        if check_implementation:
+            _fnm_broken = os_join(
+                u.dset_path, 'processed', 'intermediate',
+                '22-10-22_LMD_{md=f}', '060000-070000', 'Music Export - 068052.json'
+            )
+            with open(_fnm_broken, 'r') as f:
+                _txt_broken = json.load(f)['music']['score']
+                # mic(_txt_broken)
+        for song in tqdm(songs, unit='song', desc='Sanity check no consecutive rests'):
+            txt = song['score']
+            if check_implementation:
+                txt = _txt_broken
+            lst_elms = mc.str2music_elms(txt, pitch_kind='step').elms_by_bar
+            for i_bar, elms in enumerate(lst_elms):
+                for i, elm in enumerate(elms[:-1]):
+                    curr_note_is_rest = elm.type == ElmType.note and elm.meta[0] == rest_meta  # meta for pitch
+                    next_note_is_rest = elms[i+1].type == ElmType.note and elms[i+1].meta[0] == rest_meta
+                    if curr_note_is_rest and next_note_is_rest:
+                        d_log = dict(title=song['title'], bar=i_bar, txt=txt, elm_pair=(elm, elms[i+1]))
+                        raise ValueError(f'Consecutive rests found at {pl.i(d_log)}')
+                # raise NotImplementedError
+    sanity_check_no_consecutive_rests()

@@ -148,10 +148,8 @@ class MusicVocabulary:
         ElmType.song_end: end_of_song
     }
     midi_rest_pitch_meta = _rest_pitch_meta = -1
-    _pitch_kind2rest_pitch_meta = dict(
-        midi=_rest_pitch_meta, step=(_rest_pitch_meta, None), degree=(_rest_pitch_meta, None)
-    )
-
+    step_rest_pitch_meta = degree_rest_pitch_meta = (_rest_pitch_meta, None)
+    pitch_kind2rest_pitch_meta = dict(midi=_rest_pitch_meta, step=step_rest_pitch_meta, degree=degree_rest_pitch_meta)
 
     SPEC_TOKS = dict(
         sep=sep,
@@ -434,7 +432,7 @@ class MusicVocabulary:
 
     @property
     def rest_pitch_meta(self) -> Union[int, Tuple[int, None]]:
-        return MusicVocabulary._pitch_kind2rest_pitch_meta[self.pitch_kind]
+        return MusicVocabulary.pitch_kind2rest_pitch_meta[self.pitch_kind]
 
     @property
     def pitch_pattern(self) -> re.Pattern:

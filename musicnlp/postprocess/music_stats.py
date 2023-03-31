@@ -59,14 +59,9 @@ class MusicStats:
 
         pch_n_dur = sum((elm2notes(elm) for elm in notes), start=[])
         # Filter out rare pitch & durations
-        pch_n_dur = [
+        pch_n_dur = sorted(
             (p, d) for p, d in pch_n_dur if p != self.vocab.rare_pitch_meta and d != self.vocab.rare_duration_meta
-        ]
-        try:
-            pch_n_dur = sorted(pch_n_dur)
-        except Exception as e:
-            mic(pch_n_dur, self.vocab.rare_pitch_meta)
-            raise e
+        )
         pch2dur = {
             pch: [pair[1] for pair in pairs] for pch, pairs in itertools.groupby(pch_n_dur, key=lambda pair: pair[0])
         }

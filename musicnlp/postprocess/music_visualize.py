@@ -105,6 +105,7 @@ class MusicVisualize:
             if dnm:
                 songs = ds['music']
                 if subset_bound and len(songs) > subset_bound:
+                    # random.seed(77)
                     songs = random.sample(songs, round(len(songs) * subset))
                 for s in songs:
                     s['dataset_name'] = dnm
@@ -159,6 +160,7 @@ class MusicVisualize:
 
     def _extract_song_info(self, d: Dict, it=None) -> Dict:
         d = deepcopy(d)
+        title = d['title']
         scr = d.pop('score')
 
         scr_ = self.sr(scr)
@@ -174,7 +176,7 @@ class MusicVisualize:
         # Count #bars with no melody and no bass
         lst_elms = self.converter.str2music_elms(scr_, pitch_kind=self.pitch_kind).elms_by_bar
         n_empty_channel = dict(melody=0, bass=0)
-        for elms in lst_elms:
+        for i, elms in enumerate(lst_elms):
             notes = self.converter.split_notes(elms)
             n_non_rest_notes = dict(melody=0, bass=0)
             for channel in n_non_rest_notes.keys():
@@ -182,21 +184,20 @@ class MusicVisualize:
                     if n.type == ElmType.tuplets:
                         n_non_rest_notes[channel] += 1  # Assume tuplets must contain at least one rest note
                     elif n.type == ElmType.note:
-                        if n.meta[0] != self.vocab.rest_pitch_meta:  # pitch meta is not rest
+                        if n.metar[0] != self.vocab.rest_pitch_meta:  # pitch meta is not rest
                             n_non_rest_notes[channel] += 1
             for channel, n_non in n_non_rest_notes.items():
                 if n_non == 0:  # all notes are rest notes
                     n_empty_channel[channel] += 1
             if n_non_rest_notes['melody'] == 0:
-                assert n_non_rest_notes['bass'] == 0  # sanity check melody precedes bass during extraction
-            # notes_by_type = {ElmType.melody: [], ElmType.bass: []}
-            # curr_type = None
-            # for e in elms:
-            #     if e.type in [ElmType.melody, ElmType.bass]:
-            #         curr_type = e.type
-            #     elif e.type in [ElmType.note, ElmType.tuplets]:
-            #         notes_by_type[curr_type].append(e)
-            # mic(notes_by_type)
+                if n_non_rest_notes['bass'] != 0:
+                    # _d = {k: v for k, v in d.items() if k != 'warnings'}
+                    # mic(scr, _d, i)
+                    # raise NotImplementedError('Why Bass when no melody??')
+                    # Should be rare, see `MusicExtractor::extract_notes`
+                    self.logger.warning(f'Bass has non-rest notes when melody is empty at bar {pl.i(i)}: '
+                                        f'Piece {pl.i(title)} is likely in low quality ')
+                # assert n_non_rest_notes['bass'] == 0  # sanity check melody precedes bass during extraction
         d['n_empty_channel_by_bar'] = n_empty_channel
         d['n_empty_channel_by_song'] = {k: 1 if v > 0 else 0 for k, v in n_empty_channel.items()}
 
@@ -206,7 +207,10 @@ class MusicVisualize:
         d['n_tuplet_note'] = dict(c_tup_n_note)
 
         if it:
-            d_log = dict(n_token=pl.i(d['n_token']), n_wp_token=pl.i(d['n_wp_token']), n_pm_token=pl.i(len(pm_toks)))
+            d_log = dict(
+                n_token=pl.i(d['n_token']), n_wp_token=pl.i(d['n_wp_token']), n_pm_token=pl.i(len(pm_toks)),
+                title=pl.s(title)
+            )
             it.set_postfix(d_log)
         counter_toks = Counter(toks)
         d['n_bar'] = counter_toks[self.vocab.start_of_bar]
@@ -225,12 +229,7 @@ class MusicVisualize:
         d['keys_unweighted'] = {k: 1 for k in keys}  # to fit into `_count_by_dataset`
 
         d['duration_count'], d['pitch_count'] = ttc['duration'], ttc['pitch']
-        d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks)
-
-        # if any(v > 0 for v in n_empty_channel.values()):
-        # # if any(v > 0 for v in n_empty_channel.values()) or d['pitch_count'][self.vocab.rest_pitch_meta] > 0:
-        #     mic(n_empty_channel)
-        #     raise NotImplementedError
+        d['weighted_pitch_count'] = self.stats.weighted_pitch_counts(toks_stat)
         return d
 
     def _get_song_info(self):
@@ -239,9 +238,10 @@ class MusicVisualize:
         # concurrent = True
         concurrent = False
         if concurrent:
-            tqdm_args = dict(desc='Extracting song info', unit='song', chunksize=64)
-            ds = conc_map(self._extract_song_info, entries, with_tqdm=tqdm_args, mode='process')
+            tqdm_args = dict(desc='Extracting song info', unit='song', chunksize=128)
+            ds = conc_map(self._extract_song_info, entries, with_tqdm=tqdm_args, mode='process', n_worker=6)
         else:
+            entries = entries[8000:]  # TODO: debugging LMD only bass notes
             it = tqdm(entries, desc='Extracting song info', unit='song')
             ds = []
             for song in it:
@@ -668,21 +668,21 @@ if __name__ == '__main__':
     md = 'full'
     pch_kd = 'degree'
 
-    dnms = ['POP909']
+    # dnms = ['POP909']
     # dnms = ['POP909', 'MAESTRO']
-    # dnms = ['POP909', 'MAESTRO', 'LMD']
+    dnms = ['POP909', 'MAESTRO', 'LMD']
     # dnms = ['LMD']
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD', as_full_path=True)
-    fnms = [pop]
+    # fnms = [pop]
     # fnms = [pop, mst]
-    # fnms = [pop, mst, lmd]
+    fnms = [pop, mst, lmd]
     if dnms == ['POP909']:
         # cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
         cnm = f'22-03-29_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
-        cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
+        cnm = f'22-03-29_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
+        cnm = f'22-03-29_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
     else:
         cnm = None
     # cnm = None

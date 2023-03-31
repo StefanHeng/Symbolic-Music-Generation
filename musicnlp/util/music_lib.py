@@ -436,7 +436,7 @@ def debug_pprint_lst_notes(notes: List[ExtNote], return_meta=False):
     ret = []
     for n in notes:
         strt, end = get_offset(n), get_end_qlen(n)
-        p = n.pitch.nameWithOctave if isinstance(n, Note) else None
+        p = n.pitch.nameWithOctave if isinstance(n, Note) else 'rest'
         if return_meta:
             ret.append(dict(note=n, start=strt, end=end, pitch=p))
         else:

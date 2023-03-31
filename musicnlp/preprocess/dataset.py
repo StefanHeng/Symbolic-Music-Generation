@@ -67,15 +67,14 @@ def load_songs(
     def _load_single_ds(dnm_):
         logger.info(f'Loading songs from JSON dataset {pl.i(dnm_)}... ')
         if split is None:
-            with open(os.path.join(music_util.get_processed_path(), f'{dnm_}.json'), 'r') as f:
+            path = dnm_
+            if not os.path.exists(path):
+                path = os.path.join(music_util.get_processed_path(), f'{dnm_}.json')
+            with open(path, 'r') as f:
                 dset = json.load(f)['music']
         else:  # Load the split from HF dataset
             # See `musicnlp.preprocess.music_export`
             dset = datasets.load_from_disk(os_join(music_util.get_processed_path(), 'hf', dnm_))[split]
-            # mic(dset)
-            # for i in dset:
-            #     mic(i)
-            #     raise NotImplementedError
 
         def gen():
             for s in dset:
