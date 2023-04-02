@@ -42,8 +42,8 @@ __all__ = [
     
     'ExtNote', 'SNote', 'Dur', 'TsTup', 'ordinal2dur_type', 'ScoreExt',
     'time_sig2n_slots',
-    'eps', 'is_int', 'is_8th', 'quarter_len2fraction', 'pitch2pitch_cleaned',
-    'note2pitch', 'note2dur', 'note2note_cleaned', 'notes2offset_duration',
+    'eps', 'is_int', 'is_8th', 'quarter_len2fraction', 'pitch2cleaned_pitch',
+    'note2pitch', 'note2dur', 'make_rest', 'note2clean_note', 'notes2offset_duration',
     'time_sig2bar_dur',
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
     'is_drum_track', 'is_empty_bars', 'is_rest',
@@ -164,13 +164,24 @@ def note2dur(note: ExtNote) -> Dur:
         return note.duration.quarterLength
 
 
-def pitch2pitch_cleaned(pitch: Pitch) -> Pitch:
+def pitch2cleaned_pitch(pitch: Pitch) -> Pitch:
     ret = Pitch(name=pitch.name, octave=pitch.octave)
     assert ret.midi == pitch.midi and ret.step == pitch.step  # the only 2 properties we care about
     return ret
 
 
-def note2note_cleaned(
+def make_rest(offset: float, q_len: Union[float, Fraction]) -> Rest:
+    """
+    :param offset: Offset of rest
+    :param q_len: Quarter length of rest
+    :return: A rest with offset and duration set
+    """
+    r = Rest(duration=Duration(quarterLength=q_len))
+    r.offset = offset  # Assigning `offset` at instantiation doesn't work
+    return r
+
+
+def note2clean_note(
         note: ExtNote, q_len=None, offset=None, for_output: bool = False, from_tuplet: bool = False
 ) -> ExtNote:
     """
@@ -198,7 +209,7 @@ def note2note_cleaned(
             assert my_ordinal.is_integer()
             my_ordinal = int(my_ordinal)
 
-            notes: List[SNote] = [note2note_cleaned(n, from_tuplet=True) for n in note]
+            notes: List[SNote] = [note2clean_note(n, from_tuplet=True) for n in note]
             # cos directly setting a fraction to Duration would result in error in music21 write, if fraction too small
             dur_ea_tup = m21.duration.Tuplet(
                 numberNotesActual=len(notes), numberNotesNormal=q_len.numerator,
@@ -211,7 +222,7 @@ def note2note_cleaned(
                 n.duration.appendTuplet(dur_ea_tup)
                 mic(n.duration)
         else:
-            notes: List[SNote] = [note2note_cleaned(n, q_len=dur_ea) for n in note]
+            notes: List[SNote] = [note2clean_note(n, q_len=dur_ea) for n in note]
         for i, nt_tup in enumerate(notes):
             notes[i].offset = offset + dur_ea * i
         return tuple(notes)
@@ -219,11 +230,11 @@ def note2note_cleaned(
     dur_args = dict() if from_tuplet else dict(duration=dur)  # `from_tuplet` only true when `for_output`
     assert isinstance(note, (Note, Rest, Chord))
     if isinstance(note, Note):  # Removes e.g. `tie`s
-        nt = Note(pitch=pitch2pitch_cleaned(note.pitch), **dur_args)
+        nt = Note(pitch=pitch2cleaned_pitch(note.pitch), **dur_args)
     elif isinstance(note, Rest):
         nt = Rest(offset=note.offset, **dur_args)
     else:
-        notes = [note2note_cleaned(n) for n in note.notes]
+        notes = [note2clean_note(n) for n in note.notes]
         nt = Chord(notes=notes, offset=note.offset, **dur_args)
     # Setting offset in constructor doesn't seem to work per `music21
     nt.offset = offset if offset is not None else note.offset
@@ -546,8 +557,7 @@ def join_consecutive_rest_notes(notes: Iterable[SNote]):
             nt_last = ret[-1] if ret else None
             if nt_last and isinstance(nt_last, Rest):
                 qlen = nt_last.duration.quarterLength + n.duration.quarterLength
-                ret[-1] = Rest(duration=Duration(quarterLength=qlen))
-                ret[-1].offset = nt_last.offset  # Assigning `offset` at instantiation doesn't work
+                ret[-1] = make_rest(offset=nt_last.offset, q_len=qlen)  # Override last note
             else:
                 ret.append(n)
         else:
@@ -680,7 +690,7 @@ def insert_ts_n_tp_to_part(part: Part, time_sig: str, tempo: int) -> Part:
 def make_score(
         title: str = f'{PKG_NM} Song', composer: str = PKG_NM, mode: str = 'melody',
         time_sig: str = '4/4', tempo: int = 120, d_notes: Dict[str, List[List[SNote]]] = None,
-        check_duration_match: str = None
+        check_duration_match: Union[bool, str] = None
 ) -> Score:
     """
     :param title: Title of the score
@@ -691,7 +701,7 @@ def make_score(
     :param d_notes: Dict of notes to insert into the score
         Each note would have offset 0
     :param check_duration_match: Check if notes cover the entire bar
-        If don't check, and not a duration match, the starting offset for each bar can be wrong
+        If check not performed, and not a duration match, the starting offset for each bar can be wrong
     """
     score = get_score_skeleton(title=title, composer=composer, mode=mode)
     parts = list(score.parts)
@@ -699,7 +709,7 @@ def make_score(
     part_melody = parts[0]
     assert 'Melody' in part_melody.partName
     check_dur = check_duration_match is not None and check_duration_match is not False
-    if check_dur:
+    if check_dur:  # A scheme should be specified
         ca.check_mismatch('Check Bar Duration Scheme', check_duration_match, ['time-sig', 'each-other'])
 
     def get_bars(lst_notes: List[List[SNote]], is_bass: bool = False) -> List[Measure]:
@@ -757,7 +767,7 @@ def make_score(
                             # Crop duration of the new last note
                             qlen = dur_bar - dur_prior
                             assert qlen > 0  # sanity check
-                            notes[idx_last] = note2note_cleaned(notes[idx_last], q_len=qlen)
+                            notes[idx_last] = note2clean_note(notes[idx_last], q_len=qlen)
                             notes = notes[:idx_last+1]
 
                             n_drop = n_ - idx_last - 1
@@ -1096,7 +1106,7 @@ if __name__ == '__main__':
             lst_tup.append(note)
         lst_note.append(tuple(lst_tup))
         lst_note.append(Note(pitch=m21.pitch.Pitch(midi=80), duration=m21.duration.Duration(quarterLength=2)))
-        lst_note = [note2note_cleaned(n, for_output=True) for n in lst_note]
+        lst_note = [note2clean_note(n, for_output=True) for n in lst_note]
         mic(lst_note)
         lst_note = list(flatten_notes(lst_note))
 

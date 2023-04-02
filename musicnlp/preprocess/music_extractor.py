@@ -301,16 +301,12 @@ class MusicExtractor:
                     for tup in lst[idx_tup_strt:]:
                         ln = len(tup)
                         # Tuplet sizes may be in powers of 2, e.g. 2, 4, 8, see `clean_quantized_tuplets`
-                        # if not (ln != 2 and ln != 4):
-                        #     mic(number, tup, ln)
-                        #     raise NotImplementedError
-                        # assert ln != 2 and ln != 4  # sanity check
                         if ln != n_tup:
                             self.log_warn(warn_name=WarnLog.InvTupSz, bar_num=number, n_expect=n_tup, n_got=ln)
 
                     # Enforce no overlap in each triplet group
                     for idx_tup, tup in enumerate(lst[idx_tup_strt:], start=idx_tup_strt):
-                        tup: tuple[Union[Note, Rest]]
+                        tup: tuple[SNote]
                         if notes_overlapping(tup):
                             offsets, durs = notes2offset_duration(tup)
                             self.log_warn(
@@ -325,11 +321,11 @@ class MusicExtractor:
 
                             assert float_is_int(multiplier, eps=self.eps) if isinstance(multiplier, float) \
                                 else multiplier.denominator == 1
-                            note1st = note2note_cleaned(tup[0])
+                            note1st = note2clean_note(tup[0])
                             offset = note1st.offset + note1st.duration.quarterLength
                             fixed_tup = [note1st]
                             for n in tup[1:]:
-                                n = note2note_cleaned(n)
+                                n = note2clean_note(n)
                                 n.offset = offset
                                 fixed_tup.append(n)
                                 offset += n.duration.quarterLength
@@ -371,8 +367,13 @@ class MusicExtractor:
                         if has_chord:  # Replace prior triplet groups
                             lst = lst[:idx_tup_strt] + tups_new
                 for idx_tup, tup in enumerate(lst[idx_tup_strt:], start=idx_tup_strt):
-                    if isinstance(tup, tuple) and len(tup) == 1:
-                        lst[idx_tup] = tup[0]  # consider as single note if just 1 element
+                    if isinstance(tup, tuple):
+                        if len(tup) == 1:
+                            lst[idx_tup] = tup[0]  # consider as single note if just 1 element
+                        elif all(isinstance(n, Rest) for n in tup):  # all tuplet notes are rest
+                            # TODO: any reason to postpone instantiating a clean Rest?
+                            qlen = sum(n.duration.quarterLength for n in tup)
+                            lst[idx_tup] = make_rest(offset=tup[0].offset, q_len=qlen)
                 elm = elm_
                 continue  # Skip `next` for peeked 1 step ahead
             elif isinstance(elm, (Note, Rest)):
@@ -461,7 +462,7 @@ class MusicExtractor:
             for n in all_notes:
                 groups_melody[get_offset(n)].append(n)
             MusicExtractor.sort_groups(groups_melody, reverse=False)
-            # if number == 74:
+            # if number == 101:
             #     mic(groups_melody)
             #     for offset, notes in groups_melody.items():
             #         mic(offset)
@@ -487,7 +488,7 @@ class MusicExtractor:
             def _local_post_process(notes_):
                 self.warn_notes_duration(notes_, time_sig, number)
                 self.warn_notes_overlap(notes_, number)
-                return [note2note_cleaned(nt) for nt in join_consecutive_rest_notes(notes_)]
+                return [note2clean_note(nt) for nt in join_consecutive_rest_notes(notes_)]
 
             def _get_notes(groups_, keep: str = 'high'):
                 with RecurseLimit(2 ** 14):
@@ -497,10 +498,10 @@ class MusicExtractor:
             #       due to a note w/ higher pitch & tiny duration occurring during the tuplet group
             #       which is then removed during quantization
             notes_melody = _get_notes(groups_melody, 'high')
-            # if number == 74:
+            # if number == 101:
             #     mic(notes_melody)
             #     debug_pprint_lst_notes(notes_melody)
-            #     # raise NotImplementedError
+            #     raise NotImplementedError
             lst_melody.append(_local_post_process(notes_melody))
             if self.mode == 'full':
                 _notes_bass = _get_notes(groups_bass, 'low')
@@ -566,7 +567,7 @@ class MusicExtractor:
             dur_bar = time_sig2bar_dur(ts_tup)
             for n in groups[offset]:
                 if isinstance(n, tuple) and get_end_qlen(n) == wrong_end_time:
-                    n = note2note_cleaned(n, q_len=dur_bar - offset)  # Keep, but normalize
+                    n = note2clean_note(n, q_len=dur_bar - offset)  # Keep, but normalize
                 notes_out.append(n)
             groups[offset] = notes_out
 
@@ -728,7 +729,7 @@ class MusicExtractor:
                     if not isinstance(nt, tuple):
                         # Move the truncated note to later group, restart
                         del groups[offset][-1]
-                        nt_ = note2note_cleaned(nt)
+                        nt_ = note2clean_note(nt)
                         nt_.offset = last_end
                         nt_.duration = d = Duration(quarterLength=nt_end - last_end)
                         assert d.quarterLength > 0
@@ -873,7 +874,7 @@ class MusicExtractor:
             else:
                 # for tuplets total duration may still not be quantized yet
                 # TODO: seems `for_output` no longer needed, see `note2note_cleaned`
-                nt = note2note_cleaned(notes[i], q_len=n*dur_slot, for_output=False)
+                nt = note2clean_note(notes[i], q_len=n * dur_slot, for_output=False)
                 if isinstance(nt, tuple):
                     dur_ea = quarter_len2fraction(n*dur_slot) / len(nt)
                     note_tups_out = []
@@ -1213,8 +1214,8 @@ if __name__ == '__main__':
     # fix_find_song_with_error()
 
     def check_edge_case_batched():
-        dnm = 'POP909'
-        # dnm = 'MAESTRO'
+        # dnm = 'POP909'
+        dnm = 'MAESTRO'
         # dnm = 'LMD'
         if 'LMD' in dnm:
             dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
@@ -1270,7 +1271,8 @@ if __name__ == '__main__':
                 # 'Franz Schubert - Impromptu Op. 142 No. 3, In B-flat Major, D935, v1.mxl',
                 # 'Franz Schubert - Impromptu Op. 90 No. 1, In C Minor, D899, v1.mxl',
                 # 'Franz Schubert - Impromptu Op. 90 No. 4 In A-flat Major, v3.mxl'
-                'Frédéric Chopin - Variations And Fugue In E-flat Major, Op. 35, "eroica".mxl'
+                # 'Frédéric Chopin - Variations And Fugue In E-flat Major, Op. 35, "eroica".mxl'
+                'Franz Liszt - Tarantelle Di Bravura, S. 386.mxl'
             ]
             dir_nm = 'converted/MAESTRO, MS'
         else:
@@ -1363,7 +1365,7 @@ if __name__ == '__main__':
         mic(fnms)
     # get_broken_fnms_from_log()
 
-    def sanity_check_extraction_property():
+    def sanity_check_extracted_property():
         """
         By representation
 
@@ -1379,14 +1381,27 @@ if __name__ == '__main__':
         mc = MusicConverter(mode='full')
 
         pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
-        dnms = [pop]
-        # dnms = [pop, mst]
+        # dnms = [pop]
+        # dnms = [mst]
+        dnms = [pop, mst]
         songs = dataset.load_songs(*dnms)
         rest_meta = MusicVocabulary.step_rest_pitch_meta
 
         check_no_rest = True
-        check_tuplet_not_all_rest = False
-        check_tuplet_size_n_dur = False
+        check_tuplet_not_all_rest = True
+        check_tuplet_size_n_dur = True
+
+        smallest_dur = 4 / (2 ** mc.precision)
+        mic(smallest_dur)
+
+        def int_is_pow_2(num: Union[int, Fraction]) -> bool:
+            assert isinstance(num, (int, Fraction))
+            if isinstance(num, Fraction):
+                if num.numerator != 1:
+                    return False
+                else:
+                    return int_is_pow_2(num.denominator)
+            return num != 0 and ((num & (num - 1)) == 0)
 
         check_no_rest_implement = False
         # check_no_rest_implement = True
@@ -1398,7 +1413,7 @@ if __name__ == '__main__':
             with open(_fnm_broken, 'r') as f:
                 _txt_broken = json.load(f)['music']['score']
                 # mic(_txt_broken)
-        for song in tqdm(songs, unit='song', desc='Sanity check no consecutive rests'):
+        for song in tqdm(songs, unit='song', desc='Sanity check Extracted Property'):
             txt = song['score']
             if check_no_rest_implement:
                 txt = _txt_broken
@@ -1410,7 +1425,25 @@ if __name__ == '__main__':
                         next_note_is_rest = elms[i+1].type == ElmType.note and elms[i+1].meta[0] == rest_meta
                         if curr_note_is_rest and next_note_is_rest:
                             d_log = dict(title=song['title'], bar=i_bar, txt=txt, elm_pair=(elm, elms[i+1]))
-                            raise ValueError(f'Consecutive rests found at {pl.i(d_log)}')
-                            # mic('found', d_log['title'])
-                raise NotImplementedError
-    sanity_check_extraction_property()
+                            raise ValueError(f'Consecutive rests found w/ {pl.i(d_log)}')
+                if check_tuplet_not_all_rest:
+                    for elm in elms:
+                        if elm.type == ElmType.tuplets:
+                            if all(p == rest_meta for p in elm.meta[0]):
+                                d_log = dict(title=song['title'], bar=i_bar, txt=txt, elm=elm)
+                                raise ValueError(f'Tuplet group is all rests found w/ {pl.i(d_log)}')
+                if check_tuplet_size_n_dur:
+                    for elm in elms:
+                        if elm.type == ElmType.tuplets:
+                            pch_meta, dur_meta = elm.meta
+                            n_pch = len(pch_meta)
+                            dur_ea = dur_meta / n_pch
+                            # Total duration should frequently be a power of 2
+                            if int_is_pow_2(n_pch) and int_is_pow_2(dur_meta) and dur_ea > smallest_dur:
+                                d_log = dict(title=song['title'], bar=i_bar, txt=txt, elm=elm)
+                                raise ValueError(f'Tuplet notes can be quantized w/ {pl.i(d_log)}')
+                            # if int_is_pow_2(n_pch):
+                            #     mic(pch_meta, dur_meta, n_pch, dur_ea)
+                            # raise NotImplementedError
+                # raise NotImplementedError
+    sanity_check_extracted_property()

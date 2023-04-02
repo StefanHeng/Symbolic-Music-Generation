@@ -343,8 +343,8 @@ if __name__ == '__main__':
     # check_export_json_error()
 
     def export2json():
-        dnm = 'POP909'
-        # dnm = 'MAESTRO'
+        # dnm = 'POP909'
+        dnm = 'MAESTRO'
         # dnm = 'LMD, MS'
         # dnm = 'LMD, LP'
         # dnm = 'LMD-cleaned-subset'
@@ -362,7 +362,7 @@ if __name__ == '__main__':
             # parallel=False,
             parallel=16,
             parallel_mode=pl_md,
-            n_worker=14
+            n_worker=10
         )
         dset_path = os_join(get_base_path(), u.dset_dir)
 
@@ -482,8 +482,8 @@ if __name__ == '__main__':
             combine_single_json_songs(singe_song_dir='22-10-02_MAESTRO_{md=m}', dataset_name='MAESTRO')
             # combine_single_json_songs(singe_song_dir='', dataset_name='LMD')
         else:
-            combine_single_json_songs(singe_song_dir='23-03-31_POP909_{md=f}', dataset_name='POP909')
-            # combine_single_json_songs(singe_song_dir='22-10-22_MAESTRO_{md=f}', dataset_name='MAESTRO')
+            # combine_single_json_songs(singe_song_dir='23-03-31_POP909_{md=f}', dataset_name='POP909')
+            combine_single_json_songs(singe_song_dir='23-03-31_MAESTRO_{md=f}', dataset_name='MAESTRO')
             # combine_single_json_songs(singe_song_dir='22-10-22_LMD_{md=f}', dataset_name='LMD')
     combine()
 

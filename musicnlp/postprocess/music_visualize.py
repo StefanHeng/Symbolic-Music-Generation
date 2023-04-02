@@ -6,8 +6,9 @@ import random
 import pickle
 from os.path import join as os_join
 from copy import deepcopy
-from typing import List, Tuple, Dict, Callable, Union
+from typing import List, Tuple, Dict, Callable, Union, Optional
 from fractions import Fraction
+from dataclasses import dataclass
 from collections import defaultdict, Counter
 
 import numpy as np
@@ -26,6 +27,12 @@ from musicnlp.vocab import (
 from musicnlp.preprocess import WarnLog, transform, MusicConverter
 from musicnlp.trainer import load_wordpiece_tokenizer, load_pairmerge_tokenizer
 from musicnlp.postprocess.music_stats import MusicStats
+
+
+@dataclass
+class PlotOutputPair:
+    df: pd.DataFrame = None
+    ax: plt.Axes = None
 
 
 class MusicVisualize:
@@ -174,7 +181,8 @@ class MusicVisualize:
         d['n_token'], d['n_wp_token'], d['n_pm_token'] = len(toks), len(wp_toks), len(pm_toks)
 
         # Count #bars with no melody and no bass
-        lst_elms = self.converter.str2music_elms(scr_, pitch_kind=self.pitch_kind).elms_by_bar
+        out = self.converter.str2music_elms(scr_, pitch_kind=self.pitch_kind)
+        lst_elms = out.elms_by_bar
         n_empty_channel = dict(melody=0, bass=0)
         for i, elms in enumerate(lst_elms):
             notes = self.converter.split_notes(elms)
@@ -197,10 +205,9 @@ class MusicVisualize:
         d['n_empty_channel_by_bar'] = n_empty_channel
         d['n_empty_channel_by_song'] = {k: 1 if v > 0 else 0 for k, v in n_empty_channel.items()}
 
-        elms = self.mc.str2music_elms(scr_, group=False, pitch_kind=self.pitch_kind).elms
-        tups_ns = [len(e.meta[0]) for e in elms if e.type == ElmType.tuplets]  # number of pitch token
-        c_tup_n_note = Counter(tups_ns)
-        d['n_tuplet_note'] = dict(c_tup_n_note)
+        # number of pitch token
+        d['n_tuplet_note'] = dict(Counter([len(e.meta[0]) for e in out.elms if e.type == ElmType.tuplets]))
+        d['tuplet_duration_count'] = dict(Counter(e.meta[1] for e in out.elms if e.type == ElmType.tuplets))
 
         if it:
             d_log = dict(
@@ -473,15 +480,18 @@ class MusicVisualize:
             assert denom != 1
         return rf'$\nicefrac{{{numer}}}{{{denom}}}$'
 
-    def note_duration_dist(self, kind='hist', **kwargs):
+    def note_duration_dist(self, kind='hist', note_type: str = 'all', **kwargs) -> Optional[PlotOutputPair]:
         """
-        Tuplet notes contribute to a single duration, i.e. all quantized durations
+        Distribution of note durations
+
+        .. note:: Tuplet notes contribute to a single duration, i.e. all quantized durations
         """
         self.logger.info('Getting stats... ')
         ca(dist_plot_type=kind)
+        ca.check_mismatch('Plot Note Type', note_type, ['all', 'tuplet'])
         title, xlab = 'Distribution of Note Duration', 'Duration (quarter length)'
         if kind == 'hist':
-            k = 'duration_count'
+            k = 'duration_count' if note_type == 'all' else 'tuplet_duration_count'
             df = self._count_by_dataset(k)
             df.rename(columns={k: 'duration'}, inplace=True)
             d_uniq = df.duration.unique()
@@ -512,12 +522,13 @@ class MusicVisualize:
 
                 mi, ma = min(x_ticks), max(x_ticks)
                 ax.set_xlim([mi-0.5, ma+0.5])  # Reduce the white space on both sides
-            return self.hist_wrapper(
+            ax_ = self.hist_wrapper(
                 data=df, col_name='duration', weights='count', discrete=True, kde=False,
                 title=title, xlabel=xlab,
                 callback=callback,
                 **kwargs
             )
+            return PlotOutputPair(df=df, ax=ax_)
         else:  # TODO: doesn't look good
             counts = Counter()
             for d in self.df.duration_count:
@@ -549,21 +560,19 @@ class MusicVisualize:
             y = [counts[d] for d in durs_str]
             return barplot(x=durs_str, y=y, palette=cs, xlabel=xlab, ylabel='count', yscale='log', title=title)
 
-    def empty_channel_ratio(self):
+    def empty_channel_ratio(self) -> PlotOutputPair:
         """
         Plots the ratio of empty melody and bass channels by measure and by song
         """
-        mic(self.df[self.key_dnm].unique())
         df_b = self._count_by_dataset('n_empty_channel_by_bar')
         df_s = self._count_by_dataset('n_empty_channel_by_song')
         # divide by total number of bar and song respectively, for each dataset, to get ratio
         n_bar_by_dataset = self.df.groupby(self.key_dnm).n_bar.sum()
         n_song_by_dataset = self.df.groupby(self.key_dnm).size()
         # divide count by the corresponding dataset
-        df_b['percent'] = df_b.apply(lambda x: x['count'] / n_bar_by_dataset[x[self.key_dnm]], axis=1)
-        df_s['percent'] = df_s.apply(lambda x: x['count'] / n_song_by_dataset[x[self.key_dnm]], axis=1)
-        df_b['percent'] *= 100
-        df_s['percent'] *= 100
+        k_p = 'percent'
+        df_b[k_p] = df_b.apply(lambda x: x['count'] / n_bar_by_dataset[x[self.key_dnm]], axis=1)
+        df_s[k_p] = df_s.apply(lambda x: x['count'] / n_song_by_dataset[x[self.key_dnm]], axis=1)
 
         # rename melody & bass, bar & song into a single column to merge into single dataframe
         k = 'ratio'
@@ -572,13 +581,59 @@ class MusicVisualize:
         df_b[k] = df_b[k].apply(lambda x: f'Empty {x} bars')
         df_s[k] = df_s[k].apply(lambda x: f'Song w/ Empty {x}')
         df = pd.concat([df_b, df_s]).reset_index(drop=True)
-        mic(df)
+        df[k_p] *= 100
 
-        title = 'Ratio of Empty Notes by Channels and by Measure/Song'
-        return barplot(  # bar plot grouped by dataset
-            x=self.key_dnm, y='percent', hue=k, data=df,
-            xlabel='dataset', ylabel='percent (%)', title=title
+        title = 'Ratio of Empty Notes by Channels & by Measure/Song'
+        ax = barplot(
+            x=k, y=k_p, hue=self.key_dnm, data=df, xlabel='ratio kind', ylabel='percent (%)', title=title,
+            hue_order=self.dnms
         )
+        return PlotOutputPair(df=df, ax=ax)
+
+    def tuplet_duration_ratio(self) -> PlotOutputPair:
+        """
+        Plots the ratio of tuplet durations, among all notes (tuplets and regular notes),
+            by occurrence and by total duration
+        """
+        df_all = self._count_by_dataset('duration_count')
+        df_tup = self._count_by_dataset('tuplet_duration_count')
+        # multiply the duration count and the count column and sum to get total duration
+        k_w, k_c = 'weighted', 'count'
+        df_all[k_w] = df_all.apply(lambda x: x['duration_count'] * x['count'], axis=1)
+        df_tup[k_w] = df_tup.apply(lambda x: x['tuplet_duration_count'] * x['count'], axis=1)
+
+        def _get_ratio(key_dur: str) -> pd.DataFrame:
+            # sum up total duration by dataset
+            df_all_ = df_all[[self.key_dnm, key_dur]].groupby(self.key_dnm).sum()
+            df_tup_ = df_tup[[self.key_dnm, key_dur]].groupby(self.key_dnm).sum()
+            ret = (df_tup_ / df_all_).reset_index()  # divide by total duration to get a ratio for each dataset
+            ret[key_dur] = ret[key_dur].astype(float)
+            return ret
+        weighted, occur = _get_ratio(key_dur=k_w), _get_ratio(key_dur=k_c)
+        # unify duration keys, merge into single dataframe with corresponding ratio kind
+        k_r, k_k = 'ratio', 'kind'
+        weighted.rename(columns={k_w: k_r}, inplace=True)
+        occur.rename(columns={k_c: k_r}, inplace=True)
+        weighted[k_k], occur[k_k] = 'weighted', 'occurrence'
+        df = pd.concat([weighted, occur]).reset_index(drop=True)
+        df[k_r] *= 100
+
+        def callback(ax):
+            mi, ma = ax.get_ylim()
+            ax.set_ylim([mi, max(ma, 10)])  # set y limit to 10 if it is smaller
+        title, ylab = 'Ratio of Tuplet Durations by Occurrence & Weighted by Duration', 'percent (%)'
+        ax_ = barplot(
+            x=k_k, y=k_r, hue=self.key_dnm, data=df, xlabel='ratio type', ylabel=ylab, title=title, callback=callback,
+            hue_order=self.dnms
+        )
+        return PlotOutputPair(df=df, ax=ax_)
+
+    def uncommon_pitch_n_dur_ratio(self) -> PlotOutputPair:
+        """
+        Plots the ratio of uncommon pitches, by occurrence and weighted by note duration
+        and the ratio of uncommon durations, by occurrence and total duration
+        """
+        pass
 
     def warn_info(self, per_dataset: bool = False, as_counts=True) -> pd.DataFrame:
         """
@@ -665,21 +720,17 @@ if __name__ == '__main__':
     md = 'full'
     pch_kd = 'degree'
 
-    # dnms = ['POP909']
-    # dnms = ['POP909', 'MAESTRO']
-    dnms = ['POP909', 'MAESTRO', 'LMD']
-    # dnms = ['LMD']
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD', as_full_path=True)
-    # fnms = [pop]
-    # fnms = [pop, mst]
-    fnms = [pop, mst, lmd]
+    # dnms, fnms = ['POP909'], [pop]
+    dnms, fnms = ['POP909', 'MAESTRO'], [pop, mst]
+    # dnms, fnms = ['POP909', 'MAESTRO', 'LMD'], [pop, mst, lmd]
     if dnms == ['POP909']:
         # cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
-        cnm = f'22-03-29_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
+        cnm = f'22-03-31_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
-        cnm = f'22-03-29_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
+        cnm = f'22-03-31_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = f'22-03-29_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
+        cnm = f'22-03-31_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
     else:
         cnm = None
     # cnm = None
@@ -716,15 +767,17 @@ if __name__ == '__main__':
         # mv.token_length_dist(tokenize_scheme='wordpiece', **args)
         # mv.token_length_dist(tokenize_scheme='pairmerge', **args)
         # mv.bar_count_dist(**args)
-        # mv.tuplet_count_dist(**args)
-        # mv.tuplet_n_note_dist(**args)
         # mv.song_duration_dist(**args)
         # mv.time_sig_dist(yscale='linear', stat='percent')
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
         # mv.note_pitch_dist(stat='percent')
-        # mv.note_duration_dist(stat='percent')
-        mv.empty_channel_ratio()
+        # mv.note_duration_dist(note_type='all', stat='percent')
+        # mv.note_duration_dist(note_type='tuplet', stat='percent')
+        # mv.tuplet_count_dist(**args)
+        # mv.tuplet_n_note_dist(**args)
+        mv.tuplet_duration_ratio()
+        # mv.empty_channel_ratio()
         # mv.warning_type_dist(**_args)
     plots()
 

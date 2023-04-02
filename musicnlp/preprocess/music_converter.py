@@ -74,6 +74,7 @@ class MusicConverter:
         self.vocabs: MusicVocabs = MusicVocabs(**self.pk2v)
         for v in [self.vocabs.midi, self.vocabs.step, self.vocabs.degree]:
             assert v.precision == precision
+        self.precision = precision
 
         _vocab = self.vocabs.midi  # doesn't matter which one
         self._non_tup_spec = {

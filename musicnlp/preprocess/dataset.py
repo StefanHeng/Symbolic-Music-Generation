@@ -33,7 +33,7 @@ DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {  # Are in pitch_kind `
     },
     'MAESTRO': {
         'melody': '',
-        'full': '22-10-22_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}',
+        'full': '23-04-01_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}',
     },
     'POP909': {
         'melody': '',
