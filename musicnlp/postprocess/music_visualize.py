@@ -45,6 +45,8 @@ class MusicVisualize:
     color_rare = hex2rgb('#E06C75', normalize=True)
     pattern_frac = re.compile(r'^(?P<numer>\d+)/(?P<denom>\d+)$')
 
+    rare_token_types = ['time_sig', 'tempo', 'pitch', 'duration']
+
     def __init__(
             self, filename: Union[str, List[str]], dataset_name: Union[str, List[str]] = None,
             color_palette: str = 'husl', hue_by_dataset: bool = True, cache: str = None,
@@ -156,6 +158,10 @@ class MusicVisualize:
 
         assert self.wp_tokenizer.precision == self.prec
         self.vocab: MusicVocabulary = self.tokenizer.vocab
+        if self.pitch_kind == 'step':
+            self.vocab_sp = self.vocab
+        else:
+            self.vocab_sp = MusicVocabulary(pitch_kind='step', precision=self.prec)
         self.stats = MusicStats(prec=self.prec, pitch_kind=self.pitch_kind)
         self.converter = self.stats.converter
         self.mc: MusicConverter = self.stats.converter
@@ -201,13 +207,28 @@ class MusicVisualize:
                 if n_non_rest_notes['bass'] != 0:
                     # Should be rare, see `MusicExtractor::extract_notes`
                     self.logger.warning(f'Bass has non-rest notes when melody is empty at bar {pl.i(i)} '
-                                        f'with {pl.i(notes)}: Piece {pl.i(title)} is likely in low quality ')
+                                        f'with {pl.i(notes)}: Piece {pl.i(title)} is likely low in quality ')
         d['n_empty_channel_by_bar'] = n_empty_channel
         d['n_empty_channel_by_song'] = {k: 1 if v > 0 else 0 for k, v in n_empty_channel.items()}
 
         # number of pitch token
         d['n_tuplet_note'] = dict(Counter([len(e.meta[0]) for e in out.elms if e.type == ElmType.tuplets]))
         d['tuplet_duration_count'] = dict(Counter(e.meta[1] for e in out.elms if e.type == ElmType.tuplets))
+
+        # Get count of uncommon token and total token by type
+        type2total_count = {t: 0 for t in MusicVisualize.rare_token_types}
+        type2rare_count = {t: 0 for t in MusicVisualize.rare_token_types}
+        raw_toks = self.tokenizer.tokenize(scr)
+        for tok in raw_toks:  # Pitch kind is step, not sanitized, the raw extraction output
+            typ = self.vocab.type(tok).name
+            is_rare = self.vocab_sp.is_rare_token(tok)
+            if typ in MusicVisualize.rare_token_types:
+                if is_rare:
+                    type2rare_count[typ] += 1
+                type2total_count[typ] += 1
+        d['total_token_count'] = type2total_count
+        d['rare_token_count'] = type2rare_count
+        d['raw_count'] = dict(Counter(raw_toks))
 
         if it:
             d_log = dict(
@@ -313,7 +334,7 @@ class MusicVisualize:
         args = dict(col_name='n_tup', title=title, xlabel='#tuplet', upper_percentile=True) | (kwargs or dict())
         return self.hist_wrapper(**args)
 
-    def tuplet_n_note_dist(self, **kwargs):
+    def tuplet_n_note_dist(self, **kwargs) -> PlotOutputPair:
         self.logger.info('Getting stats... ')
         k = 'n_tuplet_note'
         df = self._count_by_dataset(k)
@@ -327,10 +348,11 @@ class MusicVisualize:
             ma, mi = df[k].max(), df[k].min()
             ax.set_xlim([mi, ma])
         title = 'Distribution of #notes in tuplets'
-        return self.hist_wrapper(
+        ax_ = self.hist_wrapper(
             data=df, col_name='n_tuplet_note', weights='count', title=title, xlabel='#note in tuplets',
             discrete=True, kde=False, callback=callback, **kwargs
         )
+        return PlotOutputPair(df=df, ax=ax_)
 
     def song_duration_dist(self, **kwargs):
         def callback(ax):
@@ -342,7 +364,7 @@ class MusicVisualize:
             args.update(kwargs)
         return self.hist_wrapper(**args)
 
-    def time_sig_dist(self, kind: str = 'hist', **kwargs):
+    def time_sig_dist(self, kind: str = 'hist', **kwargs) -> PlotOutputPair:
         self.logger.info('Getting stats... ')
 
         def callback(ax):
@@ -372,7 +394,8 @@ class MusicVisualize:
             c_nm, xlab = 'time_sig_str', 'Time Signature'
             args = dict(col_name=c_nm, title=title, xlabel=xlab, yscale='log', kde=False, callback=callback)
             args.update(kwargs)
-            return self.hist_wrapper(**args)
+            ax_ = self.hist_wrapper(**args)
+            return PlotOutputPair(df=self._count_by_dataset('time_sig'), ax=ax_)
         else:
             df = self._count_by_dataset('time_sig')
             df['time_sig'] = df['time_sig'].map(lambda ts: f'{ts[0]}/{ts[1]}')  # so that the category ordering works
@@ -382,7 +405,7 @@ class MusicVisualize:
                 xlabel='Time Signature', ylabel='count', title=title, yscale='log', width=False, callback=callback
             )
             args |= kwargs
-            return barplot(**args)
+            return PlotOutputPair(df=df, ax=barplot(**args))
 
     def tempo_dist(self, **kwargs):
         def callback(ax):
@@ -560,6 +583,87 @@ class MusicVisualize:
             y = [counts[d] for d in durs_str]
             return barplot(x=durs_str, y=y, palette=cs, xlabel=xlab, ylabel='count', yscale='log', title=title)
 
+    def token_coverage_dist(self, ratio: float = 0.95):
+        """
+        Plots side-by-side and cumulative distribution of tokens for each dataset
+        """
+        df = self._count_by_dataset('raw_count')
+        df.rename(columns={'raw_count': 'token'}, inplace=True)
+        mic(df)
+        # split into dataframes by dataset, convert each into dict
+        dfs = {dnm: df[df[self.key_dnm] == dnm] for dnm in self.dnms}
+        counts = {dnm: dict(zip(df.token, df['count'])) for dnm, df in dfs.items()}
+        null_count = {t: 0 for t in self.vocab_sp.tok2id}  # for showing counts in stats vocab
+        mic(len(null_count))
+        fig, axs = plt.subplots(nrows=1, ncols=2)  # side-by-side, frequency plot and cumulative plot
+        cs = sns.color_palette(palette='husl', n_colors=len(self.dnms))
+
+        def plot_single(dnm: str = None, i: int = None):
+            # tokens that don't appear also take a slot => ensures similar array lengths for all datasets in plot
+            # lengths can still differ for uncommon tokens, e.g. rare time signature
+            c = null_count | counts[dnm]
+            # get list of token names, sorted in descending order of count,
+            # also get the corresponding counts as numpy array
+            tokens, cts = zip(*sorted(c.items(), key=lambda x: x[1], reverse=True))
+            cts = np.array(cts)
+            # get cumulative sum of counts, normalized by total count
+            total = cts.sum()
+            cts_cumsum = np.cumsum(cts) / total
+            cts = cts / total
+
+            # get subset of tokens that cover `coverage_ratio` of the total count
+            # get index that covers standard deviations
+            idx1 = np.argmax(cts_cumsum > 0.68)  # 1std
+            idx2 = np.argmax(cts_cumsum > 0.95)  # 2std
+            idx25 = np.argmax(cts_cumsum > 0.986)  # 2.5std
+            idx3 = np.argmax(cts_cumsum > 0.997)  # 3std
+            idx = np.argmax(cts_cumsum > ratio)
+            toks = tokens[:idx]
+
+            c_cover = Counter({t: c[t] for t in toks})
+
+            # plot as a line
+            c = cs[i]
+            ln_args = LN_KWARGS | dict(c=c, lw=0.4)
+            axs[0].plot(cts[:idx] * 100, label=dnm, **ln_args)
+            axs[1].plot(cts_cumsum[:idx] * 100, label=dnm, **ln_args)
+
+            args = dict(lw=0.25, color=c)
+            vs = [
+                # (idx1, 0.68, f'{dnm} 68% at vsz={idx1}'),
+                (idx2, 0.95, f'{dnm} 95% at vsz={idx2}'),
+                (idx25, 0.986, f'{dnm} 98.6% at vsz={idx25}'),
+                (idx3, 0.997, f'{dnm} 99.7% at vsz={idx3}')
+            ]
+
+            def plot_vlns(ax):
+                # plot horizontal lines at 68%, 95%, 98.6%, 99.7% coverage and coverage ratio up until plot ends
+                for idx_, r, lb in vs:
+                    if idx_ <= idx:
+                        ax.axvline(x=idx_, **args, label=lb)
+            plot_vlns(axs[0])
+            plot_vlns(axs[1])
+            return dict(n=len(toks), counter=c_cover)
+        metas = {dnm: plot_single(dnm, i) for i, dnm in enumerate(self.dnms)}
+
+        x_max = axs[1].get_xlim()[1]
+        c_ln = sns.color_palette(palette='husl', n_colors=8)[-1]
+        args_ = dict(xmin=0, xmax=x_max, lw=0.15, color=c_ln)
+        axs[1].axhline(y=ratio * 100, **args_, label=f'{ratio * 100}% coverage')
+
+        ma = axs[0].get_ylim()[1]  # Clip min y to 0
+        axs[0].set_ylim(0, ma)
+        axs[1].set_ylim(0, 100)
+
+        fig.supxlabel('Vocabulary size')
+        fig.supylabel('Dataset Token Coverage (%)')
+        axs[0].set_title('Token Frequency')
+        axs[1].set_title('Token Cumulative Distribution')
+        axs[1].legend()
+        fig.suptitle('Token Coverage')
+        plt.show()
+        return metas
+
     def empty_channel_ratio(self) -> PlotOutputPair:
         """
         Plots the ratio of empty melody and bass channels by measure and by song
@@ -628,12 +732,26 @@ class MusicVisualize:
         )
         return PlotOutputPair(df=df, ax=ax_)
 
-    def uncommon_pitch_n_dur_ratio(self) -> PlotOutputPair:
+    def rare_token_ratio(self) -> PlotOutputPair:
         """
-        Plots the ratio of uncommon pitches, by occurrence and weighted by note duration
-        and the ratio of uncommon durations, by occurrence and total duration
+        Plots the ratio of uncommon tokens by token type and by occurrence
         """
-        pass
+        # Get counts of rare and total tokens for each rare type
+        df_total = self._count_by_dataset('total_token_count')
+        df_rare = self._count_by_dataset('rare_token_count')
+        # divide to get ratio for each type & each dataset
+        df = df_total.copy()
+        df.drop(columns=['count'], inplace=True)
+        df.rename(columns=dict(total_token_count='kind'), inplace=True)
+        df['ratio'] = (df_rare['count'] / df_total['count']) * 100
+        mic(df)
+
+        title = 'Ratio of Uncommon Tokens by Token Type'
+        ax = barplot(
+            x='kind', y='ratio', hue=self.key_dnm, data=df, xlabel='token type', ylabel='percent (%)', title=title,
+            hue_order=self.dnms
+        )
+        return PlotOutputPair(df=df, ax=ax)
 
     def warn_info(self, per_dataset: bool = False, as_counts=True) -> pd.DataFrame:
         """
@@ -726,11 +844,11 @@ if __name__ == '__main__':
     # dnms, fnms = ['POP909', 'MAESTRO', 'LMD'], [pop, mst, lmd]
     if dnms == ['POP909']:
         # cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
-        cnm = f'22-03-31_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
+        cnm = f'22-04-05_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
-        cnm = f'22-03-31_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
+        cnm = f'22-04-05_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
     elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = f'22-03-31_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
+        cnm = f'22-04-05_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
     else:
         cnm = None
     # cnm = None
@@ -760,7 +878,7 @@ if __name__ == '__main__':
 
     def plots():
         # plt.figure(figsize=(9, 4))
-        args = dict(stat='percent', upper_percentile=97.7)  # ~2std
+        args = dict(stat='percent', upper_percentile=97.7)  # ~2std on single side
         # _args = dict(save=True, show_title=False)
         # args.update(_args)
         # mv.token_length_dist(**args)
@@ -776,8 +894,10 @@ if __name__ == '__main__':
         # mv.note_duration_dist(note_type='tuplet', stat='percent')
         # mv.tuplet_count_dist(**args)
         # mv.tuplet_n_note_dist(**args)
-        mv.tuplet_duration_ratio()
+        # mv.tuplet_duration_ratio()
+        mv.token_coverage_dist(ratio=0.99)
         # mv.empty_channel_ratio()
+        # mv.rare_token_ratio()
         # mv.warning_type_dist(**_args)
     plots()
 

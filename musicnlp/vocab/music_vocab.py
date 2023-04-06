@@ -134,6 +134,7 @@ class MusicVocabulary:
     rare_high_tempo = f'{tempo_pref}{sep}high'
     rare_pitch = f'{pitch_pref}{sep}rare'  # relevant only for non-midi pitch kind, see `_rarest_index_n_names`
     rare_duration = f'{dur_pref}{sep}rare'  # has to be too long, assuming durations are quantized
+    rare_tokens = [rare_time_sig, rare_low_tempo, rare_high_tempo, rare_pitch, rare_duration]
     rare_time_sig_meta = (None, None)  # TODO: check, may break things?
     low_tempo_meta = TEMPO_LOW_EDGE - 1  # See `COMMON_TEMPOS`
     high_tempo_meta = TEMPO_HIGH_EDGE + 1
@@ -875,6 +876,9 @@ class MusicVocabulary:
             return step
         else:  # `midi`
             raise ValueError(f'Step is not part of vocabulary for pitch kind {pl.i(self.pitch_kind)}')
+
+    def is_rare_token(self, tok: str) -> bool:
+        return (tok in MusicVocabulary.rare_tokens) or (tok not in self)
 
     def sanitize_rare_token(self, tok: str, for_midi: bool = False, rare_pitch_only: bool = False) -> str:
         """
