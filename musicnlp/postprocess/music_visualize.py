@@ -293,7 +293,7 @@ class MusicVisualize:
             plt.title(title)
         if upper_percentile:
             vs = data[col_name]
-            q = upper_percentile if isinstance(upper_percentile, float) else 99.7  # ~3std
+            q = upper_percentile if isinstance(upper_percentile, (float, int)) else 99.7  # ~3std
 
             def get_range(vals: np.ndarray):
                 return vals.min(), np.percentile(vals, q=q)
@@ -377,6 +377,15 @@ class MusicVisualize:
             args.update(kwargs)
         return self.hist_wrapper(**args)
 
+    @staticmethod
+    def _cat_plot_force_render_n_reduce_lim(ax):
+        x_ticks = ax.get_xticks()
+        ax.set_xticks(x_ticks)  # Hack to force rendering for `show`, TODO: better ways?
+        ax.set_xticklabels([t.get_text() for t in ax.get_xticklabels()])
+
+        mi, ma = min(x_ticks), max(x_ticks)
+        ax.set_xlim([mi - 0.5, ma + 0.5])  # Reduce the white space on both sides
+
     def time_sig_dist(self, kind: str = 'hist', **kwargs) -> PlotOutputPair:
         self.logger.info('Getting stats... ')
 
@@ -394,8 +403,7 @@ class MusicVisualize:
                     t.set_text(txt)
                 if txt not in com_tss:
                     t.set_color(self.color_rare)
-            ax.set_xticks(ax.get_xticks())  # Hack to force rendering for `show`, TODO: better ways?
-            ax.set_xticklabels([t.get_text() for t in xtick_lbs])
+            MusicVisualize._cat_plot_force_render_n_reduce_lim(ax)
         ca(dist_plot_type=kind)
         title = 'Distribution of Time Signature'
         if kind == 'hist':
@@ -557,12 +565,7 @@ class MusicVisualize:
                         t.set_text(txt)
                     if val > bound:
                         t.set_color(self.color_rare)
-                x_ticks = ax.get_xticks()
-                ax.set_xticks(x_ticks)  # disables warning
-                ax.set_xticklabels([t.get_text() for t in xtick_lbs])  # Hack
-
-                mi, ma = min(x_ticks), max(x_ticks)
-                ax.set_xlim([mi-0.5, ma+0.5])  # Reduce the white space on both sides
+                MusicVisualize._cat_plot_force_render_n_reduce_lim(ax)
             ax_ = self.hist_wrapper(
                 data=df, col_name='duration', weights='count', discrete=True, kde=False,
                 title=title, xlabel=xlab,
@@ -893,9 +896,10 @@ if __name__ == '__main__':
     def plots():
         pd.set_option('display.max_rows', None)
         # plt.figure(figsize=(9, 4))
-        up = 97.7  # ~2 std on single side
+        # up = 97.7  # ~2 std on single side
         # up = 99.4  # 2.5 std on single side
         # up = 98.7  # 2.5 std on both sides
+        up = 95
         args = dict(stat='percent', upper_percentile=up)
         # _args = dict(save=True, show_title=False)
         # args.update(_args)
