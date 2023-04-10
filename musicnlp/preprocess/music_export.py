@@ -185,7 +185,7 @@ class MusicExport:
                 it = tqdm(it, total=len(filenames), desc='Extracting music', unit='song')
             for i_fl, fnm in it:
                 if with_tqdm:
-                    it.set_postfix(fnm=stem(fnm))
+                    it.set_postfix(fnm=pl.i(stem(fnm)))
                 lst_out.append(export_single(fnm))
 
         if not save_each:
@@ -359,24 +359,24 @@ if __name__ == '__main__':
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1, with_pitch_step=True),
             save_each=True,
             with_tqdm=True,
-            # parallel=False,
-            parallel=128,
+            parallel=False,
+            # parallel=12,
             parallel_mode=pl_md,
-            # n_worker=10
+            # n_worker=8
         )
         dset_path = os_join(get_base_path(), u.dset_dir)
 
         if 'LMD, ' in dnm:
-            grp_nm = 'many'
+            # grp_nm = 'many'
             # grp_nm = 'many, lp'
             # grp_nm = '090000-100000'
             # grp_nm = '160000-170000'
-            # grp_nm = '170000-178561'
+            grp_nm = '170000-178561'
 
             # resume = False
             resume = True
             if resume:
-                dir_nm_ = f'23-04-05_LMD_{{md={mode[0]}}}'
+                dir_nm_ = f'23-04-06_LMD_{{md={mode[0]}}}'
             else:
                 date = now(fmt='short-date')
                 dir_nm_ = f'{date}_LMD_{{md={mode[0]}}}'
@@ -390,13 +390,13 @@ if __name__ == '__main__':
 
             if 'many' in grp_nm:
                 paths = sum([get_lmd_paths(d) for d in [
-                    '000000-010000',
-                    '010000-020000',
-                    '020000-030000',
-                    '030000-040000',
-                    '040000-050000',
-                    '050000-060000',
-                    '060000-070000',
+                    # '000000-010000',
+                    # '010000-020000',
+                    # '020000-030000',
+                    # '030000-040000',
+                    # '040000-050000',
+                    # '050000-060000',
+                    # '060000-070000',
                     # '070000-080000',
                     # '080000-090000',
                     # '090000-100000',
@@ -408,7 +408,7 @@ if __name__ == '__main__':
                     # '150000-160000',
                     # '160000-170000',
                     # '170000-178561'
-                    # grp_nm
+                    grp_nm
                 ]], start=[])
             else:
                 paths = get_lmd_paths(grp_nm)
@@ -435,7 +435,7 @@ if __name__ == '__main__':
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    export2json()
+    # export2json()
 
     def check_extract_progress():
         def is_folder_path(path_: str) -> bool:
@@ -483,9 +483,9 @@ if __name__ == '__main__':
             # combine_single_json_songs(singe_song_dir='', dataset_name='LMD')
         else:
             # combine_single_json_songs(singe_song_dir='23-03-31_POP909_{md=f}', dataset_name='POP909')
-            combine_single_json_songs(singe_song_dir='23-03-31_MAESTRO_{md=f}', dataset_name='MAESTRO')
-            # combine_single_json_songs(singe_song_dir='22-10-22_LMD_{md=f}', dataset_name='LMD')
-    combine()
+            # combine_single_json_songs(singe_song_dir='23-03-31_MAESTRO_{md=f}', dataset_name='MAESTRO')
+            combine_single_json_songs(singe_song_dir='23-04-06_LMD_{md=f}', dataset_name='LMD')
+    # combine()
 
     def json2dset_with_split():
         """
@@ -501,7 +501,7 @@ if __name__ == '__main__':
         else:
             # fnm = '22-10-22_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
             # fnm = '22-10-22_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}'
-            fnm = '22-10-22_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
+            fnm = '23-04-09_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
         dset = me.json2dataset(fnm, split=True, test_size=0.02, test_size_range=(50, 500), seed=seed)
         mic(dset)
         mic(len(dset['train']), len(dset['test']))
@@ -509,7 +509,7 @@ if __name__ == '__main__':
         tr_samples['score'] = [s[:100] for s in tr_samples['score']]
         ts_samples['score'] = [s[:100] for s in ts_samples['score']]
         mic(tr_samples, ts_samples)
-    # json2dset_with_split()
+    json2dset_with_split()
 
     def fix_insert_key():
         """
@@ -621,9 +621,9 @@ if __name__ == '__main__':
         import re
         import shutil
 
-        dir_nm = '22-10-22_LMD_{md=f}'
+        dir_nm = '23-04-06_LMD_{md=f}'
         path_process_base = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
-        path_to_process = os_join(path_process_base, 'many, lp')
+        path_to_process = os_join(path_process_base, 'many')
         mic(path_to_process)
         paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
         pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$')

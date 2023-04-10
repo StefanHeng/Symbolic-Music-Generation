@@ -609,7 +609,7 @@ class MusicVocabulary:
             elif typ == VocabType.duration:
                 if '/' in token:
                     numer, denom = MusicVocabulary._get_group2(token, tpl['frac'])
-                    assert strict
+                    # assert strict
                     if strict and not math.log2(denom).is_integer():
                         raise ValueError(f'Duration token not quantizable: {pl.i(token)}')
                     # Quantized so definitely an exact float, but keep Fraction for exact additions

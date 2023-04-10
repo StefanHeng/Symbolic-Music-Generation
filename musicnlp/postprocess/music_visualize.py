@@ -6,7 +6,7 @@ import random
 import pickle
 from os.path import join as os_join
 from copy import deepcopy
-from typing import List, Tuple, Dict, Callable, Union, Optional
+from typing import List, Tuple, Dict, Callable, Union, Optional, Any
 from fractions import Fraction
 from dataclasses import dataclass
 from collections import defaultdict, Counter
@@ -33,6 +33,7 @@ from musicnlp.postprocess.music_stats import MusicStats
 class PlotOutputPair:
     df: pd.DataFrame = None
     ax: plt.Axes = None
+    meta: Dict[str, Any] = None
 
 
 class MusicVisualize:
@@ -293,7 +294,18 @@ class MusicVisualize:
         if upper_percentile:
             vs = data[col_name]
             q = upper_percentile if isinstance(upper_percentile, float) else 99.7  # ~3std
-            mi, ma = vs.min(), np.percentile(vs, q=q)
+
+            def get_range(vals: np.ndarray):
+                return vals.min(), np.percentile(vals, q=q)
+            if self.hue_by_dataset:
+                mis, mas = [], []
+                for dnm, d in data.groupby('dataset_name'):
+                    mi, ma = get_range(d[col_name])
+                    mis.append(mi)
+                    mas.append(ma)
+                mi, ma = min(mis), max(mas)
+            else:
+                mi, ma = get_range(vs)
             ax.set_xlim([mi, ma])
         stat = args.get('stat', None)
         if upper_percentile or stat in ['density', 'percent']:
@@ -329,10 +341,11 @@ class MusicVisualize:
     def bar_count_dist(self, **kwargs):
         return self.hist_wrapper(col_name='n_bar', title='Distribution of #bars', xlabel='#bar', **kwargs)
 
-    def tuplet_count_dist(self, **kwargs):
+    def tuplet_count_dist(self, **kwargs) -> PlotOutputPair:
         title = 'Distribution of #tuplets'
         args = dict(col_name='n_tup', title=title, xlabel='#tuplet', upper_percentile=True) | (kwargs or dict())
-        return self.hist_wrapper(**args)
+        df = self.df.groupby([self.key_dnm, 'n_tup']).size().reset_index(name='count')
+        return PlotOutputPair(df=df, ax=self.hist_wrapper(**args))
 
     def tuplet_n_note_dist(self, **kwargs) -> PlotOutputPair:
         self.logger.info('Getting stats... ')
@@ -394,8 +407,8 @@ class MusicVisualize:
             c_nm, xlab = 'time_sig_str', 'Time Signature'
             args = dict(col_name=c_nm, title=title, xlabel=xlab, yscale='log', kde=False, callback=callback)
             args.update(kwargs)
-            ax_ = self.hist_wrapper(**args)
-            return PlotOutputPair(df=self._count_by_dataset('time_sig'), ax=ax_)
+            df = self.df.groupby([self.key_dnm, c_nm]).size().reset_index(name='count')
+            return PlotOutputPair(df=df, ax=self.hist_wrapper(**args))
         else:
             df = self._count_by_dataset('time_sig')
             df['time_sig'] = df['time_sig'].map(lambda ts: f'{ts[0]}/{ts[1]}')  # so that the category ordering works
@@ -421,7 +434,9 @@ class MusicVisualize:
             ax.set_xticklabels([t.get_text() for t in xtick_lbs])  # Hack
         title, xlab = 'Distribution of Tempo', 'Tempo (bpm)'
         args = dict(col_name='tempo', title=title, xlabel=xlab, kde=False, callback=callback) | kwargs
-        return self.hist_wrapper(**args)
+        # get tempo occurrence counts by dataset
+        df = self.df.groupby([self.key_dnm, 'tempo']).size().reset_index(name='count')
+        return PlotOutputPair(df=df, ax=self.hist_wrapper(**args))
 
     def key_dist(self, weighted=True, **kwargs):
         self.logger.info('Getting stats... ')
@@ -512,13 +527,16 @@ class MusicVisualize:
         self.logger.info('Getting stats... ')
         ca(dist_plot_type=kind)
         ca.check_mismatch('Plot Note Type', note_type, ['all', 'tuplet'])
-        title, xlab = 'Distribution of Note Duration', 'Duration (quarter length)'
+        is_tup = note_type == 'tuplet'
+        nt = 'Tuplet Note' if is_tup else 'Note'
+        title, xlab = f'Distribution of {nt} Duration', 'Duration (quarter length)'
         if kind == 'hist':
-            k = 'duration_count' if note_type == 'all' else 'tuplet_duration_count'
+            k = 'tuplet_duration_count' if is_tup else 'duration_count'
             df = self._count_by_dataset(k)
             df.rename(columns={k: 'duration'}, inplace=True)
             d_uniq = df.duration.unique()
-            bound = min(d_uniq.max(), get_common_time_sig_duration_bound())
+            d_uniq = [d for d in d_uniq if d is not None]
+            bound = min(max(d_uniq), get_common_time_sig_duration_bound())
 
             df.duration = df.duration.apply(str)
             df_col2cat_col(df, 'duration', [str(d) for d in sorted(d_uniq)])
@@ -583,13 +601,12 @@ class MusicVisualize:
             y = [counts[d] for d in durs_str]
             return barplot(x=durs_str, y=y, palette=cs, xlabel=xlab, ylabel='count', yscale='log', title=title)
 
-    def token_coverage_dist(self, ratio: float = 0.95):
+    def token_coverage_dist(self, ratio: float = 0.95) -> PlotOutputPair:
         """
         Plots side-by-side and cumulative distribution of tokens for each dataset
         """
         df = self._count_by_dataset('raw_count')
         df.rename(columns={'raw_count': 'token'}, inplace=True)
-        mic(df)
         # split into dataframes by dataset, convert each into dict
         dfs = {dnm: df[df[self.key_dnm] == dnm] for dnm in self.dnms}
         counts = {dnm: dict(zip(df.token, df['count'])) for dnm, df in dfs.items()}
@@ -661,8 +678,7 @@ class MusicVisualize:
         axs[1].set_title('Token Cumulative Distribution')
         axs[1].legend()
         fig.suptitle('Token Coverage')
-        plt.show()
-        return metas
+        return PlotOutputPair(ax=axs, meta=metas)
 
     def empty_channel_ratio(self) -> PlotOutputPair:
         """
@@ -744,7 +760,6 @@ class MusicVisualize:
         df.drop(columns=['count'], inplace=True)
         df.rename(columns=dict(total_token_count='kind'), inplace=True)
         df['ratio'] = (df_rare['count'] / df_total['count']) * 100
-        mic(df)
 
         title = 'Ratio of Uncommon Tokens by Token Type'
         ax = barplot(
@@ -825,7 +840,7 @@ class MusicVisualize:
             save_fig(title_)
         if show:
             plt.show()
-        return ax_
+        return PlotOutputPair(df=df, ax=ax_)
         # TODO: set left to log scale and right to linear scale?
         # https://stackoverflow.com/questions/21746491/combining-a-log-and-linear-scale-in-matplotlib/21870368
         # solution here is real complicated
@@ -840,17 +855,16 @@ if __name__ == '__main__':
 
     pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD', as_full_path=True)
     # dnms, fnms = ['POP909'], [pop]
-    dnms, fnms = ['POP909', 'MAESTRO'], [pop, mst]
-    # dnms, fnms = ['POP909', 'MAESTRO', 'LMD'], [pop, mst, lmd]
+    # dnms, fnms = ['POP909', 'MAESTRO'], [pop, mst]
+    dnms, fnms = ['POP909', 'MAESTRO', 'LMD'], [pop, mst, lmd]
     if dnms == ['POP909']:
         # cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
         cnm = f'22-04-05_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
         cnm = f'22-04-05_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
-    elif dnms == ['POP909', 'MAESTRO', 'LMD']:
-        cnm = f'22-04-05_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
     else:
-        cnm = None
+        assert dnms == ['POP909', 'MAESTRO', 'LMD']
+        cnm = f'22-04-09_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
     # cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
     mv = MusicVisualize(
@@ -877,25 +891,34 @@ if __name__ == '__main__':
     # check_rare_time_sigs()
 
     def plots():
+        pd.set_option('display.max_rows', None)
         # plt.figure(figsize=(9, 4))
-        args = dict(stat='percent', upper_percentile=97.7)  # ~2std on single side
+        up = 97.7  # ~2 std on single side
+        # up = 99.4  # 2.5 std on single side
+        # up = 98.7  # 2.5 std on both sides
+        args = dict(stat='percent', upper_percentile=up)
         # _args = dict(save=True, show_title=False)
         # args.update(_args)
         # mv.token_length_dist(**args)
         # mv.token_length_dist(tokenize_scheme='wordpiece', **args)
-        # mv.token_length_dist(tokenize_scheme='pairmerge', **args)
-        # mv.bar_count_dist(**args)
+        mv.token_length_dist(tokenize_scheme='pairmerge', **args)
+
         # mv.song_duration_dist(**args)
-        # mv.time_sig_dist(yscale='linear', stat='percent')
+        # mv.bar_count_dist(**args)
+
+        # mic(mv.time_sig_dist(yscale='linear', stat='percent').df)
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
+
         # mv.note_pitch_dist(stat='percent')
         # mv.note_duration_dist(note_type='all', stat='percent')
-        # mv.note_duration_dist(note_type='tuplet', stat='percent')
+        # mic(mv.note_duration_dist(note_type='tuplet', stat='percent').df)
+
         # mv.tuplet_count_dist(**args)
         # mv.tuplet_n_note_dist(**args)
         # mv.tuplet_duration_ratio()
-        mv.token_coverage_dist(ratio=0.99)
+
+        # mv.token_coverage_dist(ratio=0.99)
         # mv.empty_channel_ratio()
         # mv.rare_token_ratio()
         # mv.warning_type_dist(**_args)

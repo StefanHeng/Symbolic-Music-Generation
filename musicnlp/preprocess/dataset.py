@@ -29,7 +29,7 @@ DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {  # Are in pitch_kind `
     # `dataset name` => `mode` => `filename`
     'LMD': {
         'melody': '',
-        'full': '22-10-22_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
+        'full': '23-04-09_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
     },
     'MAESTRO': {
         'melody': '',
@@ -80,7 +80,10 @@ def load_songs(
             for s in dset:
                 yield s if as_dict else s['score']
 
-        return gen() if as_iter else list(gen())
+        if as_iter:
+            return gen()
+        else:
+            return dset if as_dict else [s['score'] for s in dset]
     if as_iter:
         return chain_its(_load_single_ds(dnm) for dnm in dnms)
     else:

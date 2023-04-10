@@ -1383,8 +1383,10 @@ if __name__ == '__main__':
         pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
         # dnms = [pop]
         # dnms = [mst]
-        dnms = [pop, mst]
-        songs = dataset.load_songs(*dnms)
+        # dnms = [pop, mst]
+        dnms = [lmd]
+        is_lmd = dnms == [lmd]
+        songs = dataset.load_songs(*dnms, as_iter=is_lmd)
         rest_meta = MusicVocabulary.step_rest_pitch_meta
 
         check_no_rest = True
@@ -1413,11 +1415,11 @@ if __name__ == '__main__':
             with open(_fnm_broken, 'r') as f:
                 _txt_broken = json.load(f)['music']['score']
                 # mic(_txt_broken)
-        for song in tqdm(songs, unit='song', desc='Sanity check Extracted Property'):
+        for song in tqdm(songs, unit='song', desc='Sanity check Extracted Property', total=176640 if is_lmd else None):
             txt = song['score']
             if check_no_rest_implement:
                 txt = _txt_broken
-            lst_elms = mc.str2music_elms(txt, pitch_kind='step').elms_by_bar
+            lst_elms = mc.str2music_elms(txt, pitch_kind='step', strict=False).elms_by_bar
             for i_bar, elms in enumerate(lst_elms):
                 if check_no_rest:
                     for i, elm in enumerate(elms[:-1]):
