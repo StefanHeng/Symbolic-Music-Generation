@@ -357,7 +357,6 @@ class MusicVisualize:
 
             loc = plticker.MultipleLocator(base=2)  # Use more frequent ticks cos the actual # matters
             ax.xaxis.set_major_locator(loc)
-            # raise NotImplementedError
             ma, mi = df[k].max(), df[k].min()
             ax.set_xlim([mi, ma])
         title = 'Distribution of #notes in tuplets'
