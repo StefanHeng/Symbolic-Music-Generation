@@ -1,7 +1,8 @@
 import os
+import re
 import pickle
 from os.path import join as os_join
-from typing import Dict, Tuple, Any, Optional, Iterable, Union
+from typing import Dict, Tuple, List, Any, Optional, Iterable, Union
 from fractions import Fraction
 from collections import Counter
 
@@ -16,10 +17,9 @@ from tqdm.auto import tqdm
 from stefutil import *
 from musicnlp.util import *
 import musicnlp.util.music as music_util
-from musicnlp.postprocess import prettier_fraction_labels
 
 
-__all__ = ['get_plot_info', 'side_by_side_plot']
+__all__ = ['get_plot_info', 'split_df_by_dataset', 'side_by_side_plot']
 
 
 logger = get_logger('MXL Check')
@@ -46,34 +46,36 @@ def extract_single(fnm: str = None) -> Optional[Dict[str, Any]]:
     )
 
 
-def extract(dataset_name: str = None):
-    read_errs_ = dict(mid=0, mxl=0)
+def extract(dataset_names: List[str] = None):
+    fmts = [f'{dnm}-{kd}' for dnm in dataset_names for kd in ['mid', 'mxl']]
+    read_errs_ = {f: 0 for f in fmts}
 
     rows = []
     concurrent = True
-    mic(concurrent)
-    for kd in ['mid', 'mxl']:
-        fnms = music_util.get_converted_song_paths(dataset_name=dataset_name, fmt=kd)
-        desc = f'Extracting {kd} info'
-        if concurrent:
-            # No-batching is faster for POP909
-            args = dict(mode='process', with_tqdm=dict(desc=desc, total=len(fnms)))
-            for d in conc_yield(fn=extract_single, args=fnms, **args):  # Doesn't work in ipython notebook
-                if d is None:
-                    read_errs_[kd] += 1
-                else:
-                    rows.append(d | dict(format=kd))
-        else:
-            for f in tqdm(fnms, desc=desc):
-                d = extract_single(f)
-                if d is None:
-                    read_errs_[kd] += 1
-                else:
-                    rows.append(d | dict(format=kd))
+    for dnm in dataset_names:
+        for kd in ['mid', 'mxl']:
+            fnms = music_util.get_converted_song_paths(dataset_name=dnm, fmt=kd, backend='all')
+            desc = f'Extracting {dnm} {kd} info'
+            fmt = f'{dnm}-{kd}'
+            if concurrent:
+                # No-batching is faster for POP909
+                args = dict(mode='process', batch_size=None, with_tqdm=dict(desc=desc, total=len(fnms)))
+                for d in conc_yield(fn=extract_single, args=fnms, **args):  # Doesn't work in ipython notebook
+                    if d is None:
+                        read_errs_[fmt] += 1
+                    else:
+                        rows.append(d | dict(format=fmt))
+            else:
+                for f in tqdm(fnms, desc=desc):
+                    d = extract_single(f)
+                    if d is None:
+                        read_errs_[fmt] += 1
+                    else:
+                        rows.append(d | dict(format=fmt))
     return pd.DataFrame(rows), read_errs_
 
 
-def get_plot_info(dataset_name: str = None, cache: str = None) -> Tuple[pd.DataFrame, Dict[str, int]]:
+def get_plot_info(dataset_names: List[str] = None, cache: str = None) -> Tuple[pd.DataFrame, Dict[str, int]]:
     if cache:
         path = os_join(u.proj_path, 'notebook', 'pre_process', f'{cache}.pkl')
         if os.path.exists(path):
@@ -82,13 +84,24 @@ def get_plot_info(dataset_name: str = None, cache: str = None) -> Tuple[pd.DataF
                 c = pickle.load(fl)
             df, read_errs = c['df'], c['read_errs']
         else:
-            df, read_errs = extract(dataset_name=dataset_name)
+            df, read_errs = extract(dataset_names=dataset_names)
             with open(path, 'wb') as fl:
                 pickle.dump(dict(df=df, read_errs=read_errs), fl)
                 logger.info(f'Cached data saved to {pl.i(path)} ')
     else:
-        df, read_errs = extract(dataset_name=dataset_name)
+        df, read_errs = extract(dataset_names=dataset_names)
     return df, read_errs
+
+
+format_pattern = re.compile(r'^(?P<dataset_name>\w+)-(?P<fmt>\w+)$')
+dnm_order = ['POP909', 'MAESTRO', 'LMD']
+
+
+def split_df_by_dataset(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    fmts = df.format.unique()
+    dnms_ = set(format_pattern.match(f).group('dataset_name') for f in fmts)
+    dnms_ = sorted(dnms_, key=lambda dnm: dnm_order.index(dnm))
+    return {dnm: df[df.format.str.startswith(dnm)] for dnm in dnms_}
 
 
 def merge_counts(cs: Iterable[Dict]) -> Dict:
@@ -104,7 +117,8 @@ def merge_counter_data(df: pd.DataFrame = None, aspect: str = None) -> Tuple[pd.
 
     # group by format, for each format, create a Counter and update by dict
     srs_counts = df.groupby('format').apply(lambda d: d[aspect].apply(Counter).sum())
-    assert srs_counts['mid'] == merge_counts(df[df.format == 'mid'][aspect])   # sanity check
+    fmt_ = next(iter(df['format'].unique()))
+    assert srs_counts[fmt_] == merge_counts(df[df.format == fmt_][aspect])   # sanity check pd operation
     # for each counter, expand it to `aspect`, `count` pairs
     dfs = []
     for fmt, c in srs_counts.items():
@@ -136,7 +150,7 @@ def expand_by_count(df: pd.DataFrame, count_col: str) -> pd.DataFrame:
 
 def side_by_side_plot(
         df: pd.DataFrame = None, aspect: str = None, hist_args: Dict[str, Any] = None, box_args: Dict[str, Any] = None,
-        upper_percentile: Union[float, int] = None, subplots_args: Dict[str, Any] = None
+        upper_percentile: Union[float, int] = None, subplots_args: Dict[str, Any] = None, title: str = None
 ):
     is_counter_data = df[aspect].apply(lambda d: isinstance(d, dict)).all()
 
@@ -144,14 +158,16 @@ def side_by_side_plot(
     if is_counter_data:
         df_hs, df_bx = merge_counter_data(df=df, aspect=aspect)
         wt = 'count'
-        # mic('here')
-        # raise NotImplementedError
         df_bx = expand_by_count(df=df_bx, count_col='count')
     else:  # sanity check
         wt = None
         assert df[aspect].apply(lambda d: isinstance(d, (int, float))).all()
     fig, axs = plt.subplots(nrows=2, ncols=1, **(subplots_args or dict()))
-    args = dict(stat='percent', kde=True, palette='husl', weights=wt) | (hist_args or dict())
+    args = dict(stat='percent', kde=True, palette='husl', weights=wt)
+    # check if `aspect` contains all the same value
+    if df_hs[aspect].nunique() == 1:
+        args['kde'] = False
+    args |= (hist_args or dict())
     sns.histplot(data=df_hs, x=aspect, hue='format', ax=axs[0], **args)
     if upper_percentile:
         mas = []
@@ -166,13 +182,13 @@ def side_by_side_plot(
     args = dict(showmeans=True, meanprops=mp, palette='husl') | (box_args or dict())
     sns.boxplot(data=df_bx, x='format', y=aspect, ax=axs[1], **args)
 
+    title_ = f'MID v.s. MXL on {aspect}'
+    if title:
+        title_ = f'{title_} ({title})'
+    fig.suptitle(title_)
+
     if is_counter_data:
         ax = axs[0]
-        plt.gcf().canvas.draw()
-        # prettier_fraction_labels(ax=ax)
-
-        # ax.set_xticks(ax.get_xticklabels())  # Hack to force rendering for `show`
-        # ax.set_xticklabels([t.get_text() for t in ax.get_xticklabels()])
         ax.xaxis.set_tick_params(labelsize=7)
         for tick in ax.get_xticklabels():
             tick.set_rotation(45)
@@ -190,10 +206,18 @@ def side_by_side_plot(
 if __name__ == '__main__':
     pd.set_option('display.max_rows', 256)
 
-    dnm = 'POP909'
-    cch = f'Mxl-Check-Cache_{dnm}'
+    # dnms = ['POP909']
+    dnms = ['POP909', 'MAESTRO']
+    # dnms = ['POP909', 'MAESTRO', 'LMD']
+    if dnms == ['POP909']:
+        cnm = f'Mxl-Check-Cache_{{dnm=pop}}'
+    elif dnms == ['POP909', 'MAESTRO']:
+        cnm = f'Mxl-Check-Cache_{{dnm=pop&mst}}'
+    else:
+        cnm = f'Mxl-Check-Cache_{{dnm=all}}'
 
     def check_file_loading():
+        dnm = 'POP909'
         fnms_xml = music_util.get_converted_song_paths(dataset_name=dnm, fmt='mxl')
         fnms_midi = music_util.get_converted_song_paths(dataset_name=dnm, fmt='mid')
         assert all(stem(fn) == stem(fn2) for fn, fn2 in zip(fnms_xml, fnms_midi))  # sanity check files are paired
@@ -201,14 +225,19 @@ if __name__ == '__main__':
     # check_file_loading()
 
     def check_run():
-        df, read_errs = get_plot_info(dataset_name=dnm, cache=cch)
+        df, read_errs = get_plot_info(dataset_names=dnms, cache=cnm)
         mic(df, read_errs)
 
         # k = 'n_note'
-        k = 'durations_note'
+        # k = 'durations_note'
+        k = 'n_tempo'
 
-        _, counts = side_by_side_plot(df=df, aspect=k, upper_percentile=None, subplots_args=dict(figsize=(32, 12)))
-        mic(counts)
-        plt.show()
+        for dnm, df_ in split_df_by_dataset(df=df).items():
+            if dnm == 'POP909':
+                continue
+            mic(df_)
+            _, counts = side_by_side_plot(df=df_, aspect=k, title=dnm)
+            mic(dnm, counts)
+            plt.show()
         # save_fig(f'{dnm}_{k}')
     check_run()
