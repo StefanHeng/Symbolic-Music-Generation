@@ -29,11 +29,42 @@ from musicnlp.trainer import load_wordpiece_tokenizer, load_pairmerge_tokenizer
 from musicnlp.postprocess.music_stats import MusicStats
 
 
+__all__ = ['prettier_fraction_labels', 'MusicVisualize']
+
+
 @dataclass
 class PlotOutputPair:
     df: pd.DataFrame = None
     ax: plt.Axes = None
     meta: Dict[str, Any] = None
+
+
+_pattern_frac = re.compile(r'^(?P<numer>\d+)/(?P<denom>\d+)$')
+
+
+def _parse_frac(s: str) -> Tuple[int, int]:
+    m = _pattern_frac.match(s)
+    assert m
+    return int(m.group('numer')), int(m.group('denom'))
+
+
+def _frac2tex_frac(numer: int, denom: int, enforce_denom: bool = True) -> str:
+    if enforce_denom:
+        assert denom != 1
+    return rf'$\nicefrac{{{numer}}}{{{denom}}}$'
+
+
+def prettier_fraction_labels(ax: plt.Axes):
+    xtick_lbs = ax.get_xticklabels()
+
+    for t in xtick_lbs:
+        txt = t.get_text()
+        if '/' in txt:
+            numer, denom = _parse_frac(txt)
+            t.set_usetex(True)
+            t.set_text(_frac2tex_frac(numer, denom))
+        else:
+            t.set_text(txt)
 
 
 class MusicVisualize:
@@ -44,7 +75,6 @@ class MusicVisualize:
     """
     key_dnm = 'dataset_name'
     color_rare = hex2rgb('#E06C75', normalize=True)
-    pattern_frac = re.compile(r'^(?P<numer>\d+)/(?P<denom>\d+)$')
 
     rare_token_types = ['time_sig', 'tempo', 'pitch', 'duration']
 
@@ -395,9 +425,9 @@ class MusicVisualize:
             for t in xtick_lbs:
                 txt = t.get_text()
                 if '/' in txt:
-                    numer, denom = MusicVisualize._parse_frac(txt)
+                    numer, denom = _parse_frac(txt)
                     t.set_usetex(True)
-                    t.set_text(MusicVisualize._frac2tex_frac(numer, denom, enforce_denom=False))
+                    t.set_text(_frac2tex_frac(numer, denom, enforce_denom=False))
                 else:
                     t.set_text(txt)
                 if txt not in com_tss:
@@ -513,18 +543,6 @@ class MusicVisualize:
             title=title, xlabel=xlab, kde=True, callback=callback, **kwargs
         )
 
-    @staticmethod
-    def _parse_frac(s: str) -> Tuple[int, int]:
-        m = MusicVisualize.pattern_frac.match(s)
-        assert m
-        return int(m.group('numer')), int(m.group('denom'))
-
-    @staticmethod
-    def _frac2tex_frac(numer, denom, enforce_denom: bool = True) -> str:
-        if enforce_denom:
-            assert denom != 1
-        return rf'$\nicefrac{{{numer}}}{{{denom}}}$'
-
     def note_duration_dist(self, kind='hist', note_type: str = 'all', **kwargs) -> Optional[PlotOutputPair]:
         """
         Distribution of note durations
@@ -555,10 +573,10 @@ class MusicVisualize:
                 for t in xtick_lbs:
                     txt = t.get_text()
                     if '/' in txt:
-                        numer, denom = MusicVisualize._parse_frac(txt)
+                        numer, denom = _parse_frac(txt)
                         val = numer / denom
                         t.set_usetex(True)
-                        t.set_text(MusicVisualize._frac2tex_frac(numer, denom))
+                        t.set_text(_frac2tex_frac(numer, denom))
                     else:
                         val = int(txt)
                         t.set_text(txt)
@@ -904,12 +922,12 @@ if __name__ == '__main__':
         # args.update(_args)
         # mv.token_length_dist(**args)
         # mv.token_length_dist(tokenize_scheme='wordpiece', **args)
-        mv.token_length_dist(tokenize_scheme='pairmerge', **args)
+        # mv.token_length_dist(tokenize_scheme='pairmerge', **args)
 
         # mv.song_duration_dist(**args)
         # mv.bar_count_dist(**args)
 
-        # mic(mv.time_sig_dist(yscale='linear', stat='percent').df)
+        mic(mv.time_sig_dist(yscale='linear', stat='percent').df)
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
 
