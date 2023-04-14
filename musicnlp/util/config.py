@@ -88,6 +88,19 @@ config_dict: dict = {
                 song_fmt_mxl='**/*.mxl'
             )
         ),
+        'NES-MDB': dict(
+            # See https://github.com/chrisdonahue/nesmdb
+            nm='NES Music Database',
+            original=dict(
+                dir_nm='original/nesmdb_midi',
+                song_fmt_mid='**/*.mid',
+            ),
+            converted=dict(
+                dir_nm='converted/NES-MDB',
+                song_fmt_mid='*.mid',
+                song_fmt_mxl='*.mxl'
+            )
+        ),
         'midi-eg': dict(
             nm='Some hand-selected MIDI samples',
             dir_nm='MIDI-eg',
@@ -157,15 +170,15 @@ def get_stats(songs: List[Dict]):
 
 
 def get_dataset_meta(dataset_name: str):
-    ca.check_mismatch('Dataset Name', dataset_name, ['POP909', 'LMD-cleaned', 'LMD', 'LMCI'])
-    if dataset_name in ['LMD', 'LMCI']:
+    ca.check_mismatch('Dataset Name', dataset_name, ['POP909', 'LMD-cleaned', 'LMD', 'LMCI', 'MAESTRO', 'NES-MDB'])
+    if dataset_name in ['LMD', 'LMCI', 'MAESTRO', 'NES-MDB']:
         d_dset = get(config_dict, f'datasets.{dataset_name}.original')
         path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
 
         if dataset_name == 'LMCI':
             exts = ('.mid', '.midi')  # some are in upper case
             n = len(set(p for p in glob.iglob(os_join(path_ori, '**/*'), recursive=True) if p.lower().endswith(exts)))
-        else:  # `LMD`
+        else:  # `LMD`, `MAESTRO`, `NES-MDB`
             n = len(set(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True)))
         return dict(n_song=n)
     else:
@@ -176,7 +189,8 @@ def get_dataset_meta(dataset_name: str):
             def map_single(d: Dict):
                 return dict(artist=d['artist'], title=d['name'])
             songs = [map_single(d) for d in df.T.to_dict().values()]
-        else:  # `LMD-cleaned`
+        else:
+            assert dataset_name == 'LMD-cleaned'
             d_dset = get(config_dict, f'datasets.{dataset_name}.original')
             path_ori = os_join(BASE_PATH, DSET_DIR, d_dset['dir_nm'])
 
@@ -205,7 +219,7 @@ def get_dataset_meta(dataset_name: str):
         return get_stats(songs)
 
 
-for dnm in ['POP909', 'LMD-cleaned', 'LMD', 'LMCI']:
+for dnm in ['POP909', 'LMD-cleaned', 'LMD', 'LMCI', 'MAESTRO', 'NES-MDB']:
     set_(config_dict, f'datasets.{dnm}.meta', get_dataset_meta(dnm))
 
 
@@ -219,7 +233,7 @@ if __name__ == '__main__':
     import json
     from project_paths import PROJ_DIR, PKG_NM
 
-    mic.output_width = 512
+    mic.output_width = 256
 
     fl_nm = 'config.json'
     mic(config_dict)

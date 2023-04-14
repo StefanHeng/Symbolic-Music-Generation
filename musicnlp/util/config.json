@@ -61,6 +61,9 @@
                 "song_fmt_mid": "*.mid",
                 "song_fmt_mxl": "*.mxl",
                 "dir_nm": "converted/MAESTRO"
+            },
+            "meta": {
+                "n_song": 1276
             }
         },
         "POP909": {
@@ -96,6 +99,21 @@
             },
             "meta": {
                 "n_song": 128478
+            }
+        },
+        "NES-MDB": {
+            "nm": "NES Music Database",
+            "original": {
+                "dir_nm": "original/nesmdb_midi",
+                "song_fmt_mid": "**/*.mid"
+            },
+            "converted": {
+                "dir_nm": "converted/NES-MDB",
+                "song_fmt_mid": "*.mid",
+                "song_fmt_mxl": "*.mxl"
+            },
+            "meta": {
+                "n_song": 5278
             }
         },
         "midi-eg": {
@@ -223,6 +241,7 @@
                 "MAESTRO",
                 "POP909",
                 "LMCI",
+                "NES-MDB",
                 "midi-eg",
                 "mxl-eg",
                 "my",

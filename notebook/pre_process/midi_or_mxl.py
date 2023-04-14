@@ -34,6 +34,7 @@ def extract_single(fnm: str = None) -> Optional[Dict[str, Any]]:
     # grab all notes in the piece
     notes = scr.flat.notes
     rests = scr.flat[m21.note.Rest]
+    assert len(scr.parts) >= 1  # sanity check
     return dict(
         n_note=len(notes),
         n_rest=len(rests),
@@ -46,21 +47,37 @@ def extract_single(fnm: str = None) -> Optional[Dict[str, Any]]:
     )
 
 
-def extract(dataset_names: List[str] = None):
+def extract(dataset_names: List[str] = None, subset: float = None, subset_bound: int = 4096):
     fmts = [f'{dnm}-{kd}' for dnm in dataset_names for kd in ['mid', 'mxl']]
     read_errs_ = {f: 0 for f in fmts}
 
     rows = []
     concurrent = True
     for dnm in dataset_names:
+        d_fnms = {
+            kd: music_util.get_converted_song_paths(dataset_name=dnm, fmt=kd, backend='all') for kd in ['mid', 'mxl']
+        }
+        lns = [len(paths) for paths in d_fnms.values()]
+        assert all(ln == lns[0] for ln in lns)  # sanity check
+        ln = lns[0]
+
+        if subset_bound and ln > subset_bound:
+            if subset is None:
+                subset = subset_bound / ln
+            new_sz = int(ln * subset)
+            logger.warning(f'Using subset {pl.i(subset)} for {pl.i(dnm)}: {pl.i(ln)} -> {pl.i(new_sz)}')
+            # randomly subsample pieces
+            idxs = np.random.choice(a=ln, size=new_sz, replace=False)
+            d_fnms = {kd: [v[i] for i in idxs] for kd, v in d_fnms.items()}
+
         for kd in ['mid', 'mxl']:
-            fnms = music_util.get_converted_song_paths(dataset_name=dnm, fmt=kd, backend='all')
+            fnms = d_fnms[kd]
             desc = f'Extracting {dnm} {kd} info'
             fmt = f'{dnm}-{kd}'
-            if concurrent:
+            if concurrent:  # Doesn't work in ipython notebook
                 # No-batching is faster for POP909
-                args = dict(mode='process', batch_size=None, with_tqdm=dict(desc=desc, total=len(fnms)))
-                for d in conc_yield(fn=extract_single, args=fnms, **args):  # Doesn't work in ipython notebook
+                args = dict(mode='process', batch_size=128, with_tqdm=dict(desc=desc, total=len(fnms), unit='piece'))
+                for d in conc_yield(fn=extract_single, args=fnms, **args, n_worker=8):
                     if d is None:
                         read_errs_[fmt] += 1
                     else:
@@ -75,7 +92,10 @@ def extract(dataset_names: List[str] = None):
     return pd.DataFrame(rows), read_errs_
 
 
-def get_plot_info(dataset_names: List[str] = None, cache: str = None) -> Tuple[pd.DataFrame, Dict[str, int]]:
+def get_plot_info(
+        dataset_names: List[str] = None, cache: str = None, subset: float = None, subset_bound: int = 4096
+) -> Tuple[pd.DataFrame, Dict[str, int]]:
+    ext_args = dict(dataset_names=dataset_names, subset=subset, subset_bound=subset_bound)
     if cache:
         path = os_join(u.proj_path, 'notebook', 'pre_process', f'{cache}.pkl')
         if os.path.exists(path):
@@ -84,12 +104,12 @@ def get_plot_info(dataset_names: List[str] = None, cache: str = None) -> Tuple[p
                 c = pickle.load(fl)
             df, read_errs = c['df'], c['read_errs']
         else:
-            df, read_errs = extract(dataset_names=dataset_names)
+            df, read_errs = extract(**ext_args)
             with open(path, 'wb') as fl:
                 pickle.dump(dict(df=df, read_errs=read_errs), fl)
                 logger.info(f'Cached data saved to {pl.i(path)} ')
     else:
-        df, read_errs = extract(dataset_names=dataset_names)
+        df, read_errs = extract(**ext_args)
     return df, read_errs
 
 
@@ -207,8 +227,9 @@ if __name__ == '__main__':
     pd.set_option('display.max_rows', 256)
 
     # dnms = ['POP909']
-    dnms = ['POP909', 'MAESTRO']
-    # dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['POP909', 'MAESTRO']
+    dnms = ['POP909', 'MAESTRO', 'LMD']
+    # dnms = ['LMD']
     if dnms == ['POP909']:
         cnm = f'Mxl-Check-Cache_{{dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
@@ -225,7 +246,7 @@ if __name__ == '__main__':
     # check_file_loading()
 
     def check_run():
-        df, read_errs = get_plot_info(dataset_names=dnms, cache=cnm)
+        df, read_errs = get_plot_info(dataset_names=dnms, cache=cnm, subset=0.1)
         mic(df, read_errs)
 
         # k = 'n_note'
@@ -233,7 +254,7 @@ if __name__ == '__main__':
         k = 'n_tempo'
 
         for dnm, df_ in split_df_by_dataset(df=df).items():
-            if dnm == 'POP909':
+            if dnm != 'LMD':
                 continue
             mic(df_)
             _, counts = side_by_side_plot(df=df_, aspect=k, title=dnm)

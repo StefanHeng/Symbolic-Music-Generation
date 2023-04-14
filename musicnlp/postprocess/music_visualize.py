@@ -887,9 +887,8 @@ if __name__ == '__main__':
         cnm = f'22-04-09_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
     # cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
-    mv = MusicVisualize(
-        filename=fnms, dataset_name=dnms, hue_by_dataset=True, cache=cnm, subset=subset_, pitch_kind=pch_kd
-    )
+    args = dict(cache=cnm, subset=subset_, subset_bound=8196)
+    mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, pitch_kind=pch_kd, **args)
     # mic(mv.df)
 
     def check_warn():
