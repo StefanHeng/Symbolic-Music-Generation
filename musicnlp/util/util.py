@@ -14,7 +14,7 @@ from musicnlp.util.project_paths import BASE_PATH, PROJ_DIR, PKG_NM, DSET_DIR, M
 __all__ = [
     'sconfig', 'u', 'save_fig',
     'on_great_lakes', 'get_base_path',
-    'serialize_frac', 'read_pickle'
+    'serialize_frac', 'read_pickle', 'SeriFrac'
 ]
 
 
@@ -43,7 +43,10 @@ def get_base_path(use_great_lakes_scratch: bool = True, gl_account_name: str = '
         return BASE_PATH
 
 
-def serialize_frac(num: Union[Fraction, float]) -> Union[str, float]:
+SeriFrac = Union[str, float]
+
+
+def serialize_frac(num: Union[Fraction, float]) -> SeriFrac:
     return f'{num.numerator}/{num.denominator}' if isinstance(num, Fraction) else num
 
 

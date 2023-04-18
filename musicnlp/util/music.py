@@ -4,7 +4,7 @@ import glob
 import json
 from os.path import join as os_join
 from shutil import copyfile
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from collections import defaultdict
 
 import pandas as pd
@@ -294,7 +294,6 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
         mic(set_dup_fnm)
 
         dup_fnm2ver = defaultdict(int)
-        # paths_processed, path2fnm = set(), dict()
         it = tqdm(paths, desc=f'Copying w/ new name', unit='song')
         for p in it:
             fnm_ori = stem(p)
@@ -307,13 +306,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
                 logger.info(f'Filename {pl.i(fnm)} is duplicated, renaming to {pl.i(fnm_)}')
             else:
                 fnm_ = fnm
-            # if fnm in path2fnm:
-            #     raise ValueError(f'Filename collision: {pl.i(fnm)} for {pl.i(path2fnm[fnm])} and {pl.i(p)}')
-            # else:
-            #     path2fnm[fnm] = p
-            # mic(fnm)
             copyfile(p, os_join(path_exp, f'{fnm_}.mid'))
-            # paths_processed.add(p)
         # sanity check no filename duplication
         assert len(list(i for i in glob.iglob(os_join(path_exp, '*.mid')))) == n_song
 
@@ -349,7 +342,7 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
     return [d[min(d)] for d in d_song2fnms.values()]
 
 
-def get_converted_song_paths(dataset_name: str = None, fmt='mxl', backend: str = 'MS') -> List[str]:
+def get_converted_song_paths(dataset_name: str = None, fmt='mxl', backend: Optional[str] = 'MS') -> List[str]:
     """
     :param dataset_name: dataset name
     :param fmt: song file format, one of ['mid', 'mxl']
@@ -376,7 +369,8 @@ def get_converted_song_paths(dataset_name: str = None, fmt='mxl', backend: str =
         return sorted(fls_ms + fls_lp, key=lambda f: stem(f))
     else:
         dset_path = os_join(get_base_path(), u.dset_dir)
-        dir_nm = f'{dir_nm}, {backend}'
+        if backend is not None:
+            dir_nm = f'{dir_nm}, {backend}'
         path = os_join(dset_path, dir_nm, d_dset[f'song_fmt_{fmt}'])
         return sorted(glob.iglob(path, recursive=True))
 
@@ -476,7 +470,7 @@ def get_conversion_meta(dataset_name: str = 'LMD'):
 
 
 if __name__ == '__main__':
-    mic.output_width = 512
+    mic.output_width = 256
 
     def check_processed_path():
         mic(get_processed_path())
@@ -495,7 +489,7 @@ if __name__ == '__main__':
     # clean_dataset_paths('LMD')
     # clean_dataset_paths('MAESTRO')
     # clean_dataset_paths('LMCI')
-    clean_dataset_paths('NES-MDB')
+    # clean_dataset_paths('NES-MDB')
 
     # import music21 as m21
     # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
@@ -644,3 +638,55 @@ if __name__ == '__main__':
     #     mic(len(files))
     #     for path in files:
     #         pass
+
+    def fix_ori_lmci_wrong_fnm():
+        """
+        Original LMCI midi filename change logic was wrong, duplicated filenames always starts with `version 0`
+
+        Re-map using updated logic
+        """
+        dnm = 'LMCI'
+        # dir_nm_to_modify = 'LMCI, broken copy'
+        # dir_nm_to_modify = 'LMCI, LP'
+        dir_nm_to_modify = 'LMCI, MS'
+        correct_fnms = [stem(f) for f in get_converted_song_paths(dataset_name=dnm, fmt='mid', backend=None)]
+        # mic(correct_fnms[:5])
+        n_song = sconfig(f'datasets.{dnm}.meta.n_song')
+        assert len(correct_fnms) == n_song
+
+        pattern_converted = re.compile(r'^(?P<ordinal>\d{6})_(?P<fnm>.+)$')
+
+        def get_ordinal(fnm: str) -> int:
+            m = pattern_converted.match(fnm)
+            assert m is not None
+            return int(m.group('ordinal'))
+        ordinal2correct_fnm = {get_ordinal(fnm): fnm for fnm in correct_fnms}
+
+        # both `mid` and `mxl` files
+        path_base = os_join(u.dset_path, 'converted', dir_nm_to_modify)
+        it_mid = glob.iglob(os_join(path_base, '**/*.mid'), recursive=True)
+        it_mxl = glob.iglob(os_join(path_base, '**/*.mxl'), recursive=True)
+        paths_to_modify = sorted(chain_its([it_mid, it_mxl]))
+
+        it = tqdm(paths_to_modify, desc='Fixing LMCI filenames', unit='song')
+        n_rename = 0
+        for path in it:
+            ori_fnm = stem(path)
+            ordinal = get_ordinal(ori_fnm)
+            correct_fnm = ordinal2correct_fnm[ordinal]
+            it.set_postfix(dict(ori_fnm=pl.i(ori_fnm), correct_fnm=pl.i(correct_fnm)))
+            base_path = os.path.dirname(path)
+            # mic(base_path)
+            if ori_fnm != correct_fnm:
+                ext = os.path.splitext(path)[1]
+                assert ext in ('.mid', '.mxl')
+                new_path = os_join(base_path, f'{correct_fnm}{ext}')
+                os.rename(path, new_path)
+                # mic(path, new_path)
+                # raise NotImplementedError
+                n_rename += 1
+                ori_fnm, correct_fnm = f'{ori_fnm}{ext}', f'{correct_fnm}{ext}'
+                logger.info(f'{pl.i(ori_fnm)} renamed to {pl.i(correct_fnm)}')
+                # raise NotImplementedError
+        logger.info(f'{pl.i(n_rename)} files renamed')
+    fix_ori_lmci_wrong_fnm()

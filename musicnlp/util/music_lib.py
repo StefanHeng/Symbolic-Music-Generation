@@ -43,7 +43,7 @@ __all__ = [
     'ExtNote', 'SNote', 'Dur', 'TsTup', 'ordinal2dur_type', 'ScoreExt',
     'time_sig2n_slots',
     'eps', 'is_int', 'is_8th', 'quarter_len2fraction', 'pitch2cleaned_pitch',
-    'note2pitch', 'note2dur', 'make_rest', 'note2clean_note', 'notes2offset_duration',
+    'note2pitch', 'note2dur', 'make_rest', 'note2clean_note', 'notes2filled_ranges',
     'time_sig2bar_dur',
     'TupletNameMeta', 'tuplet_postfix', 'tuplet_prefix2n_note', 'fullname2tuplet_meta',
     'is_drum_track', 'is_empty_bars', 'is_rest',
@@ -241,14 +241,28 @@ def note2clean_note(
     return nt
 
 
-def notes2offset_duration(notes: Union[List[ExtNote], ExtNote]) -> Tuple[List[float], List[Dur]]:
-    if notes:
-        if isinstance(notes, list):  # Else, single tuplet notes
-            notes = flatten_notes(unroll_notes(notes))
-        offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
-        return offsets, durs
-    else:
-        return [], []
+_Dur = Union[SeriFrac, Dur]
+
+
+def notes2filled_ranges(
+        notes: Union[List[ExtNote], ExtNote], export_type: str = 'list', serialize: bool = True
+) -> Union[List[Tuple[float, _Dur]], Dict[str, Union[List[float], List[_Dur]]]]:
+    ca.check_mismatch('Note Ranges Type', export_type, ['list', 'dict'])
+    # if notes:
+    #     if isinstance(notes, list):  # Else, single tuplet notes
+    #         notes = flatten_notes(unroll_notes(notes))
+    #     offsets, durs = zip(*[(n.offset, n.duration.quarterLength) for n in notes])
+    #     return offsets, durs
+    # else:
+    #     return [], []
+    ret = [(get_offset(n), get_end_qlen(n)) for n in flatten_notes(notes)]
+    if serialize:
+        ret = [(serialize_frac(o), serialize_frac(d)) for o, d in ret]
+    if export_type == 'list':
+        return ret
+    else:  # `dict`
+        offsets, durs = zip(*ret)
+        return dict(offsets=offsets, durs=durs)
 
 
 _pattern_time_sig_str = re.compile(r'(?P<numer>\d*)/(?P<denom>\d*)')

@@ -108,7 +108,7 @@ class MusicExtractor:
         return pl.pa(dict(zip(keys, vals)))
 
     def log_warn(self, log_d: Dict = None, **kwargs):
-        d = log_d or kwargs
+        d = (log_d or dict()) | kwargs
         if self.warn_logger is not None:
             self.warn_logger: WarnLog
             self.warn_logger.update(d)
@@ -198,9 +198,7 @@ class MusicExtractor:
 
                 def get_filled_ranges():  # cache
                     if not hasattr(get_filled_ranges, 'filled_ranges'):
-                        get_filled_ranges.filled_ranges = [
-                            (serialize_frac(get_offset(n)), serialize_frac(get_end_qlen(n))) for n in elms_tup
-                        ]
+                        get_filled_ranges.filled_ranges = notes2filled_ranges(elms_tup)
                     return get_filled_ranges.filled_ranges
                 if notes_overlapping(elms_tup):
                     self.log_warn(warn_name=WarnLog.TupNoteOvlIn, bar_num=number, filled_ranges=get_filled_ranges())
@@ -255,7 +253,7 @@ class MusicExtractor:
                             # Must be that duration of all triplet elements don't sum up to an 8th note in quarterLength
                             assert not is_8th(dur)  # Add such tuplet notes anyway, set a valid quantized length
                             warn_nm = WarnLog.InvTupDur
-                            offsets, durs = notes2offset_duration(elms_tup[idx_next_strt:])
+                            ranges = notes2filled_ranges(elms_tup[idx_next_strt:])
                             curr_ignored = False
                             if not self.dur_within_prec(dur):  # Enforce it by changing the durations
                                 warn_nm = WarnLog.InvTupDurSv
@@ -285,12 +283,12 @@ class MusicExtractor:
                                     ts = (time_sig.numerator, time_sig.denominator)
                                     self.log_warn(
                                         warn_name=WarnLog.LowTupDur, bar_num=number,
-                                        time_sig=ts, precision=self.prec, filled_ranges=get_filled_ranges()
+                                        time_sig=ts, precision=self.prec, filled_ranges=ranges
                                     )
                             if not curr_ignored:
                                 lst.append(tuple(elms_tup[idx_next_strt:]))
                                 tup_added = True
-                            self.log_warn(warn_name=warn_nm, bar_num=number, offsets=offsets, durations=durs)
+                            self.log_warn(warn_name=warn_nm, bar_num=number, filled_ranges=ranges)
                     idx += 1
                     e_tup = next(it_tup, None)
                 # All triple notes with the same `n_tup` are added
@@ -308,10 +306,8 @@ class MusicExtractor:
                     for idx_tup, tup in enumerate(lst[idx_tup_strt:], start=idx_tup_strt):
                         tup: tuple[SNote]
                         if notes_overlapping(tup):
-                            offsets, durs = notes2offset_duration(tup)
-                            self.log_warn(
-                                warn_name=WarnLog.TupNoteOvlOut, bar_num=number, offsets=offsets, durations=durs
-                            )
+                            ranges = notes2filled_ranges(tup)
+                            self.log_warn(warn_name=WarnLog.TupNoteOvlOut, bar_num=number, filled_ranges=ranges)
                             # TODO: how about just remove this group?
                             total_dur: Union[float, Fraction] = sum(n.duration.quarterLength for n in tup)
                             dur_16th = 4 / 16  # duration in quarter length
@@ -445,6 +441,49 @@ class MusicExtractor:
             n.offset = note.offset
             return n
 
+    def _drop_rests_beyond_time_sig(
+            self, groups: Dict[float, List[ExtNote]], time_sig: TimeSignature, number: int = None
+    ):
+        """
+        Drop rests beyond the time signature, as they are not part of the bar already and are silent
+
+        Originally handled as edge case, see `_fix_edge_case`, but appears to be a common problem for `LMCI`
+        """
+        bar_dur = time_sig2bar_dur(time_sig)
+
+        for offset in groups:
+            _notes, rests = [], []
+
+            for n in groups[offset]:
+                assert offset <= bar_dur  # sanity check
+                # if starting time already at bar end, drop it; if smaller than time sig, truncate it
+                truncate = offset < bar_dur
+                if isinstance(n, Rest) and get_end_qlen(n) > bar_dur:
+                    rests.append(n)
+                    if truncate:  # truncate so that extraction gap warning works properly
+                        n = make_rest(offset=n.offset, q_len=bar_dur - offset)
+                        _notes.append(n)
+                else:
+                    _notes.append(n)
+            groups[offset] = _notes
+            if rests:
+                ranges = notes2filled_ranges(rests)
+                ts_tup = (time_sig.numerator, time_sig.denominator)
+                self.log_warn(
+                    warn_name=WarnLog.RestsBeyondTimeSig, bar_num=number, filled_ranges=ranges, time_sig=ts_tup
+                )
+            # for n in groups[bar_dur]:
+            #     if isinstance(n, Rest):
+            #         rests.append(n)
+            #     else:
+            #         _notes.append(n)
+            # groups[bar_dur] = _notes
+            # if rests:
+            #     durs = [n.duration.quarterLength for n in rests]
+            #     self.log_warn(
+            #         warn_name=WarnLog.RestsAtTimeSig, bar_num=number, offset=bar_dur, durations=durs, time_sig=time_sig
+            #     )
+
     def extract_notes(
             self, lst_bar_info: List[BarInfo], time_sigs: List[TimeSignature]
     ) -> Dict[str, ExtractedNotes]:
@@ -461,14 +500,16 @@ class MusicExtractor:
             groups_melody: Dict[float, List[ExtNote]] = defaultdict(list)  # Group notes by starting location
             for n in all_notes:
                 groups_melody[get_offset(n)].append(n)
+            self._drop_rests_beyond_time_sig(groups_melody, time_sig, number=number)
             MusicExtractor.sort_groups(groups_melody, reverse=False)
-            # if number == 101:
-            #     mic(groups_melody)
-            #     for offset, notes in groups_melody.items():
-            #         mic(offset)
-            #         debug_pprint_lst_notes(notes)
-            #     # raise NotImplementedError
+            if number == 111:
+                mic(groups_melody)
+                for offset, notes in groups_melody.items():
+                    mic(offset)
+                    debug_pprint_lst_notes(notes)
+                # raise NotImplementedError
             groups_melody = self._fix_edge_case(groups_melody, number, time_sig)
+
             groups_bass = None
             if self.mode == 'full':
                 # make deep copy, since melody extraction in `get_notes_out` modify `groups`
@@ -536,11 +577,12 @@ class MusicExtractor:
         return d
 
     @staticmethod
-    def _fix_rest_too_long(groups, offset, wrong_end_time):
+    def _fix_drop_rest_too_long(groups, offset, wrong_end_time):
         if offset in groups:
             _notes_out = []
-            for _n in groups[offset]:  # starts at offset 4
-                if isinstance(_n, Rest) and get_end_qlen(_n) == wrong_end_time:  # 4 qlen more than it should
+            for _n in groups[offset]:  # starts at certain offset
+                # given time signature, duration more than it should
+                if isinstance(_n, Rest) and get_end_qlen(_n) == wrong_end_time:
                     continue  # ignore; then if no notes, will fill with rest with subsequent logic
                 _notes_out.append(_n)
             groups[offset] = _notes_out
@@ -576,35 +618,44 @@ class MusicExtractor:
         the original file is broken in that note durations don't align with duration by time signature
         """
         ts_tup = (time_sig.numerator, time_sig.denominator)
-        if ts_tup in [(8, 4), (4, 2), (2, 1)] and \
-                number in [9, 17, 19, 24, 33, 38, 43, 47, 52, 53, 60, 62, 84, 87, 188, 201] and \
-                (4.0 in groups or 6.0 in groups):
-            # for [
-            #   `LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`, `LMD::108367`,
-            #   `LMD::116976`, `LMD::119887`, `LMD::123389`, `LMD::128869`, `LMD::137904`,
-            #   `LMD::140453`,`LMD::142327`,`LMD::160646`, `LMD::161475`, `LMD::163655`
-            # ]
-            for offset in [4.0, 6.0]:
-                MusicExtractor._fix_rest_too_long(groups, offset, 12.0)
-        elif ts_tup == (2, 4) and number == 6 and 2.0 in groups:
-            MusicExtractor._fix_rest_too_long(groups, 2.0, 4.0)  # for `LMD::034249`
-        elif ts_tup == (1, 8):
-            # for `LMD::051562`, `LMD::119192`
-            if number in [9, 40, 60, 71, 88, 102] and all(o in groups for o in [0.5, 4.0, 8.0]):
-                for offset, wrong_time in [(0.0, 4.0), (0.5, 12.0), (4.0, 8.0), (4.0, 12.0), (8.0, 12.0)]:
-                    MusicExtractor._fix_rest_too_long(groups, offset, wrong_time)
-            elif number in [26, 57, 88] and all(o in groups for o in [0.0, 4.0, 8.0]):
-                for offset, wrong_time in [(0.0, 4.0), (4.0, 8.0), (8.0, 12.0)]:
-                    MusicExtractor._fix_rest_too_long(groups, offset, wrong_time)
-        elif ts_tup == (5, 2) and number in [5, 28]:
-            MusicExtractor._fix_rest_too_long(groups, 6.0, 16.0)  # for `LMD::109166`
-        elif ts_tup == (4, 4):
+        # if ts_tup in [(8, 4), (4, 2), (2, 1)] and \
+        #         number in [9, 17, 19, 24, 33, 38, 43, 47, 52, 53, 60, 62, 84, 87, 188, 201] and \
+        #         (4.0 in groups or 6.0 in groups):
+        #     # for [
+        #     #   `LMD::027213`, `LMD::`050735`, `LMD::054246`, `LMD::069877`, `LMD::108367`,
+        #     #   `LMD::116976`, `LMD::119887`, `LMD::123389`, `LMD::128869`, `LMD::137904`,
+        #     #   `LMD::140453`,`LMD::142327`,`LMD::160646`, `LMD::161475`, `LMD::163655`
+        #     # ]
+        #     for offset in [4.0, 6.0]:
+        #         MusicExtractor._fix_drop_rest_too_long(groups, offset, 12.0)
+        # elif ts_tup == (2, 4) and number == 6 and 2.0 in groups:
+        #     MusicExtractor._fix_drop_rest_too_long(groups, 2.0, 4.0)  # for `LMD::034249`
+        # elif ts_tup == (2, 4) and number == 53:
+        #     MusicExtractor._fix_drop_rest_too_long(groups, 1.875, 2.875)  # for `LMCI::000582_19al654`
+        # if ts_tup == (1, 8):
+        #     # for `LMD::051562`, `LMD::119192`
+        #     if number in [9, 40, 60, 71, 88, 102] and all(o in groups for o in [0.5, 4.0, 8.0]):
+        #         for offset, wrong_time in [(0.0, 4.0), (0.5, 12.0), (4.0, 8.0), (4.0, 12.0), (8.0, 12.0)]:
+        #             MusicExtractor._fix_drop_rest_too_long(groups, offset, wrong_time)
+        #     elif number in [26, 57, 88] and all(o in groups for o in [0.0, 4.0, 8.0]):
+        #         for offset, wrong_time in [(0.0, 4.0), (4.0, 8.0), (8.0, 12.0)]:
+        #             MusicExtractor._fix_drop_rest_too_long(groups, offset, wrong_time)
+        # elif ts_tup == (3, 2):
+        #     # if number in (27, 190):  # for `LMCI::000497_17cacor`, `LMD::000498_17capa1`
+        #     #     MusicExtractor._fix_drop_rest_too_long(groups, 6.0, 7.0)
+        #     if number == 123:
+        #         MusicExtractor._fix_drop_rest_too_long(groups, 5.25, 6.25)  # for `LMD::000503_17caxa1`
+        # elif ts_tup == (5, 2) and number in [5, 28]:
+        #     MusicExtractor._fix_drop_rest_too_long(groups, 6.0, 16.0)  # for `LMD::109166`
+        if ts_tup == (4, 4):
             if number == 1:
                 MusicExtractor._fix_long_tuplets(groups, ts_tup, 0.0, Fraction(33, 8))  # for `LMD::116496`
             elif number == 12:
                 MusicExtractor._fix_truncate_note(groups, ts_tup, 3.875, 4.875)  # for `LMD::090283`
             elif number == 27:
                 MusicExtractor._fix_truncate_note(groups, ts_tup, 3.25, 4.25)
+            # elif number == 31:
+            #     MusicExtractor._fix_drop_rest_too_long(groups, 3.5, 4.5)  # for `LMCI::000497_17cacor`
             elif number in (42, 90, 97, 621):
                 # for [
                 #   `MAESTRO::`Frédéric Chopin - Variations And Fugue In E-flat Major, Op. 35, "eroica"`,
@@ -620,15 +671,22 @@ class MusicExtractor:
                         continue  # ignore
                     _notes_out.append(_n)
                 groups[4.0] = _notes_out
+            # elif number in (38, 43, 49):  # for `LMCI::000435_16cndls`, `LMCI::000440_16guojo`, `LMCI::000498_17capa1`
+            #     MusicExtractor._fix_drop_rest_too_long(groups, 4.0, 5.0)
             elif number == 56:
                 MusicExtractor._fix_long_tuplets(groups, ts_tup, 3.0, Fraction(33, 8))  # for `LMD::098334`
             elif number == 65:
                 MusicExtractor._fix_truncate_note(groups, ts_tup, 3.25, 4.25)  # for `LMD::173000`
+            # elif number == 95:
+            #     MusicExtractor._fix_drop_rest_too_long(groups, 3.75, 4.75)  # for `LMCI::000496_17cabat`
             elif number == 108:
                 MusicExtractor._fix_truncate_note(groups, ts_tup, 3.75, 4.75)  # for `LMD::173000`
         elif ts_tup == (3, 4):
             if number == 22:
                 MusicExtractor._fix_truncate_note(groups, ts_tup, 2.125, 3.125)
+            # elif number in (30, 43, 46, 47, 51, 69, 70, 71, 282, 285, 286, 287):
+            #     # for `LMCI::000491_17bchom`, `LMCI::000573_19al474`, `LMCI::000582_19al654`
+            #     MusicExtractor._fix_drop_rest_too_long(groups, 3.0, 4.0)
             elif number == 48:
                 MusicExtractor._fix_truncate_note(groups, ts_tup, 2.375, 3.375)  # for `LMD::104680`
             elif number == 85:
@@ -637,20 +695,27 @@ class MusicExtractor:
                 MusicExtractor._fix_truncate_note(groups, ts_tup, 2.875, 3.875)  # for `LMD::060134`
             elif number == 96:
                 MusicExtractor._fix_truncate_note(groups, ts_tup, 2.5, 3.5)  # for `LMD::161651`
+            # elif number == 111:
+            #     MusicExtractor._fix_drop_rest_too_long(groups, 2.875, 3.875)  # for `LMCI::000582_19al654`
             elif number == 126:
                 MusicExtractor._fix_truncate_note(groups, ts_tup, 2.75, 3.75)  # for `LMD::051872`
             elif number == 326:
                 MusicExtractor._fix_long_tuplets(groups, ts_tup, 1.0, 3.375)  # for `LMD::061641`
             elif number == 674:
                 MusicExtractor._fix_long_tuplets(groups, ts_tup, 0.0, Fraction(4, 1))  # for `LMD::107205`
+        # elif ts_tup == (6, 8):
+        #     # if number in (70, 113, 176):
+        #     #     MusicExtractor._fix_drop_rest_too_long(groups, 3.0, 4.0)  # for `LMCI::000578_19al478`
+        #     if number == 109:
+        #         MusicExtractor._fix_drop_rest_too_long(groups, 2.75, 3.75)  # for `LMCI::000578_19al478`
         return groups
 
     def warn_notes_duration(self, notes: List[ExtNote], time_sig: TimeSignature, number: int):
         if not math.isclose(get_notes_duration(notes), time_sig2bar_dur(time_sig), abs_tol=self.eps):
-            offsets, durs = notes2offset_duration(notes)
-            self.log_warn(  # can be due to removing lower-pitched tuplets
-                warn_name=WarnLog.InvBarDur, bar_num=number, offsets=offsets, durations=durs, time_sig=time_sig
-            )
+            ts = (time_sig.numerator, time_sig.denominator)
+            ranges = notes2filled_ranges(notes)
+            # can be due to removing lower-pitched tuplets
+            self.log_warn(warn_name=WarnLog.InvBarDur, bar_num=number, filled_ranges=ranges, time_sig=ts)
 
     def warn_notes_overlap(self, notes: List[ExtNote], number: int):
         if notes_overlapping(notes):
@@ -658,8 +723,8 @@ class MusicExtractor:
             assert not non_tuplet_notes_overlapping(notes)
             for tup in notes:
                 if isinstance(tup, tuple) and notes_overlapping(tup):
-                    offsets, durs = notes2offset_duration(tup)
-                    self.log_warn(warn_name=WarnLog.TupNoteOvlOut, bar_num=number, offsets=offsets, durations=durs)
+                    ranges = notes2filled_ranges(tup)
+                    self.log_warn(warn_name=WarnLog.TupNoteOvlOut, bar_num=number, filled_ranges=ranges)
 
     def get_notes_out(
             self, groups: Dict[float, List[ExtNote]], number: int, keep: str = 'high', pre_sort: bool = False
@@ -758,13 +823,12 @@ class MusicExtractor:
             if not self.pc.notes_within_prec(notes):
                 lst_notes[i_bar] = self.notes2quantized_notes(notes, time_sig, number=i_bar)
                 assert self.pc.notes_within_prec(lst_notes[i_bar])  # Sanity check implementations
-                offsets, durs = notes2offset_duration(notes)
-                self.log_warn(warn_name=WarnLog.NoteNotQuant, bar_num=i_bar, offsets=offsets, durations=durs)
+                self.log_warn(warn_name=WarnLog.NoteNotQuant, bar_num=i_bar, filled_ranges=notes2filled_ranges(notes))
             elif notes_have_gap(notes, duration=dur):
                 lst_notes[i_bar], unfilled_ranges = fill_with_rest(notes, duration=dur)
+                ts = (time_sig.numerator, time_sig.denominator)
                 self.log_warn(
-                    warn_name=WarnLog.BarNoteGap, bar_num=i_bar,
-                    time_sig=(time_sig.numerator, time_sig.denominator),
+                    warn_name=WarnLog.BarNoteGap, bar_num=i_bar, time_sig=ts,
                     precision=self.prec, unfilled_ranges=unfilled_ranges
                 )
         # Now, triplets fixed to equal duration by `clean_quantized_tuplets`
@@ -899,8 +963,7 @@ class MusicExtractor:
                 assert all(self.pc.note_within_prec(n) for n in nt)  # Should be equivalent
                 nt = join_consecutive_rest_notes(nt)
                 lst.extend(nt)
-                offsets_, durs_ = notes2offset_duration(notes)
-                self.log_warn(warn_name=WarnLog.TupNoteQuant, bar_num=num_bar, offsets=offsets_, durations=durs_)
+                self.log_warn(warn_name=WarnLog.TupNoteQuant, bar_num=num_bar, filled_ranges=notes2filled_ranges(notes))
             else:
                 lst.append(nt)
         # For edge case, merging rest notes inside and outside the original tuplet edges
@@ -1215,12 +1278,17 @@ if __name__ == '__main__':
 
     def check_edge_case_batched():
         # dnm = 'POP909'
-        dnm = 'MAESTRO'
+        # dnm = 'MAESTRO'
+        # dnm = 'NES-MDB'
         # dnm = 'LMD'
+        dnm = 'LMCI'
+
+        o2f = music_util.Ordinal2Fnm(total=sconfig(f'datasets.{dnm}.meta.n_song'), group_size=int(1e4))
+
         if 'LMD' in dnm:
-            dir_nm = sconfig(f'datasets.{dnm}.converted.dir_nm')
-            dir_nm = f'{dir_nm}, MS'
-            # dir_nm = f'{dir_nm}, LP'
+            dir_nm_ = sconfig(f'datasets.{dnm}.converted.dir_nm')
+            dir_nm_ = f'{dir_nm_}, MS'
+            # dir_nm_ = f'{dir_nm_}, LP'
 
             # from _test_broken_files import broken_files
             broken_files = [
@@ -1244,11 +1312,44 @@ if __name__ == '__main__':
                 '068052.mxl',
             ]
 
-            o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
-
             def map_fnm(f: str) -> str:
                 _, _dir_nm = o2f(int(stem(f)), return_parts=True)
                 return os_join(_dir_nm, f)
+            broken_files = [map_fnm(f) for f in broken_files]
+        elif dnm == 'LMCI':
+            dir_nm_ = sconfig(f'datasets.{dnm}.converted.dir_nm')
+            dir_nm_ = f'{dir_nm_}, MS'
+            # dir_nm_ = f'{dir_nm_}, LP'
+
+            broken_files = [
+                # '000099_101Sakkimaeping.mxl',
+                # '000306_12str.mxl',
+                # '000307_12str2.mxl',
+                '000435_16cndls.mxl',
+                '000440_16guojo.mxl',
+                '000491_17bchom.mxl',
+                '000496_17cabat.mxl',
+                '000497_17cacor.mxl',
+                '000498_17capa1.mxl',
+                '000499_17capa4.mxl',
+                '000503_17caxa1.mxl',
+                '000573_19al474.mxl',
+                '000578_19al478.mxl',
+                '000582_19al654.mxl',
+                '000583_19al655.mxl',
+                '000584_19al656.mxl',
+                '000585_19al781.mxl',
+                '000626_19tap08.mxl',
+                '000640_19tawal.mxl',
+                '000645_1GAURIG.mxl'
+            ]
+
+            pattern = re.compile(r'^(?P<idx>\d{6})_(?P<name>.*)\.mxl$')
+
+            def map_fnm(f: str) -> str:
+                ordinal = int(pattern.match(f).group('idx'))
+                _, dir_nm__ = o2f(ordinal, return_parts=True)
+                return os_join(dir_nm__, f)
             broken_files = [map_fnm(f) for f in broken_files]
         elif dnm == 'MAESTRO':
             broken_files = [
@@ -1274,7 +1375,12 @@ if __name__ == '__main__':
                 # 'Frédéric Chopin - Variations And Fugue In E-flat Major, Op. 35, "eroica".mxl'
                 'Franz Liszt - Tarantelle Di Bravura, S. 386.mxl'
             ]
-            dir_nm = 'converted/MAESTRO, MS'
+            dir_nm_ = 'converted/MAESTRO, MS'
+        elif dnm == 'NES-MDB':
+            broken_files = [
+                'Dr_JekyllandMr_Hyde-01-02-Opening.mxl'
+            ]
+            dir_nm_ = 'converted/NES-MDB, MS'
         else:
             assert dnm == 'POP909'
             broken_files = [
@@ -1290,20 +1396,20 @@ if __name__ == '__main__':
                 # 'F4 - 流星雨.mxl'
                 '刘德华 - 谢谢你的爱.mxl'
             ]
-            dir_nm = 'converted/POP909, MS'
+            dir_nm_ = 'converted/POP909, MS'
         me = MusicExtractor(warn_logger=True, verbose=True, greedy_tuplet_pitch_threshold=1, mode='full')
 
-        batch = False
-        # batch = True
+        # batch = False
+        batch = True
 
         for broken_fl in broken_files:
-            path = os_join(u.dset_path, dir_nm, broken_fl)
+            path = os_join(u.dset_path, dir_nm_, broken_fl)
             if batch:
                 mic(broken_fl)
                 try:
                     print(me(path, exp='visualize'))
                 except Exception as e:
-                    print(pl.s(stem(path), c='y'), e)
+                    print(pl.s(stem(path), c='y'), pl.s(e, c='r'))
                     exit(1)
             else:
                 mic(path)
@@ -1311,7 +1417,7 @@ if __name__ == '__main__':
                 # exp = 'mxl'
                 print(me(path, exp=exp))
                 exit(1)
-    # check_edge_case_batched()
+    check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """
@@ -1349,8 +1455,9 @@ if __name__ == '__main__':
         import re
 
         # log_fnm = '05.26.22 @ 17.57, lmd all LP'
-        log_fnm = 'MST, 08.02-18.04'
-        # path_log = os_join(u.dset_path, 'converted', 'LMD, log', f'{log_fnm}.log')
+        # log_fnm = 'MST, 08.02-18.04'
+        # log_fnm = 'NES, 23-04-17'
+        log_fnm = 'LMCI, 23-04-17, 00'
         path_log = os_join(u.dset_path, 'debug-log', f'{log_fnm}.log')
         with open(path_log, 'r') as f:
             lines = f.readlines()
@@ -1448,4 +1555,4 @@ if __name__ == '__main__':
                             #     mic(pch_meta, dur_meta, n_pch, dur_ea)
                             # raise NotImplementedError
                 # raise NotImplementedError
-    sanity_check_extracted_property()
+    # sanity_check_extracted_property()

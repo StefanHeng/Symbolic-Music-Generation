@@ -345,9 +345,11 @@ if __name__ == '__main__':
     def export2json():
         # dnm = 'POP909'
         # dnm = 'MAESTRO'
-        dnm = 'LMD, MS'
+        # dnm = 'LMD, MS'
         # dnm = 'LMD, LP'
         # dnm = 'LMD-cleaned-subset'
+        dnm = 'LMCI, MS'
+        # dnm = 'NES-MDB'
 
         # pl_md = 'thread'
         pl_md = 'process'  # seems to be the fastest
@@ -359,12 +361,17 @@ if __name__ == '__main__':
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1, with_pitch_step=True),
             save_each=True,
             with_tqdm=True,
-            parallel=False,
-            # parallel=12,
+            # parallel=False,
+            parallel=128,
             parallel_mode=pl_md,
-            # n_worker=8
+            n_worker=6
         )
         dset_path = os_join(get_base_path(), u.dset_dir)
+
+        def get_nested_paths(dir_nm: str) -> List[str]:
+            pattern = os_join(dset_path, 'converted', dnm, dir_nm, '*.mxl')
+            mic(pattern)
+            return sorted(glob.iglob(pattern, recursive=True))
 
         if 'LMD, ' in dnm:
             # grp_nm = 'many'
@@ -381,15 +388,9 @@ if __name__ == '__main__':
                 date = now(fmt='short-date')
                 dir_nm_ = f'{date}_LMD_{{md={mode[0]}}}'
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_, grp_nm)
-            # dnm = 'LMD-cleaned-subset'
-
-            def get_lmd_paths(dir_nm: str) -> List[str]:
-                pattern = os_join(dset_path, 'converted', dnm, dir_nm, '*.mxl')
-                mic(pattern)
-                return sorted(glob.iglob(pattern, recursive=True))
 
             if 'many' in grp_nm:
-                paths = sum([get_lmd_paths(d) for d in [
+                paths = sum([get_nested_paths(d) for d in [
                     # '000000-010000',
                     # '010000-020000',
                     # '020000-030000',
@@ -411,7 +412,34 @@ if __name__ == '__main__':
                     grp_nm
                 ]], start=[])
             else:
-                paths = get_lmd_paths(grp_nm)
+                paths = get_nested_paths(grp_nm)
+            args['filenames'] = paths
+        elif 'LMCI' in dnm:
+            grp_nm = 'many'
+            grp_nm = '000000-010000'
+
+            dir_nm_ = f'23-04-17_LMCI_{{md={mode[0]}}}'
+            path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_, grp_nm)
+
+            if 'many' in grp_nm:
+                paths = sum([get_nested_paths(d) for d in [
+                    # '000000-010000',
+                    # '010000-020000',
+                    # '020000-030000',
+                    # '030000-040000',
+                    # '040000-050000',
+                    # '050000-060000',
+                    # '060000-070000',
+                    # '070000-080000',
+                    # '080000-090000',
+                    # '090000-100000',
+                    # '100000-110000',
+                    # '110000-120000',
+                    # '120000-128478'
+                    grp_nm
+                ]], start=[])
+            else:
+                paths = get_nested_paths(grp_nm)
             args['filenames'] = paths
         else:
             args['filenames'] = dnm
@@ -425,6 +453,8 @@ if __name__ == '__main__':
                     date = '23-03-31'
                 elif dnm == 'MAESTRO':
                     date = '23-03-31'
+                elif dnm == 'NES-MDB':
+                    date = '23-04-17'
                 else:
                     assert dnm == 'LMD-cleaned-subset'
                     date = '23-01-17'
@@ -435,7 +465,7 @@ if __name__ == '__main__':
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    # export2json()
+    export2json()
 
     def check_extract_progress():
         def is_folder_path(path_: str) -> bool:
@@ -484,7 +514,8 @@ if __name__ == '__main__':
         else:
             # combine_single_json_songs(singe_song_dir='23-03-31_POP909_{md=f}', dataset_name='POP909')
             # combine_single_json_songs(singe_song_dir='23-03-31_MAESTRO_{md=f}', dataset_name='MAESTRO')
-            combine_single_json_songs(singe_song_dir='23-04-06_LMD_{md=f}', dataset_name='LMD')
+            # combine_single_json_songs(singe_song_dir='23-04-06_LMD_{md=f}', dataset_name='LMD')
+            combine_single_json_songs(singe_song_dir='23-04-17_NES-MDB_{md=f}', dataset_name='NES')
     # combine()
 
     def json2dset_with_split():
@@ -509,7 +540,7 @@ if __name__ == '__main__':
         tr_samples['score'] = [s[:100] for s in tr_samples['score']]
         ts_samples['score'] = [s[:100] for s in ts_samples['score']]
         mic(tr_samples, ts_samples)
-    json2dset_with_split()
+    # json2dset_with_split()
 
     def fix_insert_key():
         """
