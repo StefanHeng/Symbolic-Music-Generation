@@ -145,8 +145,7 @@ class MusicVisualize:
             if dnm:
                 songs = ds['music']
                 if subset_bound and len(songs) > subset_bound:
-                    # random.seed(77)  # TODO: remove after fixed error
-                    songs = random.sample(songs, round(len(songs) * subset))
+                    songs = sorted(random.sample(songs, round(len(songs) * subset)))
                 for s in songs:
                     s['dataset_name'] = dnm
                 ds['music'] = songs
@@ -873,22 +872,26 @@ if __name__ == '__main__':
     md = 'full'
     pch_kd = 'degree'
 
-    pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD', as_full_path=True)
+    pop, mst, lmd, lmc, nes = dataset.get_dataset_dir_name(
+        'POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB', as_full_path=True)
     # dnms, fnms = ['POP909'], [pop]
     # dnms, fnms = ['POP909', 'MAESTRO'], [pop, mst]
-    dnms, fnms = ['POP909', 'MAESTRO', 'LMD'], [pop, mst, lmd]
+    # dnms, fnms = ['POP909', 'MAESTRO', 'LMD'], [pop, mst, lmd]
+    dnms, fnms = ['POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB'], [pop, mst, lmd, lmc, nes]
     if dnms == ['POP909']:
         # cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
         cnm = f'22-04-05_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
         cnm = f'22-04-05_MusViz-Cache_{{md={md[0]}, dnm=pop&mst}}'
+    elif dnms == ['POP909', 'MAESTRO', 'LMD']:
+        cnm = f'22-04-09_MusViz-Cache_{{md={md[0]}}}, dnm=3-0.1}}'
     else:
-        assert dnms == ['POP909', 'MAESTRO', 'LMD']
-        cnm = f'22-04-09_MusViz-Cache_{{md={md[0]}}}, dnm=all-0.1}}'
+        assert dnms == ['POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB']
+        cnm = f'22-04-22_MusViz-Cache_{{md={md[0]}}}, dnm=5-0.1}}'
     # cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
-    args = dict(cache=cnm, subset=subset_, subset_bound=8196)
-    mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, pitch_kind=pch_kd, **args)
+    mv_args = dict(cache=cnm, subset=subset_, subset_bound=8196)
+    mv = MusicVisualize(filename=fnms, dataset_name=dnms, hue_by_dataset=True, pitch_kind=pch_kd, **mv_args)
     # mic(mv.df)
 
     def check_warn():

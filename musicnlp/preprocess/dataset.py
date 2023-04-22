@@ -38,6 +38,14 @@ DATASET_NAME2MODE2FILENAME: Dict[str, Dict[str, str]] = {  # Are in pitch_kind `
     'POP909': {
         'melody': '',
         'full': '23-03-31_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
+    },
+    'LMCI': {
+        'melody': '',
+        'full': '23-04-22_Extracted-LMCI_{n=127111}_{md=f, prec=5, th=1}'
+    },
+    'NES-MDB': {
+        'melody': '',
+        'full': '23-04-17_Extracted-NES_{n=5261}_{md=f, prec=5, th=1}'
     }
 }
 

@@ -224,7 +224,7 @@ class MusicExport:
         songs = []
         it = tqdm(filenames, desc='Loading songs', unit='song')
         for fnm in it:
-            it.set_postfix(fnm=stem(fnm))
+            it.set_postfix(fnm=pl.i(stem(fnm)))
             songs.append(load_single(fnm))
 
         typ, meta, song = songs[0]['encoding_type'], songs[0]['extractor_meta'], songs[0]['music']
@@ -504,7 +504,7 @@ if __name__ == '__main__':
     def combine():
         def combine_single_json_songs(singe_song_dir: str, dataset_name: str):
             fl_pattern = '*.json'
-            if 'LMD' in dataset_name:
+            if any(k in dataset_name for k in ('LMD', 'LMCI')):
                 fl_pattern = f'**/{fl_pattern}'
             path = os_join(music_util.get_processed_path(), 'intermediate', singe_song_dir, fl_pattern)
             fnms = sorted(glob.iglob(path))
@@ -512,7 +512,6 @@ if __name__ == '__main__':
             # fnms = fnms[:1024]  # TODO: debugging
             songs = me.combine_saved_songs(filenames=fnms, output_filename=f'Extracted-{dataset_name}')
             mic(songs.keys(), len(songs['music']))
-
         # md = 'melody'
         md = 'full'
         if md == 'melody':
@@ -523,8 +522,9 @@ if __name__ == '__main__':
             # combine_single_json_songs(singe_song_dir='23-03-31_POP909_{md=f}', dataset_name='POP909')
             # combine_single_json_songs(singe_song_dir='23-03-31_MAESTRO_{md=f}', dataset_name='MAESTRO')
             # combine_single_json_songs(singe_song_dir='23-04-06_LMD_{md=f}', dataset_name='LMD')
-            combine_single_json_songs(singe_song_dir='23-04-17_NES-MDB_{md=f}', dataset_name='NES')
-    # combine()
+            # combine_single_json_songs(singe_song_dir='23-04-17_NES-MDB_{md=f}', dataset_name='NES')
+            combine_single_json_songs(singe_song_dir='23-04-18_LMCI_{md=f}', dataset_name='LMCI')
+    combine()
 
     def json2dset_with_split():
         """
