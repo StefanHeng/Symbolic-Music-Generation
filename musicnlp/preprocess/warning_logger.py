@@ -30,6 +30,7 @@ class WarnLog:
     IncTimeSig, RareTimeSig = 'Inconsistent Time Signatures', 'Rare Time Signature'
     RareTempo = 'Rare Mean Tempo'
     NoteNotQuant, TupNoteQuant = 'Notes Beyond Quantization', 'Tuplet Notes Quantizable'
+    TupTotalNotQuant = 'Tuplet Total Duration Beyond Quantization'
     InvBarDur = 'Invalid Bar Notes Duration'
     TupNoteGap = 'Gap Observed in Consecutive Tuplets'
     BarNoteGap = 'Gap in extracted Bar Notes'
@@ -52,6 +53,7 @@ class WarnLog:
         TupNoteQuant,
         TupNoteGap,
         NoteNotQuant,
+        TupTotalNotQuant,
         TupNoteOvlIn,
         TupNoteOvlOut,
         InvBarDur,
@@ -81,6 +83,7 @@ class WarnLog:
         TupNoteGap: 8,
         TupNoteOvlIn: 8,
         NoteNotQuant: 10,
+        TupTotalNotQuant: 12,
         TupNoteOvlOut: 12,
         InvBarDur: 12,
         BarNoteGap: 14
@@ -167,6 +170,9 @@ class WarnLog:
         elif warn_nm == WarnLog.NoteNotQuant:
             msg = '{warn_name}: Note durations smaller than quantized slot at bar#{bar_num} ' \
                   'with filled ranges {filled_ranges} - Note durations approximated'
+        elif warn_nm == WarnLog.TupTotalNotQuant:
+            msg = '{warn_name}: Tuplet note total duration {total_duration} is smaller than a quantized slot ' \
+                  'at bar#{bar_num} with precision {precision}, filled ranges {filled_ranges} '
         elif warn_nm == WarnLog.EmptyStrt:
             msg = '{warn_name}: Empty bars observed at start of song in range: {bar_range}'
         elif warn_nm == WarnLog.EmptyEnd:
@@ -203,6 +209,8 @@ class WarnLog:
             WarnLog.NoteNotQuant, WarnLog.TupNoteQuant
         ]:
             assert all(k in args for k in ['bar_num', 'filled_ranges'])
+        elif nm == WarnLog.TupTotalNotQuant:
+            assert all(k in args for k in ['bar_num', 'precision', 'filled_ranges', 'total_duration'])
         elif nm in [WarnLog.TupNoteGap, WarnLog.InvBarDur, WarnLog.RestsBeyondTimeSig]:
             assert all(k in args for k in ['bar_num', 'time_sig', 'filled_ranges'])
         elif nm == WarnLog.LowTupDur:

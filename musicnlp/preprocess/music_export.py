@@ -5,7 +5,7 @@ import json
 import logging
 import datetime
 from os.path import join as os_join
-from typing import List, Tuple, Dict, Optional, Iterable, Union
+from typing import List, Tuple, Dict, Optional, Iterable, Union, Any
 from dataclasses import asdict
 
 import pandas as pd
@@ -163,14 +163,19 @@ class MusicExport:
                 if pbar:
                     pbar.close()
             elif parallel_mode == 'process':  # only able to log at batch-level
-                if with_tqdm:
-                    if isinstance(with_tqdm, dict):
-                        tqdm_args.update(with_tqdm)
-                    tqdm_args.update(dict(unit='song', chunksize=bsz))
-                # don't have to go through my own batched map
-                lst_out = conc_map(
-                    export_single, filenames, with_tqdm=tqdm_args, mode=parallel_mode, n_worker=n_worker
-                )
+                if with_tqdm is True:
+                    with_tqdm = dict()
+                if save_each:
+                    tqdm_args |= dict(unit='song') | (with_tqdm or dict())
+                    args = dict(with_tqdm=tqdm_args, mode=parallel_mode, n_worker=n_worker, batch_size=bsz)
+                    for _ in conc_yield(fn=export_single, args=filenames, **args):  # No need to create list
+                        pass
+                else:
+                    tqdm_args |= dict(unit='song', chunksize=bsz) | (with_tqdm or dict())
+                    # don't have to go through my own batched map
+                    lst_out = conc_map(
+                        export_single, filenames, with_tqdm=tqdm_args, mode=parallel_mode, n_worker=n_worker
+                    )
             else:
                 assert parallel_mode == 'thread-in-process'
                 total = math.ceil(n_song / bsz)
@@ -349,23 +354,24 @@ if __name__ == '__main__':
         # dnm = 'LMD, LP'
         # dnm = 'LMD-cleaned-subset'
         dnm = 'LMCI, MS'
+        # dnm = 'LMCI, LP'
         # dnm = 'NES-MDB'
-
-        # pl_md = 'thread'
-        pl_md = 'process'  # seems to be the fastest
-        # pl_md = 'thread-in-process'  # ~20% slower
 
         # mode = 'melody'
         mode = 'full'
-        args = dict(
+        args: Dict[str, Any] = dict(
             extractor_args=dict(mode=mode, greedy_tuplet_pitch_threshold=1, with_pitch_step=True),
             save_each=True,
-            with_tqdm=True,
-            # parallel=False,
-            parallel=128,
-            parallel_mode=pl_md,
-            n_worker=6
+            with_tqdm=True
         )
+        args['parallel'] = False
+        # args['parallel'] = 2
+        if args['parallel']:
+            # pl_md = 'thread'
+            pl_md = 'process'  # seems to be the fastest
+            # pl_md = 'thread-in-process'  # ~20% slower
+            args.update(dict(parallel_mode=pl_md, n_worker=None))
+
         dset_path = os_join(get_base_path(), u.dset_dir)
 
         def get_nested_paths(dir_nm: str) -> List[str]:
@@ -415,10 +421,12 @@ if __name__ == '__main__':
                 paths = get_nested_paths(grp_nm)
             args['filenames'] = paths
         elif 'LMCI' in dnm:
-            grp_nm = 'many'
-            grp_nm = '000000-010000'
+            # grp_nm = 'many, lp'
+            grp_nm = '040000-050000'
+            # grp_nm = '110000-120000'
+            # grp_nm = '120000-128478'
 
-            dir_nm_ = f'23-04-17_LMCI_{{md={mode[0]}}}'
+            dir_nm_ = f'23-04-18_LMCI_{{md={mode[0]}}}'
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_, grp_nm)
 
             if 'many' in grp_nm:
@@ -465,7 +473,7 @@ if __name__ == '__main__':
             path_out = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_)
         args['path_out'] = path_out
         me(**args)
-    export2json()
+    # export2json()
 
     def check_extract_progress():
         def is_folder_path(path_: str) -> bool:
@@ -652,13 +660,20 @@ if __name__ == '__main__':
         import re
         import shutil
 
-        dir_nm = '23-04-06_LMD_{md=f}'
+        # dnm = 'LMD'
+        dnm = 'LMCI'
+        # dir_nm = '23-04-06_LMD_{md=f}'
+        dir_nm = '23-04-18_LMCI_{md=f}'
         path_process_base = os_join(music_util.get_processed_path(), 'intermediate', dir_nm)
-        path_to_process = os_join(path_process_base, 'many')
+        path_to_process = os_join(path_process_base, 'many, lp')
         mic(path_to_process)
         paths = sorted(glob.iglob(os_join(path_to_process, '*.json'), recursive=True))
-        pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$')
-        o2f = music_util.Ordinal2Fnm(total=sconfig('datasets.LMD.meta.n_song'), group_size=int(1e4))
+        if dnm == 'LMD':
+            pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)$')
+        else:
+            assert dnm == 'LMCI'
+            pattern = re.compile(r'^Music Export - (?P<ordinal>\d*)_(?P<name>.*)$')
+        o2f = music_util.Ordinal2Fnm(total=sconfig(f'datasets.{dnm}.meta.n_song'), group_size=int(1e4))
         it = tqdm(paths)
         for path in it:
             m = pattern.match(stem(path))
@@ -666,13 +681,18 @@ if __name__ == '__main__':
             o = int(m.group('ordinal'))
 
             fnm, dir_nm = o2f(o, return_parts=True)
+            if dnm == 'LMCI':
+                nm = m.group('name')
+                fnm = f'{fnm}_{nm}'
             fnm = f'Music Export - {fnm}.json'
-            it.set_postfix(fnm=f'{dir_nm}/{fnm}')
+            it.set_postfix(fnm=pl.i(f'{dir_nm}/{fnm}'))
             path_out = os_join(path_process_base, dir_nm)
             os.makedirs(path_out, exist_ok=True)
 
             path_out = os_join(path_out, fnm)
             # mic(path, path_out)
+            # if os.path.exists(path_out):
+            #     continue
             assert not os.path.exists(path_out)
             shutil.move(path, path_out)
     # chore_move_proper_folder()
@@ -725,3 +745,44 @@ if __name__ == '__main__':
         mic(paths_exported)
         assert len(paths_exported) == 0  # every exported file is accounted for
     # sanity_check_export()
+
+    def fix_move_folder_lmci_name_wrong():
+        """
+        In `chore_move_proper_folder` on LMCI dataset, the postfix original filename is missing,
+        rename those files to correct name
+        """
+        import re
+
+        # dnm = 'LMCI'
+        dir_nm_conv = 'LMCI, MS'
+        dir_nm_proc = '23-04-18_LMCI_{md=f}'
+        grp_nm = '090000-100000'
+
+        # get ordinal to correct filename mapping
+
+        glob_pat = os_join(u.dset_path, 'converted', dir_nm_conv, grp_nm, '*.mxl')
+        paths_correct = sorted(glob.iglob(glob_pat, recursive=True))
+        pattern_correct = re.compile(r'^(?P<ordinal>\d*)_(?P<name>.*)$')
+
+        def correct_fnm2ordinal(fnm_):
+            return int(pattern_correct.match(fnm_).group('ordinal'))
+        ord2fnm = dict()
+        for path in tqdm(paths_correct, desc='Getting Correct Name'):
+            fnm = stem(path)
+            ord2fnm[correct_fnm2ordinal(fnm)] = fnm
+
+        path_base = os_join(music_util.get_processed_path(), 'intermediate', dir_nm_proc, grp_nm)
+        paths = sorted(glob.iglob(os_join(path_base, '*.json'), recursive=True))
+
+        pattern_broken = re.compile(r'^Music Export - (?P<ordinal>\d*)$')
+        for path in tqdm(paths, 'Renaming'):
+            # mic(path)
+            m = pattern_broken.match(stem(path))
+            if m is not None:  # otherwise, already run
+                o = int(m.group('ordinal'))
+
+                fnm_correct = ord2fnm[o]
+                path_new = os_join(path_base, f'Music Export - {fnm_correct}.json')
+                # rename file
+                os.rename(path, path_new)
+    # fix_move_folder_lmci_name_wrong()

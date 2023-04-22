@@ -117,16 +117,27 @@ class Ordinal2Fnm:
         return f'{n_:0{self.n_digit}}'
 
 
-def clean_dataset_paths(dataset_name: str = 'POP909'):
+def clean_dataset_paths(dataset_name: str = 'POP909', return_fnm_map: bool = False) -> Optional[Dict[str, Dict[str, str]]]:
     """
     Convert datasets in their original sources to my own file system hierarchy & names
         A directory of `midi` files, with title and artist as file name
+
+    :return: If `return_fnm_map`, instead of copying files to new location,
+        return a mapping from  new filename, to original filename and corresponding dataset split
+
+        Intended for datasets with music split already assigned
     """
-    ca.cache_mismatch('Dataset Name', dataset_name, ['POP909', 'LMD-cleaned', 'LMD'])
+    ca.check_mismatch('Dataset Name', dataset_name, ['POP909', 'LMD-cleaned', 'LMD', 'MAESTRO', 'LMCI', 'NES-MDB'])
 
     path_exp = os_join(get_base_path(), u.dset_dir, 'converted', dataset_name)
-    os.makedirs(path_exp, exist_ok=True)
+    if return_fnm_map:
+        ret = dict()
+    else:
+        os.makedirs(path_exp, exist_ok=True)
+        ret = None
+
     if dataset_name == 'POP909':
+        assert not return_fnm_map
         path = os_join(get_base_path(), u.dset_dir, 'POP909-Dataset', dataset_name)
         df = pd.read_excel(os_join(path, 'index.xlsx'))
         paths = sorted(glob.iglob(os_join(path, '*/*.mid'), recursive=True))
@@ -135,6 +146,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
             fnm = f'{rec["artist"]} - {rec["name"]}.mid'
             copyfile(p, os_join(path_exp, fnm))
     elif dataset_name == 'LMD-cleaned':
+        assert not return_fnm_map
         d_dset = sconfig(f'datasets.{dataset_name}.original')
         path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid'])))
@@ -151,22 +163,22 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
             title_ = title_[:-4]  # remove `.mid`
             title_, v = lmd_cleaned_title2title_n_ver(title_)
 
-            fnm_ = clean_whitespace(f'{artist} - {title_}')
+            fnm__ = clean_whitespace(f'{artist} - {title_}')
             assert len(clean_whitespace(artist)) - 3 <= my_lim, \
                 f'Artist name {pl.i(artist)} is too long for OS file write'
-            if len(fnm_) > my_lim:
+            if len(fnm__) > my_lim:
                 # Modified the name, but still keep to the original way of versioning,
                 #   i.e. `<title>.<version>` if there's a separate version,
                 # so that `get_lmd_cleaned_subset_fnms` can work without changes
                 # TODO: however, the original LMD dataset's way of versioning the same song
                 #  is not intuitive & better be changed
-                fnm_ = f'{fnm_[:my_lim]}... '
+                fnm__ = f'{fnm__[:my_lim]}... '
                 path2fnm.count_too_long += 1
             v_str = '' if v == 0 else f'.{v}'
-            fnm_ = f'{fnm_}{v_str}'
-            fnm_ = f'{fnm_}.mid'
-            assert len(fnm_) <= os_lim
-            return fnm_
+            fnm__ = f'{fnm__}{v_str}'
+            fnm__ = f'{fnm__}.mid'
+            assert len(fnm__) <= os_lim
+            return fnm__
         fnms_written = set()
         for p in tqdm(paths, desc=f'Converting {dataset_name}', unit='song'):
             fnm = path2fnm(p)
@@ -177,6 +189,7 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
         assert len(fnms_written) == len(paths)
         print(f'{pl.i(path2fnm.count_too_long)} files were truncated to {pl.i(my_lim)} characters')
     elif dataset_name == 'LMD':
+        assert not return_fnm_map
         d_dset = sconfig(f'datasets.{dataset_name}.original')
         path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
@@ -196,20 +209,64 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
         mic(len(paths))
         df = pd.read_csv(os_join(path_ori, 'maestro-v3.0.0.csv'))
         assert len(paths) == len(df)
-        c_ver = defaultdict(int)
-        for i, row in tqdm(df.iterrows(), total=len(df)):
-            fnm_ori = os_join(path_ori, row.midi_filename)
-            composer = row.canonical_composer.replace('/', '&')
-            title = row.canonical_title.replace('/', ':')
+        n_song = len(df)
+
+        set_fnm, set_dup_fnm = set(), set()
+        i2fnm = dict()
+
+        def _row2fnm(r: pd.Series) -> str:
+            composer = r.canonical_composer.replace('/', '&')
+            title = r.canonical_title.replace('/', ':')
             # wicked case in the dataset: title all the same apart from capitalization
             title = ' '.join([w.capitalize() for w in title.split()])
-            fnm = f'{composer} - {title}'
-            count = c_ver[fnm]
-            c_ver[fnm] += 1
-            if count > 0:
-                fnm = f'{fnm}, v{count}'
-            copyfile(fnm_ori, os_join(path_exp, f'{fnm}.mid'))
+            return f'{composer} - {title}'
+
+        for i, row in tqdm(df.iterrows(), total=n_song, desc='Checking for duplicate file names'):
+            fnm = _row2fnm(row)  # consider as same piece if same composer & title
+            if fnm in set_fnm:
+                set_dup_fnm.add(fnm)
+            else:
+                set_fnm.add(fnm)
+            i2fnm[i] = fnm
+        logger.info(f'Found {pl.i(len(set_dup_fnm))} duplicate file names')
+
+        dup_fnm2ver = defaultdict(int)
+        desc = f'Extracting filename map' if return_fnm_map else f'Copying w/ new name'
+        it = tqdm(df.iterrows(), total=n_song, desc=desc, unit='song')
+        for i, row in it:
+            fnm_ori = row.midi_filename
+            it.set_postfix(fnm=pl.i(fnm_ori))
+            fnm = i2fnm[i]
+
+            if fnm in set_dup_fnm:
+                fnm_ = f'{fnm}_v{dup_fnm2ver[fnm]}'
+                dup_fnm2ver[fnm] += 1
+                logger.info(f'Filename {pl.i(fnm)} is duplicated, renaming to {pl.i(fnm_)}')
+            else:
+                fnm_ = fnm
+            if return_fnm_map:
+                ret[fnm_] = dict(original_fnm=fnm_ori, split=row.split)
+            else:
+                copyfile(os_join(path_ori, fnm_ori), os_join(path_exp, f'{fnm}.mid'))
+        # sanity check no filename duplication
+        if not return_fnm_map:
+            assert len(list(i for i in glob.iglob(os_join(path_exp, '*.mid')))) == n_song
+
+        # c_ver = defaultdict(int)
+        # for i, row in tqdm():
+        #     fnm_ori = row.midi_filename
+        #     fnm = _row2fnm(row)
+        #
+        #     count = c_ver[fnm]
+        #     c_ver[fnm] += 1
+        #     if count > 0:  # TODO, re-run versioning
+        #         fnm = f'{fnm}, v{count}'
+        #     if return_fnm_map:
+        #         ret[fnm] = dict(original_fnm=fnm_ori, split=row.split)
+        #     else:
+        #         copyfile(os_join(path_ori, fnm_ori), os_join(path_exp, f'{fnm}.mid'))
     elif dataset_name == 'LMCI':
+        assert not return_fnm_map
         d_dset = sconfig(f'datasets.{dataset_name}.original')
         path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
 
@@ -231,6 +288,15 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
         o2f = Ordinal2Fnm(total=len(paths), group_size=int(1e4))
         it = tqdm(paths, desc='Copying with new name')
         for i, p in enumerate(it):
+            # TODO:
+            # `088685_Nausicaa Of The Valley Of The Wind - &#1044;&#1072;&#1074;&#1085;&#1086;
+            # &#1091;&#1096;&#1077;&#1076;&#1096;&#1080;&#1077; &#1076;&#1085;&#1080;
+            # (&#1054;&#1089;&#1085;&#1086;&#1074;&#1085;&#1072;&#1103; &#1090;&#1077;&#1084;&#1072;).json`
+            # file name too long, reduce
+            if i == 88685:
+                mic(p)
+                raise NotImplementedError
+
             pref, dir_nm = o2f(i, return_parts=True)
             fnm = stem(p)
             if fnm in set_dup_fnm:
@@ -291,10 +357,11 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
                 set_fnm.add(fnm)
             pa2fnm[p] = fnm
         logger.info(f'Found {pl.i(len(set_dup_fnm))} duplicate file names')
-        mic(set_dup_fnm)
 
         dup_fnm2ver = defaultdict(int)
-        it = tqdm(paths, desc=f'Copying w/ new name', unit='song')
+        desc = f'Extracting filename map' if return_fnm_map else f'Copying w/ new name'
+        it = tqdm(paths, desc=desc, unit='song')
+        split_map = dict(train='train', test='test', valid='validation')
         for p in it:
             fnm_ori = stem(p)
             it.set_postfix(fnm=pl.i(fnm_ori))
@@ -306,9 +373,15 @@ def clean_dataset_paths(dataset_name: str = 'POP909'):
                 logger.info(f'Filename {pl.i(fnm)} is duplicated, renaming to {pl.i(fnm_)}')
             else:
                 fnm_ = fnm
-            copyfile(p, os_join(path_exp, f'{fnm_}.mid'))
+            if return_fnm_map:
+                dirs = p.split(os.sep)
+                ret[fnm_] = dict(original_fnm=fnm_ori, split=split_map[dirs[-2]])
+            else:
+                copyfile(p, os_join(path_exp, f'{fnm_}.mid'))
         # sanity check no filename duplication
-        assert len(list(i for i in glob.iglob(os_join(path_exp, '*.mid')))) == n_song
+        if not return_fnm_map:
+            assert len(list(i for i in glob.iglob(os_join(path_exp, '*.mid')))) == n_song
+    return ret
 
 
 def get_lmd_cleaned_subset_fnms() -> List[str]:
@@ -485,11 +558,19 @@ if __name__ == '__main__':
         mic(len(fnms), fnms[:20])
     # check_fl_nms()
 
-    # clean_dataset_paths('LMD-cleaned')
-    # clean_dataset_paths('LMD')
-    # clean_dataset_paths('MAESTRO')
-    # clean_dataset_paths('LMCI')
-    # clean_dataset_paths('NES-MDB')
+    def clean_paths():
+        # clean_dataset_paths('LMD-cleaned')
+        # clean_dataset_paths('LMD')
+        # clean_dataset_paths('MAESTRO')
+        # clean_dataset_paths('LMCI')
+        clean_dataset_paths('NES-MDB')
+    # clean_paths()
+
+    def clean_paths2dset_split():
+        d = clean_dataset_paths('MAESTRO', return_fnm_map=True)
+        # d = clean_dataset_paths('NES-MDB', return_fnm_map=True)
+        mic(d)
+    clean_paths2dset_split()
 
     # import music21 as m21
     # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
@@ -689,4 +770,4 @@ if __name__ == '__main__':
                 logger.info(f'{pl.i(ori_fnm)} renamed to {pl.i(correct_fnm)}')
                 # raise NotImplementedError
         logger.info(f'{pl.i(n_rename)} files renamed')
-    fix_ori_lmci_wrong_fnm()
+    # fix_ori_lmci_wrong_fnm()
