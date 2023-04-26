@@ -202,70 +202,108 @@ def clean_dataset_paths(dataset_name: str = 'POP909', return_fnm_map: bool = Fal
             path = os_join(path_exp, dir_nm)
             os.makedirs(path, exist_ok=True)
             copyfile(p, os_join(path, fnm))
-    elif dataset_name == 'MAESTRO':
+    elif dataset_name in ['MAESTRO', 'NES-MDB']:
         d_dset = sconfig(f'datasets.{dataset_name}')
+        n_song = get(d_dset, 'meta.n_song')
+        d_dset = d_dset['original']
         path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
         paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid']), recursive=True))
-        mic(len(paths))
-        df = pd.read_csv(os_join(path_ori, 'maestro-v3.0.0.csv'))
-        assert len(paths) == len(df)
-        n_song = len(df)
+        assert len(paths) == n_song  # sanity check
+        logger.info(f'Found {pl.i(n_song)} unique MIDI files')
 
         set_fnm, set_dup_fnm = set(), set()
-        i2fnm = dict()
+        d_fnm = dict()
 
-        def _row2fnm(r: pd.Series) -> str:
-            composer = r.canonical_composer.replace('/', '&')
-            title = r.canonical_title.replace('/', ':')
-            # wicked case in the dataset: title all the same apart from capitalization
-            title = ' '.join([w.capitalize() for w in title.split()])
-            return f'{composer} - {title}'
+        is_maestro = dataset_name == 'MAESTRO'
+        tqdm_args = dict(total=n_song, desc='Checking for duplicate file names', unit='song')
+        df = None
+        if is_maestro:
+            df = pd.read_csv(os_join(path_ori, 'maestro-v3.0.0.csv'))
+            assert len(df) == n_song
 
-        for i, row in tqdm(df.iterrows(), total=n_song, desc='Checking for duplicate file names'):
-            fnm = _row2fnm(row)  # consider as same piece if same composer & title
-            if fnm in set_fnm:
-                set_dup_fnm.add(fnm)
-            else:
-                set_fnm.add(fnm)
-            i2fnm[i] = fnm
+            def _row2fnm(r: pd.Series) -> str:
+                composer = r.canonical_composer.replace('/', '&')
+                title = r.canonical_title.replace('/', ':')
+                # wicked case in the dataset: title all the same apart from capitalization
+                title = ' '.join([w.capitalize() for w in title.split()])
+                return f'{composer} - {title}'
+            for i, row in tqdm(df.iterrows(), **tqdm_args):
+                fnm = _row2fnm(row)  # consider as same piece if same composer & title
+                if fnm in set_fnm:
+                    set_dup_fnm.add(fnm)
+                else:
+                    set_fnm.add(fnm)
+                d_fnm[i] = fnm
+        else:  # NES-MDB
+            # extract the two-level name from the file name
+            # e.g. 005_Abadox_TheDeadlyInnerWar_00_01OpeningSE
+            pattern = re.compile(r'^\d{3}_(?P<title>.*)_(?P<sec_start>\d{2})_(?P<sec_end>\d{2})(?P<suffix>.*)$')
+            # e.g. 211_M82GameSelectableWorkingProductDisplay_00_M82GameSelectableWorkingProductDisplay01MainMusic
+            pattern_fall = re.compile(r'^\d{3}_(?P<title>.*)_(?P<sec>\d{2})(?P<suffix>.*)$')
+
+            def fnm2fnm(f: str) -> str:
+                m, fall = pattern.match(f), False
+                if m is None:
+                    m, fall = pattern_fall.match(f), True
+                assert m is not None
+                ttl, suffix = m.group('title'), m.group('suffix')
+
+                # section number needed, otherwise 24 files have duplicate names
+                if not fall:
+                    # not necessarily the case,
+                    # e.g. `train/055_CircusCaper_01_01bTitleScreen.mid`, `train/055_CircusCaper_12_07bStage4.mid`
+                    # st, ed = int(m.group('sec_start')), int(m.group('sec_end'))
+                    # assert st + 1 == ed
+                    st, ed = m.group('sec_start'), m.group('sec_end')
+                    n = f'{st}-{ed}'
+                else:
+                    n = m.group('sec')
+                return f'{ttl}-{n}-{suffix}'
+            for p in tqdm(paths, **tqdm_args):
+                fnm = fnm2fnm(stem(p))
+                if fnm in set_fnm:
+                    set_dup_fnm.add(fnm)
+                else:
+                    set_fnm.add(fnm)
+                d_fnm[p] = fnm
         logger.info(f'Found {pl.i(len(set_dup_fnm))} duplicate file names')
 
         dup_fnm2ver = defaultdict(int)
         desc = f'Extracting filename map' if return_fnm_map else f'Copying w/ new name'
-        it = tqdm(df.iterrows(), total=n_song, desc=desc, unit='song')
-        for i, row in it:
-            fnm_ori = row.midi_filename
+
+        it = df.iterrows() if is_maestro else paths
+        it = tqdm(it, total=n_song, desc=desc, unit='song')
+        split_map = dict(train='train', test='test', valid='validation')  # for NES-MDB
+        for i in it:
+            row = None
+            if is_maestro:
+                i, row = i
+                fnm_ori = row.midi_filename
+            else:
+                fnm_ori = stem(i)
             it.set_postfix(fnm=pl.i(fnm_ori))
-            fnm = i2fnm[i]
+            fnm = d_fnm[i]
 
             if fnm in set_dup_fnm:
                 fnm_ = f'{fnm}_v{dup_fnm2ver[fnm]}'
                 dup_fnm2ver[fnm] += 1
-                logger.info(f'Filename {pl.i(fnm)} is duplicated, renaming to {pl.i(fnm_)}')
+                logger.info(f'Piece {pl.i(fnm)} is duplicated, renaming to {pl.i(fnm_)}')
             else:
                 fnm_ = fnm
             if return_fnm_map:
-                ret[fnm_] = dict(original_fnm=fnm_ori, split=row.split)
+                if is_maestro:
+                    split = row.split
+                else:
+                    dirs = i.split(os.sep)
+                    split = split_map[dirs[-2]]
+                ret[fnm_] = dict(original_fnm=fnm_ori, split=split)
             else:
-                copyfile(os_join(path_ori, fnm_ori), os_join(path_exp, f'{fnm}.mid'))
-        # sanity check no filename duplication
-        if not return_fnm_map:
+                pa_ori = os_join(path_ori, fnm_ori) if is_maestro else i
+                copyfile(pa_ori, os_join(path_exp, f'{fnm_}.mid'))
+        if not return_fnm_map:  # sanity check no filename duplication
             assert len(list(i for i in glob.iglob(os_join(path_exp, '*.mid')))) == n_song
-
-        # c_ver = defaultdict(int)
-        # for i, row in tqdm():
-        #     fnm_ori = row.midi_filename
-        #     fnm = _row2fnm(row)
-        #
-        #     count = c_ver[fnm]
-        #     c_ver[fnm] += 1
-        #     if count > 0:  # TODO, re-run versioning
-        #         fnm = f'{fnm}, v{count}'
-        #     if return_fnm_map:
-        #         ret[fnm] = dict(original_fnm=fnm_ori, split=row.split)
-        #     else:
-        #         copyfile(os_join(path_ori, fnm_ori), os_join(path_exp, f'{fnm}.mid'))
-    elif dataset_name == 'LMCI':
+    else:
+        assert dataset_name == 'LMCI'
         assert not return_fnm_map
         d_dset = sconfig(f'datasets.{dataset_name}.original')
         path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
@@ -288,17 +326,15 @@ def clean_dataset_paths(dataset_name: str = 'POP909', return_fnm_map: bool = Fal
         o2f = Ordinal2Fnm(total=len(paths), group_size=int(1e4))
         it = tqdm(paths, desc='Copying with new name')
         for i, p in enumerate(it):
-            # TODO:
-            # `088685_Nausicaa Of The Valley Of The Wind - &#1044;&#1072;&#1074;&#1085;&#1086;
-            # &#1091;&#1096;&#1077;&#1076;&#1096;&#1080;&#1077; &#1076;&#1085;&#1080;
-            # (&#1054;&#1089;&#1085;&#1086;&#1074;&#1085;&#1072;&#1103; &#1090;&#1077;&#1084;&#1072;).json`
-            # file name too long, reduce
-            if i == 88685:
-                mic(p)
-                raise NotImplementedError
-
-            pref, dir_nm = o2f(i, return_parts=True)
             fnm = stem(p)
+
+            if i == 88685:  # file name too long, reduce
+                assert fnm == 'Nausicaa Of The Valley Of The Wind - &#1044;&#1072;&#1074;&#1085;&#1086; &#1091;' \
+                               '&#1096;&#1077;&#1076;&#1096;&#1080;&#1077; &#1076;&#1085;&#1080; (&#1054;&#1089;' \
+                               '&#1085;&#1086;&#1074;&#1085;&#1072;&#1103; &#1090;&#1077;&#1084;&#1072;)'
+                assert fnm not in set_dup_fnm
+                fnm = 'Nausicaa Of The Valley Of The Wind'  # manually shorten for now
+            pref, dir_nm = o2f(i, return_parts=True)
             if fnm in set_dup_fnm:
                 fnm_ = f'{fnm}_v{dup_fnm2ver[fnm]}'
                 dup_fnm2ver[fnm] += 1
@@ -313,74 +349,6 @@ def clean_dataset_paths(dataset_name: str = 'POP909', return_fnm_map: bool = Fal
             copyfile(p, os_join(path, fnm))
         # sanity check no name collision
         assert n_uniq_midi == len(list(i for i in glob.iglob(os_join(path_exp, '**/*.mid'))))
-    else:
-        assert dataset_name == 'NES-MDB'
-        d_dset = sconfig(f'datasets.{dataset_name}')
-        n_song = get(d_dset, 'meta.n_song')
-        d_dset = d_dset['original']
-        path_ori = os_join(get_base_path(), u.dset_dir, d_dset['dir_nm'])
-        paths = sorted(glob.iglob(os_join(path_ori, d_dset['song_fmt_mid'])))
-        assert len(paths) == n_song  # sanity check
-        logger.info(f'Found {pl.i(n_song)} unique MIDI files')
-        
-        # extract the two-level name from the file name
-        # e.g. 005_Abadox_TheDeadlyInnerWar_00_01OpeningSE
-        pattern = re.compile(r'^\d{3}_(?P<title>.*)_(?P<sec_start>\d{2})_(?P<sec_end>\d{2})(?P<suffix>.*)$')
-        # e.g. 211_M82GameSelectableWorkingProductDisplay_00_M82GameSelectableWorkingProductDisplay01MainMusic
-        pattern_fall = re.compile(r'^\d{3}_(?P<title>.*)_(?P<sec>\d{2})(?P<suffix>.*)$')
-
-        def fnm2fnm(f: str) -> str:
-            m, fall = pattern.match(f), False
-            if m is None:
-                m, fall = pattern_fall.match(f), True
-            assert m is not None
-            ttl, suffix = m.group('title'), m.group('suffix')
-
-            # section number needed, otherwise 24 files have duplicate names
-            if not fall:
-                # not necessarily the case,
-                # e.g. `train/055_CircusCaper_01_01bTitleScreen.mid`, `train/055_CircusCaper_12_07bStage4.mid`
-                # st, ed = int(m.group('sec_start')), int(m.group('sec_end'))
-                # assert st + 1 == ed
-                st, ed = m.group('sec_start'), m.group('sec_end')
-                n = f'{st}-{ed}'
-            else:
-                n = m.group('sec')
-            return f'{ttl}-{n}-{suffix}'
-        set_fnm, set_dup_fnm = set(), set()
-        pa2fnm = dict()
-        for p in tqdm(paths, desc='Checking for duplicate file names'):
-            fnm = fnm2fnm(stem(p))
-            if fnm in set_fnm:
-                set_dup_fnm.add(fnm)
-            else:
-                set_fnm.add(fnm)
-            pa2fnm[p] = fnm
-        logger.info(f'Found {pl.i(len(set_dup_fnm))} duplicate file names')
-
-        dup_fnm2ver = defaultdict(int)
-        desc = f'Extracting filename map' if return_fnm_map else f'Copying w/ new name'
-        it = tqdm(paths, desc=desc, unit='song')
-        split_map = dict(train='train', test='test', valid='validation')
-        for p in it:
-            fnm_ori = stem(p)
-            it.set_postfix(fnm=pl.i(fnm_ori))
-            fnm = pa2fnm[p]
-
-            if fnm in set_dup_fnm:
-                fnm_ = f'{fnm}_v{dup_fnm2ver[fnm]}'
-                dup_fnm2ver[fnm] += 1
-                logger.info(f'Filename {pl.i(fnm)} is duplicated, renaming to {pl.i(fnm_)}')
-            else:
-                fnm_ = fnm
-            if return_fnm_map:
-                dirs = p.split(os.sep)
-                ret[fnm_] = dict(original_fnm=fnm_ori, split=split_map[dirs[-2]])
-            else:
-                copyfile(p, os_join(path_exp, f'{fnm_}.mid'))
-        # sanity check no filename duplication
-        if not return_fnm_map:
-            assert len(list(i for i in glob.iglob(os_join(path_exp, '*.mid')))) == n_song
     return ret
 
 
@@ -415,7 +383,9 @@ def get_lmd_cleaned_subset_fnms() -> List[str]:
     return [d[min(d)] for d in d_song2fnms.values()]
 
 
-def get_converted_song_paths(dataset_name: str = None, fmt='mxl', backend: Optional[str] = 'MS') -> List[str]:
+def get_converted_song_paths(
+        dataset_name: str = None, fmt='mxl', backend: Optional[str] = 'MS', _inner: bool = False
+) -> List[str]:
     """
     :param dataset_name: dataset name
     :param fmt: song file format, one of ['mid', 'mxl']
@@ -424,6 +394,7 @@ def get_converted_song_paths(dataset_name: str = None, fmt='mxl', backend: Optio
         This determines the stored path
         `all` is relevant for LMD only, see `get_lmd_conversion_meta`
         If `all`, the conversion from both backends are combined
+    :param _inner: recursion flag for internal use only
     :return: List of music file paths in my converted file system structure, see `clean_dataset_paths`
 
     xml converted from MIDI files
@@ -432,13 +403,14 @@ def get_converted_song_paths(dataset_name: str = None, fmt='mxl', backend: Optio
     ca(dataset_name=dataset_name, fmt=fmt)
     ca.check_mismatch('Conversion Backend', backend, ['MS', 'LP', 'all'])
     d_log = dict(dataset_name=dataset_name, fmt=fmt, backend=backend)
-    logger.info(f'Getting converted song paths w/ {pl.i(d_log)}... ')
+    if not _inner:
+        logger.info(f'Getting converted song paths w/ {pl.i(d_log)}... ')
 
     d_dset = sconfig(f'datasets.{dataset_name}.converted')
     dir_nm = d_dset['dir_nm']
     if backend == 'all':
-        fls_ms = get_converted_song_paths(dataset_name, fmt=fmt, backend='MS')
-        fls_lp = get_converted_song_paths(dataset_name, fmt=fmt, backend='LP')
+        fls_ms = get_converted_song_paths(dataset_name, fmt=fmt, backend='MS', _inner=True)
+        fls_lp = get_converted_song_paths(dataset_name, fmt=fmt, backend='LP', _inner=True)
         return sorted(fls_ms + fls_lp, key=lambda f: stem(f))
     else:
         dset_path = os_join(get_base_path(), u.dset_dir)
@@ -487,7 +459,9 @@ def get_conversion_meta(dataset_name: str = 'LMD'):
     if dataset_name == 'LMCI':
         brk_base = os_join(get_base_path(), u.dset_dir, f'{dir_nm}, broken')
         brk_paths = list(glob.iglob(os_join(brk_base, '**/*.mid'), recursive=True))
-        assert len(brk_paths) + len(conv_paths) == n_song
+        if len(brk_paths) + len(conv_paths) != n_song:
+            raise ValueError(f'Number of converted files {pl.i(len(conv_paths))} + broken files {pl.i(len(brk_paths))} '
+                             f'!= total number of songs {pl.i(n_song)}')
 
         ds = dir_nm.split(os.sep)
         assert len(ds) == 2  # sanity check
@@ -497,8 +471,8 @@ def get_conversion_meta(dataset_name: str = 'LMD'):
             dirs = path.split(os.sep)
             for i_, d in enumerate(dirs):
                 if d == d1 and dirs[i_+1].startswith(d2):
-                    return os_join(*dirs[i_+2:])
-            raise ValueError(f'Path {path} does not contain {dir_nm}')
+                    return os_join(*dirs[i_+2:])  # e.g. `'000000-010000/000000_009count.mxl'`
+            raise ValueError(f'Path {pl.i(path)} does not contain {pl.i(dir_nm)}')
         map_paths = sorted(conv_paths + brk_paths, key=full2rel)
         for i, mp in enumerate(map_paths):
             assert i == int(stem(mp)[:6])  # sanity check
@@ -510,11 +484,11 @@ def get_conversion_meta(dataset_name: str = 'LMD'):
             # for edge cases: `Biogra11.mid.mid`, `brighton.midi.mid`
             of = stem(ori_fnm).removesuffix('.mid').removesuffix('.midi')
             # sanity check only thing added should be version postfix: drop ordinal, up until original file name
-            assert mf[7:][:len(of)] == of
+            assert i == 88685 or mf[7:][:len(of)] == of  # Discard edge case, see `clean_dataset_paths`
             fnm = os_join(_dir_nm, f'{mf}.mxl')
         else:
             fnm = o2f(i)
-        it.set_postfix(fnm=stem(fnm))
+        it.set_postfix(fnm=pl.i(stem(fnm)))
         # default conversion store location
         path_ms, path_lp = os_join(u.dset_dir, f'{dir_nm}, MS', fnm), os_join(u.dset_path, f'{dir_nm}, LP', fnm)
         _path_ms, _path_lp = os_join(u.base_path, path_ms), os_join(u.base_path, path_lp)
@@ -562,52 +536,15 @@ if __name__ == '__main__':
         # clean_dataset_paths('LMD-cleaned')
         # clean_dataset_paths('LMD')
         # clean_dataset_paths('MAESTRO')
-        # clean_dataset_paths('LMCI')
-        clean_dataset_paths('NES-MDB')
+        clean_dataset_paths('LMCI')
+        # clean_dataset_paths('NES-MDB')
     # clean_paths()
 
     def clean_paths2dset_split():
         d = clean_dataset_paths('MAESTRO', return_fnm_map=True)
         # d = clean_dataset_paths('NES-MDB', return_fnm_map=True)
         mic(d)
-    clean_paths2dset_split()
-
-    # import music21 as m21
-    # path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/broken'
-    # # broken_fl = 'ABBA - I\'ve Been Waiting For You.mid'
-    # # broken_fl = 'Aerosmith - Pink.3.mid'
-    # broken_fl = 'Alice in Chains - Sludge Factory.mid'
-    # # broken_fl = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/broken/LMD-cleaned/fixed/' \
-    # #             'ABBA - I\'ve Been Waiting For You.band.mid'
-    # mic(broken_fl)
-    # scr = m21.converter.parse(os_join(path_broken, broken_fl))
-    # mic(scr)
-
-    def fix_delete_broken_files():
-        import glob
-
-        path_broken = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_broken/*.mid'
-        set_broken = set(clean_whitespace(stem(fnm)) for fnm in glob.iglob(path_broken))
-        mic(set_broken)
-        path_lmd_c = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned/*.mid'
-        for fnm in glob.iglob(path_lmd_c):
-            if stem(fnm) in set_broken:
-                os.remove(fnm)
-                set_broken.remove(stem(fnm))
-                print('Deleted', fnm)
-        mic(set_broken)
-        assert len(set_broken) == 0, 'Not all broken files deleted'
-    # fix_delete_broken_files()
-
-    def fix_match_mxl_names_with_new_mid():
-        path_lmd_v = '/Users/stefanh/Documents/UMich/Research/Music with NLP/datasets/LMD-cleaned_valid/*.mxl'
-        mic(len(list(glob.iglob(path_lmd_v))))
-        for fnm in glob.iglob(path_lmd_v):
-            fnm_new = clean_whitespace(fnm)
-            if fnm != fnm_new:
-                os.rename(fnm, fnm_new)
-                print(f'Renamed {pl.i(fnm)} => {pl.i(fnm_new)}')
-    # fix_match_mxl_names_with_new_mid()
+    # clean_paths2dset_split()
 
     def get_lmd_subset():
         fnms = get_lmd_cleaned_subset_fnms()
@@ -701,73 +638,9 @@ if __name__ == '__main__':
         logger.info(f'{pl.i(count)} converted xml with unknown origin in the last session removed')
     # mv_backend_not_processed()
 
-    def get_convert_df():
+    def get_convert_meta():
         # dnm = 'LMD'
         dnm = 'LMCI'
         df = get_conversion_meta(dataset_name=dnm)
         mic(df)
-    # get_convert_df()
-
-    # def chore_convert_xml2mxl():
-    #     """
-    #     ~~Logic Pro output is in un-compressed music XML, change to MXL for smaller file size~~
-    #
-    #     Converted using MuseScore instead
-    #     """
-    #     pattern = os_join(u.dset_path, 'converted', 'LMD, LP', '**/*.xml')
-    #     files = sorted(glob.iglob(pattern, recursive=True))
-    #     mic(len(files))
-    #     for path in files:
-    #         pass
-
-    def fix_ori_lmci_wrong_fnm():
-        """
-        Original LMCI midi filename change logic was wrong, duplicated filenames always starts with `version 0`
-
-        Re-map using updated logic
-        """
-        dnm = 'LMCI'
-        # dir_nm_to_modify = 'LMCI, broken copy'
-        # dir_nm_to_modify = 'LMCI, LP'
-        dir_nm_to_modify = 'LMCI, MS'
-        correct_fnms = [stem(f) for f in get_converted_song_paths(dataset_name=dnm, fmt='mid', backend=None)]
-        # mic(correct_fnms[:5])
-        n_song = sconfig(f'datasets.{dnm}.meta.n_song')
-        assert len(correct_fnms) == n_song
-
-        pattern_converted = re.compile(r'^(?P<ordinal>\d{6})_(?P<fnm>.+)$')
-
-        def get_ordinal(fnm: str) -> int:
-            m = pattern_converted.match(fnm)
-            assert m is not None
-            return int(m.group('ordinal'))
-        ordinal2correct_fnm = {get_ordinal(fnm): fnm for fnm in correct_fnms}
-
-        # both `mid` and `mxl` files
-        path_base = os_join(u.dset_path, 'converted', dir_nm_to_modify)
-        it_mid = glob.iglob(os_join(path_base, '**/*.mid'), recursive=True)
-        it_mxl = glob.iglob(os_join(path_base, '**/*.mxl'), recursive=True)
-        paths_to_modify = sorted(chain_its([it_mid, it_mxl]))
-
-        it = tqdm(paths_to_modify, desc='Fixing LMCI filenames', unit='song')
-        n_rename = 0
-        for path in it:
-            ori_fnm = stem(path)
-            ordinal = get_ordinal(ori_fnm)
-            correct_fnm = ordinal2correct_fnm[ordinal]
-            it.set_postfix(dict(ori_fnm=pl.i(ori_fnm), correct_fnm=pl.i(correct_fnm)))
-            base_path = os.path.dirname(path)
-            # mic(base_path)
-            if ori_fnm != correct_fnm:
-                ext = os.path.splitext(path)[1]
-                assert ext in ('.mid', '.mxl')
-                new_path = os_join(base_path, f'{correct_fnm}{ext}')
-                os.rename(path, new_path)
-                # mic(path, new_path)
-                # raise NotImplementedError
-                n_rename += 1
-                ori_fnm, correct_fnm = f'{ori_fnm}{ext}', f'{correct_fnm}{ext}'
-                logger.info(f'{pl.i(ori_fnm)} renamed to {pl.i(correct_fnm)}')
-                # raise NotImplementedError
-        logger.info(f'{pl.i(n_rename)} files renamed')
-    # fix_ori_lmci_wrong_fnm()
+    get_convert_meta()

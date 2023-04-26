@@ -12,7 +12,7 @@ import music21 as m21
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm.auto import tqdm
-
+from pympler import asizeof
 
 from stefutil import *
 from musicnlp.util import *
@@ -34,6 +34,9 @@ def extract_single(fnm: str = None) -> Optional[Dict[str, Any]]:
     # grab all notes in the piece
     notes = scr.flat.notes
     rests = scr.flat[m21.note.Rest]
+    if not len(scr.parts):  # TODO: should've been removed?
+        logger.warning(f'No parts found in piece {pl.i(stem(fnm, keep_ext=True))}')
+        return
     assert len(scr.parts) >= 1  # sanity check
     return dict(
         n_note=len(notes),
@@ -53,6 +56,7 @@ def extract(dataset_names: List[str] = None, subset: float = None, subset_bound:
 
     rows = []
     concurrent = True
+    # concurrent = False
     for dnm in dataset_names:
         d_fnms = {
             kd: music_util.get_converted_song_paths(dataset_name=dnm, fmt=kd, backend='all') for kd in ['mid', 'mxl']
@@ -67,7 +71,7 @@ def extract(dataset_names: List[str] = None, subset: float = None, subset_bound:
             new_sz = int(ln * subset)
             logger.warning(f'Using subset {pl.i(subset)} for {pl.i(dnm)}: {pl.i(ln)} -> {pl.i(new_sz)}')
             # randomly subsample pieces
-            idxs = np.random.choice(a=ln, size=new_sz, replace=False)
+            idxs = np.sort(np.random.choice(a=ln, size=new_sz, replace=False))
             d_fnms = {kd: [v[i] for i in idxs] for kd, v in d_fnms.items()}
 
         for kd in ['mid', 'mxl']:
@@ -75,9 +79,10 @@ def extract(dataset_names: List[str] = None, subset: float = None, subset_bound:
             desc = f'Extracting {dnm} {kd} info'
             fmt = f'{dnm}-{kd}'
             if concurrent:  # Doesn't work in ipython notebook
-                # No-batching is faster for POP909
-                args = dict(mode='process', batch_size=128, with_tqdm=dict(desc=desc, total=len(fnms), unit='piece'))
-                for d in conc_yield(fn=extract_single, args=fnms, **args, n_worker=8):
+                # No-batching is faster for POP909?
+                n_worker = 6
+                args = dict(mode='process', batch_size=64, with_tqdm=dict(desc=desc, total=len(fnms), unit='piece'))
+                for d in conc_yield(fn=extract_single, args=fnms, **args, n_worker=n_worker):
                     if d is None:
                         read_errs_[fmt] += 1
                     else:
@@ -86,9 +91,10 @@ def extract(dataset_names: List[str] = None, subset: float = None, subset_bound:
                 for f in tqdm(fnms, desc=desc):
                     d = extract_single(f)
                     if d is None:
-                        read_errs_[fmt] += 1
+                        read_errs_[fmt] += 10
                     else:
                         rows.append(d | dict(format=fmt))
+    mic(fmt_sizeof(asizeof.asizeof(rows)))
     return pd.DataFrame(rows), read_errs_
 
 
@@ -228,14 +234,19 @@ if __name__ == '__main__':
 
     # dnms = ['POP909']
     # dnms = ['POP909', 'MAESTRO']
-    dnms = ['POP909', 'MAESTRO', 'LMD']
-    # dnms = ['LMD']
+    # dnms = ['POP909', 'MAESTRO', 'LMD']
+    dnms = ['LMD']
+    # dnms = ['POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB']
     if dnms == ['POP909']:
         cnm = f'Mxl-Check-Cache_{{dnm=pop}}'
     elif dnms == ['POP909', 'MAESTRO']:
         cnm = f'Mxl-Check-Cache_{{dnm=pop&mst}}'
+    elif dnms == ['POP909', 'MAESTRO', 'LMD']:
+        cnm = f'Mxl-Check-Cache_{{dnm=3}}'
+    elif dnms == ['POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB']:
+        cnm = f'Mxl-Check-Cache_{{dnm=5}}'
     else:
-        cnm = f'Mxl-Check-Cache_{{dnm=all}}'
+        cnm = None
 
     def check_file_loading():
         dnm = 'POP909'
@@ -246,7 +257,8 @@ if __name__ == '__main__':
     # check_file_loading()
 
     def check_run():
-        df, read_errs = get_plot_info(dataset_names=dnms, cache=cnm, subset=0.1)
+        sub = 0.05  # Got memory error when too many pieces
+        df, read_errs = get_plot_info(dataset_names=dnms, cache=cnm, subset=sub, subset_bound=8192)
         mic(df, read_errs)
 
         # k = 'n_note'
@@ -261,4 +273,40 @@ if __name__ == '__main__':
             mic(dnm, counts)
             plt.show()
         # save_fig(f'{dnm}_{k}')
-    check_run()
+    # check_run()
+
+    def profile_mem():
+        import linecache
+        import tracemalloc
+
+        def display_top(snapshot, key_type='lineno', limit=10):
+            snapshot = snapshot.filter_traces((
+                tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+                tracemalloc.Filter(False, "<unknown>"),
+            ))
+            top_stats = snapshot.statistics(key_type)
+
+            print("Top %s lines" % limit)
+            for index, stat in enumerate(top_stats[:limit], 1):
+                frame = stat.traceback[0]
+                print("#%s: %s:%s: %.1f KiB"
+                      % (index, frame.filename, frame.lineno, stat.size / 1024))
+                line = linecache.getline(frame.filename, frame.lineno).strip()
+                if line:
+                    print('    %s' % line)
+
+            other = top_stats[limit:]
+            if other:
+                size = sum(stat.size for stat in other)
+                print("%s other: %.1f KiB" % (len(other), size / 1024))
+            total = sum(stat.size for stat in top_stats)
+            print("Total allocated size: %.1f KiB" % (total / 1024))
+
+        tracemalloc.start()
+
+        sub = 0.025
+        get_plot_info(dataset_names=dnms, cache=cnm, subset=sub, subset_bound=8192)
+
+        snapshot = tracemalloc.take_snapshot()
+        display_top(snapshot, limit=32)
+    profile_mem()

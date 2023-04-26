@@ -145,7 +145,7 @@ class MusicVisualize:
             if dnm:
                 songs = ds['music']
                 if subset_bound and len(songs) > subset_bound:
-                    songs = sorted(random.sample(songs, round(len(songs) * subset)))
+                    songs = sorted(random.sample(songs, round(len(songs) * subset)), key=lambda x: x['title'])
                 for s in songs:
                     s['dataset_name'] = dnm
                 ds['music'] = songs
@@ -406,11 +406,8 @@ class MusicVisualize:
         return self.hist_wrapper(**args)
 
     @staticmethod
-    def _cat_plot_force_render_n_reduce_lim(ax):
+    def _cat_plot_reduce_lim(ax):
         x_ticks = ax.get_xticks()
-        ax.set_xticks(x_ticks)  # Hack to force rendering for `show`, TODO: better ways?
-        ax.set_xticklabels([t.get_text() for t in ax.get_xticklabels()])
-
         mi, ma = min(x_ticks), max(x_ticks)
         ax.set_xlim([mi - 0.5, ma + 0.5])  # Reduce the white space on both sides
 
@@ -421,17 +418,23 @@ class MusicVisualize:
             plt.gcf().canvas.draw()  # so that labels are rendered
             xtick_lbs = ax.get_xticklabels()
             com_tss = [f'{ts[0]}/{ts[1]}' for ts in COMMON_TIME_SIGS]
+
+            tck_lbs = []
             for t in xtick_lbs:
                 txt = t.get_text()
                 if '/' in txt:
                     numer, denom = _parse_frac(txt)
                     t.set_usetex(True)
-                    t.set_text(_frac2tex_frac(numer, denom, enforce_denom=False))
+                    tck_lbs.append(_frac2tex_frac(numer, denom, enforce_denom=False))
                 else:
                     t.set_text(txt)
+                    tck_lbs.append(txt)
                 if txt not in com_tss:
                     t.set_color(self.color_rare)
-            MusicVisualize._cat_plot_force_render_n_reduce_lim(ax)
+            ax.set_xticks(ax.get_xticks())  # Disables `FixedFormatter` warning
+            ax.set_xticklabels(tck_lbs)
+
+            MusicVisualize._cat_plot_reduce_lim(ax)
         ca(dist_plot_type=kind)
         title = 'Distribution of Time Signature'
         if kind == 'hist':
@@ -569,19 +572,23 @@ class MusicVisualize:
                 plt.gcf().canvas.draw()
                 xtick_lbs = ax.get_xticklabels()
 
+                tck_lbs = []
                 for t in xtick_lbs:
                     txt = t.get_text()
                     if '/' in txt:
                         numer, denom = _parse_frac(txt)
                         val = numer / denom
                         t.set_usetex(True)
-                        t.set_text(_frac2tex_frac(numer, denom))
+                        tck_lbs.append(_frac2tex_frac(numer, denom))
                     else:
                         val = int(txt)
-                        t.set_text(txt)
+                        tck_lbs.append(txt)
                     if val > bound:
                         t.set_color(self.color_rare)
-                MusicVisualize._cat_plot_force_render_n_reduce_lim(ax)
+                ax.set_xticks(ax.get_xticks())  # Disables `FixedFormatter` warning
+                ax.set_xticklabels(tck_lbs)
+
+                MusicVisualize._cat_plot_reduce_lim(ax)
             ax_ = self.hist_wrapper(
                 data=df, col_name='duration', weights='count', discrete=True, kde=False,
                 title=title, xlabel=xlab,
@@ -874,10 +881,10 @@ if __name__ == '__main__':
 
     pop, mst, lmd, lmc, nes = dataset.get_dataset_dir_name(
         'POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB', as_full_path=True)
-    # dnms, fnms = ['POP909'], [pop]
+    dnms, fnms = ['POP909'], [pop]
     # dnms, fnms = ['POP909', 'MAESTRO'], [pop, mst]
     # dnms, fnms = ['POP909', 'MAESTRO', 'LMD'], [pop, mst, lmd]
-    dnms, fnms = ['POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB'], [pop, mst, lmd, lmc, nes]
+    # dnms, fnms = ['POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB'], [pop, mst, lmd, lmc, nes]
     if dnms == ['POP909']:
         # cnm = f'22-03-12_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
         cnm = f'22-04-05_MusViz-Cache_{{md={md[0]}, dnm=pop}}'
@@ -887,7 +894,7 @@ if __name__ == '__main__':
         cnm = f'22-04-09_MusViz-Cache_{{md={md[0]}}}, dnm=3-0.1}}'
     else:
         assert dnms == ['POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB']
-        cnm = f'22-04-22_MusViz-Cache_{{md={md[0]}}}, dnm=5-0.1}}'
+        cnm = f'22-04-24_MusViz-Cache_{{md={md[0]}}}, dnm=5-0.1}}'
     # cnm = None
     subset_ = 0.1 if 'LMD' in dnms else None  # LMD has 170k songs, prohibitive to plot all
     mv_args = dict(cache=cnm, subset=subset_, subset_bound=8196)
@@ -920,8 +927,8 @@ if __name__ == '__main__':
         # up = 98.7  # 2.5 std on both sides
         up = 95
         args = dict(stat='percent', upper_percentile=up)
-        # _args = dict(save=True, show_title=False)
-        # args.update(_args)
+        _args = dict(save=True, show_title=False)
+        args.update(_args)
         # mv.token_length_dist(**args)
         # mv.token_length_dist(tokenize_scheme='wordpiece', **args)
         # mv.token_length_dist(tokenize_scheme='pairmerge', **args)
@@ -929,12 +936,12 @@ if __name__ == '__main__':
         # mv.song_duration_dist(**args)
         # mv.bar_count_dist(**args)
 
-        mic(mv.time_sig_dist(yscale='linear', stat='percent').df)
+        # mic(mv.time_sig_dist(yscale='linear', stat='percent', save=True).df)
         # mv.tempo_dist(stat='percent')
         # mv.key_dist(stat='percent')
 
         # mv.note_pitch_dist(stat='percent')
-        # mv.note_duration_dist(note_type='all', stat='percent')
+        mv.note_duration_dist(note_type='all', stat='percent', save=True)
         # mic(mv.note_duration_dist(note_type='tuplet', stat='percent').df)
 
         # mv.tuplet_count_dist(**args)
