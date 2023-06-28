@@ -1408,7 +1408,7 @@ if __name__ == '__main__':
                 # exp = 'mxl'
                 print(me(path, exp=exp))
                 raise NotImplementedError
-    check_edge_case_batched()
+    # check_edge_case_batched()
 
     def fix_find_song_with_0dur():
         """
@@ -1472,17 +1472,18 @@ if __name__ == '__main__':
         3. Look for specific edge cases of tuple sizes of 2, 4,
             and make sure each note inside has duration smaller than quantization
         """
-        from tqdm.auto import tqdm
+        from tqdm import tqdm
         from musicnlp.vocab import ElmType
         from musicnlp.preprocess import MusicConverter, dataset
 
         mc = MusicConverter(mode='full')
 
-        pop, mst, lmd = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD')
+        pop, mst, lmd, lmc, nes = dataset.get_dataset_dir_name('POP909', 'MAESTRO', 'LMD', 'LMCI', 'NES-MDB')
         # dnms = [pop]
         # dnms = [mst]
         # dnms = [pop, mst]
-        dnms = [lmd]
+        # dnms = [lmd]
+        dnms = [nes]
         is_lmd = dnms == [lmd]
         songs = dataset.load_songs(*dnms, as_iter=is_lmd)
         rest_meta = MusicVocabulary.step_rest_pitch_meta
@@ -1538,6 +1539,8 @@ if __name__ == '__main__':
                             pch_meta, dur_meta = elm.meta
                             n_pch = len(pch_meta)
                             dur_ea = dur_meta / n_pch
+                            if n_pch == 2:
+                                mic(pch_meta, dur_meta, n_pch, dur_ea)
                             # Total duration should frequently be a power of 2
                             if int_is_pow_2(n_pch) and int_is_pow_2(dur_meta) and dur_ea > smallest_dur:
                                 d_log = dict(title=song['title'], bar=i_bar, txt=txt, elm=elm)
@@ -1546,4 +1549,4 @@ if __name__ == '__main__':
                             #     mic(pch_meta, dur_meta, n_pch, dur_ea)
                             # raise NotImplementedError
                 # raise NotImplementedError
-    # sanity_check_extracted_property()
+    sanity_check_extracted_property()

@@ -12,7 +12,7 @@ import music21 as m21
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm.auto import tqdm
-from pympler import asizeof
+# from memory_profiler import profile
 
 from stefutil import *
 from musicnlp.util import *
@@ -50,6 +50,7 @@ def extract_single(fnm: str = None) -> Optional[Dict[str, Any]]:
     )
 
 
+# @profile
 def extract(dataset_names: List[str] = None, subset: float = None, subset_bound: int = 4096):
     fmts = [f'{dnm}-{kd}' for dnm in dataset_names for kd in ['mid', 'mxl']]
     read_errs_ = {f: 0 for f in fmts}
@@ -78,23 +79,21 @@ def extract(dataset_names: List[str] = None, subset: float = None, subset_bound:
             fnms = d_fnms[kd]
             desc = f'Extracting {dnm} {kd} info'
             fmt = f'{dnm}-{kd}'
+
+            def process_single(d_):
+                if d_ is None:
+                    read_errs_[fmt] += 1
+                else:
+                    rows.append(d_ | dict(format=fmt))
             if concurrent:  # Doesn't work in ipython notebook
                 # No-batching is faster for POP909?
-                n_worker = 6
-                args = dict(mode='process', batch_size=64, with_tqdm=dict(desc=desc, total=len(fnms), unit='piece'))
-                for d in conc_yield(fn=extract_single, args=fnms, **args, n_worker=n_worker):
-                    if d is None:
-                        read_errs_[fmt] += 1
-                    else:
-                        rows.append(d | dict(format=fmt))
+                tqdm_args = dict(desc=desc, total=len(fnms), unit='piece')
+                args = dict(mode='process', batch_size=32, with_tqdm=tqdm_args, process_chunk_multiplier=1)
+                for d in conc_yield(fn=extract_single, args=fnms, **args, n_worker=15):
+                    process_single(d)
             else:
                 for f in tqdm(fnms, desc=desc):
-                    d = extract_single(f)
-                    if d is None:
-                        read_errs_[fmt] += 10
-                    else:
-                        rows.append(d | dict(format=fmt))
-    mic(fmt_sizeof(asizeof.asizeof(rows)))
+                    process_single(extract_single(f))
     return pd.DataFrame(rows), read_errs_
 
 
@@ -257,7 +256,8 @@ if __name__ == '__main__':
     # check_file_loading()
 
     def check_run():
-        sub = 0.05  # Got memory error when too many pieces
+        sub = 0.1  # Got memory error when too many pieces
+        # sub = 0.0025
         df, read_errs = get_plot_info(dataset_names=dnms, cache=cnm, subset=sub, subset_bound=8192)
         mic(df, read_errs)
 
@@ -273,18 +273,18 @@ if __name__ == '__main__':
             mic(dnm, counts)
             plt.show()
         # save_fig(f'{dnm}_{k}')
-    # check_run()
+    check_run()
 
     def profile_mem():
         import linecache
         import tracemalloc
 
-        def display_top(snapshot, key_type='lineno', limit=10):
-            snapshot = snapshot.filter_traces((
+        def display_top(snap, key_type='lineno', limit=10):
+            snap = snap.filter_traces((
                 tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
                 tracemalloc.Filter(False, "<unknown>"),
             ))
-            top_stats = snapshot.statistics(key_type)
+            top_stats = snap.statistics(key_type)
 
             print("Top %s lines" % limit)
             for index, stat in enumerate(top_stats[:limit], 1):
@@ -304,9 +304,9 @@ if __name__ == '__main__':
 
         tracemalloc.start()
 
-        sub = 0.025
+        sub = 0.0025
         get_plot_info(dataset_names=dnms, cache=cnm, subset=sub, subset_bound=8192)
 
         snapshot = tracemalloc.take_snapshot()
         display_top(snapshot, limit=32)
-    profile_mem()
+    # profile_mem()

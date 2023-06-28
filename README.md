@@ -35,8 +35,8 @@ Add datasets to `DIR_DSET`, then see [`music_export.py`](https://github.com/Stef
 
 
 
+## Music Samples
 
-## Music Samples 
 See [`generated-samples`](https://github.com/StefanHeng/Symbolic-Music-Generation/tree/master/generated-samples). 
 
 

@@ -10,6 +10,7 @@ from dataclasses import asdict
 
 import pandas as pd
 import datasets
+from unidecode import unidecode
 from tqdm import tqdm
 
 from stefutil import *
@@ -139,7 +140,7 @@ class MusicExport:
         if isinstance(filenames, str):  # Dataset name provided
             dnm_ = filenames
             args = dict(fmt='mxl') | (dataset_name2songs_args or dict())
-            filenames = music_util.get_converted_song_paths(filenames, **args)
+            filenames = music_util.get_converted_song_paths(dataset_name=dnm_, **args)
             # filenames = filenames[:16]  # TODO: Debugging
         d_log = dict(save_each=save_each, with_tqdm=with_tqdm, parallel=parallel, parallel_mode=parallel_mode)
         n_song = len(filenames)
@@ -251,18 +252,21 @@ class MusicExport:
     @staticmethod
     def json2dataset(
             fnm: str, path_out=music_util.get_processed_path(), split: bool = False, test_size: float = 0.02,
-            test_size_range: Tuple[int, int] = None, seed: int = None
+            test_size_range: Tuple[int, int] = None, seed: int = None,
+            pre_determined_split: Dict[str, Dict[str, str]] = None
     ) -> Union[datasets.Dataset, datasets.DatasetDict]:
         """
         Save extracted `.json` dataset by `__call__`, as HuggingFace Dataset to disk
 
         :param fnm: File name to a combined json dataset
         :param path_out: Dataset export path
-        :param split: Whether to split the dataset into train/test
+        :param split: Whether to split the dataset into train/val/test
         :param test_size: Test set size, as a fraction of the total dataset
         :param test_size_range: Test set size threshold in (min, max)
             will override `test_size` if outside threshold
         :param seed: Random seed for splitting
+        :param pre_determined_split: Pre-determined split for each song by piece title
+            See `musicnlp.util.music::clean_dataset_paths`
         """
         logger = get_logger('JSON=>HF dataset')
         logger.info(f'Loading {pl.i(fnm)} JSON file... ')
@@ -281,25 +285,82 @@ class MusicExport:
         entries = []
         it = tqdm(songs, desc='Preparing songs', unit='song')
         for s in it:
-            it.set_postfix(fnm=stem(s['song_path']))
+            it.set_postfix(fnm=pl.i(stem(s['song_path'])))
             entries.append(prep_entry(s))
 
         logger.info('Creating HuggingFace dataset... ')
         info = datasets.DatasetInfo(description=json.dumps(d_info))
         dset = datasets.Dataset.from_pandas(pd.DataFrame(entries), info=info)
         if split:
+            if pre_determined_split:
+                logger.info('Using pre-determined split... ')
+                # mic(dset, pre_determined_split)
+                # mic(dset, dset[:10]['title'])
+                # original_all_titles = sorted(dset[:]['title'])
+
+                # Decoding is needed to drop accents, for weird edge cases TODO, an example below
+                #   `César Franck - Prel.:chor.:fug.` and `César Franck - Prel.:chor.:fug.` are different
+                #       for the 2nd char, `e w/ accent`, becomes 2 different characters: just the `e` and the `accent`
+                splits = ['train', 'validation', 'test']
+                split2ttl = {
+                    split: set(unidecode(ttl) for ttl, d in pre_determined_split.items() if d['split'] == split)
+                    for split in splits
+                }
+                # mic({split: len(ttls) for split, ttls in split2ttl.items()})
+                # mic(split2ttl)
+                # tr = dset.filter(lambda x: unidecode(x['title']) in split2ttl['train'])
+                # # mic(len(tr))
+                # val = dset.filter(lambda x: unidecode(x['title']) in split2ttl['validation'])
+                # ts = dset.filter(lambda x: unidecode(x['title']) in split2ttl['test'])
+                # dset = datasets.DatasetDict(train=tr, validation=val, test=ts)
+                n = len(dset)
+                dset = {s: dset.filter(lambda x: unidecode(x['title']) in split2ttl[s]) for s in splits}
+                dset = datasets.DatasetDict(**dset)
+
+                mic(dset)
+                titles = set().union(*[d[:]['title'] for d in dset.values()])
+                assert sum(len(d) for d in dset.values()) == n and len(titles) == n  # sanity check partition
+
+                # all_titles = sorted(set().union(*split2ttl.values()))
+                # mic(len(all_titles), all_titles[:10])
+                # # titles_not_in_any =
+                # for i, (ori, cur) in enumerate(zip(original_all_titles, all_titles)):
+                #     if ori != cur:
+                #         mic(i, ori, cur)
+                # # mic(len(set(original_all_titles).intersection(set(all_titles))))
+                #
+                # original_all_titles = [unidecode(ttl) for ttl in original_all_titles]
+                # all_titles = [unidecode(ttl) for ttl in all_titles]
+                #
+                # diff1 = sorted(set(original_all_titles) - set(all_titles))
+                # diff2 = sorted(set(all_titles) - set(original_all_titles))
+                # mic(diff1[:10], diff2[:10])
+                #
+                # s1 =
+                # mic(len(s1), len(s2))
+                # for i, (c1, c2) in enumerate(zip(s1, s2)):
+                #     if c1 != c2:
+                #         mic(i, c1, c2, ord(c1), ord(c2))
+                # # enc ='ascii'
+                # enc = 'utf-8'
+                # s1 = s1.encode(enc, 'replace')
+                # s2 = s2.encode(enc, 'replace')
+                # mic(s1, s2, len(s1), len(s2))
+
+                raise NotImplementedError
+                # met
+                # dset = dset.train_test_split(
+                #     test_size=None, shuffle=False, seed=seed, train_size=0.8, test_size_from_train=0.5,
+                #     train_transform=partial(clean_dataset_paths, pre_determined_split=pre_determined_split)
+                # )
+                # raise NotImplementedError
+
             n_ts = len(dset) * test_size
 
-            override = False
             if test_size_range is not None:
                 mi, ma = test_size_range
-                if mi and n_ts < mi:
-                    n_ts = mi
-                    override = True
-                elif ma and n_ts > ma:
-                    n_ts = ma
-                    override = True
-            dset = dset.train_test_split(test_size=n_ts if override else test_size, shuffle=True, seed=seed)
+                n_ts = min(max(n_ts, mi), ma)
+            dset = dset.train_test_split(test_size=n_ts, shuffle=True, seed=seed)
 
         path = os_join(path_out, 'hf')
         logger.info(f'Saving dataset to {pl.i(path)}... ')
@@ -341,12 +402,12 @@ if __name__ == '__main__':
 
     def export2json():
         # dnm = 'POP909'
-        # dnm = 'MAESTRO'
+        dnm = 'MAESTRO'
         # dnm = 'LMD, MS'
         # dnm = 'LMD, LP'
         # dnm = 'LMD-cleaned-subset'
         # dnm = 'LMCI, MS'
-        dnm = 'LMCI, LP'
+        # dnm = 'LMCI, LP'
         # dnm = 'NES-MDB'
 
         # mode = 'melody'
@@ -356,8 +417,8 @@ if __name__ == '__main__':
             save_each=True,
             with_tqdm=True
         )
-        args['parallel'] = False
-        # args['parallel'] = 2
+        # args['parallel'] = False
+        args['parallel'] = 8
         if args['parallel']:
             # pl_md = 'thread'
             pl_md = 'process'  # seems to be the fastest
@@ -446,8 +507,8 @@ if __name__ == '__main__':
             if 'LMD-cleaned' in dnm:
                 args['dataset_name2songs_args'] = dict(backend='all')
 
-            # resume = False
-            resume = True
+            resume = False
+            # resume = True
             if resume:
                 if dnm == 'POP909':
                     date = '23-03-31'
@@ -512,11 +573,11 @@ if __name__ == '__main__':
             # combine_single_json_songs(singe_song_dir='', dataset_name='LMD')
         else:
             # combine_single_json_songs(singe_song_dir='23-03-31_POP909_{md=f}', dataset_name='POP909')
-            # combine_single_json_songs(singe_song_dir='23-03-31_MAESTRO_{md=f}', dataset_name='MAESTRO')
+            combine_single_json_songs(singe_song_dir='23-06-28_MAESTRO_{md=f}', dataset_name='MAESTRO')
             # combine_single_json_songs(singe_song_dir='23-04-06_LMD_{md=f}', dataset_name='LMD')
             # combine_single_json_songs(singe_song_dir='23-04-17_NES-MDB_{md=f}', dataset_name='NES')
-            combine_single_json_songs(singe_song_dir='23-04-18_LMCI_{md=f}', dataset_name='LMCI')
-    combine()
+            # combine_single_json_songs(singe_song_dir='23-04-18_LMCI_{md=f}', dataset_name='LMCI')
+    # combine()
 
     def json2dset_with_split():
         """
@@ -531,16 +592,32 @@ if __name__ == '__main__':
             # fnm = ''
         else:
             # fnm = '22-10-22_Extracted-POP909_{n=909}_{md=f, prec=5, th=1}'
-            # fnm = '22-10-22_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}'
-            fnm = '23-04-09_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
-        dset = me.json2dataset(fnm, split=True, test_size=0.02, test_size_range=(50, 500), seed=seed)
+            fnm = '23-06-28_Extracted-MAESTRO_{n=1276}_{md=f, prec=5, th=1}'
+            # fnm = '23-04-09_Extracted-LMD_{n=176640}_{md=f, prec=5, th=1}'
+
+        predetermined_split = True
+        if predetermined_split:
+            import re
+            pattern_dnm = re.compile(r'^\d{2}-\d{2}-\d{2}_Extracted-(?P<dnm>[^_]+)_(?P<md>[^_]+)_\{(.*)}$')
+            m = pattern_dnm.match(fnm)
+            assert m is not None
+            dnm = m.group('dnm')
+            mic(dnm)
+            if dnm != 'MAESTRO':
+                raise NotImplementedError('LMCI naming was obsolete, need to modify written json files')
+
+            split_map = music_util.clean_dataset_paths('MAESTRO', return_split_map=True, verbose=False)
+
+            dset = me.json2dataset(fnm, split=True, pre_determined_split=split_map)
+        else:
+            dset = me.json2dataset(fnm, split=True, test_size=0.02, test_size_range=(50, 500), seed=seed)
         mic(dset)
         mic(len(dset['train']), len(dset['test']))
         tr_samples, ts_samples = dset['train'][:2], dset['test'][:2]
         tr_samples['score'] = [s[:100] for s in tr_samples['score']]
         ts_samples['score'] = [s[:100] for s in ts_samples['score']]
         mic(tr_samples, ts_samples)
-    # json2dset_with_split()
+    json2dset_with_split()
 
     def check_dset_with_key_features():
         dnm = 'musicnlp music extraction, dnm=POP909, n=909, meta={mode=melody, prec=5, th=1}, 2022-04-16_20-28-47'
